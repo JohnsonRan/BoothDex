@@ -1,0 +1,22 @@
+# Single origin: /api -> Rust API, /img -> image proxy, everything else -> Next.js.
+# Caddy gets a TLS certificate automatically. Behind Cloudflare, set SSL mode to "Full (strict)".
+{$SITE_DOMAIN} {
+	handle /api/admin/stream {
+		# server-sent events: no compression (it would buffer events) and no response buffering
+		reverse_proxy api:3000 {
+			flush_interval -1
+		}
+	}
+	handle /api/* {
+		encode zstd gzip
+		reverse_proxy api:3000
+	}
+	handle_path /img/* {
+		# images are already compressed and immutable; Cloudflare and browsers keep them
+		reverse_proxy imgproxy:3001
+	}
+	handle {
+		encode zstd gzip
+		reverse_proxy web:3100
+	}
+}

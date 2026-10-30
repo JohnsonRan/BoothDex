@@ -1,0 +1,9 @@
+target
+web/node_modules
+web/.next
+imgcache
+*.log
+.env
+deploy/.env
+deploy/restore
+design

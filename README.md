@@ -20,6 +20,9 @@ Successor to VRCatalogue (closed 2026-11-01). Research, archive and the locked p
 
 Never start a server in the same step as the `cargo build` that replaces its exe (Windows locks it).
 
+## Deployment
+See [docs/DEPLOY.md](docs/DEPLOY.md): containers (`deploy/`), data bundle (`scripts/make-bundle.sh`), env checklist.
+
 ## Local dev stack
 ```sh
 scripts/dev-up.sh               # api :3000, imgproxy :3001, worker, web :3100 — detached, returns at once

@@ -1,0 +1,18 @@
+# Next.js frontend as a standalone server.
+#   podman build -f deploy/web.Dockerfile -t catalogue-web .
+FROM docker.io/oven/bun:1 AS build
+WORKDIR /web
+COPY web/package.json web/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY web ./
+RUN bun run build \
+ && cp -r public .next/standalone/ \
+ && cp -r .next/static .next/standalone/.next/
+
+FROM docker.io/library/node:22-bookworm-slim
+WORKDIR /app
+COPY --from=build /web/.next/standalone ./
+ENV NODE_ENV=production PORT=3100 HOSTNAME=0.0.0.0
+USER node
+EXPOSE 3100
+CMD ["node", "server.js"]
