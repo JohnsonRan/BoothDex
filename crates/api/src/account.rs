@@ -89,7 +89,7 @@ async fn require_user(s: &AppState, headers: &HeaderMap) -> Result<Result<User, 
     Ok(current_user(&s.pool, headers).await?.ok_or_else(|| err(StatusCode::UNAUTHORIZED, "Sign in required")))
 }
 
-async fn hash_password(password: String) -> Result<String, ApiError> {
+pub async fn hash_password(password: String) -> Result<String, ApiError> {
     Ok(tokio::task::spawn_blocking(move || Argon2::default().hash_password(password.as_bytes()).map(|h| h.to_string()))
         .await?
         .map_err(|e| anyhow::anyhow!("hash: {e}"))?)
@@ -100,23 +100,68 @@ async fn verify_password(password: String, hash: String) -> Result<bool, ApiErro
 }
 
 /// Creates a session row and returns the Set-Cookie value.
-async fn start_session(pool: &PgPool, user_id: i64, keep: bool, headers: &HeaderMap) -> Result<String, ApiError> {
+/// If `verified_hash` is Some, the session is only inserted if the user's current password hash matches it,
+/// preventing an in-flight login from creating a session after a concurrent password reset.
+async fn start_session(
+    pool: &PgPool,
+    user_id: i64,
+    keep: bool,
+    headers: &HeaderMap,
+    verified_hash: Option<&str>,
+) -> Result<Option<String>, ApiError> {
     let mut raw = [0u8; 32];
     getrandom::fill(&mut raw).map_err(|e| anyhow::anyhow!("rng: {e}"))?;
     let token: String = raw.iter().map(|b| format!("{b:02x}")).collect();
     let ttl = if keep { chrono::Duration::days(KEEP_DAYS) } else { chrono::Duration::hours(SHORT_HOURS) };
     let ua = headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).map(|s| s.chars().take(300).collect::<String>());
     let ip = headers.get("cf-connecting-ip").and_then(|v| v.to_str().ok()).map(str::to_owned);
-    sqlx::query("insert into sessions (token_hash, user_id, expires_at, user_agent, ip) values ($1, $2, now() + $3, $4, $5)")
-        .bind(token_hash(&token))
-        .bind(user_id)
-        .bind(ttl)
-        .bind(ua)
-        .bind(ip)
-        .execute(pool)
-        .await?;
+
+    match verified_hash {
+        Some(expected_hash) => {
+            // Row lock on `users` serializes with admin `reset_password` (which runs `UPDATE users SET password_hash`):
+            // if reset commits first, `FOR UPDATE` sees the new hash and rejects;
+            // if login locks first, reset's UPDATE blocks until login commits, and then reset's DELETE removes this session.
+            let mut tx = pool.begin().await?;
+            let current_hash: Option<String> = sqlx::query_scalar(
+                "select password_hash from users where id = $1 for update",
+            )
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+            if current_hash.as_deref() != Some(expected_hash) {
+                return Ok(None);
+            }
+
+            sqlx::query(
+                "insert into sessions (token_hash, user_id, expires_at, user_agent, ip) values ($1, $2, now() + $3, $4, $5)",
+            )
+            .bind(token_hash(&token))
+            .bind(user_id)
+            .bind(ttl)
+            .bind(ua)
+            .bind(ip)
+            .execute(&mut *tx)
+            .await?;
+
+            tx.commit().await?;
+        }
+        None => {
+            sqlx::query(
+                "insert into sessions (token_hash, user_id, expires_at, user_agent, ip) values ($1, $2, now() + $3, $4, $5)",
+            )
+            .bind(token_hash(&token))
+            .bind(user_id)
+            .bind(ttl)
+            .bind(ua)
+            .bind(ip)
+            .execute(pool)
+            .await?;
+        }
+    }
+
     let max_age = if keep { format!("; Max-Age={}", KEEP_DAYS * 86_400) } else { String::new() };
-    Ok(format!("{COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax{}{max_age}", secure_flag()))
+    Ok(Some(format!("{COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax{}{max_age}", secure_flag())))
 }
 
 fn clear_cookie() -> String {
@@ -205,7 +250,7 @@ async fn register(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): J
         Err(e) if is_unique_violation(&e) => return Ok(err(StatusCode::CONFLICT, "Username or email is already taken.")),
         Err(e) => return Err(e.into()),
     };
-    let cookie = start_session(&s.pool, id, b.keep, &headers).await?;
+    let cookie = start_session(&s.pool, id, b.keep, &headers, None).await?.expect("session insert on register");
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({ "ok": true }))).into_response())
 }
 
@@ -228,12 +273,18 @@ async fn login(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json
         .await?;
     // verify against a dummy hash when the user is unknown, so timing doesn't reveal which logins exist
     let (id, hash) = row.unwrap_or((0, s.dummy_hash.clone()));
-    if !verify_password(b.password, hash).await? || id == 0 {
+    if !verify_password(b.password, hash.clone()).await? || id == 0 {
         s.throttle.fail(&key);
         return Ok(err(StatusCode::UNAUTHORIZED, "Incorrect username or password."));
     }
     s.throttle.clear(&key);
-    let cookie = start_session(&s.pool, id, b.keep, &headers).await?;
+    let cookie = match start_session(&s.pool, id, b.keep, &headers, Some(&hash)).await? {
+        Some(c) => c,
+        None => {
+            s.throttle.fail(&key);
+            return Ok(err(StatusCode::UNAUTHORIZED, "Incorrect username or password."));
+        }
+    };
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({ "ok": true }))).into_response())
 }
 

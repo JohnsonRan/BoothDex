@@ -282,18 +282,20 @@ fn key_hint(k: &str) -> String {
     if n <= 8 { "••••".into() } else { format!("{}…{}", k.chars().take(3).collect::<String>(), k.chars().skip(n - 4).collect::<String>()) }
 }
 
-async fn ai_settings(pool: &PgPool) -> Result<Value, sqlx::Error> {
-    Ok(sqlx::query_scalar("select value from app_settings where key = 'ai'").fetch_optional(pool).await?.unwrap_or_else(|| json!({})))
-}
+use catalogue_core::settings::{self, AiConfig};
 
-fn public_ai(v: &Value) -> Value {
-    let key = v["api_key"].as_str().unwrap_or_default();
-    json!({ "base_url": v["base_url"], "model": v["model"], "api_key_set": !key.is_empty(), "api_key_hint": (!key.is_empty()).then(|| key_hint(key)) })
+fn public_ai(c: &AiConfig) -> Value {
+    json!({
+        "base_url": c.base_url, "model": c.model,
+        "api_key_set": c.api_key.is_some(), "api_key_hint": c.api_key.as_deref().map(key_hint),
+        // fields set by AI_* environment variables can't be edited in the console
+        "from_env": { "base_url": c.base_url_from_env, "model": c.model_from_env, "api_key": c.api_key_from_env },
+    })
 }
 
 async fn get_settings(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
     admin!(s, headers);
-    Ok(Json(json!({ "ai": public_ai(&ai_settings(&s.pool).await?) })).into_response())
+    Ok(Json(json!({ "ai": public_ai(&settings::ai(&s.pool).await?) })).into_response())
 }
 
 async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<AiSettings>) -> Result<Response, ApiError> {
@@ -302,7 +304,7 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
     if !url_ok || b.model.as_deref().is_some_and(|m| m.len() > 100) || b.api_key.as_deref().is_some_and(|k| k.len() > 500) {
         return Ok(err(StatusCode::BAD_REQUEST, "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars"));
     }
-    let mut v = ai_settings(&s.pool).await?;
+    let mut v = settings::stored_ai(&s.pool).await?;
     if let Some(u) = b.base_url {
         v["base_url"] = json!(u.trim().trim_end_matches('/'));
     }
@@ -316,14 +318,14 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
         .bind(&v)
         .execute(&s.pool)
         .await?;
-    Ok(Json(public_ai(&v)).into_response())
+    Ok(Json(public_ai(&settings::resolve(&v, |k| std::env::var(k).ok()))).into_response())
 }
 
 /// Calls `GET {base_url}/models` with the stored key, so the admin can check the endpoint before enabling enrichment.
 async fn test_ai(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
     admin!(s, headers);
-    let v = ai_settings(&s.pool).await?;
-    let (Some(base), Some(key)) = (v["base_url"].as_str(), v["api_key"].as_str()) else {
+    let c = settings::ai(&s.pool).await?;
+    let (Some(base), Some(key)) = (c.base_url.as_deref(), c.api_key.as_deref()) else {
         return Ok(err(StatusCode::BAD_REQUEST, "Set the base URL and API key first"));
     };
     let res = s.http.get(format!("{base}/models")).bearer_auth(key).timeout(Duration::from_secs(10)).send().await;
@@ -331,7 +333,7 @@ async fn test_ai(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<R
         Ok(r) if r.status().is_success() => {
             let body: Value = r.json().await.unwrap_or(Value::Null);
             let models: Vec<&str> = body["data"].as_array().into_iter().flatten().filter_map(|m| m["id"].as_str()).take(50).collect();
-            let model = v["model"].as_str().unwrap_or_default();
+            let model = c.model.as_deref().unwrap_or_default();
             Json(json!({ "ok": true, "models": models, "model_found": model.is_empty() || models.is_empty() || models.contains(&model) })).into_response()
         }
         Ok(r) => err(StatusCode::BAD_GATEWAY, &format!("Provider answered {}", r.status())),
@@ -339,8 +341,42 @@ async fn test_ai(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<R
     })
 }
 
+#[derive(Deserialize)]
+struct ResetPassword {
+    username: String,
+}
+
+/// 16 characters from an alphabet without look-alikes (no 0/O, 1/l/I), ~92 bits of entropy.
+fn random_password() -> anyhow::Result<String> {
+    const ALPHABET: &[u8] = b"abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let mut raw = [0u8; 16];
+    getrandom::fill(&mut raw).map_err(|e| anyhow::anyhow!("rng: {e}"))?;
+    // modulo bias over 56 symbols from a byte is < 0.5% per symbol; acceptable for a one-time password
+    Ok(raw.iter().map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char).collect())
+}
+
+/// Sets a random password for a user and signs them out everywhere. The password is returned once, to the admin,
+/// who passes it on; it is never stored in plain text.
+async fn reset_password(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<ResetPassword>) -> Result<Response, ApiError> {
+    let who = admin!(s, headers);
+    let password = random_password()?;
+    let hash = account::hash_password(password.clone()).await?;
+    let mut tx = s.pool.begin().await?;
+    let user: Option<(i64, String)> = sqlx::query_as("update users set password_hash = $2 where lower(username) = lower($1) returning id, username")
+        .bind(b.username.trim())
+        .bind(hash)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let Some((id, username)) = user else { return Ok(err(StatusCode::NOT_FOUND, "No such user")) };
+    let sessions = sqlx::query("delete from sessions where user_id = $1").bind(id).execute(&mut *tx).await?.rows_affected();
+    tx.commit().await?;
+    println!("admin {who} reset the password of {username}");
+    Ok(Json(json!({ "username": username, "password": password, "sessions_revoked": sessions })).into_response())
+}
+
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/api/admin/users/reset-password", post(reset_password))
         .route("/api/admin/settings", get(get_settings))
         .route("/api/admin/settings/ai", put(put_ai))
         .route("/api/admin/settings/ai/test", post(test_ai))
@@ -351,4 +387,18 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/admin/jobs/{id}/cancel", post(cancel_job))
         .route("/api/admin/schedules/{kind}", put(update_schedule))
         .route("/api/admin/reload", post(reload))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::random_password;
+
+    #[test]
+    fn random_passwords_are_long_and_distinct() {
+        let a = random_password().unwrap();
+        let b = random_password().unwrap();
+        assert_eq!(a.chars().count(), 16);
+        assert_ne!(a, b);
+        assert!(a.chars().all(|c| c.is_ascii_alphanumeric() && !"0O1lI".contains(c)));
+    }
 }

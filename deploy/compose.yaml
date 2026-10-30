@@ -30,6 +30,10 @@ services:
       ADMIN_USERNAMES: ${ADMIN_USERNAMES:-}
       IMGPROXY_URL: http://imgproxy:3001
       COOKIE_SECURE: "1"
+      # optional: override the AI settings from the admin console (keeps the key out of the database)
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
     # ~1 GB steady, ~2.2 GB at startup, roughly double that while hot-reloading the catalogue
     mem_limit: 5g
 
@@ -39,6 +43,9 @@ services:
     depends_on: { postgres: { condition: service_healthy } }
     environment:
       DATABASE_URL: postgres://catalogue:${POSTGRES_PASSWORD}@postgres:5432/catalogue
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
     mem_limit: 512m
 
   imgproxy:

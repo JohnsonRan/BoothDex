@@ -561,6 +561,8 @@ export function AdminConsole() {
 
       <AiSettingsCard />
 
+      <ResetPasswordCard />
+
       <JobLog id={logJob} onClose={() => setLogJob(null)} />
     </div>
   );
@@ -725,7 +727,9 @@ type Ai = {
   model?: string | null;
   api_key_set: boolean;
   api_key_hint?: string | null;
+  from_env?: { base_url: boolean; model: boolean; api_key: boolean };
 };
+const ENV_NOTE = "(由服务器环境变量设置，此处不能修改)";
 
 /** OpenAI-compatible provider used by the enrichment job. The key is write-only: the API only returns a hint. */
 function AiSettingsCard() {
@@ -788,18 +792,24 @@ function AiSettingsCard() {
       <CardContent>
         <form onSubmit={save} className="grid gap-3 md:grid-cols-[1fr_1fr]">
           <label htmlFor="ai-base" className="space-y-1.5 text-sm">
-            <span className="text-muted-foreground">API 地址(OpenAI 兼容)</span>
+            <span className="text-muted-foreground">
+              API 地址(OpenAI 兼容){ai?.from_env?.base_url && ENV_NOTE}
+            </span>
             <Input
               id="ai-base"
+              disabled={ai?.from_env?.base_url}
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://api.openai.com/v1"
             />
           </label>
           <label htmlFor="ai-model" className="space-y-1.5 text-sm">
-            <span className="text-muted-foreground">模型</span>
+            <span className="text-muted-foreground">
+              模型{ai?.from_env?.model && ENV_NOTE}
+            </span>
             <Input
               id="ai-model"
+              disabled={ai?.from_env?.model}
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder="gpt-4o-mini"
@@ -814,10 +824,14 @@ function AiSettingsCard() {
           <label htmlFor="ai-key" className="space-y-1.5 text-sm md:col-span-2">
             <span className="text-muted-foreground">
               API 密钥{" "}
-              {ai?.api_key_set && `(已保存 ${ai.api_key_hint}，留空则不修改)`}
+              {ai?.from_env?.api_key
+                ? `${ai.api_key_hint} ${ENV_NOTE}`
+                : ai?.api_key_set &&
+                  `(已保存 ${ai.api_key_hint}，留空则不修改)`}
             </span>
             <Input
               id="ai-key"
+              disabled={ai?.from_env?.api_key}
               type="password"
               autoComplete="off"
               value={key}
@@ -839,6 +853,110 @@ function AiSettingsCard() {
             </Button>
           </div>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Sets a random password for a user (no mail service): the admin passes it on. Signs the user out everywhere. */
+function ResetPasswordCard() {
+  const [username, setUsername] = useState("");
+  const [armed, setArmed] = useState(false);
+  const [result, setResult] = useState<{
+    username: string;
+    password: string;
+    sessions_revoked: number;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    // irreversible for the user: confirm with a second click
+    if (!armed) return setArmed(true);
+    setBusy(true);
+    try {
+      setResult(
+        await api("/api/admin/users/reset-password", {
+          method: "POST",
+          json: { username },
+        }),
+      );
+      setUsername("");
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError && err.status === 404
+          ? "找不到这个用户"
+          : err instanceof Error
+            ? err.message
+            : String(err),
+      );
+    } finally {
+      setBusy(false);
+      setArmed(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>重置用户密码</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          为忘记密码的用户生成一个随机新密码，并退出该用户在所有设备上的登录。新密码只显示这一次，请转告用户，并提醒对方登录后修改。
+        </p>
+        <form onSubmit={submit} className="flex flex-wrap gap-2">
+          <Input
+            value={username}
+            onChange={(e) => {
+              setUsername(e.target.value);
+              setArmed(false);
+            }}
+            placeholder="用户名"
+            aria-label="用户名"
+            required
+            className="max-w-xs"
+          />
+          <Button
+            type="submit"
+            variant={armed ? "destructive" : "outline"}
+            disabled={busy || !username.trim()}
+          >
+            {armed ? `确认重置 ${username.trim()} 的密码` : "重置密码"}
+          </Button>
+        </form>
+        {result && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--success)]/30 bg-[var(--success)]/10 p-3 text-sm">
+            <span>
+              {result.username} 的新密码：
+              <code className="ml-1 rounded bg-background px-2 py-0.5 font-mono text-base select-all">
+                {result.password}
+              </code>
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                navigator.clipboard
+                  .writeText(result.password)
+                  .then(() => toast.success("已复制"))
+              }
+            >
+              复制
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              已退出 {result.sessions_revoked} 个登录会话
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto"
+              onClick={() => setResult(null)}
+            >
+              隐藏
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
