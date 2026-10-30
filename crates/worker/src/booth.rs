@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use regex::Regex;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
 
@@ -104,46 +104,6 @@ pub fn urlencode(s: &str) -> String {
     s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
 }
 
-/// "¥ 1,200" / "¥ 300~" -> 1200 / 300
-pub fn parse_price(s: &str) -> Option<i32> {
-    let digits: String = s.chars().skip_while(|c| !c.is_ascii_digit()).take_while(|c| c.is_ascii_digit() || *c == ',').filter(char::is_ascii_digit).collect();
-    digits.parse().ok()
-}
-
-/// Booth item JSON -> the columns our crawler owns. AI-derived columns are left to enrichment.
-pub struct ItemFields {
-    pub id: i64,
-    pub row: Value,
-    pub images: Vec<String>,
-}
-
-pub fn item_fields(v: &Value) -> Result<ItemFields> {
-    let id = v["id"].as_i64().context("item json without id")?;
-    let variations: Vec<Value> = v["variations"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|x| json!({ "id": x["id"].to_string(), "name": x["name"].as_str().unwrap_or_default(), "price_jpy": x["price"], "status": x["status"], "type": x["type"] }))
-        .collect();
-    let row = json!({
-        "id": id,
-        "title": v["name"].as_str().unwrap_or_default(),
-        "bio": v["description"].as_str().unwrap_or_default(),
-        "author_name": v["shop"]["name"].as_str().unwrap_or_default(),
-        "author_uri": v["shop"]["url"].as_str().unwrap_or_default(),
-        "author_icon": v["shop"]["thumbnail_url"],
-        "booth_category": v["category"]["name"],
-        "price_jpy": v["price"].as_str().and_then(parse_price),
-        "likes": v["wish_lists_count"].as_i64().unwrap_or(0),
-        "is_adult": v["is_adult"].as_bool().unwrap_or(false),
-        "published_at": v["published_at"],
-        "booth_tags": v["tags"].as_array().into_iter().flatten().filter_map(|t| t["name"].as_str()).collect::<Vec<_>>(),
-        "variations": variations,
-    });
-    let images = v["images"].as_array().into_iter().flatten().filter_map(|i| i["original"].as_str().map(str::to_owned)).collect();
-    Ok(ItemFields { id, row, images })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,27 +122,8 @@ mod tests {
     }
 
     #[test]
-    fn prices_and_encoding() {
-        assert_eq!(parse_price("¥ 1,200"), Some(1200));
-        assert_eq!(parse_price("¥ 300~"), Some(300));
-        assert_eq!(parse_price("¥ 0"), Some(0));
-        assert_eq!(parse_price("free"), None);
+    fn encoding() {
         assert_eq!(urlencode("衣装 x"), "%E8%A1%A3%E8%A3%85%20x");
     }
 
-    #[test]
-    fn maps_item_json() {
-        let v = json!({"id": 9071184, "name": "Outfit", "description": "d", "price": "¥ 399", "wish_lists_count": 4, "is_adult": false,
-            "published_at": "2026-10-30T19:38:12.000+09:00", "category": {"name": "3D Clothing"},
-            "shop": {"name": "stlw", "url": "https://stlw.booth.pm/", "thumbnail_url": "https://booth.pximg.net/x.png"},
-            "tags": [{"name": "ショコラ"}], "images": [{"original": "https://booth.pximg.net/a/i/9071184/b.jpg"}],
-            "variations": [{"id": 15147008, "name": null, "price": 399, "status": "addable_to_cart", "type": "digital"}]});
-        let f = item_fields(&v).unwrap();
-        assert_eq!(f.id, 9071184);
-        assert_eq!(f.row["price_jpy"], 399);
-        assert_eq!(f.row["booth_category"], "3D Clothing");
-        assert_eq!(f.row["variations"][0]["id"], "15147008");
-        assert_eq!(f.row["variations"][0]["name"], "");
-        assert_eq!(f.images.len(), 1);
-    }
 }

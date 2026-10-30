@@ -6,7 +6,7 @@ use anyhow::{Result, bail};
 use serde_json::Value;
 use sqlx::PgPool;
 
-use crate::booth::{Booth, item_fields};
+use crate::booth::Booth;
 
 pub struct Ctx<'a> {
     pub pool: &'a PgPool,
@@ -58,44 +58,7 @@ pub async fn bump_catalog(pool: &PgPool) -> Result<()> {
     Ok(())
 }
 
-/// Upserts crawler-owned columns and the full gallery. New items are flagged for AI enrichment, and so are
-/// existing ones whose title or description changed (their translations are stale).
-pub async fn store_item(pool: &PgPool, v: &Value) -> Result<bool> {
-    let f = item_fields(v)?;
-    let inserted: bool = sqlx::query_scalar(
-        "insert into items (id, title, bio, author_name, author_uri, author_icon, booth_category, price_jpy, likes, is_adult,
-                            published_at, booth_tags, variations, status, scraped_at, needs_enrichment)
-         select id, title, bio, author_name, author_uri, author_icon, booth_category, price_jpy, likes, is_adult,
-                published_at, booth_tags, variations, 'ok', now(), true
-         from jsonb_to_record($1) as x(id bigint, title text, bio text, author_name text, author_uri text, author_icon text,
-                                       booth_category text, price_jpy integer, likes integer, is_adult boolean,
-                                       published_at timestamptz, booth_tags text[], variations jsonb)
-         on conflict (id) do update set
-           needs_enrichment = items.needs_enrichment or items.title is distinct from excluded.title or items.bio is distinct from excluded.bio,
-           title = excluded.title, bio = excluded.bio, author_name = excluded.author_name, author_uri = excluded.author_uri,
-           author_icon = excluded.author_icon, booth_category = excluded.booth_category, price_jpy = excluded.price_jpy,
-           likes = excluded.likes, is_adult = excluded.is_adult, published_at = coalesce(excluded.published_at, items.published_at),
-           booth_tags = excluded.booth_tags, variations = excluded.variations, status = 'ok', scraped_at = now()
-         returning (xmax = 0)",
-    )
-    .bind(&f.row)
-    .fetch_one(pool)
-    .await?;
-    sqlx::query(
-        "insert into booth_images (item_id, images, complete) values ($1, $2, true)
-         on conflict (item_id) do update set images = excluded.images, complete = true, fetched_at = now()",
-    )
-    .bind(f.id)
-    .bind(&f.images)
-    .execute(pool)
-    .await?;
-    Ok(inserted)
-}
-
-async fn mark_delisted(pool: &PgPool, id: i64) -> Result<()> {
-    sqlx::query("update items set status = 'delisted', scraped_at = now() where id = $1").bind(id).execute(pool).await?;
-    Ok(())
-}
+use catalogue_core::booth::{mark_delisted, store_item};
 
 /// Newest-first listing walk: stores image links for every item seen, ingests unknown items, stops once caught up.
 pub async fn incremental(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
@@ -187,11 +150,11 @@ pub async fn details(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     fetch_each(ctx, ids, delay, "details").await
 }
 
-/// Rolling re-check of the stalest listed items: prices, likes, tags, delistings.
+/// Re-check listed items in order of heat x staleness (see the refresh_priority view): prices, likes, tags, delistings.
 pub async fn refresh(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let delay = Duration::from_millis(param(params, "delay_ms", 700));
     let batch: i64 = param(params, "batch", 1500);
-    let ids = sqlx::query_scalar("select id from items where status = 'ok' order by scraped_at asc limit $1").bind(batch).fetch_all(ctx.pool).await?;
+    let ids = sqlx::query_scalar("select id from refresh_priority order by priority desc limit $1").bind(batch).fetch_all(ctx.pool).await?;
     fetch_each(ctx, ids, delay, "refresh").await
 }
 
