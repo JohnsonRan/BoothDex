@@ -75,6 +75,8 @@ struct ArcAvatar {
 struct ArcItemCategory {
     category: String,
     sub_category: Option<String>,
+    /// disambiguates children sharing an English name ("Other" appears 3x under Clothing)
+    sub_category_ja: Option<String>,
     is_primary: Option<bool>,
 }
 
@@ -136,6 +138,8 @@ struct ItemRow<'a> {
     variations: &'a Value,
     translations: &'a Value,
     avatar_slug: Option<&'a str>,
+    supported: bool,
+    gender: Option<&'a str>,
 }
 
 const ITEM_COLS: &[(&str, &str)] = &[
@@ -163,6 +167,8 @@ const ITEM_COLS: &[(&str, &str)] = &[
     ("variations", "jsonb"),
     ("translations", "jsonb"),
     ("avatar_slug", "text"),
+    ("supported", "boolean"),
+    ("gender", "text"),
 ];
 
 const FEATURES: &[&str] = &["ma", "liltoon", "poiyomi", "vrcfury"];
@@ -258,15 +264,20 @@ async fn main() -> Result<()> {
         let p = data.join(format!("labels/{name}.json"));
         Ok(serde_json::from_slice::<Label>(&fs::read(&p).with_context(|| p.display().to_string())?)?.ids.into_iter().map(|AnyId(id)| id).collect())
     };
-    let feature_sets: Vec<(&str, HashSet<i64>)> = FEATURES.iter().map(|f| Ok((*f, label(&format!("feature-{f}"))?))).collect::<Result<_>>()?;
+    // items view and avatars view were labelled separately
+    let feature_sets: Vec<(&str, HashSet<i64>)> = FEATURES
+        .iter()
+        .map(|f| Ok((*f, &label(&format!("feature-{f}"))? | &label(&format!("feature-{f}-avatars"))?)))
+        .collect::<Result<_>>()?;
     let (female, male) = (label("gender-female")?, label("gender-male")?);
+    let supported = label("avatars-supported")?;
 
     // category lookup by English names, as items reference categories by name
-    let mut cat_slug: HashMap<(&str, Option<&str>), &str> = HashMap::new();
+    let mut cat_slug: HashMap<(&str, Option<&str>, Option<&str>), &str> = HashMap::new();
     for p in &cats {
-        cat_slug.insert((&p.en, None), &p.slug);
+        cat_slug.insert((&p.en, None, None), &p.slug);
         for c in &p.children {
-            cat_slug.insert((&p.en, Some(&c.en)), &c.slug);
+            cat_slug.insert((&p.en, Some(&c.en), c.ja.as_deref()), &c.slug);
         }
     }
 
@@ -366,6 +377,14 @@ async fn main() -> Result<()> {
                     variations: &it.variations,
                     translations: &it.translations,
                     avatar_slug: it.avatar_info.as_ref().map(|a| a.slug.as_str()),
+                    supported: it.avatar_info.is_some() || supported.contains(&it.id),
+                    gender: if female.contains(&it.id) {
+                        Some("female")
+                    } else if male.contains(&it.id) {
+                        Some("male")
+                    } else {
+                        None
+                    },
                 }
             })
             .collect();
@@ -379,7 +398,8 @@ async fn main() -> Result<()> {
             }
             let mut seen = HashSet::new();
             for c in it.smart_categories.iter().flatten() {
-                match cat_slug.get(&(c.category.as_str(), c.sub_category.as_deref())) {
+                let key = (c.category.as_str(), c.sub_category.as_deref(), c.sub_category.as_ref().and(c.sub_category_ja.as_deref()));
+                match cat_slug.get(&key) {
                     Some(slug) if seen.insert(*slug) => {
                         cat_items.push(it.id);
                         cat_slugs.push(*slug);
@@ -392,6 +412,10 @@ async fn main() -> Result<()> {
         }
     }
 
+    // links are replaced wholesale for imported items so reruns drop stale ones
+    let all_ids: Vec<i64> = sorted.iter().map(|it| it.id).collect();
+    sqlx::query("delete from item_avatars where item_id = any($1)").bind(&all_ids).execute(&mut *tx).await?;
+    sqlx::query("delete from item_categories where item_id = any($1)").bind(&all_ids).execute(&mut *tx).await?;
     sqlx::query("insert into item_avatars (item_id, avatar_slug) select * from unnest($1::bigint[], $2::text[]) on conflict do nothing")
         .bind(&link_items)
         .bind(&link_avatars)

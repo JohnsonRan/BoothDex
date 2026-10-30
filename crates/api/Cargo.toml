@@ -1,0 +1,21 @@
+[package]
+name = "api"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum = "0.8"
+catalogue-core.workspace = true
+chrono.workspace = true
+lindera = { version = "5.0.1", features = ["embed-ipadic"] }
+percent-encoding = "2"
+lindera-tantivy = { version = "5.0.1", features = ["embed-ipadic"] }
+roaring = "0.12"
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tantivy = "0.26"
+tokio.workspace = true
+tower-http = { version = "0.7", features = ["cors", "compression-gzip"] }
