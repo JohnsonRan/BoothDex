@@ -19,6 +19,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use tower_http::compression::Predicate as _;
 use serde_json::{Value, json};
 use sqlx::PgPool;
 
@@ -338,7 +339,11 @@ async fn main() -> Result<()> {
         .route("/api/categories", get(|State(s): State<Arc<AppState>>| async move { Json(s.snap().categories.clone()) }))
         .merge(account::routes())
         .merge(admin::routes())
-        .layer(tower_http::compression::CompressionLayer::new())
+        // gzip would buffer the admin SSE stream
+        .layer(tower_http::compression::CompressionLayer::new().compress_when(
+            tower_http::compression::predicate::DefaultPredicate::new()
+                .and(tower_http::compression::predicate::NotForContentType::const_new("text/event-stream")),
+        ))
         // no credentials cross-origin: the frontend is served same-origin (Next.js rewrites /api)
         .layer(tower_http::cors::CorsLayer::new().allow_origin(tower_http::cors::Any).allow_methods([axum::http::Method::GET]))
         .with_state(state);

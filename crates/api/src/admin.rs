@@ -154,7 +154,12 @@ async fn stream(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Re
         };
         Some((Ok::<_, Infallible>(ev), (s, false)))
     });
-    Ok(Sse::new(events).keep_alive(KeepAlive::default()).into_response())
+    // no-transform stops intermediaries (Next.js dev proxy, CDNs) from gzipping and therefore buffering the stream
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-cache, no-transform"), (axum::http::HeaderName::from_static("x-accel-buffering"), "no")],
+        Sse::new(events).keep_alive(KeepAlive::default()),
+    )
+        .into_response())
 }
 
 async fn list_jobs(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {

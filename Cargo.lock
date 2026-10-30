@@ -43,10 +43,12 @@ name = "api"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "argon2",
  "axum",
  "catalogue-core",
  "chrono",
+ "futures-util",
  "getrandom 0.4.3",
  "lindera",
  "lindera-tantivy",
@@ -58,6 +60,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "sqlx",
+ "sysinfo",
  "tantivy",
  "tokio",
  "tower-http 0.7.1",
@@ -1542,6 +1545,7 @@ dependencies = [
  "reqwest",
  "rustls",
  "serde",
+ "serde_json",
  "tokio",
  "webp",
 ]

@@ -20,6 +20,15 @@ Successor to VRCatalogue (closed 2026-11-01). Research, archive and the locked p
 
 Never start a server in the same step as the `cargo build` that replaces its exe (Windows locks it).
 
+## Local dev stack
+```sh
+scripts/dev-up.sh               # api :3000, imgproxy :3001, worker, web :3100 — detached, returns at once
+scripts/dev-up.sh api           # just one
+scripts/dev-down.sh
+```
+Logs go to `<service>.log`. Startup: api ~20 s (loads and indexes the catalogue), others ~1 s.
+Admin console: http://localhost:3100/admin (admins come from `ADMIN_USERNAMES`).
+
 ## Dev database (Podman)
 ```sh
 podman run -d --name vrcat-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalogue \

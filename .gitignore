@@ -2,3 +2,5 @@ target/
 .env
 *.log
 imgcache/
+web/node_modules/
+web/.next/
