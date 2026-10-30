@@ -9,6 +9,7 @@
 //!      ARCHIVE_IMAGES (dir of <sha1>.webp files)
 
 use std::io::Cursor;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -55,7 +56,20 @@ impl Format {
     }
 }
 
+#[derive(Default)]
+struct Stats {
+    requests: AtomicU64,
+    /// cache misses that went to Booth (or failed trying)
+    upstream: AtomicU64,
+    errors: AtomicU64,
+    not_found: AtomicU64,
+    bytes_out: AtomicU64,
+}
+
 struct AppState {
+    stats: Stats,
+    mem_mb: usize,
+    disk_mb: usize,
     cache: HybridCache<String, Vec<u8>>,
     client: reqwest::Client,
     transcode: Semaphore,
@@ -169,18 +183,28 @@ async fn booth(
     };
     let key = format!("{size}/{uuid}/{item}/{file}:{format:?}");
     let quality = if size == "orig" { 88.0 } else { 80.0 };
+    s.stats.requests.fetch_add(1, Ordering::Relaxed);
     let st = s.clone();
     let result = s
         .cache
         .get_or_fetch(&key, move || async move {
+            st.stats.upstream.fetch_add(1, Ordering::Relaxed);
             let Some(raw) = fetch_upstream(&st.client, &url).await? else { return Ok::<_, anyhow::Error>(Vec::new()) };
             let _permit = st.transcode.acquire().await?;
             tokio::task::spawn_blocking(move || encode(&decode(&raw)?, format, quality)).await?
         })
         .await;
     match result {
-        Ok(entry) => image_response(entry.value().clone(), format),
+        Ok(entry) => {
+            let bytes = entry.value().clone();
+            if bytes.is_empty() {
+                s.stats.not_found.fetch_add(1, Ordering::Relaxed);
+            }
+            s.stats.bytes_out.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+            image_response(bytes, format)
+        }
         Err(e) => {
+            s.stats.errors.fetch_add(1, Ordering::Relaxed);
             eprintln!("{key}: {e:#}");
             (StatusCode::BAD_GATEWAY, [(header::CACHE_CONTROL, "no-store")], "upstream error").into_response()
         }
@@ -198,6 +222,18 @@ async fn archived(State(s): State<Arc<AppState>>, Path(name): Path<String>) -> R
     }
 }
 
+/// Counters since start, for the admin console.
+async fn stats(State(s): State<Arc<AppState>>) -> axum::Json<serde_json::Value> {
+    let g = |a: &AtomicU64| a.load(Ordering::Relaxed);
+    let (req, up) = (g(&s.stats.requests), g(&s.stats.upstream));
+    axum::Json(serde_json::json!({
+        "reachable": true,
+        "requests": req, "upstream_fetches": up, "hit_rate": if req > 0 { 1.0 - up as f64 / req as f64 } else { 0.0 },
+        "errors": g(&s.stats.errors), "not_found": g(&s.stats.not_found), "bytes_out": g(&s.stats.bytes_out),
+        "memory_cache_mb": s.mem_mb, "disk_cache_mb": s.disk_mb,
+    }))
+}
+
 fn env_num(key: &str, default: usize) -> usize {
     std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
@@ -207,15 +243,19 @@ async fn main() -> Result<()> {
     rustls::crypto::ring::default_provider().install_default().ok();
     let dir = std::env::var("CACHE_DIR").unwrap_or_else(|_| "imgcache".into());
     std::fs::create_dir_all(&dir)?;
-    let device = FsDeviceBuilder::new(&dir).with_capacity(env_num("CACHE_DISK_MB", 10_240) * 1024 * 1024).build()?;
+    let (mem_mb, disk_mb) = (env_num("CACHE_MEM_MB", 256), env_num("CACHE_DISK_MB", 10_240));
+    let device = FsDeviceBuilder::new(&dir).with_capacity(disk_mb * 1024 * 1024).build()?;
     let cache = HybridCacheBuilder::new()
-        .memory(env_num("CACHE_MEM_MB", 256) * 1024 * 1024)
+        .memory(mem_mb * 1024 * 1024)
         .with_weighter(|k: &String, v: &Vec<u8>| k.len() + v.len())
         .storage()
         .with_engine_config(BlockEngineConfig::new(device))
         .build()
         .await?;
     let state = Arc::new(AppState {
+        stats: Stats::default(),
+        mem_mb,
+        disk_mb,
         cache,
         client: reqwest::Client::builder().timeout(Duration::from_secs(20)).build()?,
         transcode: Semaphore::new(std::thread::available_parallelism().map_or(4, |n| n.get())),
@@ -224,6 +264,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/b/{size}/{uuid}/i/{item}/{file}", get(booth))
         .route("/v/{name}", get(archived))
+        .route("/stats", get(stats))
         .with_state(state.clone());
     let bind = std::env::var("BIND").unwrap_or_else(|_| "127.0.0.1:3001".into());
     println!("imgproxy listening on http://{bind}, cache {dir}");

@@ -48,7 +48,7 @@ async fn stored(pool: &PgPool, id: i64) -> Result<Option<(Vec<String>, bool)>, s
 }
 
 pub async fn gallery(State(s): State<Arc<AppState>>, Path(id): Path<i64>) -> Result<Response, ApiError> {
-    if s.catalog.docs_for(&[id]).is_empty() {
+    if s.snap().catalog.docs_for(&[id]).is_empty() {
         return Ok((StatusCode::NOT_FOUND, Json(json!({ "ok": false, "error": "Unknown item." }))).into_response());
     }
     let have = stored(&s.pool, id).await?;

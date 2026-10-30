@@ -8,8 +8,12 @@ Successor to VRCatalogue (closed 2026-11-01). Research, archive and the locked p
 - `crates/api`: search API (Axum). Loads everything into memory at startup: roaring bitmaps per filter value,
   numeric columns for ranges/sorting, Tantivy (Lindera IPADIC words + bigram substring). Page payloads come from Postgres.
 
-- `crates/crawler`: Booth crawler. `listing` walks search pages (60 items, up to 4 image URLs each);
-  `details` fetches `items/<id>.json` for items still missing images (full gallery; 404 = delisted)
+- `crates/worker`: background job runner (replaces the old one-off crawler). `worker` runs as a daemon: enqueues
+  due `job_schedules`, claims `jobs` one at a time, heartbeats into `worker_status`. `worker once <kind> [params]`
+  runs one job now. Kinds: `incremental` (newest listing pages -> image links + ingest unknown items from
+  `/en/items/<id>.json`, stops when caught up; hourly by default), `details` (items missing images), `refresh`
+  (re-check stalest items), `enrich` (AI, not configured yet). Writes bump `catalog_meta.version`.
+  Items ingested by the worker have `needs_enrichment = true` (no AI categories/avatars/translations yet).
 - `crates/imgproxy`: image proxy for behind Cloudflare. `/b/{size}/{uuid}/i/{item}/{file}[?format=png|jpeg]`
   re-encodes booth.pximg.net images to WebP (sizes `48x48 72x72_a2_g5 300x300_a2_g5 620x620 orig`),
   `/v/{sha1}.webp` serves archived images of delisted items. foyer memory+disk cache, immutable responses.

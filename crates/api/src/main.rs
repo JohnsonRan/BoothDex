@@ -2,6 +2,7 @@
 //! Usage: DATABASE_URL=postgres://... [BIND=0.0.0.0:3000] cargo run --release -p api
 
 mod account;
+mod admin;
 mod catalog;
 mod db;
 mod gallery;
@@ -57,18 +58,37 @@ impl Lookup {
     }
 }
 
-struct AppState {
-    pool: PgPool,
+/// Everything derived from the catalogue; rebuilt off to the side and swapped in atomically.
+struct Snapshot {
     catalog: Catalog,
     avatars: Lookup,
     authors: Lookup,
     tags: Lookup,
     booth_tags: Lookup,
     categories: Value,
+    version: i64,
+    loaded_at: chrono::DateTime<chrono::Utc>,
+    build_secs: f64,
+}
+
+struct AppState {
+    pool: PgPool,
+    snap: arc_swap::ArcSwap<Snapshot>,
+    /// wakes the reloader early (admin "reload now")
+    reload: tokio::sync::Notify,
     site_url: String,
     throttle: account::LoginThrottle,
     dummy_hash: String,
     gallery: gallery::Fetcher,
+    sys: admin::SysMetrics,
+    http: reqwest::Client,
+    imgproxy_url: Option<String>,
+}
+
+impl AppState {
+    fn snap(&self) -> arc_swap::Guard<Arc<Snapshot>> {
+        self.snap.load()
+    }
 }
 
 struct ApiError(anyhow::Error);
@@ -93,12 +113,12 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
         let Some(u) = account::current_user(&s.pool, &headers).await? else {
             return Ok((StatusCode::UNAUTHORIZED, Json(json!({ "ok": false, "error": "Sign in required" }))).into_response());
         };
-        Some(s.catalog.docs_for(&account::favourite_ids(&s.pool, u.id).await?))
+        Some(s.snap().catalog.docs_for(&account::favourite_ids(&s.pool, u.id).await?))
     } else {
         None
     };
     let catalog_now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.catalog.search(&p, catalog_now, favourites.as_ref()))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref()))?;
     let search_ms = t0.elapsed().as_secs_f64() * 1e3;
     let items = db::load_items(&s.pool, &r.ids).await?;
     Ok(Json(json!({
@@ -122,7 +142,7 @@ async fn rss_feed(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resu
     // first occurrence wins in Params, so the prefix pins ordering and size
     let p = Params::parse(&format!("sort=newest&dir=desc&page=1&pageSize=50&{user_q}"));
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.catalog.search(&p, now, None))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, now, None))?;
     let items = db::load_items(&s.pool, &r.ids).await?;
     let link = format!("{}/?{user_q}", s.site_url);
     Ok(([(axum::http::header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")], rss::render(&link, &user_q, &items)).into_response())
@@ -138,7 +158,8 @@ async fn palette(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resul
     }
     let small = Params::parse(&format!("limit=5&{raw}"));
     let needle = text.to_lowercase();
-    let categories: Vec<Value> = s.categories["categories"]
+    let snap = s.snap();
+    let categories: Vec<Value> = snap.categories["categories"]
         .as_array()
         .into_iter()
         .flatten()
@@ -151,7 +172,7 @@ async fn palette(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resul
     let adult = p.get("adult").unwrap_or_else(|| "safe".into());
     let item_params = Params::parse(&format!("q={}&adult={}&sort=relevant&pageSize=8", urlencode(&text), urlencode(&adult)));
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.catalog.search(&item_params, now, None))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&item_params, now, None))?;
     let items: Vec<Value> = db::load_items(&s.pool, &r.ids)
         .await?
         .into_iter()
@@ -166,9 +187,9 @@ async fn palette(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resul
     Ok(Json(json!({
         "items": items,
         "itemCount": r.count,
-        "avatars": s.avatars.find(&small)["items"],
-        "authors": s.authors.find(&small)["items"],
-        "tags": s.tags.find(&small)["items"],
+        "avatars": s.snap().avatars.find(&small)["items"],
+        "authors": s.snap().authors.find(&small)["items"],
+        "tags": s.snap().tags.find(&small)["items"],
         "categories": categories,
     })))
 }
@@ -184,11 +205,44 @@ fn urlencode(s: &str) -> String {
     s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
 }
 
-fn lookup(f: fn(&AppState) -> &Lookup) -> impl Fn(State<Arc<AppState>>, RawQuery) -> std::future::Ready<Json<Value>> + Clone {
-    move |State(s), RawQuery(q)| std::future::ready(Json(f(&s).find(&Params::parse(q.as_deref().unwrap_or("")))))
+fn lookup(f: fn(&Snapshot) -> &Lookup) -> impl Fn(State<Arc<AppState>>, RawQuery) -> std::future::Ready<Json<Value>> + Clone {
+    move |State(s), RawQuery(q)| std::future::ready(Json(f(&s.snap()).find(&Params::parse(q.as_deref().unwrap_or("")))))
 }
 
-async fn build_state(pool: PgPool) -> Result<AppState> {
+async fn catalog_version(pool: &PgPool) -> Result<i64> {
+    Ok(sqlx::query_scalar("select version from catalog_meta").fetch_one(pool).await?)
+}
+
+/// Rebuilds the snapshot when the worker bumps catalog_meta.version (checked every 30 s, or on demand).
+/// The old snapshot keeps serving during the rebuild, so peak memory is roughly two catalogues.
+async fn reloader(state: Arc<AppState>) {
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {}
+            _ = state.reload.notified() => {}
+        }
+        let version = match catalog_version(&state.pool).await {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("reload check: {e:#}");
+                continue;
+            }
+        };
+        if version == state.snap().version {
+            continue;
+        }
+        match build_snapshot(&state.pool, version).await {
+            Ok(s) => {
+                println!("catalogue reloaded: version {version}, {} docs", s.catalog.len());
+                state.snap.store(Arc::new(s));
+            }
+            Err(e) => eprintln!("catalogue reload failed, keeping version {}: {e:#}", state.snap().version),
+        }
+    }
+}
+
+async fn build_snapshot(pool: &PgPool, version: i64) -> Result<Snapshot> {
+    let pool = pool.clone();
     let t0 = Instant::now();
     let docs = db::load_docs(&pool).await?;
     println!("loaded {} docs in {:.1}s", docs.len(), t0.elapsed().as_secs_f64());
@@ -233,18 +287,33 @@ async fn build_state(pool: PgPool) -> Result<AppState> {
     .fetch_one(&pool)
     .await?;
 
-    Ok(AppState {
-        pool,
+    Ok(Snapshot {
         catalog,
         avatars: Lookup::new(avatars),
         authors: Lookup::new(authors),
         tags: Lookup::new(tags),
         booth_tags: Lookup::new(booth_tags),
         categories: json!({ "categories": categories }),
+        version,
+        loaded_at: chrono::Utc::now(),
+        build_secs: t0.elapsed().as_secs_f64(),
+    })
+}
+
+async fn build_state(pool: PgPool) -> Result<AppState> {
+    let version = catalog_version(&pool).await?;
+    let snap = build_snapshot(&pool, version).await?;
+    Ok(AppState {
+        pool,
+        snap: arc_swap::ArcSwap::from_pointee(snap),
+        reload: tokio::sync::Notify::new(),
         site_url: std::env::var("SITE_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".into()),
         throttle: Default::default(),
         dummy_hash: account::dummy_hash(),
         gallery: gallery::Fetcher::new()?,
+        sys: admin::SysMetrics::new(),
+        http: reqwest::Client::new(),
+        imgproxy_url: std::env::var("IMGPROXY_URL").ok().or_else(|| Some("http://127.0.0.1:3001".into())),
     })
 }
 
@@ -252,7 +321,9 @@ async fn build_state(pool: PgPool) -> Result<AppState> {
 async fn main() -> Result<()> {
     let pool = PgPool::connect(&std::env::var("DATABASE_URL")?).await?;
     catalogue_core::MIGRATOR.run(&pool).await?;
+    admin::apply_admin_env(&pool).await?;
     let state = Arc::new(build_state(pool).await?);
+    tokio::spawn(reloader(state.clone()));
 
     let app = Router::new()
         .route("/api/search", get(search))
@@ -264,8 +335,9 @@ async fn main() -> Result<()> {
         .route("/api/authors", get(lookup(|s| &s.authors)))
         .route("/api/tags", get(lookup(|s| &s.tags)))
         .route("/api/booth-tags", get(lookup(|s| &s.booth_tags)))
-        .route("/api/categories", get(|State(s): State<Arc<AppState>>| async move { Json(s.categories.clone()) }))
+        .route("/api/categories", get(|State(s): State<Arc<AppState>>| async move { Json(s.snap().categories.clone()) }))
         .merge(account::routes())
+        .merge(admin::routes())
         .layer(tower_http::compression::CompressionLayer::new())
         // no credentials cross-origin: the frontend is served same-origin (Next.js rewrites /api)
         .layer(tower_http::cors::CorsLayer::new().allow_origin(tower_http::cors::Any).allow_methods([axum::http::Method::GET]))

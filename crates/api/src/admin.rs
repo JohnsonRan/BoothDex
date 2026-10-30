@@ -1,0 +1,275 @@
+//! Admin console API: overview metrics, job queue control, schedules, catalogue reload, live SSE stream.
+//! Access: users.is_admin. `ADMIN_USERNAMES` (comma-separated) sets exactly who is admin at startup.
+
+use std::convert::Infallible;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use axum::extract::{Path, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post, put};
+use axum::{Json, Router};
+use serde::Deserialize;
+use serde_json::{Value, json};
+use sqlx::PgPool;
+
+use crate::{ApiError, AppState, account};
+
+const KINDS: &[&str] = &["incremental", "details", "refresh", "enrich"];
+
+/// sysinfo needs state between refreshes to compute CPU usage
+pub struct SysMetrics(Mutex<Option<(sysinfo::System, sysinfo::Disks)>>);
+
+impl SysMetrics {
+    pub fn new() -> Self {
+        Self(Mutex::new(sysinfo::System::new().ok().zip(sysinfo::Disks::new_with_refreshed_list().ok())))
+    }
+
+    fn snapshot(&self) -> Value {
+        let mut guard = self.0.lock().unwrap();
+        let Some((sys, disks)) = guard.as_mut() else { return Value::Null };
+        sys.refresh_memory();
+        sys.refresh_cpu_usage();
+        let pid = sysinfo::get_current_pid().ok();
+        if let Some(pid) = pid {
+            sys.refresh_processes_specifics(sysinfo::ProcessesToUpdate::Some(&[pid]), true, sysinfo::ProcessRefreshKind::nothing().with_memory().with_cpu());
+        }
+        let proc = pid.and_then(|p| sys.process(p));
+        disks.refresh(true);
+        let cwd = std::env::current_dir().unwrap_or_default();
+        // the disk holding the working directory (longest matching mount point)
+        let disk = disks.iter().filter(|d| cwd.starts_with(d.mount_point())).max_by_key(|d| d.mount_point().as_os_str().len());
+        json!({
+            "cpu_percent": sys.global_cpu_usage(),
+            "cpu_count": sys.cpus().len(),
+            "mem_total": sys.total_memory(),
+            "mem_used": sys.used_memory(),
+            "load_avg": sysinfo::System::load_average().ok().map(|l| l.one),
+            "api_rss": proc.map(|p| p.memory()),
+            "api_cpu_percent": proc.map(|p| p.cpu_usage()),
+            "disk_total": disk.map(|d| d.total_space()),
+            "disk_free": disk.map(|d| d.available_space()),
+            "disk_mount": disk.map(|d| d.mount_point().display().to_string()),
+        })
+    }
+}
+
+pub async fn apply_admin_env(pool: &PgPool) -> anyhow::Result<()> {
+    if let Ok(list) = std::env::var("ADMIN_USERNAMES") {
+        let names: Vec<String> = list.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()).collect();
+        sqlx::query("update users set is_admin = lower(username) = any($1)").bind(&names).execute(pool).await?;
+    }
+    Ok(())
+}
+
+fn err(status: StatusCode, msg: &str) -> Response {
+    (status, Json(json!({ "ok": false, "error": msg }))).into_response()
+}
+
+/// Ok(Ok(username)) for admins; Ok(Err(response)) otherwise.
+async fn require_admin(s: &AppState, headers: &HeaderMap) -> Result<Result<String, Response>, ApiError> {
+    let Some(u) = account::current_user(&s.pool, headers).await? else { return Ok(Err(err(StatusCode::UNAUTHORIZED, "Sign in required"))) };
+    let row: (bool, String) = sqlx::query_as("select is_admin, username from users where id = $1").bind(u.id).fetch_one(&s.pool).await?;
+    Ok(if row.0 { Ok(row.1) } else { Err(err(StatusCode::FORBIDDEN, "Admins only")) })
+}
+
+macro_rules! admin {
+    ($s:expr, $h:expr) => {
+        match require_admin(&$s, &$h).await? {
+            Ok(name) => name,
+            Err(r) => return Ok(r),
+        }
+    };
+}
+
+async fn overview_json(s: &AppState) -> Result<Value, ApiError> {
+    let data: Value = sqlx::query_scalar(
+        "select jsonb_build_object(
+            'items', count(*),
+            'listed', count(*) filter (where status = 'ok'),
+            'delisted', count(*) filter (where status = 'delisted'),
+            'needs_enrichment', count(*) filter (where needs_enrichment),
+            'published_24h', count(*) filter (where published_at > now() - interval '24 hours'),
+            'refreshed_24h', count(*) filter (where scraped_at > now() - interval '24 hours'),
+            'stalest_scrape', min(scraped_at) filter (where status = 'ok'),
+            'missing_images', count(*) filter (where status = 'ok' and not exists (select 1 from booth_images b where b.item_id = items.id)),
+            'users', (select count(*) from users),
+            'favourites', (select count(*) from favourites),
+            'saved_searches', (select count(*) from saved_searches),
+            'db_bytes', pg_database_size(current_database()))
+         from items",
+    )
+    .fetch_one(&s.pool)
+    .await?;
+    let worker: Value = sqlx::query_scalar(
+        "select to_jsonb(w) || jsonb_build_object('alive', coalesce(heartbeat_at > now() - interval '20 seconds', false)) from worker_status w",
+    )
+    .fetch_one(&s.pool)
+    .await?;
+    let live: Value = sqlx::query_scalar(
+        "select coalesce(jsonb_agg(to_jsonb(j) order by j.created_at), '[]') from (select id, kind, status, params, done, total, message, error, created_by, created_at, started_at, finished_at from jobs where status in ('queued', 'running', 'cancelling')) j",
+    )
+    .fetch_one(&s.pool)
+    .await?;
+    let db_version: i64 = sqlx::query_scalar("select version from catalog_meta").fetch_one(&s.pool).await?;
+    let snap = s.snap();
+    let imgproxy = match &s.imgproxy_url {
+        Some(url) => match s.http.get(format!("{url}/stats")).timeout(Duration::from_secs(1)).send().await {
+            Ok(r) => r.json::<Value>().await.unwrap_or(Value::Null),
+            Err(_) => json!({ "reachable": false }),
+        },
+        None => Value::Null,
+    };
+    Ok(json!({
+        "now": chrono::Utc::now(),
+        "data": data,
+        "catalog": {
+            "version": snap.version, "db_version": db_version, "docs": snap.catalog.len(),
+            "bitmap_bytes": snap.catalog.bitmap_bytes(), "loaded_at": snap.loaded_at, "build_secs": snap.build_secs,
+        },
+        "worker": worker,
+        "live_jobs": live,
+        "system": s.sys.snapshot(),
+        "imgproxy": imgproxy,
+    }))
+}
+
+async fn overview(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
+    admin!(s, headers);
+    Ok(Json(overview_json(&s).await?).into_response())
+}
+
+/// Server-sent events: the overview every 2 s (the worker's progress writes are throttled to the same cadence).
+async fn stream(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
+    admin!(s, headers);
+    let events = futures_util::stream::unfold((s, true), |(s, first)| async move {
+        if !first {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+        let ev = match overview_json(&s).await {
+            Ok(v) => Event::default().event("overview").data(v.to_string()),
+            Err(e) => Event::default().event("error").data(format!("{:#}", e.0)),
+        };
+        Some((Ok::<_, Infallible>(ev), (s, false)))
+    });
+    Ok(Sse::new(events).keep_alive(KeepAlive::default()).into_response())
+}
+
+async fn list_jobs(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
+    admin!(s, headers);
+    let jobs: Value = sqlx::query_scalar(
+        "select coalesce(jsonb_agg(to_jsonb(j) order by j.id desc), '[]') from (select id, kind, status, params, done, total, message, error, created_by, created_at, started_at, finished_at from jobs order by id desc limit 100) j",
+    )
+    .fetch_one(&s.pool)
+    .await?;
+    let schedules: Value = sqlx::query_scalar("select coalesce(jsonb_agg(to_jsonb(s) order by s.kind), '[]') from job_schedules s").fetch_one(&s.pool).await?;
+    Ok(Json(json!({ "jobs": jobs, "schedules": schedules })).into_response())
+}
+
+async fn get_job(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>) -> Result<Response, ApiError> {
+    admin!(s, headers);
+    let job: Option<Value> = sqlx::query_scalar("select to_jsonb(j) from jobs j where id = $1").bind(id).fetch_optional(&s.pool).await?;
+    Ok(match job {
+        Some(j) => Json(j).into_response(),
+        None => err(StatusCode::NOT_FOUND, "No such job"),
+    })
+}
+
+#[derive(Deserialize)]
+struct NewJob {
+    kind: String,
+    #[serde(default)]
+    params: Value,
+}
+
+fn valid_params(p: &Value) -> bool {
+    (p.is_null() || p.is_object()) && p.to_string().len() <= 2000
+}
+
+async fn create_job(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<NewJob>) -> Result<Response, ApiError> {
+    let who = admin!(s, headers);
+    if !KINDS.contains(&b.kind.as_str()) || !valid_params(&b.params) {
+        return Ok(err(StatusCode::BAD_REQUEST, "Unknown kind or invalid params"));
+    }
+    let params = if b.params.is_null() { json!({}) } else { b.params };
+    let id: Option<i64> = sqlx::query_scalar("insert into jobs (kind, params, created_by) values ($1, $2, $3) on conflict do nothing returning id")
+        .bind(&b.kind)
+        .bind(&params)
+        .bind(format!("admin:{who}"))
+        .fetch_optional(&s.pool)
+        .await?;
+    Ok(match id {
+        Some(id) => Json(json!({ "id": id })).into_response(),
+        None => err(StatusCode::CONFLICT, "A job of this kind is already queued or running"),
+    })
+}
+
+async fn cancel_job(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>) -> Result<Response, ApiError> {
+    admin!(s, headers);
+    // queued jobs are dropped at once; running ones stop at their next progress check
+    let status: Option<String> = sqlx::query_scalar(
+        "update jobs set status = case when status = 'queued' then 'cancelled' else 'cancelling' end,
+                         finished_at = case when status = 'queued' then now() else finished_at end
+         where id = $1 and status in ('queued', 'running') returning status",
+    )
+    .bind(id)
+    .fetch_optional(&s.pool)
+    .await?;
+    Ok(match status {
+        Some(st) => Json(json!({ "status": st })).into_response(),
+        None => err(StatusCode::CONFLICT, "Job is not queued or running"),
+    })
+}
+
+#[derive(Deserialize)]
+struct ScheduleUpdate {
+    enabled: Option<bool>,
+    interval_minutes: Option<i32>,
+    params: Option<Value>,
+    /// run as soon as possible
+    run_now: Option<bool>,
+}
+
+async fn update_schedule(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(kind): Path<String>, Json(b): Json<ScheduleUpdate>) -> Result<Response, ApiError> {
+    admin!(s, headers);
+    if b.interval_minutes.is_some_and(|m| !(5..=10080).contains(&m)) || b.params.as_ref().is_some_and(|p| !p.is_object() || !valid_params(p)) {
+        return Ok(err(StatusCode::BAD_REQUEST, "Interval must be 5–10080 minutes; params must be an object"));
+    }
+    let row: Option<Value> = sqlx::query_scalar(
+        "update job_schedules set enabled = coalesce($2, enabled), interval_minutes = coalesce($3, interval_minutes),
+                params = coalesce($4, params), next_run_at = case when $5 then now() else next_run_at end
+         where kind = $1 returning to_jsonb(job_schedules)",
+    )
+    .bind(&kind)
+    .bind(b.enabled)
+    .bind(b.interval_minutes)
+    .bind(&b.params)
+    .bind(b.run_now.unwrap_or(false))
+    .fetch_optional(&s.pool)
+    .await?;
+    Ok(match row {
+        Some(r) => Json(r).into_response(),
+        None => err(StatusCode::NOT_FOUND, "No such schedule"),
+    })
+}
+
+async fn reload(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
+    admin!(s, headers);
+    // bump so the reloader rebuilds even if nothing changed
+    sqlx::query("update catalog_meta set version = version + 1, changed_at = now()").execute(&s.pool).await?;
+    s.reload.notify_one();
+    Ok(Json(json!({ "ok": true })).into_response())
+}
+
+pub fn routes() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/api/admin/overview", get(overview))
+        .route("/api/admin/stream", get(stream))
+        .route("/api/admin/jobs", get(list_jobs).post(create_job))
+        .route("/api/admin/jobs/{id}", get(get_job))
+        .route("/api/admin/jobs/{id}/cancel", post(cancel_job))
+        .route("/api/admin/schedules/{kind}", put(update_schedule))
+        .route("/api/admin/reload", post(reload))
+}
