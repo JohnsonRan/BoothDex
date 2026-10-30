@@ -58,7 +58,7 @@ type Job = {
   finished_at: string | null;
   log?: string;
 };
-type Kind = "incremental" | "details" | "refresh" | "enrich";
+type Kind = "incremental" | "details" | "refresh" | "sweep" | "enrich";
 type Schedule = {
   kind: Kind;
   enabled: boolean;
@@ -134,12 +134,16 @@ const KIND: Record<Kind, { label: string; desc: string }> = {
     desc: "为没有 Booth 图片链接的商品逐个抓取商品页",
   },
   refresh: {
-    label: "刷新旧数据",
-    desc: "按最久未更新的顺序重新抓取，更新价格、点赞、下架状态",
+    label: "刷新热门商品",
+    desc: "按“热度 × 多久没更新”排序，逐个重新抓取商品页，更新价格、点赞、变体和下架状态",
+  },
+  sweep: {
+    label: "全量巡检",
+    desc: "把 Booth 的 VRChat 列表从头翻到尾(约 3,400 页，1 小时)，更新所有商品的价格，并找出已下架的商品",
   },
   enrich: {
     label: "AI 处理",
-    desc: "为新商品生成分类、适配头像、翻译等（尚未配置模型）",
+    desc: "为新商品生成分类、适配头像、翻译等(在下方“AI 处理设置”配置模型)",
   },
 };
 const STATUS: Record<Job["status"], { label: string; cls: string }> = {
@@ -555,6 +559,8 @@ export function AdminConsole() {
         </CardContent>
       </Card>
 
+      <AiSettingsCard />
+
       <JobLog id={logJob} onClose={() => setLogJob(null)} />
     </div>
   );
@@ -711,6 +717,130 @@ function JobLog({ id, onClose }: { id: number | null; onClose: () => void }) {
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+type Ai = {
+  base_url?: string | null;
+  model?: string | null;
+  api_key_set: boolean;
+  api_key_hint?: string | null;
+};
+
+/** OpenAI-compatible provider used by the enrichment job. The key is write-only: the API only returns a hint. */
+function AiSettingsCard() {
+  const [ai, setAi] = useState<Ai | null>(null);
+  const [baseUrl, setBaseUrl] = useState("");
+  const [model, setModel] = useState("");
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
+
+  useEffect(() => {
+    api<{ ai: Ai }>("/api/admin/settings").then(({ ai }) => {
+      setAi(ai);
+      setBaseUrl(ai.base_url ?? "");
+      setModel(ai.model ?? "");
+    });
+  }, []);
+
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      setAi(
+        await api<Ai>("/api/admin/settings/ai", {
+          method: "PUT",
+          json: { base_url: baseUrl, model, api_key: key },
+        }),
+      );
+      setKey("");
+      toast.success("已保存");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const test = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ models: string[]; model_found: boolean }>(
+        "/api/admin/settings/ai/test",
+        { method: "POST" },
+      );
+      setModels(r.models);
+      r.model_found
+        ? toast.success(`连接成功，可用模型 ${r.models.length} 个`)
+        : toast.warning("连接成功，但没找到你填的模型");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI 处理设置</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={save} className="grid gap-3 md:grid-cols-[1fr_1fr]">
+          <label htmlFor="ai-base" className="space-y-1.5 text-sm">
+            <span className="text-muted-foreground">API 地址(OpenAI 兼容)</span>
+            <Input
+              id="ai-base"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://api.openai.com/v1"
+            />
+          </label>
+          <label htmlFor="ai-model" className="space-y-1.5 text-sm">
+            <span className="text-muted-foreground">模型</span>
+            <Input
+              id="ai-model"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="gpt-4o-mini"
+              list="ai-models"
+            />
+            <datalist id="ai-models">
+              {models.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </label>
+          <label htmlFor="ai-key" className="space-y-1.5 text-sm md:col-span-2">
+            <span className="text-muted-foreground">
+              API 密钥{" "}
+              {ai?.api_key_set && `(已保存 ${ai.api_key_hint}，留空则不修改)`}
+            </span>
+            <Input
+              id="ai-key"
+              type="password"
+              autoComplete="off"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder={ai?.api_key_set ? "••••••••" : "sk-..."}
+            />
+          </label>
+          <div className="flex gap-2 md:col-span-2">
+            <Button type="submit" disabled={busy}>
+              保存
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy || !ai?.api_key_set}
+              onClick={test}
+            >
+              测试连接
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 

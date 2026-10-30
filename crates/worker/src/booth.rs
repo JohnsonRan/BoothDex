@@ -74,14 +74,37 @@ impl Booth {
         }
     }
 
-    /// One newest-first search page: (item id, up to 4 canonical image URLs), and the last page number.
-    pub async fn listing(&self, tag: &str, page: u32) -> Result<(Vec<(i64, Vec<String>)>, u32)> {
+    /// One newest-first search page as raw HTML, plus the last page number.
+    pub async fn listing_html(&self, tag: &str, page: u32) -> Result<(String, u32)> {
         let url = format!("https://booth.pm/ja/items?tags%5B%5D={}&sort=new&page={page}", urlencode(tag));
         let html = self.get(&url).await?.unwrap_or_default();
         let last = self.pager.captures_iter(&html).filter_map(|c| c[1].parse::<u32>().ok()).max().unwrap_or(page);
+        Ok((html, last))
+    }
+
+    /// One newest-first search page: (item id, up to 4 canonical image URLs), and the last page number.
+    pub async fn listing(&self, tag: &str, page: u32) -> Result<(Vec<(i64, Vec<String>)>, u32)> {
+        let (html, last) = self.listing_html(tag, page).await?;
         Ok((parse_listing(&html, &self.img), last))
     }
+
+    pub fn images(&self, html: &str) -> Vec<(i64, Vec<String>)> {
+        parse_listing(html, &self.img)
+    }
 }
+
+/// (item id, listed price) from the item cards on a listing page.
+pub fn parse_cards(html: &str) -> Vec<(i64, Option<i32>)> {
+    html.split("<li class=\"item-card")
+        .skip(1)
+        .filter_map(|card| {
+            let tag = &card[..card.find('>')?];
+            let attr = |name: &str| tag.split(&format!("{name}=\"")).nth(1).and_then(|r| r.split('"').next());
+            Some((attr("data-product-id")?.parse().ok()?, attr("data-product-price").and_then(|p| p.parse().ok())))
+        })
+        .collect()
+}
+
 
 /// Item id -> canonical image URLs (size prefix stripped), in page order.
 pub fn parse_listing(html: &str, img: &Regex) -> Vec<(i64, Vec<String>)> {
@@ -119,6 +142,13 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].1.len(), 2);
         assert_eq!(rows[1].1, ["https://booth.pximg.net/20f6879b-5d59-4056-9dc4-b98220aaf8c5/i/8823199/ccc_base_resized.png"]);
+    }
+
+    #[test]
+    fn parses_cards() {
+        let html = r#"<ul><li class="item-card l-card " data-product-brand="kitunesann" data-product-id="9070052" data-product-name="x" data-product-price="1300" data-tracking="impression_item"><div>
+            <li class="item-card l-card " data-product-id="9070053" data-product-price=""><div></ul>"#;
+        assert_eq!(parse_cards(html), [(9070052, Some(1300)), (9070053, None)]);
     }
 
     #[test]

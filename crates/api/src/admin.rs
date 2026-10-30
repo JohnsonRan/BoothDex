@@ -17,7 +17,7 @@ use sqlx::PgPool;
 
 use crate::{ApiError, AppState, account};
 
-const KINDS: &[&str] = &["incremental", "details", "refresh", "enrich"];
+const KINDS: &[&str] = &["incremental", "details", "refresh", "enrich", "sweep"];
 
 /// sysinfo needs state between refreshes to compute CPU usage
 pub struct SysMetrics(Mutex<Option<(sysinfo::System, sysinfo::Disks)>>);
@@ -268,8 +268,82 @@ async fn reload(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Re
     Ok(Json(json!({ "ok": true })).into_response())
 }
 
+/// AI provider for enrichment (OpenAI-compatible). Stored in app_settings; the key is write-only from the UI.
+#[derive(Deserialize)]
+struct AiSettings {
+    base_url: Option<String>,
+    model: Option<String>,
+    /// empty or missing keeps the stored key
+    api_key: Option<String>,
+}
+
+fn key_hint(k: &str) -> String {
+    let n = k.chars().count();
+    if n <= 8 { "••••".into() } else { format!("{}…{}", k.chars().take(3).collect::<String>(), k.chars().skip(n - 4).collect::<String>()) }
+}
+
+async fn ai_settings(pool: &PgPool) -> Result<Value, sqlx::Error> {
+    Ok(sqlx::query_scalar("select value from app_settings where key = 'ai'").fetch_optional(pool).await?.unwrap_or_else(|| json!({})))
+}
+
+fn public_ai(v: &Value) -> Value {
+    let key = v["api_key"].as_str().unwrap_or_default();
+    json!({ "base_url": v["base_url"], "model": v["model"], "api_key_set": !key.is_empty(), "api_key_hint": (!key.is_empty()).then(|| key_hint(key)) })
+}
+
+async fn get_settings(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
+    admin!(s, headers);
+    Ok(Json(json!({ "ai": public_ai(&ai_settings(&s.pool).await?) })).into_response())
+}
+
+async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<AiSettings>) -> Result<Response, ApiError> {
+    admin!(s, headers);
+    let url_ok = b.base_url.as_deref().is_none_or(|u| u.len() <= 300 && (u.starts_with("https://") || u.starts_with("http://")));
+    if !url_ok || b.model.as_deref().is_some_and(|m| m.len() > 100) || b.api_key.as_deref().is_some_and(|k| k.len() > 500) {
+        return Ok(err(StatusCode::BAD_REQUEST, "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars"));
+    }
+    let mut v = ai_settings(&s.pool).await?;
+    if let Some(u) = b.base_url {
+        v["base_url"] = json!(u.trim().trim_end_matches('/'));
+    }
+    if let Some(m) = b.model {
+        v["model"] = json!(m.trim());
+    }
+    if let Some(k) = b.api_key.filter(|k| !k.trim().is_empty()) {
+        v["api_key"] = json!(k.trim());
+    }
+    sqlx::query("insert into app_settings (key, value) values ('ai', $1) on conflict (key) do update set value = excluded.value, updated_at = now()")
+        .bind(&v)
+        .execute(&s.pool)
+        .await?;
+    Ok(Json(public_ai(&v)).into_response())
+}
+
+/// Calls `GET {base_url}/models` with the stored key, so the admin can check the endpoint before enabling enrichment.
+async fn test_ai(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
+    admin!(s, headers);
+    let v = ai_settings(&s.pool).await?;
+    let (Some(base), Some(key)) = (v["base_url"].as_str(), v["api_key"].as_str()) else {
+        return Ok(err(StatusCode::BAD_REQUEST, "Set the base URL and API key first"));
+    };
+    let res = s.http.get(format!("{base}/models")).bearer_auth(key).timeout(Duration::from_secs(10)).send().await;
+    Ok(match res {
+        Ok(r) if r.status().is_success() => {
+            let body: Value = r.json().await.unwrap_or(Value::Null);
+            let models: Vec<&str> = body["data"].as_array().into_iter().flatten().filter_map(|m| m["id"].as_str()).take(50).collect();
+            let model = v["model"].as_str().unwrap_or_default();
+            Json(json!({ "ok": true, "models": models, "model_found": model.is_empty() || models.is_empty() || models.contains(&model) })).into_response()
+        }
+        Ok(r) => err(StatusCode::BAD_GATEWAY, &format!("Provider answered {}", r.status())),
+        Err(e) => err(StatusCode::BAD_GATEWAY, &format!("Could not reach provider: {e}")),
+    })
+}
+
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/api/admin/settings", get(get_settings))
+        .route("/api/admin/settings/ai", put(put_ai))
+        .route("/api/admin/settings/ai/test", post(test_ai))
         .route("/api/admin/overview", get(overview))
         .route("/api/admin/stream", get(stream))
         .route("/api/admin/jobs", get(list_jobs).post(create_job))

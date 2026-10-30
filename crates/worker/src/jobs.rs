@@ -158,8 +158,84 @@ pub async fn refresh(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     fetch_each(ctx, ids, delay, "refresh").await
 }
 
+/// Full listing sweep: every page of the tag listing (60 items per request, ~3.4k requests for VRChat).
+/// Refreshes listed price, image links and "still on sale" for everything cheaply; items that have
+/// dropped off the listing get one item-page check to confirm whether they were delisted.
+pub async fn sweep(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
+    let tag: String = param(params, "tag", "VRChat".to_owned());
+    let delay = Duration::from_millis(param(params, "delay_ms", 800));
+    let max_confirm: i64 = param(params, "max_confirm", 3000);
+    // for trial runs; a partial walk skips the delisting check, since unseen items prove nothing
+    let max_pages: u32 = param(params, "max_pages", u32::MAX);
+    let started: chrono::DateTime<chrono::Utc> = sqlx::query_scalar("select now()").fetch_one(ctx.pool).await?;
+    let (mut page, mut last, mut seen, mut touched) = (1u32, 1u32, 0u64, 0u64);
+    loop {
+        let (html, l) = ctx.booth.listing_html(&tag, page).await?;
+        last = last.max(l);
+        let cards = crate::booth::parse_cards(&html);
+        if cards.is_empty() && page > 1 {
+            break;
+        }
+        seen += cards.len() as u64;
+        let ids: Vec<i64> = cards.iter().map(|c| c.0).collect();
+        let prices: Vec<Option<i32>> = cards.iter().map(|c| c.1).collect();
+        // a changed list price makes the AI-inferred price stale, so drop it
+        touched += sqlx::query(
+            "update items i set price_jpy = coalesce(t.price, i.price_jpy), last_listed_at = now(), status = 'ok',
+                    smart_price = case when t.price is distinct from i.price_jpy and t.price is not null then null else i.smart_price end
+             from unnest($1::bigint[], $2::int[]) as t(id, price) where i.id = t.id",
+        )
+        .bind(&ids)
+        .bind(&prices)
+        .execute(ctx.pool)
+        .await?
+        .rows_affected();
+        let images = ctx.booth.images(&html);
+        let img_ids: Vec<i64> = images.iter().map(|r| r.0).collect();
+        let imgs: Vec<String> = images.iter().map(|r| serde_json::to_string(&r.1).unwrap()).collect();
+        sqlx::query(
+            "insert into booth_images (item_id, images, complete)
+             select id, array(select jsonb_array_elements_text(imgs::jsonb)), false from unnest($1::bigint[], $2::text[]) as t(id, imgs)
+             on conflict (item_id) do update set images = excluded.images, fetched_at = now() where not booth_images.complete",
+        )
+        .bind(&img_ids)
+        .bind(&imgs)
+        .execute(ctx.pool)
+        .await?;
+        if !ctx.progress(page as i64, Some(last as i64), &format!("page {page}/{last}: {seen} seen"), false).await? {
+            ctx.log("cancelled during listing walk; skipping delisting check").await?;
+            return Ok(format!("cancelled at page {page}, {seen} seen"));
+        }
+        if page >= last || page >= max_pages {
+            break;
+        }
+        page += 1;
+        tokio::time::sleep(delay).await;
+    }
+    if page < last {
+        bump_catalog(ctx.pool).await?;
+        return Ok(format!("partial walk: {seen} seen on {page}/{last} pages, delisting check skipped"));
+    }
+    // listed items carrying this tag that the walk did not see are delisting candidates
+    let missing: Vec<i64> = sqlx::query_scalar(
+        "select id from items where status = 'ok' and (last_listed_at is null or last_listed_at < $1)
+           and exists (select 1 from unnest(booth_tags) b where lower(b) = lower($2))
+         order by id desc limit $3",
+    )
+    .bind(started)
+    .bind(&tag)
+    .bind(max_confirm)
+    .fetch_all(ctx.pool)
+    .await?;
+    ctx.log(&format!("listing walk done: {seen} seen, {touched} known items updated; confirming {} missing items", missing.len())).await?;
+    let confirm = fetch_each(ctx, missing, delay, "sweep confirm").await?;
+    bump_catalog(ctx.pool).await?;
+    Ok(format!("{seen} seen on {page} pages; missing items: {confirm}"))
+}
+
 pub async fn run(ctx: &mut Ctx<'_>, kind: &str, params: &Value) -> Result<String> {
     match kind {
+        "sweep" => sweep(ctx, params).await,
         "incremental" => incremental(ctx, params).await,
         "details" => details(ctx, params).await,
         "refresh" => refresh(ctx, params).await,

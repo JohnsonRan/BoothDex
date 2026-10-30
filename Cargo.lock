@@ -4136,6 +4136,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "catalogue-core",
+ "chrono",
  "regex",
  "reqwest",
  "rustls",

@@ -6,6 +6,7 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+chrono.workspace = true
 catalogue-core.workspace = true
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "gzip", "json", "http2", "charset"] }
