@@ -6,6 +6,9 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+argon2 = "0.6"
+getrandom = "0.4"
+sha2 = "0.11"
 axum = "0.8"
 catalogue-core.workspace = true
 chrono.workspace = true

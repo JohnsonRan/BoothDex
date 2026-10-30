@@ -58,6 +58,7 @@ impl Index {
 
 pub struct Catalog {
     pub ids: Vec<i64>,
+    doc_of: HashMap<i64, u32>,
     price: Vec<Option<i32>>,
     published: Vec<i64>,
     likes: Vec<i32>,
@@ -123,6 +124,7 @@ impl Catalog {
         let n = docs.len();
         let mut c = Catalog {
             ids: Vec::with_capacity(n),
+            doc_of: HashMap::with_capacity(n),
             price: Vec::with_capacity(n),
             published: Vec::with_capacity(n),
             likes: Vec::with_capacity(n),
@@ -154,6 +156,7 @@ impl Catalog {
         for (i, d) in docs.into_iter().enumerate() {
             let i = i as u32;
             c.ids.push(d.id);
+            c.doc_of.insert(d.id, i);
             c.price.push(d.price);
             let published = d.published.unwrap_or(0);
             c.published.push(published);
@@ -218,12 +221,19 @@ impl Catalog {
         RoaringBitmap::from_sorted_iter((0..self.len()).filter(|&i| pred(i)).map(|i| i as u32)).expect("ascending")
     }
 
-    fn constraints(&self, p: &Params, now: i64, text: Option<&RoaringBitmap>) -> Vec<(Group, RoaringBitmap)> {
+    /// Doc set for item ids (e.g. a user's favourites); unknown ids are skipped.
+    pub fn docs_for(&self, ids: &[i64]) -> RoaringBitmap {
+        ids.iter().filter_map(|id| self.doc_of.get(id)).copied().collect()
+    }
+
+    fn constraints(&self, p: &Params, now: i64, text: Option<&RoaringBitmap>, favourites: Option<&RoaringBitmap>) -> Vec<(Group, RoaringBitmap)> {
         let mut out = Vec::new();
         let avatars_view = p.get("v").as_deref() == Some("avatars");
         out.push((
             Group::View,
-            if avatars_view {
+            if let Some(f) = favourites.filter(|_| p.get("v").as_deref() == Some("favourites")) {
+                f.clone() // favourites span both items and avatar bodies
+            } else if avatars_view {
                 match p.get("asup").as_deref() {
                     Some("all") => self.avatar_items.clone(),
                     Some("unsupported") => &self.avatar_items - &self.supported,
@@ -304,10 +314,10 @@ impl Catalog {
         cs.iter().filter(|(g, _)| Some(*g) != skip).fold(self.all.clone(), |acc, (_, b)| acc & b)
     }
 
-    pub fn search(&self, p: &Params, now: i64) -> Result<SearchResult> {
+    pub fn search(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>) -> Result<SearchResult> {
         let q = p.get("q").filter(|q| !q.trim().is_empty());
         let text = q.as_deref().map(|q| self.text.search(q)).transpose()?;
-        let cs = self.constraints(p, now, text.as_ref().map(|(b, _)| b));
+        let cs = self.constraints(p, now, text.as_ref().map(|(b, _)| b), favourites);
         let hits = self.intersect(&cs, None);
 
         // disjunctive facets: each group's counts ignore that group's own selection
@@ -402,7 +412,7 @@ mod tests {
     }
 
     fn ids(c: &Catalog, q: &str) -> Vec<i64> {
-        let mut v = c.search(&Params::parse(&format!("{q}&pageSize=100")), 0).unwrap().ids;
+        let mut v = c.search(&Params::parse(&format!("{q}&pageSize=100")), 0, None).unwrap().ids;
         v.sort();
         v
     }
@@ -449,7 +459,7 @@ mod tests {
     #[test]
     fn facets_ignore_own_group() {
         let c = catalog();
-        let r = c.search(&Params::parse("if=liltoon"), 0).unwrap();
+        let r = c.search(&Params::parse("if=liltoon"), 0, None).unwrap();
         assert_eq!(r.count, 1);
         assert_eq!(r.facets.features["ma"], 2); // feature counts ignore the feature filter
         assert_eq!(r.facets.smart["clothing"], 1); // other groups respect it
@@ -458,10 +468,20 @@ mod tests {
     #[test]
     fn sort_and_paging() {
         let c = catalog();
-        let r = c.search(&Params::parse("adult=include&sort=price&dir=asc&pageSize=2&page=1"), 0).unwrap();
+        let r = c.search(&Params::parse("adult=include&sort=price&dir=asc&pageSize=2&page=1"), 0, None).unwrap();
         assert_eq!(r.ids, [2, 1]); // free first, then id order for ties
         assert_eq!(r.total_pages, 3);
-        let r = c.search(&Params::parse("adult=include&page=99"), 0).unwrap();
+        let r = c.search(&Params::parse("adult=include&page=99"), 0, None).unwrap();
         assert_eq!(r.page, 1);
+    }
+
+    #[test]
+    fn favourites_view_spans_all_kinds() {
+        let c = catalog();
+        let favs = c.docs_for(&[1, 6, 999]);
+        let r = c.search(&Params::parse("v=favourites&adult=include"), 0, Some(&favs)).unwrap();
+        let mut ids = r.ids;
+        ids.sort();
+        assert_eq!(ids, [1, 6]);
     }
 }

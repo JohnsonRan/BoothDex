@@ -1,9 +1,11 @@
 //! Search API. Builds the in-memory catalog from Postgres at startup.
 //! Usage: DATABASE_URL=postgres://... [BIND=0.0.0.0:3000] cargo run --release -p api
 
+mod account;
 mod catalog;
 mod db;
 mod params;
+mod rss;
 mod text;
 
 use std::sync::Arc;
@@ -62,6 +64,9 @@ struct AppState {
     tags: Lookup,
     booth_tags: Lookup,
     categories: Value,
+    site_url: String,
+    throttle: account::LoginThrottle,
+    dummy_hash: String,
 }
 
 struct ApiError(anyhow::Error);
@@ -79,11 +84,19 @@ impl<E: Into<anyhow::Error>> From<E> for ApiError {
     }
 }
 
-async fn search(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result<Json<Value>, ApiError> {
+async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
     let t0 = Instant::now();
     let p = Params::parse(q.as_deref().unwrap_or(""));
+    let favourites = if p.get("v").as_deref() == Some("favourites") {
+        let Some(u) = account::current_user(&s.pool, &headers).await? else {
+            return Ok((StatusCode::UNAUTHORIZED, Json(json!({ "ok": false, "error": "Sign in required" }))).into_response());
+        };
+        Some(s.catalog.docs_for(&account::favourite_ids(&s.pool, u.id).await?))
+    } else {
+        None
+    };
     let catalog_now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.catalog.search(&p, catalog_now))?;
+    let r = tokio::task::block_in_place(|| s.catalog.search(&p, catalog_now, favourites.as_ref()))?;
     let search_ms = t0.elapsed().as_secs_f64() * 1e3;
     let items = db::load_items(&s.pool, &r.ids).await?;
     Ok(Json(json!({
@@ -98,7 +111,19 @@ async fn search(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result
         "featureCounts": r.facets.features,
         "items": items,
         "timing": { "searchMs": search_ms, "totalMs": t0.elapsed().as_secs_f64() * 1e3 },
-    })))
+    }))
+    .into_response())
+}
+
+async fn rss_feed(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
+    let user_q = q.unwrap_or_default();
+    // first occurrence wins in Params, so the prefix pins ordering and size
+    let p = Params::parse(&format!("sort=newest&dir=desc&page=1&pageSize=50&{user_q}"));
+    let now = chrono::Utc::now().timestamp();
+    let r = tokio::task::block_in_place(|| s.catalog.search(&p, now, None))?;
+    let items = db::load_items(&s.pool, &r.ids).await?;
+    let link = format!("{}/?{user_q}", s.site_url);
+    Ok(([(axum::http::header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")], rss::render(&link, &user_q, &items)).into_response())
 }
 
 fn lookup(f: fn(&AppState) -> &Lookup) -> impl Fn(State<Arc<AppState>>, RawQuery) -> std::future::Ready<Json<Value>> + Clone {
@@ -158,6 +183,9 @@ async fn build_state(pool: PgPool) -> Result<AppState> {
         tags: Lookup::new(tags),
         booth_tags: Lookup::new(booth_tags),
         categories: json!({ "categories": categories }),
+        site_url: std::env::var("SITE_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".into()),
+        throttle: Default::default(),
+        dummy_hash: account::dummy_hash(),
     })
 }
 
@@ -169,13 +197,16 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/api/search", get(search))
+        .route("/api/rss", get(rss_feed))
         .route("/api/avatars", get(lookup(|s| &s.avatars)))
         .route("/api/authors", get(lookup(|s| &s.authors)))
         .route("/api/tags", get(lookup(|s| &s.tags)))
         .route("/api/booth-tags", get(lookup(|s| &s.booth_tags)))
         .route("/api/categories", get(|State(s): State<Arc<AppState>>| async move { Json(s.categories.clone()) }))
+        .merge(account::routes())
         .layer(tower_http::compression::CompressionLayer::new())
-        .layer(tower_http::cors::CorsLayer::permissive())
+        // no credentials cross-origin: the frontend is served same-origin (Next.js rewrites /api)
+        .layer(tower_http::cors::CorsLayer::new().allow_origin(tower_http::cors::Any).allow_methods([axum::http::Method::GET]))
         .with_state(state);
 
     let bind = std::env::var("BIND").unwrap_or_else(|_| "127.0.0.1:3000".into());
