@@ -32,24 +32,32 @@ import {
   type SearchResult,
   searchQuery,
 } from "@/lib/catalog";
+import type { MessageKey } from "@/lib/messages";
+import { useSettings } from "@/lib/settings";
+import { AccountMenu, type Me } from "./account-menu";
 import { AvatarStrip } from "./avatar-strip";
 import { CommandPalette } from "./command-palette";
 import { activeFilterCount, FilterPanel } from "./filter-panel";
 import { ItemCard } from "./item-card";
 import { ItemDetail } from "./item-detail";
+import { SettingsMenu } from "./settings-menu";
 
 /** stable keys for loading placeholders */
 const SKELETONS = Array.from({ length: 12 }, (_, i) => `skeleton-${i}`);
 
 const SORTS = [
-  ["trending", "热门"],
-  ["newest", "最新"],
-  ["likes", "点赞最多"],
-  ["price:asc", "价格从低到高"],
-  ["price:desc", "价格从高到低"],
+  ["trending", "sort.trending"],
+  ["newest", "sort.newest"],
+  ["likes", "sort.likes"],
+  ["price:asc", "sort.priceAsc"],
+  ["price:desc", "sort.priceDesc"],
 ] as const;
 
 export function Browse() {
+  const { t, ui } = useSettings();
+  // read inside stable callbacks so switching language does not refetch results
+  const tRef = useRef(t);
+  tRef.current = t;
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -71,6 +79,8 @@ export function Browse() {
   const paging = useRef({ page: 0, total: 1, busy: false, key: "" });
   const sentinel = useRef<HTMLDivElement>(null);
 
+  const [me, setMe] = useState<Me | null>(null);
+
   useEffect(() => {
     api<{ items: Avatar[] }>("/api/avatars?limit=60").then((r) =>
       setAvatars(r.items),
@@ -78,9 +88,18 @@ export function Browse() {
     api<{ categories: Category[] }>("/api/categories").then((r) =>
       setCategories(r.categories),
     );
-    api<{ ids: number[] }>("/api/account/favourites")
-      .then((r) => setFavs(new Set(r.ids)))
-      .catch(() => setFavs(null));
+  }, []);
+
+  // session: who am I, my favourites; rerun after login/logout
+  const loadAccount = useCallback(async () => {
+    const user = await api<Me>("/api/account").catch(() => null);
+    setMe(user);
+    setFavs(
+      user
+        ? new Set((await api<{ ids: number[] }>("/api/account/favourites")).ids)
+        : null,
+    );
+    return user;
   }, []);
 
   const update = useCallback(
@@ -90,9 +109,36 @@ export function Browse() {
         scroll: false,
       });
       window.scrollTo({ top: 0 });
+      // remember "my avatar" (account preference when signed in, otherwise this browser)
+      if (patch.avatar !== undefined) {
+        localStorage.setItem("myAvatar", patch.avatar);
+        if (me)
+          api("/api/account/preferences", {
+            method: "PUT",
+            json: { avatar: patch.avatar },
+          }).catch(() => {});
+      }
     },
-    [filters, pathname, router],
+    [filters, pathname, router, me],
   );
+
+  // first visit without an avatar in the URL: restore the remembered one
+  const restored = useRef(false);
+  useEffect(() => {
+    loadAccount().then((user) => {
+      if (restored.current) return;
+      restored.current = true;
+      const saved =
+        user?.preferences?.avatar ?? localStorage.getItem("myAvatar") ?? "";
+      const current = parseFilters(location.search);
+      // favourites aren't filtered by avatar
+      if (saved && !current.avatar && current.view !== "favourites")
+        router.replace(
+          `${pathname}?${filtersToQuery({ ...parseFilters(location.search), avatar: saved })}`,
+          { scroll: false },
+        );
+    });
+  }, [loadAccount, pathname, router]);
 
   // one page of results; a filter change starts a new "key" so late responses for old filters are dropped
   const loadMore = useCallback(async () => {
@@ -111,7 +157,9 @@ export function Browse() {
       if (p.page === 1) setMeta(r);
     } catch (e) {
       if (key === paging.current.key)
-        toast.error(e instanceof Error ? e.message : "加载失败");
+        toast.error(
+          e instanceof Error ? e.message : tRef.current("list.loadFailed"),
+        );
     } finally {
       if (key === paging.current.key) {
         p.busy = false;
@@ -149,7 +197,7 @@ export function Browse() {
 
   const toggleFav = useCallback(
     async (it: Item) => {
-      if (!favs) return toast("登录后才能收藏");
+      if (!favs) return toast(tRef.current("fav.needSignIn"));
       const on = favs.has(it.id);
       setFavs((s) => {
         const n = new Set(s);
@@ -168,8 +216,8 @@ export function Browse() {
         });
         toast.error(
           e instanceof ApiError && e.status === 401
-            ? "登录后才能收藏"
-            : "收藏失败",
+            ? tRef.current("fav.needSignIn")
+            : tRef.current("fav.failed"),
         );
       }
     },
@@ -182,9 +230,36 @@ export function Browse() {
   };
 
   const myAvatar = avatars.find((a) => a.slug === filters.avatar) ?? null;
+  // title with the variable part (query, shop, avatar) highlighted, in any UI language
+  const highlight = (key: MessageKey, name: string, value: string) => {
+    const [before, after] = t(key, { [name]: "\u0000" }).split("\u0000");
+    return (
+      <>
+        {before}
+        <span className="text-brand">{value}</span>
+        {after}
+      </>
+    );
+  };
   const catName = (slug: string) =>
-    categories.flatMap((c) => [c, ...c.children]).find((c) => c.slug === slug)
-      ?.ja ?? slug;
+    categories
+      .flatMap((c) => [c, ...c.children])
+      .find((c) => c.slug === slug)?.[
+      ui === "ja" ? "ja" : ui === "ko" ? "ko" : "en"
+    ] ?? slug;
+  // plain-text title, used as the default name of a saved search
+  const heading = [
+    filters.q
+      ? t("title.search", { q: filters.q })
+      : filters.author
+        ? t("title.author", { name: filters.author })
+        : myAvatar
+          ? t("title.avatar", { name: avatarName(myAvatar, ui) })
+          : t("title.all"),
+    filters.sc && catName(filters.sc),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const chips: [string, Partial<Filters>][] = [
     ...(filters.q
       ? [[`“${filters.q}”`, { q: "" }] as [string, Partial<Filters>]]
@@ -232,7 +307,7 @@ export function Browse() {
           className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm text-muted-foreground sm:max-w-xl"
         >
           <Search className="size-4 shrink-0" />
-          <span className="truncate">搜索商品、头像、作者、标签</span>
+          <span className="truncate">{t("nav.search")}</span>
           <kbd className="ml-auto hidden rounded border px-1.5 font-sans text-[11px] sm:inline">
             Ctrl K
           </kbd>
@@ -241,7 +316,9 @@ export function Browse() {
           type="button"
           onClick={() => setDrawerOpen(true)}
           className="relative grid size-9 shrink-0 place-items-center rounded-lg border bg-card lg:hidden"
-          aria-label={`筛选${nActive ? `（已选 ${nActive} 项）` : ""}`}
+          aria-label={
+            nActive ? t("nav.filtersActive", { n: nActive }) : t("nav.filters")
+          }
         >
           <SlidersHorizontal className="size-4" />
           {nActive > 0 && (
@@ -250,39 +327,63 @@ export function Browse() {
             </span>
           )}
         </button>
+        <div className="ml-auto flex items-center gap-2">
+          <SettingsMenu />
+          <AccountMenu
+            me={me}
+            onAuthChange={loadAccount}
+            onShowFavourites={() =>
+              update({
+                view: "favourites",
+                avatar: "",
+                q: "",
+                author: "",
+                sc: "",
+                features: [],
+              })
+            }
+            currentQuery={filtersToQuery({ ...filters, view: "items" })}
+            currentLabel={heading}
+          />
+        </div>
       </header>
 
       <section className="border-b bg-[radial-gradient(900px_260px_at_75%_-40%,color-mix(in_oklch,var(--brand-2)_18%,transparent),transparent_70%)] px-3 pt-4 sm:px-5">
         <div className="flex items-baseline gap-3">
           <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-[22px]">
-            {filters.q ? (
-              <>
-                搜索 <span className="text-brand">{filters.q}</span>
-              </>
+            {filters.view === "favourites" ? (
+              <span className="text-brand">{t("title.favourites")}</span>
+            ) : filters.q ? (
+              highlight("title.search", "q", filters.q)
             ) : filters.author ? (
-              <>
-                <span className="text-brand">{filters.author}</span> 的商品
-              </>
+              highlight("title.author", "name", filters.author)
             ) : myAvatar ? (
-              <>
-                适配 <span className="text-brand">{avatarName(myAvatar)}</span>{" "}
-                的商品
-              </>
+              highlight("title.avatar", "name", avatarName(myAvatar, ui))
             ) : (
-              "全部商品"
+              t("title.all")
             )}
           </h1>
           <span className="shrink-0 text-sm text-muted-foreground tabular-nums">
-            {meta ? `${meta.count.toLocaleString()} 件` : ""}
+            {meta ? t("title.count", { n: meta.count.toLocaleString() }) : ""}
           </span>
-          {filters.avatar && (
+          {filters.view === "favourites" && (
+            <button
+              type="button"
+              onClick={() => update({ view: "items" })}
+              className="ml-auto flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3.5" />
+              <span className="hidden sm:inline">{t("title.backToAll")}</span>
+            </button>
+          )}
+          {filters.avatar && filters.view !== "favourites" && (
             <button
               type="button"
               onClick={() => update({ avatar: "" })}
               className="ml-auto flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
               <X className="size-3.5" />
-              <span className="hidden sm:inline">不限头像</span>
+              <span className="hidden sm:inline">{t("title.anyAvatar")}</span>
             </button>
           )}
         </div>
@@ -323,14 +424,14 @@ export function Browse() {
               <SelectTrigger
                 size="sm"
                 className="ml-auto w-36"
-                aria-label="排序"
+                aria-label={t("sort.label")}
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent align="end">
                 {SORTS.map(([v, label]) => (
                   <SelectItem key={v} value={v}>
-                    {label}
+                    {t(label as MessageKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -363,7 +464,7 @@ export function Browse() {
           </div>
           {!loading && items.length === 0 && (
             <p className="py-20 text-center text-muted-foreground">
-              没有找到商品
+              {t("list.empty")}
             </p>
           )}
           <div ref={sentinel} className="h-px" />
@@ -373,7 +474,7 @@ export function Browse() {
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle>筛选</DrawerTitle>
+            <DrawerTitle>{t("nav.filters")}</DrawerTitle>
           </DrawerHeader>
           <div className="overflow-y-auto px-4">{panel}</div>
           <DrawerFooter className="flex-row">
@@ -382,14 +483,14 @@ export function Browse() {
               onClick={() => update({ sc: "", features: [], adult: "safe" })}
               className="flex-1 rounded-lg border py-2.5 text-sm"
             >
-              清除
+              {t("filter.clear")}
             </button>
             <button
               type="button"
               onClick={() => setDrawerOpen(false)}
               className="flex-[2] rounded-lg bg-brand py-2.5 text-sm font-semibold text-white"
             >
-              查看 {meta ? meta.count.toLocaleString() : ""} 件商品
+              {t("filter.show", { n: meta ? meta.count.toLocaleString() : "" })}
             </button>
           </DrawerFooter>
         </DrawerContent>

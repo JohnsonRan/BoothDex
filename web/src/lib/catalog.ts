@@ -105,11 +105,15 @@ export function priceText(it: Pick<Item, "smart_price" | "price_jpy">) {
 }
 export const isNew = (it: Pick<Item, "published_at">) =>
   !!it.published_at && Date.now() - Date.parse(it.published_at) < 7 * 864e5;
-export const avatarName = (a: Avatar) => a.ja || a.en;
+/** Avatar name for the interface language; Chinese UI uses the Japanese name, as the community does. */
+export const avatarName = (a: Avatar, ui: string = "ja") =>
+  ui === "en" ? a.en : ui === "ko" ? a.ko || a.en : a.ja || a.en;
 
 // ---------- filter state <-> URL ----------
 
 export type Filters = {
+  /** "favourites" shows the signed-in user's favourites (API: v=favourites) */
+  view: "items" | "favourites";
   q: string;
   avatar: string;
   sc: string;
@@ -120,6 +124,7 @@ export type Filters = {
   dir: "asc" | "desc";
 };
 export const DEFAULT_FILTERS: Filters = {
+  view: "items",
   q: "",
   avatar: "",
   sc: "",
@@ -147,6 +152,7 @@ export function parseFilters(search: string): Filters {
   const one = (k: string) => raw.get(k)?.join(" ") ?? "";
   const sort = one("sort");
   return {
+    view: one("v") === "favourites" ? "favourites" : "items",
     q: one("q"),
     avatar: raw.get("avatars")?.[0] ?? "",
     sc: raw.get("sc")?.[0] ?? "",
@@ -165,6 +171,7 @@ export function parseFilters(search: string): Filters {
 export function filtersToQuery(f: Filters): string {
   const parts: string[] = [];
   const enc = encodeURIComponent;
+  if (f.view === "favourites") parts.push("v=favourites");
   if (f.q) parts.push(`q=${enc(f.q)}`);
   if (f.avatar) parts.push(`avatars=${enc(f.avatar)}`);
   if (f.sc) parts.push(`sc=${enc(f.sc)}`);

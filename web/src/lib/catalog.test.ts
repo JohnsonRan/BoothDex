@@ -24,6 +24,16 @@ test("filters round-trip through the API's + list format", () => {
   expect(parseFilters(`?${q}`)).toEqual(f);
 });
 
+test("favourites view round-trips", () => {
+  const f = {
+    ...DEFAULT_FILTERS,
+    view: "favourites" as const,
+    sort: "newest" as const,
+  };
+  expect(filtersToQuery(f)).toBe("v=favourites&sort=newest");
+  expect(parseFilters("?v=favourites&sort=newest")).toEqual(f);
+});
+
 test("defaults are omitted and unknown values ignored", () => {
   expect(filtersToQuery(DEFAULT_FILTERS)).toBe("");
   expect(parseFilters("?if=ma+bogus&sort=nope&adult=weird")).toEqual({

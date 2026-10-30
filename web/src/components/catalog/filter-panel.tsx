@@ -7,6 +7,7 @@ import {
   type Feature,
   type Filters,
 } from "@/lib/catalog";
+import { useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -26,6 +27,7 @@ export function FilterPanel({
   featureCounts,
   onChange,
 }: Props) {
+  const { t, ui } = useSettings();
   const toggleFeature = (f: Feature) =>
     onChange({
       features: filters.features.includes(f)
@@ -35,15 +37,15 @@ export function FilterPanel({
   return (
     <div className="space-y-6 text-sm">
       <section>
-        <Heading>内容</Heading>
+        <Heading>{t("filter.content")}</Heading>
         <fieldset
           className="grid grid-cols-2 overflow-hidden rounded-lg border"
-          aria-label="内容分级"
+          aria-label={t("filter.rating")}
         >
           {(
             [
-              ["safe", "全年龄"],
-              ["include", "全部"],
+              ["safe", t("filter.safe")],
+              ["include", t("filter.all")],
             ] as const
           ).map(([v, label]) => (
             <button
@@ -65,7 +67,7 @@ export function FilterPanel({
       </section>
 
       <section>
-        <Heading>分类</Heading>
+        <Heading>{t("filter.categories")}</Heading>
         <div className="space-y-0.5">
           {categories
             .filter((c) => c.mode === "items")
@@ -82,7 +84,9 @@ export function FilterPanel({
                     on && "bg-accent shadow-[inset_2px_0_0_var(--primary)]",
                   )}
                 >
-                  <span>{c.ja ?? c.en}</span>
+                  <span>
+                    {(ui === "ja" ? c.ja : ui === "ko" ? c.ko : c.en) ?? c.en}
+                  </span>
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {n(smartCounts[c.slug])}
                   </span>
@@ -93,7 +97,7 @@ export function FilterPanel({
       </section>
 
       <section>
-        <Heading>功能</Heading>
+        <Heading>{t("filter.features")}</Heading>
         <div className="space-y-0.5">
           {(Object.keys(FEATURES) as Feature[]).map((f) => {
             const on = filters.features.includes(f);

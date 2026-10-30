@@ -26,22 +26,22 @@ import {
   imageCount,
   imgUrl,
   priceOf,
-  priceText,
   type SearchResult,
 } from "@/lib/catalog";
+import { type ContentLang, useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
-type Lang = "original" | "en" | "ja" | "ko";
+type Lang = ContentLang;
 const LANGS: [Lang, string][] = [
-  ["original", "原文"],
+  ["original", ""], // label comes from t("detail.original")
   ["en", "EN"],
   ["ja", "日本語"],
   ["ko", "한국어"],
 ];
 const RATING = {
-  SFW: ["全年龄", "text-[var(--success)]"],
-  Suggestive: ["轻微性感", "text-[var(--warning)]"],
-  NSFW: ["成人", "text-destructive"],
+  SFW: "text-[var(--success)]",
+  Suggestive: "text-[var(--warning)]",
+  NSFW: "text-destructive",
 } as const;
 
 type Props = {
@@ -80,8 +80,15 @@ function Body({
   onSearch,
   onOpenItem,
 }: Omit<Props, "item"> & { item: Item }) {
+  const { t, price, money, ui, content } = useSettings();
+  const locale = { zh: "zh-CN", en: "en-US", ja: "ja-JP", ko: "ko-KR" }[ui];
   const [item, setItem] = useState(initial);
-  const [lang, setLang] = useState<Lang>("original");
+  // starts in the visitor's preferred item-text language, falling back to the original
+  const [lang, setLang] = useState<Lang>(
+    content !== "original" && initial.translations?.[content]
+      ? content
+      : "original",
+  );
   const [idx, setIdx] = useState(0);
   const [bioOpen, setBioOpen] = useState(false);
   const [zoom, setZoom] = useState(false);
@@ -138,16 +145,23 @@ function Body({
   const fits =
     !!myAvatar && item.linked_avatars.some((a) => a.slug === myAvatar.slug);
   const boothUrl = `https://booth.pm/ja/items/${item.id}`;
-  const rating = item.content_rating ? RATING[item.content_rating] : null;
+  const rating = item.content_rating
+    ? ([
+        t(`detail.rating.${item.content_rating}`),
+        RATING[item.content_rating],
+      ] as const)
+    : null;
 
   return (
     <>
       <DialogTitle className="sr-only">{item.title}</DialogTitle>
-      <DialogDescription className="sr-only">商品详情</DialogDescription>
+      <DialogDescription className="sr-only">
+        {t("detail.label")}
+      </DialogDescription>
       <button
         type="button"
         onClick={onClose}
-        aria-label="关闭"
+        aria-label={t("detail.close")}
         className="absolute top-3 right-3 z-20 grid size-9 place-items-center rounded-full border bg-background/80 backdrop-blur hover:bg-accent"
       >
         <X className="size-4" />
@@ -174,7 +188,7 @@ function Body({
                   <img
                     key={imgUrl(item, i, "620x620")}
                     src={imgUrl(item, i, "620x620")}
-                    alt={`第 ${i + 1} 张`}
+                    alt={t("detail.image", { n: i + 1 })}
                     loading={i < 2 ? "eager" : "lazy"}
                     onClick={() => setZoom(true)}
                     className="size-full shrink-0 snap-center object-contain lg:cursor-zoom-in"
@@ -198,7 +212,7 @@ function Body({
                     key={imgUrl(item, i, "72x72_a2_g5")}
                     type="button"
                     onClick={() => go(i)}
-                    aria-label={`第 ${i + 1} 张`}
+                    aria-label={t("detail.image", { n: i + 1 })}
                     className={cn(
                       "aspect-square overflow-hidden rounded-lg border-2 bg-muted",
                       i === idx
@@ -240,14 +254,14 @@ function Body({
                 onClick={() => onSearch({ author: item.author_name })}
                 className="shrink-0 rounded-full border px-3 py-1 text-xs hover:bg-accent"
               >
-                店铺全部商品
+                {t("detail.shopAll")}
               </button>
             </div>
 
             <div
               className="inline-flex overflow-hidden rounded-lg border text-xs"
               role="tablist"
-              aria-label="语言"
+              aria-label={t("detail.language")}
             >
               {LANGS.filter(
                 ([k]) => k === "original" || item.translations?.[k],
@@ -265,7 +279,7 @@ function Body({
                       : "text-muted-foreground",
                   )}
                 >
-                  {label}
+                  {k === "original" ? t("detail.original") : label}
                 </button>
               ))}
             </div>
@@ -276,19 +290,19 @@ function Body({
 
             <div className="flex flex-wrap items-end gap-3">
               <span className="text-2xl leading-none font-extrabold text-primary tabular-nums lg:text-3xl">
-                {priceText(item)}
+                {price(item)}
               </span>
               {showWhy && (
                 <span
                   className="cursor-help border-b border-dashed border-muted-foreground text-xs text-muted-foreground"
                   title={item.smart_price_reason ?? ""}
                 >
-                  标价 ¥{(item.price_jpy ?? 0).toLocaleString()} · 为什么不同？
+                  {t("price.listed", { price: money(item.price_jpy) })}
                 </span>
               )}
               <span className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
                 <Heart className="size-3.5" />
-                {item.likes.toLocaleString()}
+                {item.likes.toLocaleString(locale)}
               </span>
             </div>
 
@@ -313,12 +327,12 @@ function Body({
               ))}
               {item.quest === "Yes" && (
                 <span className="rounded-full border bg-muted px-2.5 py-0.5">
-                  Quest 对应
+                  {t("detail.quest")}
                 </span>
               )}
               {item.status === "delisted" && (
                 <span className="rounded-full border bg-muted px-2.5 py-0.5 text-destructive">
-                  已下架
+                  {t("detail.delisted")}
                 </span>
               )}
             </div>
@@ -340,10 +354,12 @@ function Body({
                   />
                 )}
                 {fits
-                  ? `适配你的头像 ${avatarName(myAvatar)}`
+                  ? t("detail.fits", { name: avatarName(myAvatar, ui) })
                   : item.needs_enrichment
-                    ? `尚未分析是否适配 ${avatarName(myAvatar)}`
-                    : `未标注适配 ${avatarName(myAvatar)}，购买前请确认`}
+                    ? t("detail.notAnalysed", {
+                        name: avatarName(myAvatar, ui),
+                      })
+                    : t("detail.notListed", { name: avatarName(myAvatar, ui) })}
               </div>
             )}
 
@@ -355,14 +371,16 @@ function Body({
                 rel="noopener"
                 className="flex flex-[2] items-center justify-center gap-1.5 rounded-lg bg-brand py-2.5 text-sm font-semibold text-white"
               >
-                在 Booth 购买 <ExternalLink className="size-3.5" />
+                {t("detail.buy")} <ExternalLink className="size-3.5" />
               </a>
               <FavButton on={favourite} onClick={() => onFavourite(item)} />
               <CopyButton url={boothUrl} />
             </div>
 
             {item.variations.length > 0 && (
-              <Section title={`变体 · ${item.variations.length}`}>
+              <Section
+                title={t("detail.variations", { n: item.variations.length })}
+              >
                 <div className="divide-y overflow-hidden rounded-lg border text-sm">
                   {item.variations.map((v) => (
                     <div
@@ -374,10 +392,10 @@ function Body({
                       )}
                     >
                       <span className="min-w-0">
-                        {varName(v.name) || "（默认）"}
+                        {varName(v.name) || t("detail.defaultVariation")}
                       </span>
                       <b className="shrink-0 tabular-nums">
-                        ¥{(v.price_jpy ?? 0).toLocaleString()}
+                        {money(v.price_jpy ?? 0)}
                       </b>
                     </div>
                   ))}
@@ -386,7 +404,9 @@ function Body({
             )}
 
             {item.linked_avatars.length > 0 && (
-              <Section title={`适配头像 · ${item.linked_avatars.length}`}>
+              <Section
+                title={t("detail.avatars", { n: item.linked_avatars.length })}
+              >
                 <div className="flex flex-wrap gap-1.5">
                   {item.linked_avatars.map((a) => (
                     <button
@@ -407,7 +427,7 @@ function Body({
                           className="size-6 rounded-full object-cover"
                         />
                       )}
-                      {avatarName(a)}
+                      {avatarName(a, ui)}
                     </button>
                   ))}
                 </div>
@@ -418,7 +438,7 @@ function Body({
 
         <div className="border-t lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(380px,1fr)]">
           <div className="p-4 lg:border-r lg:p-6">
-            <Section title="简介">
+            <Section title={t("detail.bio")}>
               <Bio
                 text={tr("bio") ?? ""}
                 open={bioOpen}
@@ -428,7 +448,7 @@ function Body({
           </div>
           <div className="space-y-5 border-t p-4 lg:border-t-0 lg:p-6">
             {item.booth_tags.length > 0 && (
-              <Section title="标签">
+              <Section title={t("detail.tags")}>
                 <div className="flex flex-wrap gap-1.5">
                   {item.booth_tags.slice(0, 40).map((t) => (
                     <button
@@ -443,23 +463,23 @@ function Body({
                 </div>
               </Section>
             )}
-            <Section title="信息">
+            <Section title={t("detail.info")}>
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-                <dt>商品 ID</dt>
+                <dt>{t("detail.itemId")}</dt>
                 <dd className="text-foreground">{item.id}</dd>
-                <dt>上架时间</dt>
+                <dt>{t("detail.published")}</dt>
                 <dd className="text-foreground">
                   {item.published_at
-                    ? new Date(item.published_at).toLocaleDateString("zh-CN")
+                    ? new Date(item.published_at).toLocaleDateString(locale)
                     : "—"}
                 </dd>
-                <dt>Booth 分类</dt>
+                <dt>{t("detail.boothCategory")}</dt>
                 <dd className="text-foreground">
                   {item.booth_category ?? "—"}
                 </dd>
-                <dt>最后抓取</dt>
+                <dt>{t("detail.scraped")}</dt>
                 <dd className="text-foreground">
-                  {new Date(item.scraped_at).toLocaleString("zh-CN")}
+                  {new Date(item.scraped_at).toLocaleString(locale)}
                 </dd>
               </dl>
             </Section>
@@ -467,14 +487,16 @@ function Body({
         </div>
 
         <div className="border-t p-4 pb-24 lg:p-6">
-          <Section title={`${item.author_name} 的其他商品`}>
+          <Section title={t("detail.moreFrom", { name: item.author_name })}>
             <div className="grid auto-cols-[132px] grid-flow-col gap-3 overflow-x-auto pb-1 lg:auto-cols-[150px]">
               {same === null && (
-                <span className="text-sm text-muted-foreground">加载中…</span>
+                <span className="text-sm text-muted-foreground">
+                  {t("detail.loading")}
+                </span>
               )}
               {same?.length === 0 && (
                 <span className="text-sm text-muted-foreground">
-                  没有其他商品
+                  {t("detail.noMore")}
                 </span>
               )}
               {same?.map((x) => (
@@ -491,7 +513,7 @@ function Body({
                     className="aspect-square w-full rounded-lg bg-muted object-cover"
                   />
                   <div className="mt-1.5 line-clamp-2 text-xs">{x.title}</div>
-                  <b className="text-xs text-primary">{priceText(x)}</b>
+                  <b className="text-xs text-primary">{price(x)}</b>
                 </button>
               ))}
             </div>
@@ -507,7 +529,7 @@ function Body({
             priceOf(item) === 0 ? "text-[var(--success)]" : "text-primary",
           )}
         >
-          {priceText(item)}
+          {price(item)}
         </span>
         <FavButton on={favourite} onClick={() => onFavourite(item)} compact />
         <a
@@ -516,14 +538,14 @@ function Body({
           rel="noopener"
           className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand py-2.5 text-sm font-semibold text-white"
         >
-          在 Booth 购买 <ExternalLink className="size-3.5" />
+          {t("detail.buy")} <ExternalLink className="size-3.5" />
         </a>
       </div>
 
       {zoom && (
         <button
           type="button"
-          aria-label="关闭大图"
+          aria-label={t("detail.closeZoom")}
           onClick={() => setZoom(false)}
           className="fixed inset-0 z-50 hidden cursor-zoom-out place-items-center bg-black/90 lg:grid"
         >
@@ -553,11 +575,12 @@ function NavButton({
   side: "l" | "r";
   onClick: () => void;
 }) {
+  const { t } = useSettings();
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={side === "l" ? "上一张" : "下一张"}
+      aria-label={side === "l" ? t("detail.prev") : t("detail.next")}
       className={cn(
         "absolute top-1/2 hidden size-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white hover:bg-black/70 lg:grid",
         side === "l" ? "left-3" : "right-3",
@@ -581,12 +604,13 @@ function FavButton({
   onClick: () => void;
   compact?: boolean;
 }) {
+  const { t } = useSettings();
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      aria-label={on ? "取消收藏" : "收藏"}
+      aria-label={on ? t("fav.remove") : t("fav.add")}
       className={cn(
         "flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-accent",
         !compact && "flex-1",
@@ -594,24 +618,25 @@ function FavButton({
       )}
     >
       <Heart className={cn("size-4", on && "fill-current")} />
-      {!compact && (on ? "已收藏" : "收藏")}
+      {!compact && (on ? t("fav.added") : t("fav.add"))}
     </button>
   );
 }
 
 function CopyButton({ url }: { url: string }) {
+  const { t } = useSettings();
   return (
     <button
       type="button"
       onClick={() =>
         navigator.clipboard
           .writeText(url)
-          .then(() => toast.success("已复制链接"))
+          .then(() => toast.success(t("detail.copied")))
       }
       className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-accent"
     >
       <Copy className="size-4" />
-      复制链接
+      {t("detail.copy")}
     </button>
   );
 }
@@ -642,6 +667,7 @@ function Bio({
   open: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useSettings();
   const ref = useRef<HTMLDivElement>(null);
   const [long, setLong] = useState(false);
   useEffect(() => {
@@ -668,7 +694,7 @@ function Bio({
           onClick={onToggle}
           className="mt-2 text-sm text-primary"
         >
-          {open ? "收起" : "展开全文"}
+          {open ? t("detail.less") : t("detail.more")}
         </button>
       )}
     </>

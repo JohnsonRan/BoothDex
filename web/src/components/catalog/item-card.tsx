@@ -9,8 +9,8 @@ import {
   imgUrl,
   isNew,
   priceOf,
-  priceText,
 } from "@/lib/catalog";
+import { useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -26,6 +26,7 @@ export const ItemCard = memo(function ItemCard({
   onOpen,
   onFavourite,
 }: Props) {
+  const { t, price, text } = useSettings();
   const second = imgUrl(item, 1);
   const free = priceOf(item) === 0;
   return (
@@ -72,7 +73,7 @@ export const ItemCard = memo(function ItemCard({
         </div>
         <div className="space-y-2 p-2.5 sm:p-3">
           <h3 className="line-clamp-2 min-h-[2.8em] text-[13px] leading-[1.4]">
-            {item.title}
+            {text(item, "title")}
           </h3>
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -94,7 +95,7 @@ export const ItemCard = memo(function ItemCard({
                   : "bg-primary/12 text-primary",
               )}
             >
-              {priceText(item)}
+              {price(item)}
             </span>
           </div>
         </div>
@@ -102,7 +103,7 @@ export const ItemCard = memo(function ItemCard({
       {/* always visible on touch screens; revealed on hover where hover exists */}
       <button
         type="button"
-        aria-label={favourite ? "取消收藏" : "收藏"}
+        aria-label={favourite ? t("fav.remove") : t("fav.add")}
         aria-pressed={favourite}
         onClick={() => onFavourite(item)}
         className={cn(

@@ -149,8 +149,11 @@ pub fn validate_preferences(v: &Value) -> Result<(), &'static str> {
     for (k, val) in obj {
         let s = val.as_str().ok_or("preference values must be strings")?;
         // "" removes a known key
-        let ok = s.is_empty() && ["language", "currency", "theme", "avatar", "adult"].contains(&k.as_str())
+        let ok = s.is_empty() && ["ui", "language", "currency", "theme", "avatar", "adult"].contains(&k.as_str())
             || match k.as_str() {
+            // interface language
+            "ui" => ["zh", "en", "ja", "ko"].contains(&s),
+            // item text language
             "language" => ["original", "en", "ja", "ko"].contains(&s),
             "currency" => s.len() == 3 && s.chars().all(|c| c.is_ascii_uppercase()),
             "theme" => (1..=20).contains(&s.len()) && s.chars().all(|c| c.is_ascii_lowercase()),
@@ -246,9 +249,9 @@ async fn me(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Respon
         Ok(u) => u,
         Err(r) => return Ok(r),
     };
-    let (username, email, display_name, preferences): (String, String, String, Value) =
-        sqlx::query_as("select username, email, display_name, preferences from users where id = $1").bind(u.id).fetch_one(&s.pool).await?;
-    Ok(Json(json!({ "id": u.id, "username": username, "email": email, "display_name": display_name, "preferences": preferences })).into_response())
+    let (username, email, display_name, preferences, is_admin): (String, String, String, Value, bool) =
+        sqlx::query_as("select username, email, display_name, preferences, is_admin from users where id = $1").bind(u.id).fetch_one(&s.pool).await?;
+    Ok(Json(json!({ "id": u.id, "username": username, "email": email, "display_name": display_name, "preferences": preferences, "is_admin": is_admin })).into_response())
 }
 
 #[derive(Deserialize)]
@@ -482,6 +485,8 @@ mod tests {
         assert!(validate_preferences(&json!({"avatar": "", "language": ""})).is_ok());
         assert!(validate_preferences(&json!({"evil": ""})).is_err());
         assert!(validate_preferences(&json!({"language": "fr"})).is_err());
+        assert!(validate_preferences(&json!({"ui": "ko"})).is_ok());
+        assert!(validate_preferences(&json!({"ui": "original"})).is_err());
         assert!(validate_preferences(&json!({"evil": "x"})).is_err());
         assert!(validate_preferences(&json!({"currency": 5})).is_err());
         assert!(validate_preferences(&json!(["x"])).is_err());

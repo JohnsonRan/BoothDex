@@ -12,7 +12,8 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { api } from "@/lib/api";
-import { type Avatar, avatarName, imgUrl, priceText } from "@/lib/catalog";
+import { type Avatar, avatarName, imgUrl } from "@/lib/catalog";
+import { useSettings } from "@/lib/settings";
 
 type PaletteResult = {
   items: {
@@ -49,6 +50,7 @@ export function CommandPalette({
   onAuthor,
   onItem,
 }: Props) {
+  const { t, price, ui } = useSettings();
   const [q, setQ] = useState("");
   const [res, setRes] = useState<PaletteResult | null>(null);
 
@@ -96,19 +98,19 @@ export function CommandPalette({
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="快速搜索"
-      description="搜索商品、头像、作者和标签"
+      title={t("palette.title")}
+      description={t("palette.desc")}
       className="top-0 h-dvh max-w-none translate-y-0 rounded-none! sm:top-[12vh] sm:h-auto sm:max-w-xl sm:rounded-xl!"
     >
       <Command shouldFilter={false} className="h-full">
         <CommandInput
-          placeholder="搜索商品、头像、作者、标签…"
+          placeholder={t("palette.placeholder")}
           value={q}
           onValueChange={setQ}
         />
         <CommandList className="max-h-none flex-1 sm:max-h-[60vh]">
           <CommandEmpty>
-            {q.trim() ? "没有结果" : "输入关键词开始搜索"}
+            {q.trim() ? t("palette.empty") : t("palette.hint")}
           </CommandEmpty>
           {res && q.trim() && (
             <>
@@ -118,14 +120,18 @@ export function CommandPalette({
                   onSelect={() => run(() => onQuery(q.trim()))}
                 >
                   <Search />
-                  <span className="flex-1">搜索 “{q.trim()}”</span>
+                  <span className="flex-1">
+                    {t("palette.searchFor", { q: q.trim() })}
+                  </span>
                   <span className="text-xs text-muted-foreground">
-                    {res.itemCount.toLocaleString()} 个结果
+                    {t("palette.results", {
+                      n: res.itemCount.toLocaleString(),
+                    })}
                   </span>
                 </CommandItem>
               </CommandGroup>
               {res.avatars.length > 0 && (
-                <CommandGroup heading="头像">
+                <CommandGroup heading={t("palette.avatars")}>
                   {res.avatars.map((a) => (
                     <CommandItem
                       key={a.slug}
@@ -140,18 +146,23 @@ export function CommandPalette({
                         />
                       )}
                       <span className="flex-1 truncate">
-                        {avatarName(a)}{" "}
-                        <span className="text-muted-foreground">{a.en}</span>
+                        {avatarName(a, ui)}{" "}
+                        {/* the other common name, so either spelling is recognisable */}
+                        <span className="text-muted-foreground">
+                          {ui === "en" ? a.ja : a.en}
+                        </span>
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {a.item_count.toLocaleString()} 个适配商品
+                        {t("palette.fitting", {
+                          n: a.item_count.toLocaleString(),
+                        })}
                       </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
               )}
               {res.items.length > 0 && (
-                <CommandGroup heading="商品">
+                <CommandGroup heading={t("palette.items")}>
                   {res.items.map((it) => (
                     <CommandItem
                       key={it.id}
@@ -165,14 +176,14 @@ export function CommandPalette({
                       />
                       <span className="flex-1 truncate">{it.title}</span>
                       <span className="text-xs text-muted-foreground">
-                        {priceText(it)}
+                        {price(it)}
                       </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
               )}
               {res.authors.length > 0 && (
-                <CommandGroup heading="作者">
+                <CommandGroup heading={t("palette.authors")}>
                   {res.authors.map((a) => (
                     <CommandItem
                       key={a.name}
@@ -190,24 +201,24 @@ export function CommandPalette({
                       )}
                       <span className="flex-1 truncate">{a.name}</span>
                       <span className="text-xs text-muted-foreground">
-                        {a.item_count} 个商品
+                        {t("palette.itemsBy", { n: a.item_count })}
                       </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
               )}
               {res.tags.length > 0 && (
-                <CommandGroup heading="标签">
-                  {res.tags.map((t) => (
+                <CommandGroup heading={t("palette.tags")}>
+                  {res.tags.map((tag) => (
                     <CommandItem
-                      key={t.name}
-                      value={`t:${t.name}`}
-                      onSelect={() => run(() => onQuery(t.display))}
+                      key={tag.name}
+                      value={`t:${tag.name}`}
+                      onSelect={() => run(() => onQuery(tag.display))}
                     >
                       <Hash />
-                      <span className="flex-1 truncate">{t.display}</span>
+                      <span className="flex-1 truncate">{tag.display}</span>
                       <span className="text-xs text-muted-foreground">
-                        {t.item_count.toLocaleString()}
+                        {tag.item_count.toLocaleString()}
                       </span>
                     </CommandItem>
                   ))}
