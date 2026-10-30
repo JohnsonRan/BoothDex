@@ -233,13 +233,184 @@ pub async fn sweep(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     Ok(format!("{seen} seen on {page} pages; missing items: {confirm}"))
 }
 
+async fn ai_client(pool: &PgPool) -> Result<crate::ai::Ai> {
+    match crate::ai::Ai::from_config(&catalogue_core::settings::ai(pool).await?)? {
+        Some(ai) => Ok(ai),
+        None => bail!("AI provider not configured (set API address, model and key in the admin console)"),
+    }
+}
+
+/// Translates the taxonomy (category names, category groups, smart tags) into Simplified Chinese.
+/// Only fills missing names unless params.force is set, so it is cheap to rerun.
+pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
+    let ai = ai_client(ctx.pool).await?;
+    let force: bool = param(params, "force", false);
+    // (table, key column, English column, Chinese column)
+    let targets = [
+        ("smart_categories", "slug", "name_en", "name_zh"),
+        ("smart_categories", "slug", "group_en", "group_zh"),
+        ("smart_tags", "id::text", "display", "display_zh"),
+    ];
+    let mut work: Vec<(usize, String, String)> = Vec::new();
+    for (t, (table, key, en, zh)) in targets.iter().enumerate() {
+        // static identifiers from the list above, no user input
+        let sql = format!("select {key}, {en} from {table} where {en} is not null and ({zh} is null or $1)");
+        let rows: Vec<(String, String)> = sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(force).fetch_all(ctx.pool).await?;
+        work.extend(rows.into_iter().map(|(k, v)| (t, k, v)));
+    }
+    if work.is_empty() {
+        return Ok("nothing to translate".into());
+    }
+    // unique English strings, translated in batches of 60
+    let mut texts: Vec<String> = work.iter().map(|w| w.2.clone()).collect();
+    texts.sort();
+    texts.dedup();
+    let mut zh: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for (n, batch) in texts.chunks(60).enumerate() {
+        let input: serde_json::Map<String, Value> = batch.iter().map(|s| (s.clone(), Value::String(s.clone()))).collect();
+        let out = ai.json(crate::ai::LOCALIZE_SYSTEM, &Value::Object(input).to_string()).await?;
+        for s in batch {
+            if let Some(t) = out[s.as_str()].as_str().map(str::trim).filter(|t| !t.is_empty() && t.chars().count() <= 60) {
+                zh.insert(s.clone(), t.to_owned());
+            }
+        }
+        if !ctx.progress((n + 1) as i64 * 60, Some(texts.len() as i64), &format!("translated {} of {}", zh.len(), texts.len()), false).await? {
+            break;
+        }
+    }
+    let mut written = 0u64;
+    for (t, key, en) in &work {
+        let Some(value) = zh.get(en) else { continue };
+        let (table, key_col, _, zh_col) = targets[*t];
+        let sql = format!("update {table} set {zh_col} = $1 where {key_col} = $2");
+        written += sqlx::query(sqlx::AssertSqlSafe(sql)).bind(value).bind(key).execute(ctx.pool).await?.rows_affected();
+    }
+    bump_catalog(ctx.pool).await?;
+    Ok(format!("{written} names translated to Chinese ({} unique strings)", zh.len()))
+}
+
+/// AI enrichment for items our crawler ingested (needs_enrichment): categories, rating, Quest, smart price,
+/// translations and features via the model; avatar links by name matching (see avatars.rs).
+pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
+    let ai = ai_client(ctx.pool).await?;
+    let batch: i64 = param(params, "batch", 200);
+    let concurrency: usize = param(params, "concurrency", 4usize).clamp(1, 16);
+
+    let cats: Vec<(String, String, Option<String>)> =
+        sqlx::query_as("select c.slug, c.name_en, p.name_en from smart_categories c left join smart_categories p on p.slug = c.parent_slug order by c.slug")
+            .fetch_all(ctx.pool)
+            .await?;
+    // children only: a parent is implied by its child (the API adds parents itself)
+    let leaf: Vec<&(String, String, Option<String>)> = cats.iter().filter(|c| c.2.is_some()).collect();
+    let known: Vec<String> = leaf.iter().map(|c| c.0.clone()).collect();
+    let category_list = leaf.iter().map(|(slug, en, parent)| format!("{slug}: {} / {en}", parent.as_deref().unwrap_or_default())).collect::<Vec<_>>().join("\n");
+    let avatars: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as("select slug, name_en, name_ja, name_ko from avatars").fetch_all(ctx.pool).await?;
+    let matcher = crate::avatars::Matcher::new(avatars.into_iter().map(|(s, en, ja, ko)| (s, [Some(en), ja, ko].into_iter().flatten().collect())));
+
+    let items: Vec<Value> = sqlx::query_scalar(
+        "select jsonb_build_object('id', id, 'title', title, 'bio', bio, 'booth_category', booth_category, 'price_jpy', price_jpy,
+                'booth_tags', booth_tags, 'variations', variations, 'translations', translations)
+         from items where needs_enrichment and status = 'ok' and enrich_failures < 3 order by id desc limit $1",
+    )
+    .bind(batch)
+    .fetch_all(ctx.pool)
+    .await?;
+    let total = items.len() as i64;
+    let (mut ok, mut failed) = (0i64, 0i64);
+    let mut stream = futures_util::stream::iter(items.into_iter().map(|it| {
+        let prompt = crate::ai::enrich_prompt(&it, &category_list);
+        let ai = &ai;
+        async move { (it, ai.json(crate::ai::ENRICH_SYSTEM, &prompt).await) }
+    }))
+    .buffer_unordered(concurrency);
+    use futures_util::StreamExt;
+    while let Some((it, reply)) = stream.next().await {
+        let id = it["id"].as_i64().unwrap_or_default();
+        let bio_len = it["bio"].as_str().unwrap_or_default().chars().count();
+        let bio_truncated = bio_len > 2500;
+        let validation = match reply {
+            Ok(v) => crate::ai::validate_enrichment(&v, &known, bio_truncated, &it["translations"]),
+            Err(e) => Err(e),
+        };
+        match validation {
+            Ok(e) => {
+                let variation_names: Vec<&str> = it["variations"].as_array().into_iter().flatten().filter_map(|v| v["name"].as_str()).collect();
+                let match_text = format!(
+                    "{} {} {}",
+                    it["title"].as_str().unwrap_or_default(),
+                    it["booth_tags"].as_array().map(|t| t.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ")).unwrap_or_default(),
+                    variation_names.join(" ")
+                );
+                let linked = matcher.find(&match_text);
+                write_enrichment(ctx.pool, id, &e, &linked).await?;
+                ok += 1;
+            }
+            Err(err) => {
+                failed += 1;
+                sqlx::query("update items set enrich_failures = enrich_failures + 1 where id = $1")
+                    .bind(id)
+                    .execute(ctx.pool)
+                    .await?;
+                ctx.log(&format!("item {id}: {err:#}")).await?;
+            }
+        }
+        if !ctx.progress(ok + failed, Some(total), &format!("enrich: {ok} done, {failed} failed"), false).await? {
+            ctx.log("cancelled").await?;
+            break;
+        }
+    }
+    if ok > 0 {
+        bump_catalog(ctx.pool).await?;
+    }
+    Ok(format!("{ok} enriched, {failed} failed of {total}"))
+}
+
+async fn write_enrichment(pool: &PgPool, id: i64, e: &crate::ai::Enrichment, linked: &[String]) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "update items set content_rating = coalesce($2, content_rating), quest = coalesce($3, quest), smart_price = $4,
+                smart_price_reason = coalesce($5, smart_price_reason), translations = $6, features = $7, original_language = $6->>'original_language',
+                needs_enrichment = false, enrich_failures = 0
+         where id = $1",
+    )
+    .bind(id)
+    .bind(&e.content_rating)
+    .bind(&e.quest)
+    .bind(e.smart_price)
+    .bind(&e.smart_price_reason)
+    .bind(&e.translations)
+    .bind(&e.features)
+    .execute(&mut *tx)
+    .await?;
+    if !e.categories.is_empty() {
+        sqlx::query("delete from item_categories where item_id = $1").bind(id).execute(&mut *tx).await?;
+        for (i, slug) in e.categories.iter().enumerate() {
+            sqlx::query("insert into item_categories (item_id, category_slug, is_primary) values ($1, $2, $3) on conflict do nothing")
+                .bind(id)
+                .bind(slug)
+                .bind(i == 0)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+    sqlx::query("delete from item_avatars where item_id = $1").bind(id).execute(&mut *tx).await?;
+    sqlx::query("insert into item_avatars (item_id, avatar_slug) select $1, unnest($2::text[]) on conflict do nothing")
+        .bind(id)
+        .bind(linked)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 pub async fn run(ctx: &mut Ctx<'_>, kind: &str, params: &Value) -> Result<String> {
     match kind {
+        "localize" => localize(ctx, params).await,
         "sweep" => sweep(ctx, params).await,
         "incremental" => incremental(ctx, params).await,
         "details" => details(ctx, params).await,
         "refresh" => refresh(ctx, params).await,
-        "enrich" => bail!("AI enrichment is not configured yet"),
+        "enrich" => enrich(ctx, params).await,
         other => bail!("unknown job kind {other}"),
     }
 }

@@ -42,15 +42,33 @@ const pick = <T extends string>(
     ? (v as T)
     : undefined;
 
-/** First supported language in an Accept-Language header (e.g. "ja-JP,ja;q=0.9,en;q=0.8"). */
+/** Supported language with highest q-weight in an Accept-Language header; ignores q=0, ties keep header order. */
 export function uiFromAcceptLanguage(
   header: string | null | undefined,
 ): UiLang | undefined {
-  for (const part of (header ?? "").split(",")) {
-    const l = pick(part.trim().slice(0, 2).toLowerCase(), UI_LANGS);
-    if (l) return l;
+  if (!header) return undefined;
+  const candidates: { lang: UiLang; q: number; order: number }[] = [];
+  const parts = header.split(",");
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i].trim();
+    if (!part) continue;
+    const [tag, ...params] = part.split(";");
+    const l = pick(tag.trim().slice(0, 2).toLowerCase(), UI_LANGS);
+    if (!l) continue;
+    let q = 1.0;
+    for (const param of params) {
+      const [k, v] = param.trim().split("=");
+      if (k === "q" && v) {
+        const parsed = Number.parseFloat(v);
+        if (!Number.isNaN(parsed)) q = parsed;
+      }
+    }
+    if (q > 0) {
+      candidates.push({ lang: l, q, order: i });
+    }
   }
-  return undefined;
+  candidates.sort((a, b) => b.q - a.q || a.order - b.order);
+  return candidates[0]?.lang;
 }
 
 /** Validated settings from a stored JSON string; unknown or invalid fields fall back to defaults. */

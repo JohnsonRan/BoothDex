@@ -24,3 +24,10 @@ test("browser language picks the first supported one", () => {
   expect(uiFromAcceptLanguage("de")).toBeUndefined();
   expect(parseSettings(null, "en-US").ui).toBe("en");
 });
+
+test("browser language honours q-weights and ignores q=0", () => {
+  expect(uiFromAcceptLanguage("ja;q=0,en;q=1")).toBe("en");
+  expect(uiFromAcceptLanguage("ja;q=0.1,en;q=1")).toBe("en");
+  expect(uiFromAcceptLanguage("en;q=0.8,ja;q=0.9")).toBe("ja");
+  expect(uiFromAcceptLanguage("en,ja")).toBe("en");
+});

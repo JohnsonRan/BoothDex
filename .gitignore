@@ -5,3 +5,4 @@ imgcache/
 web/node_modules/
 web/.next/
 textindex/
+.pi/

@@ -4137,6 +4137,7 @@ dependencies = [
  "anyhow",
  "catalogue-core",
  "chrono",
+ "futures-util",
  "regex",
  "reqwest",
  "rustls",
@@ -4145,6 +4146,7 @@ dependencies = [
  "sqlx",
  "sysinfo",
  "tokio",
+ "unicode-normalization",
 ]
 
 [[package]]

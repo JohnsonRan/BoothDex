@@ -58,7 +58,13 @@ type Job = {
   finished_at: string | null;
   log?: string;
 };
-type Kind = "incremental" | "details" | "refresh" | "sweep" | "enrich";
+type Kind =
+  | "incremental"
+  | "details"
+  | "refresh"
+  | "sweep"
+  | "enrich"
+  | "localize";
 type Schedule = {
   kind: Kind;
   enabled: boolean;
@@ -143,7 +149,11 @@ const KIND: Record<Kind, { label: string; desc: string }> = {
   },
   enrich: {
     label: "AI 处理",
-    desc: "为新商品生成分类、适配头像、翻译等(在下方“AI 处理设置”配置模型)",
+    desc: "为新商品生成分类、分级、推断价格和英日韩翻译，并按名称匹配适配头像(每次 200 个，在下方“AI 处理设置”配置模型)",
+  },
+  localize: {
+    label: "翻译分类",
+    desc: "把分类和标签名翻译成中文(只翻译还没有中文名的)。保存 AI 设置后会自动运行一次",
   },
 };
 const STATUS: Record<Job["status"], { label: string; cls: string }> = {

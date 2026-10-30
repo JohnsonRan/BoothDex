@@ -63,6 +63,7 @@ pub async fn store_item(pool: &PgPool, v: &Value) -> Result<bool, sqlx::Error> {
                                        published_at timestamptz, booth_tags text[], variations jsonb)
          on conflict (id) do update set
            needs_enrichment = items.needs_enrichment or items.title is distinct from excluded.title or items.bio is distinct from excluded.bio,
+           enrich_failures = case when items.title is distinct from excluded.title or items.bio is distinct from excluded.bio then 0 else items.enrich_failures end,
            title = excluded.title, bio = excluded.bio, author_name = excluded.author_name, author_uri = excluded.author_uri,
            author_icon = excluded.author_icon, booth_category = excluded.booth_category, price_jpy = excluded.price_jpy,
            likes = excluded.likes, is_adult = excluded.is_adult, published_at = coalesce(excluded.published_at, items.published_at),

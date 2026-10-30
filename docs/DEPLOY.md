@@ -76,7 +76,7 @@ Then:
 1. Open `https://<domain>`, register your account.
 2. Put that username in `ADMIN_USERNAMES`, `docker compose up -d api` to apply.
 3. Open `https://<domain>/admin`: the worker should show as running; the hourly incremental crawl is on by default.
-4. In the admin console: set the AI provider (and test it), and decide whether to schedule the full sweep.
+4. In the admin console: set the AI provider (and test it). The daily full sweep is enabled by default (runs daily at 03:00 JST); you can change its schedule or disable it in the admin console.
 
 ## 5. Cloudflare
 
@@ -108,6 +108,9 @@ Not backed up and fine to lose: the `imgcache` volume (re-fills from Booth), `te
 - [ ] the AI provider is configured (otherwise newly crawled items stay out of the avatar-fit view and category filters)
 
 ## What was verified before handover (2026-10-31, on the dev machine)
+
+- Re-checked after the review fixes: api, worker and imgproxy images rebuilt from the current Dockerfile;
+  inside the image `/index` and `/cache` exist, are owned by the non-root `app` user and are writable.
 
 - All four container images build on Linux (Podman): api 156 MB, worker 100 MB, imgproxy 99 MB, web 272 MB;
   the web container serves pages.

@@ -17,7 +17,7 @@ use sqlx::PgPool;
 
 use crate::{ApiError, AppState, account};
 
-const KINDS: &[&str] = &["incremental", "details", "refresh", "enrich", "sweep"];
+const KINDS: &[&str] = &["incremental", "details", "refresh", "enrich", "sweep", "localize"];
 
 /// sysinfo needs state between refreshes to compute CPU usage
 pub struct SysMetrics(Mutex<Option<(sysinfo::System, sysinfo::Disks)>>);
@@ -318,7 +318,31 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
         .bind(&v)
         .execute(&s.pool)
         .await?;
-    Ok(Json(public_ai(&settings::resolve(&v, |k| std::env::var(k).ok()))).into_response())
+    let config = settings::resolve(&v, |k| std::env::var(k).ok());
+    queue_localize_if_needed(&s.pool, &config).await?;
+    Ok(Json(public_ai(&config)).into_response())
+}
+
+/// Once the provider is fully configured, translate the taxonomy into Chinese if that hasn't happened yet.
+/// The worker picks the job up within seconds; it is cheap (a few hundred short labels).
+pub async fn queue_localize_if_needed(pool: &PgPool, c: &AiConfig) -> Result<(), sqlx::Error> {
+    if c.base_url.is_none() || c.model.is_none() || c.api_key.is_none() {
+        return Ok(());
+    }
+    sqlx::query(
+        "insert into jobs (kind, params, created_by) select 'localize', '{}', 'ai-settings'
+         where exists (
+           select 1 from smart_categories where name_en is not null and name_zh is null
+           union all
+           select 1 from smart_categories where group_en is not null and group_zh is null
+           union all
+           select 1 from smart_tags where display is not null and display_zh is null
+         )
+         on conflict do nothing",
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 /// Calls `GET {base_url}/models` with the stored key, so the admin can check the endpoint before enabling enrichment.

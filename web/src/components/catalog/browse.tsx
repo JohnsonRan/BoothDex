@@ -29,6 +29,7 @@ import {
   type Filters,
   filtersToQuery,
   type Item,
+  localName,
   parseFilters,
   type SearchResult,
   searchQuery,
@@ -242,11 +243,11 @@ export function Browse() {
     );
   };
   const catName = (slug: string) =>
-    categories
-      .flatMap((c) => [c, ...c.children])
-      .find((c) => c.slug === slug)?.[
-      ui === "ja" ? "ja" : ui === "ko" ? "ko" : "en"
-    ] ?? slug;
+    categories.flatMap((c) => [c, ...c.children]).find((c) => c.slug === slug);
+  const catLabel = (slug: string) => {
+    const c = catName(slug);
+    return c ? localName(c, ui) : slug;
+  };
   // plain-text title, used as the default name of a saved search
   const heading = [
     filters.q
@@ -258,7 +259,7 @@ export function Browse() {
           : filters.view === "avatars"
             ? t("title.avatars")
             : t("title.all"),
-    filters.sc && catName(filters.sc),
+    filters.sc && catLabel(filters.sc),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -270,7 +271,7 @@ export function Browse() {
       ? [[filters.author, { author: "" }] as [string, Partial<Filters>]]
       : []),
     ...(filters.sc
-      ? [[catName(filters.sc), { sc: "" }] as [string, Partial<Filters>]]
+      ? [[catLabel(filters.sc), { sc: "" }] as [string, Partial<Filters>]]
       : []),
     ...filters.features.map(
       (f) =>

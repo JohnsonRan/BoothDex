@@ -4,6 +4,8 @@
 //! Job kinds: incremental (new items + image links), details (items missing images), refresh (re-check stalest),
 //! enrich (AI; not configured yet). Needs DATABASE_URL.
 
+mod ai;
+mod avatars;
 mod booth;
 mod jobs;
 

@@ -14,9 +14,24 @@ export type Category = {
   en: string;
   ja?: string;
   ko?: string;
+  /** AI-translated; null until the localize job has run */
+  zh?: string | null;
   mode?: string;
   children: Category[];
 };
+
+/** Taxonomy label in the interface language. Chinese falls back to English until the AI translation exists. */
+export const localName = (
+  c: { en: string; ja?: string | null; ko?: string | null; zh?: string | null },
+  ui: string,
+) =>
+  (ui === "zh" ? c.zh : ui === "ja" ? c.ja : ui === "ko" ? c.ko : c.en) || c.en;
+
+/** Smart tag label: Chinese when translated, otherwise the original display name. */
+export const tagName = (
+  t: { display: string; display_zh?: string | null },
+  ui: string,
+) => (ui === "zh" && t.display_zh) || t.display;
 export type Variation = {
   id: string;
   name: string;

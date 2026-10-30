@@ -165,9 +165,9 @@ async fn palette(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resul
         .into_iter()
         .flatten()
         .flat_map(|p| std::iter::once(p).chain(p["children"].as_array().into_iter().flatten()))
-        .filter(|c| ["en", "ja", "ko"].iter().any(|k| c[*k].as_str().is_some_and(|n| n.to_lowercase().contains(&needle))))
+        .filter(|c| ["en", "ja", "ko", "zh"].iter().any(|k| c[*k].as_str().is_some_and(|n| n.to_lowercase().contains(&needle))))
         .take(5)
-        .map(|c| json!({ "slug": c["slug"], "en": c["en"], "ja": c["ja"], "ko": c["ko"] }))
+        .map(|c| json!({ "slug": c["slug"], "en": c["en"], "ja": c["ja"], "ko": c["ko"], "zh": c["zh"] }))
         .collect();
     // items honour the caller's adult setting (default safe) like the main search
     let adult = p.get("adult").unwrap_or_else(|| "safe".into());
@@ -281,21 +281,21 @@ async fn build_snapshot(pool: &PgPool, version: i64) -> Result<Snapshot> {
         .into_iter()
         .map(|(name, icon)| (vec![name.clone()], json!({ "name": name, "image_url": icon }), catalog.authors.len(&name)))
         .collect();
-    let tags = sqlx::query_as::<_, (i32, String, String, Vec<String>)>("select id, name, display, aliases from smart_tags")
+    let tags = sqlx::query_as::<_, (i32, String, String, Option<String>, Vec<String>)>("select id, name, display, display_zh, aliases from smart_tags")
         .fetch_all(&pool)
         .await?
         .into_iter()
-        .map(|(id, name, display, aliases)| {
+        .map(|(id, name, display, display_zh, aliases)| {
             let n = catalog.smart_tags.len(&name);
-            let keys = aliases.iter().cloned().chain([name.clone(), display.clone()]).collect();
-            (keys, json!({ "name": name, "display": display, "master_id": id, "aliases": aliases }), n)
+            let keys = aliases.iter().cloned().chain([name.clone(), display.clone()]).chain(display_zh.clone()).collect();
+            (keys, json!({ "name": name, "display": display, "display_zh": display_zh, "master_id": id, "aliases": aliases }), n)
         })
         .collect();
     let booth_tags = catalog.booth_tags.keys().map(|t| (vec![t.clone()], json!({ "name": t }), catalog.booth_tags.len(t))).collect();
     let categories: Value = sqlx::query_scalar(
-        "select coalesce(jsonb_agg(jsonb_build_object('slug', p.slug, 'en', p.name_en, 'ja', p.name_ja, 'ko', p.name_ko, 'mode', p.mode,
-            'children', (select coalesce(jsonb_agg(jsonb_build_object('slug', c.slug, 'en', c.name_en, 'ja', c.name_ja, 'ko', c.name_ko,
-                'group_en', c.group_en, 'group_ja', c.group_ja, 'group_ko', c.group_ko) order by c.name_en), '[]')
+        "select coalesce(jsonb_agg(jsonb_build_object('slug', p.slug, 'en', p.name_en, 'ja', p.name_ja, 'ko', p.name_ko, 'zh', p.name_zh, 'mode', p.mode,
+            'children', (select coalesce(jsonb_agg(jsonb_build_object('slug', c.slug, 'en', c.name_en, 'ja', c.name_ja, 'ko', c.name_ko, 'zh', c.name_zh,
+                'group_en', c.group_en, 'group_ja', c.group_ja, 'group_ko', c.group_ko, 'group_zh', c.group_zh) order by c.name_en), '[]')
                 from smart_categories c where c.parent_slug = p.slug)) order by p.name_en), '[]')
          from smart_categories p where p.parent_slug is null",
     )
@@ -337,6 +337,8 @@ async fn main() -> Result<()> {
     let pool = PgPool::connect(&std::env::var("DATABASE_URL")?).await?;
     catalogue_core::MIGRATOR.run(&pool).await?;
     admin::apply_admin_env(&pool).await?;
+    // AI configured through environment variables: translate the taxonomy on first start
+    admin::queue_localize_if_needed(&pool, &catalogue_core::settings::ai(&pool).await?).await?;
     let state = Arc::new(build_state(pool).await?);
     tokio::spawn(reloader(state.clone()));
 

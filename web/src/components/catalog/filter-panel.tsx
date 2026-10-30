@@ -9,8 +9,10 @@ import {
   FEATURES,
   type Feature,
   type Filters,
+  localName,
   RANGES,
   type Range,
+  tagName,
 } from "@/lib/catalog";
 import type { MessageKey } from "@/lib/messages";
 import { useSettings } from "@/lib/settings";
@@ -24,7 +26,12 @@ type Props = {
   onChange: (patch: Partial<Filters>) => void;
 };
 
-type Tag = { name: string; display: string; item_count: number };
+type Tag = {
+  name: string;
+  display: string;
+  display_zh?: string | null;
+  item_count: number;
+};
 
 const n = (v: number | undefined) => (v ?? 0).toLocaleString();
 
@@ -42,8 +49,7 @@ export function FilterPanel({
         ? filters.features.filter((x) => x !== f)
         : [...filters.features, f],
     });
-  const catName = (c: Category) =>
-    (ui === "ja" ? c.ja : ui === "ko" ? c.ko : c.en) ?? c.en;
+  const catName = (c: Category) => localName(c, ui);
   const avatars = filters.view === "avatars";
 
   return (
@@ -264,7 +270,7 @@ function TagSection({
   filters: Filters;
   onChange: Props["onChange"];
 }) {
-  const { t } = useSettings();
+  const { t, ui } = useSettings();
   const [q, setQ] = useState("");
   const [found, setFound] = useState<Tag[]>([]);
   const [labels, setLabels] = useState<Record<string, string>>({});
@@ -280,7 +286,7 @@ function TagSection({
           setFound(r.items);
           setLabels((l) => ({
             ...l,
-            ...Object.fromEntries(r.items.map((x) => [x.name, x.display])),
+            ...Object.fromEntries(r.items.map((x) => [x.name, tagName(x, ui)])),
           }));
         })
         .catch(() => {});
@@ -289,7 +295,7 @@ function TagSection({
       clearTimeout(h);
       ctl.abort();
     };
-  }, [q]);
+  }, [q, ui]);
 
   const set = (name: string, mode: "tags" | "extags" | null) =>
     onChange({
@@ -350,14 +356,14 @@ function TagSection({
               key={x.name}
               className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-accent/40"
             >
-              <span className="min-w-0 flex-1 truncate">{x.display}</span>
+              <span className="min-w-0 flex-1 truncate">{tagName(x, ui)}</span>
               <span className="text-xs text-muted-foreground tabular-nums">
                 {n(x.item_count)}
               </span>
               <button
                 type="button"
                 onClick={() => set(x.name, "tags")}
-                aria-label={`${t("filter.include")} ${x.display}`}
+                aria-label={`${t("filter.include")} ${tagName(x, ui)}`}
                 className="grid size-6 place-items-center rounded text-[var(--success)] hover:bg-accent"
               >
                 <Plus className="size-3.5" />
@@ -365,7 +371,7 @@ function TagSection({
               <button
                 type="button"
                 onClick={() => set(x.name, "extags")}
-                aria-label={`${t("filter.exclude")} ${x.display}`}
+                aria-label={`${t("filter.exclude")} ${tagName(x, ui)}`}
                 className="grid size-6 place-items-center rounded text-destructive hover:bg-accent"
               >
                 <Minus className="size-3.5" />

@@ -12,7 +12,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { api } from "@/lib/api";
-import { type Avatar, avatarName, imgUrl } from "@/lib/catalog";
+import { type Avatar, avatarName, imgUrl, tagName } from "@/lib/catalog";
 import { useSettings } from "@/lib/settings";
 
 type PaletteResult = {
@@ -27,7 +27,12 @@ type PaletteResult = {
   itemCount: number;
   avatars: (Avatar & { item_count: number })[];
   authors: { name: string; image_url: string | null; item_count: number }[];
-  tags: { name: string; display: string; item_count: number }[];
+  tags: {
+    name: string;
+    display: string;
+    display_zh?: string | null;
+    item_count: number;
+  }[];
 };
 
 type Props = {
@@ -216,7 +221,9 @@ export function CommandPalette({
                       onSelect={() => run(() => onQuery(tag.display))}
                     >
                       <Hash />
-                      <span className="flex-1 truncate">{tag.display}</span>
+                      <span className="flex-1 truncate">
+                        {tagName(tag, ui)}
+                      </span>
                       <span className="text-xs text-muted-foreground">
                         {tag.item_count.toLocaleString()}
                       </span>
