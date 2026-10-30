@@ -24,6 +24,35 @@ test("filters round-trip through the API's + list format", () => {
   expect(parseFilters(`?${q}`)).toEqual(f);
 });
 
+test("new filters round-trip", () => {
+  const f = {
+    ...DEFAULT_FILTERS,
+    tags: ["clothing", "hair"],
+    extags: ["weapon"],
+    pmin: 500,
+    pmax: 3000,
+    range: "30d" as const,
+  };
+  const q = filtersToQuery(f);
+  expect(q).toBe(
+    "tags=clothing+hair&extags=weapon&pmin=500&pmax=3000&range=30d",
+  );
+  expect(parseFilters(q)).toEqual(f);
+  // free wins over a price range; avatar-only fields are dropped outside the avatars view
+  expect(filtersToQuery({ ...f, free: true, gender: "female" })).toBe(
+    "tags=clothing+hair&extags=weapon&free=1&range=30d",
+  );
+  expect(
+    filtersToQuery({
+      ...DEFAULT_FILTERS,
+      view: "avatars",
+      gender: "female",
+      asup: "all",
+    }),
+  ).toBe("v=avatars&gender=female&asup=all");
+  expect(parseFilters("?pmin=-5&range=2y&gender=x")).toEqual(DEFAULT_FILTERS);
+});
+
 test("favourites view round-trips", () => {
   const f = {
     ...DEFAULT_FILTERS,

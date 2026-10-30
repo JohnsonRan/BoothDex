@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   ExternalLink,
   Heart,
   X,
@@ -16,6 +17,13 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { api } from "@/lib/api";
 import {
   type Avatar,
@@ -195,6 +203,7 @@ function Body({
                   />
                 ))}
               </div>
+              <DownloadMenu item={item} index={idx} />
               {count > 1 && (
                 <>
                   <NavButton side="l" onClick={() => go(idx - 1)} />
@@ -620,6 +629,51 @@ function FavButton({
       <Heart className={cn("size-4", on && "fill-current")} />
       {!compact && (on ? t("fav.added") : t("fav.add"))}
     </button>
+  );
+}
+
+/** Saves the current image at full size, re-encoded by the image proxy. Archived (delisted) images are WebP only. */
+function DownloadMenu({ item, index }: { item: Item; index: number }) {
+  const { t } = useSettings();
+  const orig = imgUrl(item, index, "orig");
+  if (!orig) return null;
+  const archived = orig.startsWith("/img/v/");
+  const formats = archived
+    ? (["webp"] as const)
+    : (["webp", "png", "jpeg"] as const);
+  const save = async (format: string) => {
+    try {
+      const res = await fetch(archived ? orig : `${orig}?format=${format}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(await res.blob());
+      a.download = `booth-${item.id}-${index + 1}.${format === "jpeg" ? "jpg" : format}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+    } catch {
+      toast.error(t("list.loadFailed"));
+    }
+  };
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={t("detail.download")}
+          className="absolute bottom-3 left-3 z-10 grid size-9 place-items-center rounded-full bg-black/55 text-white hover:bg-black/75"
+        >
+          <Download className="size-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuLabel>{t("detail.download")}</DropdownMenuLabel>
+        {formats.map((f) => (
+          <DropdownMenuItem key={f} onSelect={() => save(f)}>
+            {t("detail.downloadAs", { format: f.toUpperCase() })}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

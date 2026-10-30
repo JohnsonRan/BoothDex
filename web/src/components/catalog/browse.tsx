@@ -24,6 +24,7 @@ import {
   type Avatar,
   avatarName,
   type Category,
+  DEFAULT_FILTERS,
   FEATURES,
   type Filters,
   filtersToQuery,
@@ -130,11 +131,10 @@ export function Browse() {
       restored.current = true;
       const saved =
         user?.preferences?.avatar ?? localStorage.getItem("myAvatar") ?? "";
-      const current = parseFilters(location.search);
-      // favourites aren't filtered by avatar
-      if (saved && !current.avatar && current.view !== "favourites")
+      // only a bare visit gets the remembered avatar; a shared link shows exactly what it encodes
+      if (saved && location.search.length <= 1)
         router.replace(
-          `${pathname}?${filtersToQuery({ ...parseFilters(location.search), avatar: saved })}`,
+          `${pathname}?${filtersToQuery({ ...DEFAULT_FILTERS, avatar: saved })}`,
           { scroll: false },
         );
     });
@@ -255,7 +255,9 @@ export function Browse() {
         ? t("title.author", { name: filters.author })
         : myAvatar
           ? t("title.avatar", { name: avatarName(myAvatar, ui) })
-          : t("title.all"),
+          : filters.view === "avatars"
+            ? t("title.avatars")
+            : t("title.all"),
     filters.sc && catName(filters.sc),
   ]
     .filter(Boolean)
@@ -359,6 +361,8 @@ export function Browse() {
               highlight("title.author", "name", filters.author)
             ) : myAvatar ? (
               highlight("title.avatar", "name", avatarName(myAvatar, ui))
+            ) : filters.view === "avatars" ? (
+              t("title.avatars")
             ) : (
               t("title.all")
             )}
@@ -387,11 +391,14 @@ export function Browse() {
             </button>
           )}
         </div>
-        <AvatarStrip
-          avatars={avatars}
-          value={filters.avatar}
-          onChange={(slug) => update({ avatar: slug })}
-        />
+        {filters.view === "items" && (
+          <AvatarStrip
+            avatars={avatars}
+            value={filters.avatar}
+            onChange={(slug) => update({ avatar: slug })}
+          />
+        )}
+        {filters.view !== "items" && <div className="h-3" />}
       </section>
 
       <div className="lg:grid lg:grid-cols-[232px_1fr]">
@@ -480,7 +487,21 @@ export function Browse() {
           <DrawerFooter className="flex-row">
             <button
               type="button"
-              onClick={() => update({ sc: "", features: [], adult: "safe" })}
+              onClick={() =>
+                update({
+                  sc: "",
+                  features: [],
+                  adult: "safe",
+                  tags: [],
+                  extags: [],
+                  free: false,
+                  pmin: 0,
+                  pmax: 0,
+                  range: "",
+                  gender: "",
+                  asup: "supported",
+                })
+              }
               className="flex-1 rounded-lg border py-2.5 text-sm"
             >
               {t("filter.clear")}

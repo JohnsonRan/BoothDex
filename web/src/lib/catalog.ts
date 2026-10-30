@@ -111,15 +111,29 @@ export const avatarName = (a: Avatar, ui: string = "ja") =>
 
 // ---------- filter state <-> URL ----------
 
+export const RANGES = ["7d", "30d", "90d", "1y"] as const;
+export type Range = (typeof RANGES)[number] | "";
+
 export type Filters = {
-  /** "favourites" shows the signed-in user's favourites (API: v=favourites) */
-  view: "items" | "favourites";
+  /** items, avatar bodies (API v=avatars), or the signed-in user's favourites */
+  view: "items" | "avatars" | "favourites";
   q: string;
   avatar: string;
   sc: string;
   features: Feature[];
   author: string;
+  /** smart tags to require (any) / exclude */
+  tags: string[];
+  extags: string[];
   adult: "safe" | "include";
+  free: boolean;
+  /** yen; 0 = no bound */
+  pmin: number;
+  pmax: number;
+  range: Range;
+  /** avatars view only */
+  gender: "" | "female" | "male";
+  asup: "supported" | "all";
   sort: "trending" | "newest" | "likes" | "price";
   dir: "asc" | "desc";
 };
@@ -130,7 +144,15 @@ export const DEFAULT_FILTERS: Filters = {
   sc: "",
   features: [],
   author: "",
+  tags: [],
+  extags: [],
   adult: "safe",
+  free: false,
+  pmin: 0,
+  pmax: 0,
+  range: "",
+  gender: "",
+  asup: "supported",
   sort: "trending",
   dir: "desc",
 };
@@ -150,9 +172,20 @@ export function parseFilters(search: string): Filters {
     );
   }
   const one = (k: string) => raw.get(k)?.join(" ") ?? "";
+  const num = (k: string) => Math.max(0, Number.parseInt(one(k), 10) || 0);
   const sort = one("sort");
+  const v = one("v");
+  const gender = one("gender");
   return {
-    view: one("v") === "favourites" ? "favourites" : "items",
+    view: v === "favourites" || v === "avatars" ? v : "items",
+    tags: (raw.get("tags") ?? []).slice(0, 10),
+    extags: (raw.get("extags") ?? []).slice(0, 10),
+    free: one("free") === "1",
+    pmin: num("pmin"),
+    pmax: num("pmax"),
+    range: RANGES.find((r) => r === one("range")) ?? "",
+    gender: gender === "female" || gender === "male" ? gender : "",
+    asup: one("asup") === "all" ? "all" : "supported",
     q: one("q"),
     avatar: raw.get("avatars")?.[0] ?? "",
     sc: raw.get("sc")?.[0] ?? "",
@@ -171,13 +204,22 @@ export function parseFilters(search: string): Filters {
 export function filtersToQuery(f: Filters): string {
   const parts: string[] = [];
   const enc = encodeURIComponent;
-  if (f.view === "favourites") parts.push("v=favourites");
+  if (f.view !== "items") parts.push(`v=${f.view}`);
   if (f.q) parts.push(`q=${enc(f.q)}`);
   if (f.avatar) parts.push(`avatars=${enc(f.avatar)}`);
   if (f.sc) parts.push(`sc=${enc(f.sc)}`);
   if (f.features.length) parts.push(`if=${f.features.map(enc).join("+")}`);
   if (f.author) parts.push(`authors=${enc(f.author)}`);
+  if (f.tags.length) parts.push(`tags=${f.tags.map(enc).join("+")}`);
+  if (f.extags.length) parts.push(`extags=${f.extags.map(enc).join("+")}`);
   if (f.adult !== "safe") parts.push(`adult=${f.adult}`);
+  if (f.free) parts.push("free=1");
+  if (!f.free && f.pmin > 0) parts.push(`pmin=${f.pmin}`);
+  if (!f.free && f.pmax > 0) parts.push(`pmax=${f.pmax}`);
+  if (f.range) parts.push(`range=${f.range}`);
+  if (f.view === "avatars" && f.gender) parts.push(`gender=${f.gender}`);
+  if (f.view === "avatars" && f.asup !== "supported")
+    parts.push(`asup=${f.asup}`);
   if (f.sort !== "trending") parts.push(`sort=${f.sort}`);
   if (f.dir !== "desc") parts.push(`dir=${f.dir}`);
   return parts.join("&");
