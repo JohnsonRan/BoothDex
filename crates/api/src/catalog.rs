@@ -120,8 +120,20 @@ pub struct SearchResult {
 }
 
 impl Catalog {
-    pub fn build(docs: Vec<DocInput>, now: i64) -> Result<Self> {
+    pub fn build(docs: Vec<DocInput>, now: i64, text_dir: Option<&std::path::Path>) -> Result<Self> {
         let n = docs.len();
+        use std::hash::{DefaultHasher, Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        docs.len().hash(&mut hasher);
+        for d in &docs {
+            d.title.hash(&mut hasher);
+            d.titles_translated.hash(&mut hasher);
+            d.booth_tags.hash(&mut hasher);
+            d.author.hash(&mut hasher);
+            d.bio.hash(&mut hasher);
+        }
+        let fingerprint = hasher.finish();
+
         let mut c = Catalog {
             ids: Vec::with_capacity(n),
             doc_of: HashMap::with_capacity(n),
@@ -144,12 +156,16 @@ impl Catalog {
             cats_primary: Index::default(),
             features: Index::default(),
             gender: Index::default(),
-            text: TextIndex::build(docs.iter().map(|d| TextDoc {
-                title: std::iter::once(&d.title).chain(&d.titles_translated).cloned().collect::<Vec<_>>().join("\n"),
-                tags: d.booth_tags.join("\n"),
-                author: d.author.clone(),
-                bio: d.bio.clone(),
-            }))?,
+            text: TextIndex::build(
+                docs.iter().map(|d| TextDoc {
+                    title: std::iter::once(&d.title).chain(&d.titles_translated).cloned().collect::<Vec<_>>().join("\n"),
+                    tags: d.booth_tags.join("\n"),
+                    author: d.author.clone(),
+                    bio: d.bio.clone(),
+                }),
+                text_dir,
+                fingerprint,
+            )?,
         };
 
         let mut by_title: Vec<(String, u32)> = Vec::with_capacity(n);
@@ -432,7 +448,7 @@ mod tests {
         d[5].booth_category = Some("3D Characters".into());
         d[5].supported = true;
         d[5].gender = Some("female".into());
-        Catalog::build(d, 0).unwrap()
+        Catalog::build(d, 0, None).unwrap()
     }
 
     #[test]

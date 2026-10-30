@@ -34,8 +34,10 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_MODEL: ${AI_MODEL:-}
-    # ~1 GB steady, ~2.2 GB at startup, roughly double that while hot-reloading the catalogue
-    mem_limit: 5g
+    volumes:
+      - textindex:/index # on-disk search index, reused across restarts
+    # ~0.5 GB steady, ~1.6 GB peak while (re)building; a hot reload briefly holds old + new
+    mem_limit: 3g
 
   worker:
     build: { context: .., dockerfile: deploy/Dockerfile, target: worker }
@@ -78,5 +80,6 @@ services:
 
 volumes:
   pgdata:
+  textindex:
   imgcache:
   caddydata:

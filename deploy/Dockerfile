@@ -13,14 +13,16 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM docker.io/library/debian:bookworm-slim AS runtime
 # ca-certificates: TLS to booth.pm / pximg / AI provider (rustls uses the system trust store)
+# writable mount points for the non-root user (named volumes inherit this ownership)
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* \
- && useradd --system --uid 10001 --home /app app
+ && useradd --system --uid 10001 --home /app app \
+ && mkdir -p /index /cache && chown app:app /index /cache
 WORKDIR /app
 USER app
 
 FROM runtime AS api
 COPY --from=build /out/api /usr/local/bin/api
-ENV BIND=0.0.0.0:3000
+ENV BIND=0.0.0.0:3000 INDEX_DIR=/index
 EXPOSE 3000
 CMD ["api"]
 

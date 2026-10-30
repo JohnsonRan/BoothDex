@@ -14,7 +14,7 @@ browser ─► Cloudflare ─► Caddy :443 ─┬─ /api/*  ─► api :3000 �
 
 | | Minimum | Why |
 |---|---|---|
-| RAM | **8 GB** (6 GB works without hot reload headroom) | api ≈1 GB steady, ≈2.2 GB at startup, roughly double while it rebuilds the catalogue after crawls; Postgres ≈1 GB; the rest is small |
+| RAM | **4 GB** (8 GB comfortable) | api ≈0.5 GB steady, ≈1.6 GB peak while it rebuilds the catalogue after crawls (the search index is memory-mapped from disk); Postgres ≈1 GB; the rest is small |
 | CPU | 2 vCPU (4 better) | image transcoding and index rebuilds are CPU-bound |
 | Disk | 40 GB SSD | database ≈3 GB, archived images ≈1 GB, image cache 10 GB (configurable), container images, backups |
 | OS | Any Linux with Docker or Podman (+ compose) | |
@@ -96,7 +96,7 @@ Then:
 | Backup images | the `images` directory never changes except when new delistings are archived; copy it once |
 | Restore | stop api/worker, `pg_restore --clean -d catalogue backup.dump`, start them |
 
-Not backed up and fine to lose: the `imgcache` volume (re-fills from Booth) and `caddydata` (certificates are re-issued).
+Not backed up and fine to lose: the `imgcache` volume (re-fills from Booth), `textindex` (rebuilt at start, ~10 s) and `caddydata` (certificates are re-issued).
 
 ## 7. Before going live — checklist
 

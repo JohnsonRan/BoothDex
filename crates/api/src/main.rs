@@ -248,7 +248,21 @@ async fn build_snapshot(pool: &PgPool, version: i64) -> Result<Snapshot> {
     let docs = db::load_docs(&pool).await?;
     println!("loaded {} docs in {:.1}s", docs.len(), t0.elapsed().as_secs_f64());
     let t1 = Instant::now();
-    let catalog = tokio::task::spawn_blocking(move || Catalog::build(docs, chrono::Utc::now().timestamp())).await??;
+    // text index on disk, one directory per catalogue version; INDEX_DIR="" keeps it in RAM
+    let index_root = std::env::var("INDEX_DIR").unwrap_or_else(|_| "textindex".into());
+    let text_dir = (!index_root.is_empty()).then(|| std::path::Path::new(&index_root).join(format!("v{version}")));
+    let dir = text_dir.clone();
+    let catalog = tokio::task::spawn_blocking(move || Catalog::build(docs, chrono::Utc::now().timestamp(), dir.as_deref())).await??;
+    // drop indexes of older versions; one still mapped by the previous snapshot may refuse (Windows) and goes next time
+    if let Some(current) = &text_dir
+        && let Ok(entries) = std::fs::read_dir(&index_root)
+    {
+        for e in entries.flatten() {
+            if e.path() != *current {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
+    }
     println!("built index in {:.1}s, bitmaps ~{} KB", t1.elapsed().as_secs_f64(), catalog.bitmap_bytes() / 1024);
 
     let avatars = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>)>("select slug, name_en, name_ja, name_ko, image_url from avatars")

@@ -6,7 +6,8 @@ Successor to VRCatalogue (closed 2026-11-01). Research, archive and the locked p
 - `crates/core`: shared code; Postgres schema in `migrations/`
 - `crates/importer`: seeds Postgres from the VRCatalogue archive
 - `crates/api`: search API (Axum). Loads everything into memory at startup: roaring bitmaps per filter value,
-  numeric columns for ranges/sorting, Tantivy (Lindera IPADIC words + bigram substring). Page payloads come from Postgres.
+  numeric columns for ranges/sorting; Tantivy (Lindera IPADIC words + bigram substring) lives on disk in
+  `INDEX_DIR` (default `./textindex`, memory-mapped, reused when the catalogue is unchanged). Page payloads come from Postgres.
 
 - `crates/worker`: background job runner (replaces the old one-off crawler). `worker` runs as a daemon: enqueues
   due `job_schedules`, claims `jobs` one at a time, heartbeats into `worker_status`. `worker once <kind> [params]`
