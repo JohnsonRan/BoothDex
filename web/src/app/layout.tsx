@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SettingsProvider } from "@/lib/settings";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -23,7 +22,8 @@ export const viewport: Viewport = {
 };
 
 // Applies the saved theme and language before first paint, so light-theme visitors don't see a dark flash.
-const preferences = `try{var s=JSON.parse(localStorage.getItem("settings")||"{}");var d=document.documentElement;
+const preferences = `try{var m=document.cookie.match(/(?:^|; )settings=([^;]*)/);
+var s=JSON.parse(m?decodeURIComponent(m[1]):localStorage.getItem("settings")||"{}");var d=document.documentElement;
 if(s.theme==="light")d.classList.remove("dark");
 var l={zh:"zh-CN",en:"en",ja:"ja",ko:"ko"}[s.ui];if(l)d.lang=l}catch(e){}`;
 
@@ -40,9 +40,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: preferences }} />
       </head>
       <body className="min-h-full flex flex-col">
-        <SettingsProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-        </SettingsProvider>
+        {/* settings are provided per page (see app/page.tsx), where the request cookie is available */}
+        <TooltipProvider>{children}</TooltipProvider>
         <Toaster />
       </body>
     </html>

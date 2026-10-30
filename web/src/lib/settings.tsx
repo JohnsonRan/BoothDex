@@ -10,38 +10,19 @@ import {
 } from "react";
 import { api } from "./api";
 import type { Item } from "./catalog";
+import { format, MESSAGES, type MessageKey } from "./messages";
 import {
-  format,
-  MESSAGES,
-  type MessageKey,
-  UI_LANGS,
-  type UiLang,
-} from "./messages";
+  type ContentLang,
+  CURRENCIES,
+  type Currency,
+  DEFAULT_SETTINGS,
+  parseSettings,
+  SETTINGS_COOKIE,
+  type Settings,
+  type Theme,
+} from "./settings-core";
 
-export type ContentLang = "original" | "en" | "ja" | "ko";
-export type Theme = "dark" | "light";
-export const CURRENCIES = [
-  "JPY",
-  "USD",
-  "EUR",
-  "GBP",
-  "CNY",
-  "TWD",
-  "HKD",
-  "KRW",
-  "AUD",
-  "CAD",
-  "SGD",
-  "THB",
-] as const;
-export type Currency = (typeof CURRENCIES)[number];
-
-type Settings = {
-  ui: UiLang;
-  content: ContentLang;
-  currency: Currency;
-  theme: Theme;
-};
+export { CURRENCIES, type ContentLang, type Currency, type Theme };
 
 type Ctx = Settings & {
   set: (patch: Partial<Settings>) => void;
@@ -60,9 +41,10 @@ const SettingsContext = createContext<Ctx | null>(null);
 const STORAGE = "settings";
 const RATES = "fx-jpy";
 
-function detectUi(): UiLang {
-  const l = navigator.language.slice(0, 2);
-  return (UI_LANGS as readonly string[]).includes(l) ? (l as UiLang) : "en";
+/** Persists settings where the server can read them for the first render (no language flash). */
+function writeCookie(s: Settings) {
+  // biome-ignore lint/suspicious/noDocumentCookie: the Cookie Store API is missing in older Safari
+  document.cookie = `${SETTINGS_COOKIE}=${encodeURIComponent(JSON.stringify(s))}; path=/; max-age=31536000; samesite=lax`;
 }
 
 async function loadRates(): Promise<Record<string, number>> {
@@ -76,30 +58,47 @@ async function loadRates(): Promise<Record<string, number>> {
   return rates;
 }
 
-export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [s, setS] = useState<Settings>({
-    ui: "zh",
-    content: "original",
-    currency: "JPY",
-    theme: "dark",
-  });
+/** `initial` comes from the settings cookie (or Accept-Language) on the server, so the first render already uses it. */
+export function SettingsProvider({
+  initial = DEFAULT_SETTINGS,
+  children,
+}: {
+  initial?: Settings;
+  children: React.ReactNode;
+}) {
+  const [s, setS] = useState<Settings>(initial);
   const [rates, setRates] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    const stored = JSON.parse(
-      localStorage.getItem(STORAGE) ?? "null",
-    ) as Partial<Settings> | null;
-    setS((p) => ({ ...p, ui: detectUi(), ...stored }));
+    // visitors from before the cookie existed: move their localStorage settings over once
+    if (
+      !document.cookie
+        .split("; ")
+        .some((c) => c.startsWith(`${SETTINGS_COOKIE}=`))
+    ) {
+      const migrated = parseSettings(
+        localStorage.getItem(STORAGE),
+        navigator.language,
+      );
+      setS(migrated);
+      writeCookie(migrated);
+    }
     // signed-in users get their account preferences
     api<{ preferences: Record<string, string> }>("/api/account")
       .then(({ preferences: p }) =>
-        setS((cur) => ({
-          ...cur,
-          ...(p.ui && { ui: p.ui as UiLang }),
-          ...(p.language && { content: p.language as ContentLang }),
-          ...(p.currency && { currency: p.currency as Currency }),
-          ...(p.theme && { theme: p.theme as Theme }),
-        })),
+        setS((cur) => {
+          const next = parseSettings(
+            JSON.stringify({
+              ...cur,
+              ...(p.ui && { ui: p.ui }),
+              ...(p.language && { content: p.language }),
+              ...(p.currency && { currency: p.currency }),
+              ...(p.theme && { theme: p.theme }),
+            }),
+          );
+          writeCookie(next);
+          return next;
+        }),
       )
       .catch(() => {});
   }, []);
@@ -125,6 +124,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setS((cur) => {
       const next = { ...cur, ...patch };
       localStorage.setItem(STORAGE, JSON.stringify(next));
+      writeCookie(next);
       return next;
     });
     const prefs = {
