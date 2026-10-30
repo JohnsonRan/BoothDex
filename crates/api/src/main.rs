@@ -4,6 +4,7 @@
 mod account;
 mod catalog;
 mod db;
+mod gallery;
 mod params;
 mod rss;
 mod text;
@@ -67,6 +68,7 @@ struct AppState {
     site_url: String,
     throttle: account::LoginThrottle,
     dummy_hash: String,
+    gallery: gallery::Fetcher,
 }
 
 struct ApiError(anyhow::Error);
@@ -124,6 +126,62 @@ async fn rss_feed(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resu
     let items = db::load_items(&s.pool, &r.ids).await?;
     let link = format!("{}/?{user_q}", s.site_url);
     Ok(([(axum::http::header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")], rss::render(&link, &user_q, &items)).into_response())
+}
+
+/// Ctrl+K: one query across items, avatars, authors, tags and categories.
+async fn palette(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result<Json<Value>, ApiError> {
+    let raw = q.unwrap_or_default();
+    let p = Params::parse(&raw);
+    let text = p.get("q").unwrap_or_default();
+    if text.trim().is_empty() {
+        return Ok(Json(json!({ "items": [], "avatars": [], "authors": [], "tags": [], "categories": [] })));
+    }
+    let small = Params::parse(&format!("limit=5&{raw}"));
+    let needle = text.to_lowercase();
+    let categories: Vec<Value> = s.categories["categories"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|p| std::iter::once(p).chain(p["children"].as_array().into_iter().flatten()))
+        .filter(|c| ["en", "ja", "ko"].iter().any(|k| c[*k].as_str().is_some_and(|n| n.to_lowercase().contains(&needle))))
+        .take(5)
+        .map(|c| json!({ "slug": c["slug"], "en": c["en"], "ja": c["ja"], "ko": c["ko"] }))
+        .collect();
+    // items honour the caller's adult setting (default safe) like the main search
+    let adult = p.get("adult").unwrap_or_else(|| "safe".into());
+    let item_params = Params::parse(&format!("q={}&adult={}&sort=relevant&pageSize=8", urlencode(&text), urlencode(&adult)));
+    let now = chrono::Utc::now().timestamp();
+    let r = tokio::task::block_in_place(|| s.catalog.search(&item_params, now, None))?;
+    let items: Vec<Value> = db::load_items(&s.pool, &r.ids)
+        .await?
+        .into_iter()
+        .map(|it| {
+            json!({
+                "id": it["id"], "title": it["title"], "author_name": it["author_name"],
+                "price_jpy": it["price_jpy"], "smart_price": it["smart_price"],
+                "image": it["booth_images"].get(0).or(it["media"].get(0)),
+            })
+        })
+        .collect();
+    Ok(Json(json!({
+        "items": items,
+        "itemCount": r.count,
+        "avatars": s.avatars.find(&small)["items"],
+        "authors": s.authors.find(&small)["items"],
+        "tags": s.tags.find(&small)["items"],
+        "categories": categories,
+    })))
+}
+
+/// Full records by id (favourites list, palette picks): `/api/items?ids=1+2+3`, at most 100.
+async fn items_by_id(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result<Json<Value>, ApiError> {
+    let raw = q.unwrap_or_default();
+    let ids: Vec<i64> = Params::parse(&raw.replace(',', "+")).list("ids").iter().filter_map(|v| v.parse().ok()).take(100).collect();
+    Ok(Json(json!({ "items": db::load_items(&s.pool, &ids).await? })))
+}
+
+fn urlencode(s: &str) -> String {
+    s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
 }
 
 fn lookup(f: fn(&AppState) -> &Lookup) -> impl Fn(State<Arc<AppState>>, RawQuery) -> std::future::Ready<Json<Value>> + Clone {
@@ -186,6 +244,7 @@ async fn build_state(pool: PgPool) -> Result<AppState> {
         site_url: std::env::var("SITE_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".into()),
         throttle: Default::default(),
         dummy_hash: account::dummy_hash(),
+        gallery: gallery::Fetcher::new()?,
     })
 }
 
@@ -198,6 +257,9 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/api/search", get(search))
         .route("/api/rss", get(rss_feed))
+        .route("/api/palette", get(palette))
+        .route("/api/items", get(items_by_id))
+        .route("/api/items/{id}/gallery", get(gallery::gallery))
         .route("/api/avatars", get(lookup(|s| &s.avatars)))
         .route("/api/authors", get(lookup(|s| &s.authors)))
         .route("/api/tags", get(lookup(|s| &s.tags)))

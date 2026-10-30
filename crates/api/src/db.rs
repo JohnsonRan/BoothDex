@@ -113,7 +113,10 @@ pub async fn load_items(pool: &PgPool, ids: &[i64]) -> Result<Vec<Value>> {
             'linked_avatars', coalesce((select jsonb_agg(jsonb_build_object('slug', a.slug, 'en', a.name_en, 'ja', a.name_ja, 'ko', a.name_ko, 'image_url', a.image_url) order by a.slug)
                                from item_avatars ia join avatars a on a.slug = ia.avatar_slug where ia.item_id = i.id), '[]'),
             'categories', coalesce((select jsonb_agg(jsonb_build_object('slug', ic.category_slug, 'is_primary', ic.is_primary))
-                               from item_categories ic where ic.item_id = i.id), '[]'))
+                               from item_categories ic where ic.item_id = i.id), '[]'),
+            -- Booth image URLs (canonical); `media` keeps the archived VRCatalogue CDN URLs for delisted items
+            'booth_images', (select to_jsonb(b.images) from booth_images b where b.item_id = i.id),
+            'booth_images_complete', (select b.complete from booth_images b where b.item_id = i.id))
          from items i where i.id = any($1)",
     )
     .bind(ids)

@@ -1,0 +1,16 @@
+[package]
+name = "imgproxy"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum = "0.8"
+foyer = "0.22"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2"] }
+serde.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+tokio = { workspace = true, features = ["fs", "sync"] }
+webp = "0.3"

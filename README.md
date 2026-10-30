@@ -8,6 +8,14 @@ Successor to VRCatalogue (closed 2026-11-01). Research, archive and the locked p
 - `crates/api`: search API (Axum). Loads everything into memory at startup: roaring bitmaps per filter value,
   numeric columns for ranges/sorting, Tantivy (Lindera IPADIC words + bigram substring). Page payloads come from Postgres.
 
+- `crates/crawler`: Booth crawler. `listing` walks search pages (60 items, up to 4 image URLs each);
+  `details` fetches `items/<id>.json` for items still missing images (full gallery; 404 = delisted)
+- `crates/imgproxy`: image proxy for behind Cloudflare. `/b/{size}/{uuid}/i/{item}/{file}[?format=png|jpeg]`
+  re-encodes booth.pximg.net images to WebP (sizes `48x48 72x72_a2_g5 300x300_a2_g5 620x620 orig`),
+  `/v/{sha1}.webp` serves archived images of delisted items. foyer memory+disk cache, immutable responses.
+
+Never start a server in the same step as the `cargo build` that replaces its exe (Windows locks it).
+
 ## Dev database (Podman)
 ```sh
 podman run -d --name vrcat-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalogue \
