@@ -104,6 +104,7 @@ function Body({
   const [zoom, setZoom] = useState(false);
   const [same, setSame] = useState<Item[] | null>(null);
   const strip = useRef<HTMLDivElement>(null);
+  const sameStrip = useRef<HTMLDivElement>(null);
 
   // listings only carry 4 Booth images; the API fetches the complete gallery on first open
   useEffect(() => {
@@ -506,8 +507,39 @@ function Body({
         </div>
 
         <div className="border-t p-4 pb-24 lg:p-6">
-          <Section title={t("detail.moreFrom", { name: item.author_name })}>
-            <div className="grid auto-cols-[132px] grid-flow-col gap-3 overflow-x-auto pb-1 lg:auto-cols-[150px]">
+          <Section
+            title={t("detail.moreFrom", { name: item.author_name })}
+            action={
+              !!same?.length && (
+                <div className="hidden gap-1 lg:flex">
+                  {([-1, 1] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      aria-label={d < 0 ? t("strip.left") : t("strip.right")}
+                      onClick={() =>
+                        sameStrip.current?.scrollBy({
+                          left: d * sameStrip.current.clientWidth * 0.8,
+                          behavior: "smooth",
+                        })
+                      }
+                      className="grid size-7 place-items-center rounded-full border hover:bg-accent"
+                    >
+                      {d < 0 ? (
+                        <ChevronLeft className="size-4" />
+                      ) : (
+                        <ChevronRight className="size-4" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )
+            }
+          >
+            <div
+              ref={sameStrip}
+              className="grid auto-cols-[132px] grid-flow-col gap-3 overflow-x-auto pb-1 lg:auto-cols-[150px]"
+            >
               {same === null && (
                 <span className="text-sm text-muted-foreground">
                   {t("detail.loading")}
@@ -707,16 +739,21 @@ function CopyButton({ url }: { url: string }) {
 
 function Section({
   title,
+  action,
   children,
 }: {
   title: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section>
-      <h3 className="mb-2 text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">
-        {title}
-      </h3>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">
+          {title}
+        </h3>
+        {action}
+      </div>
       {children}
     </section>
   );
