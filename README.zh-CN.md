@@ -43,7 +43,7 @@ Caddy，需要一台有 4 GB 内存的 Linux 服务器。
 
 新建的数据库已经包含分类树、智能标签和约 380 个模型本体。商品需要从 BOOTH 抓取:先完整抓取一次
 ([没有数据包时的首次启动](docs/DEPLOY.md#starting-without-a-data-bundle))，之后由每小时的抓取任务保持更新。
-如果想跳过首次抓取，可以恢复[已发布的数据包](https://app.filen.io/#/f/f910e157-1651-42f4-8516-116b7af17c83%236d4a646241516c595a43473546664533504c5a664d4e4c4f7a4d4b48636a745f)
+如果想跳过首次抓取，可以恢复[已发布的数据包](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-10-31)
 (2026-10-31 的快照，约 21.6 万个商品及存档图片，约 1.4 GB)。
 
 ## 架构

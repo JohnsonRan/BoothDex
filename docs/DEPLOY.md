@@ -29,9 +29,9 @@ Without a data bundle, skip to step 3 and follow "Starting without a data bundle
 
 A data bundle is a snapshot of an existing instance, made with `scripts/make-bundle.sh <out-dir>` (any instance can make one).
 
-A ready-made bundle is published at [Filen](https://app.filen.io/#/f/f910e157-1651-42f4-8516-116b7af17c83%236d4a646241516c595a43473546664533504c5a664d4e4c4f7a4d4b48636a745f): a snapshot from 2026-10-31 with 215,911
-items, taken from the VRCatalogue archive and the BOOTH crawl that day. Download the three files in a browser and
-copy them to the server. The services apply newer migrations at start, and the hourly crawl adds what is newer.
+A ready-made bundle is published as the GitHub release [data-2026-10-31](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-10-31): a snapshot from 2026-10-31
+with 215,911 items, taken from the VRCatalogue archive and the BOOTH crawl that day (mirror: [Filen](https://app.filen.io/#/f/f910e157-1651-42f4-8516-116b7af17c83%236d4a646241516c595a43473546664533504c5a664d4e4c4f7a4d4b48636a745f),
+browser download only). The services apply newer migrations at start, and the hourly crawl adds what is newer.
 
 Bundle contents:
 
@@ -44,7 +44,10 @@ Bundle contents:
 ```sh
 # on the server
 mkdir -p /srv/boothdex/bundle && cd /srv/boothdex/bundle
-# copy the three bundle files here (scp / rsync), then:
+# download the published bundle (or copy your own three files here):
+for f in catalogue.dump images.tar SHA256SUMS; do
+  curl -fLO https://github.com/JohnsonRan/BoothDex/releases/download/data-2026-10-31/$f
+done
 sha256sum -c SHA256SUMS
 tar -xf images.tar -C /srv/boothdex          # -> /srv/boothdex/images/*.webp
 mkdir -p /srv/boothdex/app/deploy/restore && mv catalogue.dump /srv/boothdex/app/deploy/restore/

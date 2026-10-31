@@ -48,7 +48,7 @@ Caddy with Docker or Podman compose, and needs a Linux server with 4 GB of RAM.
 
 A fresh database already contains the category tree, smart tags and about 380 model bodies. Items come from
 BOOTH: run one full crawl ([Starting without a data bundle](docs/DEPLOY.md#starting-without-a-data-bundle)),
-then the hourly crawl keeps up. To skip the crawl, restore the [published data bundle](https://app.filen.io/#/f/f910e157-1651-42f4-8516-116b7af17c83%236d4a646241516c595a43473546664533504c5a664d4e4c4f7a4d4b48636a745f)
+then the hourly crawl keeps up. To skip the crawl, restore the [published data bundle](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-10-31)
 (a 2026-10-31 snapshot with ~216k items and the archived images; about 1.4 GB).
 
 ## Architecture
