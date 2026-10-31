@@ -38,6 +38,7 @@ import {
 import { addQuery, loadHistory, saveHistory } from "@/lib/history";
 import type { MessageKey } from "@/lib/messages";
 import { useSettings } from "@/lib/settings";
+import { cn } from "@/lib/utils";
 import { AccountMenu, type Me } from "./account-menu";
 import { AvatarStrip } from "./avatar-strip";
 import { CommandPalette } from "./command-palette";
@@ -171,8 +172,8 @@ export function Browse() {
     const sem = semantic.current;
     const noSemantic = sem.key === filterKey && sem.off;
     const started = performance.now();
+    // the previous results stay (dimmed) until the new ones arrive
     setLoading(true);
-    setItems([]);
     api<SearchResult>(
       `/api/search?${searchQuery(filters, page, PAGE_SIZE)}${noSemantic ? "&sem=0" : ""}`,
     )
@@ -188,6 +189,7 @@ export function Browse() {
       // one status line instead of a toast per attempt; no automatic retry from here
       .catch(async () => {
         if (id !== request.current) return;
+        setItems([]);
         const ready = await apiReady();
         // a newer request may have succeeded while readiness was checked
         if (id === request.current) setApiState(ready ? "error" : "starting");
@@ -478,7 +480,14 @@ export function Browse() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4 lg:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
+          <div
+            aria-busy={loading}
+            inert={loading && items.length > 0}
+            className={cn(
+              "grid grid-cols-2 gap-2.5 transition-opacity sm:grid-cols-3 sm:gap-4 lg:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]",
+              loading && items.length > 0 && "opacity-50",
+            )}
+          >
             {items.map((it) => (
               <ItemCard
                 key={it.id}
@@ -489,6 +498,7 @@ export function Browse() {
               />
             ))}
             {loading &&
+              items.length === 0 &&
               SKELETONS.map((k) => (
                 <div
                   key={k}
