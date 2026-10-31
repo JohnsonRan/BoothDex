@@ -1,14 +1,23 @@
 # Rust services: api, imgproxy, worker. One build stage, three small runtime images.
 #   podman build -f deploy/Dockerfile --target api -t boothdex-api .   (all three at once: deploy/docker-bake.hcl)
-# The lindera-ipadic build script downloads the IPADIC dictionary at build time (network needed). The download
-# fails now and then, so the build is retried twice. The dictionary is then embedded in the api binary.
-FROM docker.io/library/rust:1-bookworm AS build
+# Dependencies are compiled in their own layer (cargo-chef), so a change to our code only recompiles our crates;
+# CI keeps that layer in its build cache. The lindera-ipadic build script downloads the IPADIC dictionary
+# (network needed; it fails now and then, so it is retried twice) and embeds it in the api binary.
+FROM docker.io/library/rust:1-bookworm AS chef
+RUN cargo install cargo-chef --version 0.1.78 --locked
 WORKDIR /src
+
+FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
-    for i in 1 2 3; do cargo build --release -p api -p imgproxy -p worker && break; [ $i = 3 ] && exit 1; sleep 10; done \
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS build
+COPY --from=planner /src/recipe.json recipe.json
+RUN for i in 1 2 3; do cargo chef cook --release --recipe-path recipe.json -p api -p imgproxy -p worker && break; [ $i = 3 ] && exit 1; sleep 10; done
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+RUN cargo build --release -p api -p imgproxy -p worker \
  && mkdir -p /out && cp target/release/api target/release/imgproxy target/release/worker /out/
 
 FROM docker.io/library/debian:bookworm-slim AS runtime
