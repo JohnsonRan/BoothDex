@@ -22,11 +22,6 @@ jobs:
     name: api, worker, imgproxy
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    strategy:
-      # one at a time: the first job compiles and caches the build stage, the other two restore it from the cache
-      max-parallel: 1
-      matrix:
-        target: [api, worker, imgproxy]
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -35,26 +30,49 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
+      - id: meta-api
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository_owner }}/boothdex-${{ matrix.target }}
+          images: ghcr.io/${{ github.repository_owner }}/boothdex-api
+          bake-target: meta-api
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-      - uses: docker/build-push-action@v7
+      - id: meta-worker
+        uses: docker/metadata-action@v6
         with:
-          context: .
-          file: deploy/Dockerfile
-          target: ${{ matrix.target }}
-          platforms: linux/amd64
+          images: ghcr.io/${{ github.repository_owner }}/boothdex-worker
+          bake-target: meta-worker
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - id: meta-imgproxy
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/boothdex-imgproxy
+          bake-target: meta-imgproxy
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      # one compile, three images built in parallel (deploy/docker-bake.hcl)
+      - uses: docker/bake-action@v7
+        with:
+          source: .
+          files: |
+            ./deploy/docker-bake.hcl
+            cwd://${{ steps.meta-api.outputs.bake-file }}
+            cwd://${{ steps.meta-worker.outputs.bake-file }}
+            cwd://${{ steps.meta-imgproxy.outputs.bake-file }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=rust
-          cache-to: type=gha,scope=rust,mode=max
+          set: |
+            *.cache-from=type=gha,scope=rust
+            *.cache-to=type=gha,scope=rust,mode=max
 
   web:
     runs-on: ubuntu-24.04

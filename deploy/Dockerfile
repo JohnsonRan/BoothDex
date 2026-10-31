@@ -1,5 +1,5 @@
 # Rust services: api, imgproxy, worker. One build stage, three small runtime images.
-#   podman build -f deploy/Dockerfile --target api -t boothdex-api .
+#   podman build -f deploy/Dockerfile --target api -t boothdex-api .   (all three at once: deploy/docker-bake.hcl)
 # The lindera-ipadic build script downloads the IPADIC dictionary at build time (network needed). The download
 # fails now and then, so the build is retried twice. The dictionary is then embedded in the api binary.
 FROM docker.io/library/rust:1-bookworm AS build
