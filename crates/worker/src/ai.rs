@@ -91,7 +91,8 @@ Reply with a JSON object mapping each given key to its translation, nothing else
 
 pub const ENRICH_SYSTEM: &str = "You classify and translate listings from BOOTH, a Japanese marketplace, for a catalogue of VRChat avatar assets. \
 Reply with one JSON object with exactly these keys:\n\
-\"categories\": array of 1-3 category slugs from the given list, best match first;\n\
+\"categories\": array of 1-3 category slugs from the given list, best match first. Judge from the title, tags, variations and \
+description: sellers often pick the Booth category carelessly or too broadly, so treat it only as a weak hint;\n\
 \"content_rating\": \"SFW\", \"Suggestive\" (revealing swimwear/lingerie, suggestive poses) or \"NSFW\" (nudity, sexual content);\n\
 \"quest_compatible\": \"Yes\", \"No\", or \"Non-Applicable\" (not an avatar or avatar asset);\n\
 \"smart_price\": integer yen a typical buyer pays for the main product (ignore support/donation tiers, pick the full set if that is the obvious main item), or null if unclear;\n\
