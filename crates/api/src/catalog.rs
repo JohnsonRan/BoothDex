@@ -338,6 +338,21 @@ impl Catalog {
         if let (Some((hits, scores)), Some(sem)) = (text.as_mut(), semantic) {
             // models named in the query: a meaning-based match must fit one of them
             let fits = (!sem.models.is_empty()).then(|| self.avatars.any(sem.models));
+            if let Some(f) = &fits {
+                // a named model also works like the avatar filter: its compatible items match even when they don't
+                // spell the name (most write it in Japanese), the other words searched among them. Items matching the
+                // whole query stay and score both, so they rank first.
+                if sem.rest.trim().is_empty() {
+                    *hits |= f;
+                } else {
+                    let (rest_hits, rest_scores) = self.text.search(sem.rest)?;
+                    let rest_hits = rest_hits & f;
+                    for d in &rest_hits {
+                        *scores.entry(d).or_default() += rest_scores.get(&d).copied().unwrap_or(0.0);
+                    }
+                    *hits |= rest_hits;
+                }
+            }
             let docs: Vec<u32> = sem.ids.iter().filter_map(|id| self.doc_of.get(id)).copied().filter(|d| fits.as_ref().is_none_or(|f| f.contains(*d))).collect();
             let mut cat = self.cats.any(sem.categories);
             if let Some(f) = &fits {
@@ -384,6 +399,8 @@ impl Catalog {
         let cmp = |a: &u32, b: &u32| {
             let o = key(*b).total_cmp(&key(*a));
             let o = if asc { o.reverse() } else { o };
+            // equal relevance (e.g. a model's items that don't mention it by name): trending first
+            let o = if sort == "relevant" { o.then_with(|| self.trending[*b as usize].total_cmp(&self.trending[*a as usize])) } else { o };
             o.then(a.cmp(b))
         };
 
@@ -422,6 +439,8 @@ pub struct Semantic<'a> {
     pub categories: &'a [String],
     /// model slugs named in the query
     pub models: &'a [String],
+    /// the query without those names
+    pub rest: &'a str,
 }
 
 /// Reciprocal rank fusion: each list contributes 1 / (60 + rank), robust to the two scores' different scales.
@@ -495,6 +514,31 @@ mod tests {
         d[5].supported = true;
         d[5].gender = Some("female".into());
         Catalog::build(d, 0, None).unwrap()
+    }
+
+    #[test]
+    fn a_named_model_matches_its_items_and_keeps_full_query_hits() {
+        let mut d = (1..=4).map(doc).collect::<Vec<_>>();
+        d[0].title = "しなの short hair".into(); // fits shinano, written in Japanese
+        d[0].avatars = vec!["shinano".into()];
+        d[1].title = "shinano short hair".into(); // spells it, not linked
+        d[2].title = "long dress".into(); // fits shinano, other words
+        d[2].avatars = vec!["shinano".into()];
+        d[3].title = "short hair".into(); // other model
+        d[3].avatars = vec!["manuka".into()];
+        let c = Catalog::build(d, 0, None).unwrap();
+        let models = vec!["shinano".to_owned()];
+        let run = |q: &str, rest: &str| {
+            let sem = Semantic { ids: &[], categories: &[], models: &models, rest };
+            let mut v = c.search(&Params::parse(&format!("q={q}&sort=relevant")), 0, None, Some(sem)).unwrap().ids;
+            let first = v[0];
+            v.sort();
+            (first, v)
+        };
+        // bare name: every compatible item plus the unlinked one that spells it, which ranks first
+        assert_eq!(run("shinano", ""), (2, vec![1, 2, 3]));
+        // name + words: the words among compatible items, plus the old full-query hit, which ranks first
+        assert_eq!(run("shinano%20short%20hair", "short hair"), (2, vec![1, 2]));
     }
 
     impl Catalog {

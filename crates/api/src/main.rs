@@ -219,8 +219,8 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
     let categories: Vec<String> =
         s.snap().category_phrases.get(&meaning.split_whitespace().collect::<String>().to_lowercase()).cloned().into_iter().collect();
     let catalog_now = chrono::Utc::now().timestamp();
-    let semantic = (semantic.is_some() || !categories.is_empty())
-        .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models });
+    let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
+        .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models, rest: &meaning });
     let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref(), semantic))?;
     trace.step("search");
     let search_ms = t0.elapsed().as_secs_f64() * 1e3;
