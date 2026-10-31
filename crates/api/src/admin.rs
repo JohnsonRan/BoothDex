@@ -17,7 +17,8 @@ use sqlx::PgPool;
 
 use crate::{ApiError, AppState, account};
 
-const KINDS: &[&str] = &["incremental", "details", "refresh", "enrich", "sweep", "localize"];
+// must match the jobs_kind_check constraint in the latest migration that redefines it (see the test below)
+const KINDS: &[&str] = &["incremental", "details", "refresh", "enrich", "sweep", "localize", "embed"];
 
 /// sysinfo needs state between refreshes to compute CPU usage
 pub struct SysMetrics(Mutex<Option<(sysinfo::System, sysinfo::Disks)>>);
@@ -441,6 +442,21 @@ pub fn routes() -> Router<Arc<AppState>> {
 #[cfg(test)]
 mod tests {
     use super::random_password;
+
+    #[test]
+    fn job_kinds_match_the_database_constraint() {
+        // the newest migration that redefines jobs_kind_check lists every kind the worker accepts
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../core/migrations");
+        let mut files: Vec<_> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().path()).collect();
+        files.sort();
+        let sql = files.iter().rev().map(|f| std::fs::read_to_string(f).unwrap()).find(|s| s.contains("add constraint jobs_kind_check")).unwrap();
+        let line = sql.lines().find(|l| l.contains("add constraint jobs_kind_check")).unwrap();
+        let mut db: Vec<&str> = line.split('\x27').skip(1).step_by(2).collect();
+        let mut ours = super::KINDS.to_vec();
+        db.sort();
+        ours.sort();
+        assert_eq!(ours, db);
+    }
 
     #[test]
     fn random_passwords_are_long_and_distinct() {
