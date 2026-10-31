@@ -81,6 +81,9 @@ export type SearchResult = {
   items: Item[];
   /** meaning-based matching: used, off, unavailable (provider slow or failing), skipped */
   semantic?: "used" | "off" | "unavailable" | "skipped";
+  /** server-side steps of this request, in order */
+  trace?: { step: string; ms: number }[];
+  timing?: { searchMs: number; totalMs: number };
 };
 
 export const FEATURES = {

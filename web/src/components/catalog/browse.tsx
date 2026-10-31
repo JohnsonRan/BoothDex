@@ -44,6 +44,7 @@ import { CommandPalette } from "./command-palette";
 import { activeFilterCount, FilterPanel } from "./filter-panel";
 import { ItemCard } from "./item-card";
 import { ItemDetail } from "./item-detail";
+import { SearchTrace, type TraceMeta } from "./search-trace";
 import { SettingsMenu } from "./settings-menu";
 
 /** stable keys for loading placeholders */
@@ -71,10 +72,11 @@ export function Browse() {
   const [avatars, setAvatars] = useState<Avatar[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
-  const [meta, setMeta] = useState<Pick<
-    SearchResult,
-    "count" | "smartCounts" | "featureCounts" | "semantic"
-  > | null>(null);
+  const [meta, setMeta] = useState<
+    | (Pick<SearchResult, "count" | "smartCounts" | "featureCounts"> &
+        TraceMeta)
+    | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [favs, setFavs] = useState<Set<number> | null>(null);
   const [open, setOpen] = useState<Item | null>(null);
@@ -166,6 +168,7 @@ export function Browse() {
     p.busy = true;
     const key = p.key;
     try {
+      const started = performance.now();
       const r = await api<SearchResult>(
         `/api/search?${searchQuery(filters, p.page + 1)}${p.page > 0 && p.noSemantic ? "&sem=0" : ""}`,
       );
@@ -174,7 +177,7 @@ export function Browse() {
       p.total = r.totalPages;
       setItems((prev) => (p.page === 1 ? r.items : [...prev, ...r.items]));
       if (p.page === 1) {
-        setMeta(r);
+        setMeta({ ...r, clientMs: performance.now() - started });
         p.noSemantic = r.semantic !== "used";
       }
     } catch {
@@ -415,6 +418,7 @@ export function Browse() {
           <span className="shrink-0 text-sm text-muted-foreground tabular-nums">
             {meta ? t("title.count", { n: meta.count.toLocaleString() }) : ""}
           </span>
+          {meta && filters.q && <SearchTrace meta={meta} />}
           {filters.view === "favourites" && (
             <button
               type="button"
