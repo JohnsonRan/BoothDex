@@ -21,7 +21,13 @@ browser ─► Cloudflare ─► Caddy :443 ─┬─ /api/*  ─► api :3000 �
 
 ## 2. Get the code and data onto the server
 
-Data bundle (made on the dev machine with `scripts/make-bundle.sh`, default output `../vrcat-bundle/`):
+```sh
+git clone <repo> /srv/boothdex/app
+```
+
+Without a data bundle, skip to step 3 and follow "Starting without a data bundle" in step 4.
+
+A data bundle is a snapshot of an existing instance, made with `scripts/make-bundle.sh <out-dir>`:
 
 | File | What | Size |
 |---|---|---|
@@ -55,7 +61,7 @@ $EDITOR .env    # SITE_DOMAIN, SITE_URL, POSTGRES_PASSWORD, ADMIN_USERNAMES, ARC
 | `SITE_URL` | api | `https://<domain>`; appears in RSS links |
 | `POSTGRES_PASSWORD` | postgres, api, worker | long random string |
 | `ADMIN_USERNAMES` | api | comma-separated; applied at every api start (anyone not listed loses admin) |
-| `ARCHIVE_IMAGES_DIR` | imgproxy | host path of the extracted images |
+| `ARCHIVE_IMAGES_DIR` | imgproxy | host path of the extracted images; without a bundle, any empty directory |
 | `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | imgproxy | transcoded-image cache |
 | `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` | api, worker | optional; override the admin console AI settings and lock them there, so the key stays out of the database |
 
@@ -66,6 +72,7 @@ Set in compose and not needed in `.env`: `DATABASE_URL`, `IMGPROXY_URL`, `COOKIE
 ```sh
 cd /srv/catalogue/app/deploy
 docker compose build                      # first build takes a while; rebuild if lindera-ipadic fails to download
+# with a data bundle only:
 docker compose up -d postgres
 docker compose exec postgres pg_restore -U catalogue -d catalogue --no-owner --role=catalogue /restore/catalogue.dump
 docker compose up -d                       # api runs pending migrations itself, then loads the catalogue (~20 s)
@@ -77,6 +84,22 @@ Then:
 2. Put that username in `ADMIN_USERNAMES`, `docker compose up -d api` to apply.
 3. Open `https://<domain>/admin`: the worker should show as running; the hourly incremental crawl is on by default.
 4. In the admin console: set the AI provider (and test it). The daily full sweep is enabled by default (runs daily at 03:00 JST); you can change its schedule or disable it in the admin console.
+### Starting without a data bundle
+
+The migrations create the category tree, smart tags and avatar bodies. Items come from one full crawl of the
+Booth `VRChat` tag listing (about 3,400 pages, one item page per new item at ~0.7 s each: expect two to three
+days for ~200k items; it is polite to Booth on purpose):
+
+```sh
+docker compose exec worker worker once incremental '{"max_pages": 5000, "full": true}'
+# interrupted? continue from the page shown in the admin console (a few pages back is fine):
+docker compose exec worker worker once incremental '{"max_pages": 5000, "full": true, "start_page": 1200}'
+```
+
+The site is usable while it runs (the api reloads as items arrive). Crawled items have no AI categories, avatar
+links or translations until the `enrich` job runs, so configure the AI provider and enable the `enrich`
+schedule in the admin console; at ~200k items, check your provider's price per call first.
+
 
 ## 5. Cloudflare
 

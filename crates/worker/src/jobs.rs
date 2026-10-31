@@ -61,13 +61,16 @@ pub async fn bump_catalog(pool: &PgPool) -> Result<()> {
 use catalogue_core::booth::{mark_delisted, store_item};
 
 /// Newest-first listing walk: stores image links for every item seen, ingests unknown items, stops once caught up.
+/// Bootstrapping an empty catalogue: `{"max_pages": 5000, "full": true}`; resume an interrupted one with `start_page`.
 pub async fn incremental(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let max_pages: u32 = param(params, "max_pages", 40);
+    let start_page: u32 = param(params, "start_page", 1u32).max(1);
+    let full: bool = param(params, "full", false);
     let tag: String = param(params, "tag", "VRChat".to_owned());
     let delay = Duration::from_millis(param(params, "delay_ms", 700));
     let (mut new_items, mut revived, mut seen) = (0i64, 0u64, 0i64);
     let mut caught_up = false;
-    for page in 1..=max_pages {
+    for page in start_page..=max_pages {
         let (rows, last) = ctx.booth.listing(&tag, page).await?;
         seen += rows.len() as i64;
         let ids: Vec<i64> = rows.iter().map(|r| r.0).collect();
@@ -98,7 +101,7 @@ pub async fn incremental(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
             break;
         }
         // the first pages always get a look (new items can land slightly out of order); after that stop at a fully known page
-        if page >= 3 && unknown.is_empty() {
+        if !full && page >= start_page + 2 && unknown.is_empty() {
             caught_up = true;
             break;
         }
