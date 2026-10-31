@@ -1,7 +1,7 @@
 // Fake OpenAI-compatible provider for testing the AI jobs without a key or cost.
 //   bun scripts/mock-ai.ts            -> http://127.0.0.1:3555/v1  (any API key works)
-//   MOCK_PARTIAL=1 bun scripts/mock-ai.ts   enrich replies carry titles only (no bio/variations),
-//                                            to check that existing translations survive
+//   MOCK_PARTIAL=1 bun scripts/mock-ai.ts   enrich replies omit zh and original_language,
+//                                            to check that earlier values survive
 // /v1/models lists one model; /v1/chat/completions answers the two prompts our worker sends:
 //   - localize: echoes every key with a "【中】" prefix, so translated labels are easy to spot
 //   - enrich:   a fixed, valid enrichment using the first category slug in the prompt
@@ -25,14 +25,14 @@ Bun.serve({
     } else {
       const slug = user.match(/^([a-z0-9-]+--[a-z0-9-]+):/m)?.[1] ?? "none";
       const title = user.match(/^Title: (.*)$/m)?.[1] ?? "";
-      const t = (prefix: string) => (partial ? { title: `${prefix}${title}` } : { title: `${prefix}${title}`, bio: "mock bio", variations: {} });
+      const t = (prefix: string) => ({ title: `${prefix}${title}` });
       reply = {
         categories: [slug],
         content_rating: "SFW",
         quest_compatible: "No",
         smart_price: 500,
         smart_price_reason: "mock",
-        translations: { en: t("[en] "), ja: t(""), ko: t("[ko] "), zh: t("[zh] ") },
+        translations: { en: t("[en] "), ja: t(""), ko: t("[ko] "), ...(partial ? {} : { zh: t("[zh] ") }) },
         ...(partial ? {} : { original_language: "ja" }),
         features: ["liltoon"],
       };

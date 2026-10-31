@@ -40,13 +40,9 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
     let parent: HashMap<String, String> =
         sqlx::query_as::<_, (String, String)>("select slug, parent_slug from smart_categories where parent_slug is not null").fetch_all(pool).await?.into_iter().collect();
 
-    // the English description is joined in SQL: concatenating here held both parts and the result at once,
-    // which pushed reload peaks toward the container's memory limit
+    // only titles are translated (titles_translated); descriptions are searched in their original language
     let rows: Vec<Row> = sqlx::query_as(
-        "select i.id, i.title,
-                case when i.translations->'en'->>'bio' is null or i.translations->'en'->>'bio' = i.bio then i.bio
-                     else i.bio || E'\\n' || (i.translations->'en'->>'bio') end as bio,
-                i.author_name, i.booth_category, coalesce(i.smart_price, i.price_jpy) as price, i.likes,
+        "select i.id, i.title, i.bio, i.author_name, i.booth_category, coalesce(i.smart_price, i.price_jpy) as price, i.likes,
                 extract(epoch from i.published_at)::bigint as published, i.is_adult, i.content_rating, i.quest, i.features,
                 i.booth_tags, i.supported, i.gender,
                 array_remove(array[i.translations->'en'->>'title', i.translations->'ja'->>'title', i.translations->'ko'->>'title', i.translations->'zh'->>'title'], null) as titles_translated,

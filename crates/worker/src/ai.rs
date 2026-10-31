@@ -89,7 +89,7 @@ into Simplified Chinese (zh-CN). Use the terms Chinese VRChat users use (e.g. �
 Keep brand and tool names (VRChat, Quest, lilToon, Poiyomi, Modular Avatar, VRCFury, FBX, Unity) untranslated. Labels are short; no trailing punctuation. \
 Reply with a JSON object mapping each given key to its translation, nothing else.";
 
-pub const ENRICH_SYSTEM: &str = "You classify and translate listings from BOOTH, a Japanese marketplace, for a catalogue of VRChat avatar assets. \
+pub const ENRICH_SYSTEM: &str = "You classify listings and translate their titles from BOOTH, a Japanese marketplace, for a catalogue of VRChat avatar assets. \
 Reply with one JSON object with exactly these keys:\n\
 \"categories\": array of 1-3 category slugs from the given list, best match first. Judge from the title, tags, variations and \
 description: sellers often pick the Booth category carelessly or too broadly, so treat it only as a weak hint;\n\
@@ -97,8 +97,9 @@ description: sellers often pick the Booth category carelessly or too broadly, so
 \"quest_compatible\": \"Yes\", \"No\", or \"Non-Applicable\" (not an avatar or avatar asset);\n\
 \"smart_price\": integer yen a typical buyer pays for the main product (ignore support/donation tiers, pick the full set if that is the obvious main item), or null if unclear;\n\
 \"smart_price_reason\": one short English sentence;\n\
-\"translations\": {\"en\": {...}, \"ja\": {...}, \"ko\": {...}, \"zh\": {...}} (zh is Simplified Chinese, in the terms Chinese VRChat users use) where each has \"title\", \"bio\" (the description, translated faithfully, keep URLs), \
-and \"variations\" (object mapping each original variation name to its translation). For the item's own language, copy the original text.\n\
+\"translations\": {\"en\": {\"title\": ...}, \"ja\": {\"title\": ...}, \"ko\": {\"title\": ...}, \"zh\": {\"title\": ...}}: the title only \
+(zh is Simplified Chinese, in the terms Chinese VRChat users use); for the item's own language, copy the original title. \
+Do not translate the description or variations.\n\
 \"original_language\": ISO 639-1 code of the listing's main language;\n\
 \"features\": array with any of \"ma\" (Modular Avatar setup), \"liltoon\", \"poiyomi\" (shaders it supports), \"vrcfury\" that the listing states it supports; empty if none.";
 
@@ -121,7 +122,8 @@ pub fn enrich_prompt(item: &Value, category_list: &str) -> String {
     )
 }
 
-/// Validated enrichment result, ready to write.
+/// Validated enrichment result, ready to write. Only titles are translated: they feed cross-language search
+/// and embeddings; descriptions and variation names went unread and made replies long enough to break.
 #[derive(Debug, PartialEq)]
 pub struct Enrichment {
     pub categories: Vec<String>,
@@ -134,10 +136,9 @@ pub struct Enrichment {
 }
 
 /// Keeps only well-formed values; unknown category slugs are dropped rather than trusted.
-/// Requires the essentials (categories, rating, features, price, three titles); incomplete replies return Err.
-/// Optional translation parts the reply omits or gets wrong (bio, variations, original_language) keep the
-/// values from `existing` (the item's current translations) instead of being blanked.
-pub fn validate_enrichment(v: &Value, known_categories: &[String], bio_truncated: bool, existing: &Value) -> Result<Enrichment> {
+/// Requires the essentials (categories, rating, features, price, en/ja/ko titles); incomplete replies return Err.
+/// A missing zh title or original_language keeps the value from `existing` (the item's current translations).
+pub fn validate_enrichment(v: &Value, known_categories: &[String], existing: &Value) -> Result<Enrichment> {
     let pick = |key: &str, allowed: &[&str]| v[key].as_str().filter(|s| allowed.contains(s)).map(str::to_owned);
     let categories: Vec<String> = v["categories"]
         .as_array()
@@ -195,8 +196,8 @@ pub fn validate_enrichment(v: &Value, known_categories: &[String], bio_truncated
         let old = &existing[lang];
         if lang == "zh" && !t["title"].as_str().is_some_and(|s| !s.is_empty() && s.chars().count() <= 300) {
             // zh came after en/ja/ko: optional, so a reply without it doesn't fail the rest (an earlier zh is kept)
-            if old.is_object() {
-                translations[lang] = old.clone();
+            if let Some(title) = old["title"].as_str() {
+                translations[lang] = json!({ "title": title });
             }
             continue;
         }
@@ -204,24 +205,7 @@ pub fn validate_enrichment(v: &Value, known_categories: &[String], bio_truncated
         if title_str.is_empty() || title_str.chars().count() > 300 {
             bail!("translations.{lang}.title must be between 1 and 300 characters");
         }
-        let bio = if bio_truncated {
-            // the model only saw the first 2500 chars; "" makes the UI show the full original instead
-            Value::String(String::new())
-        } else {
-            match t["bio"].as_str().filter(|b| b.chars().count() <= 20000) {
-                Some(b) => Value::String(b.to_owned()),
-                None => old.get("bio").filter(|b| b.is_string()).cloned().unwrap_or_else(|| Value::String(String::new())),
-            }
-        };
-        let variations = match t["variations"].as_object() {
-            Some(obj) => Value::Object(
-                obj.iter()
-                    .filter_map(|(k, val)| val.as_str().filter(|s| s.chars().count() <= 300).map(|s| (k.clone(), Value::String(s.to_owned()))))
-                    .collect(),
-            ),
-            None => old.get("variations").filter(|o| o.is_object()).cloned().unwrap_or_else(|| json!({})),
-        };
-        translations[lang] = json!({ "title": title_str, "bio": bio, "variations": variations });
+        translations[lang] = json!({ "title": title_str });
     }
     if let Some(l) = v["original_language"].as_str().filter(|l| l.len() == 2).or_else(|| existing["original_language"].as_str()) {
         translations["original_language"] = json!(l);
@@ -257,12 +241,11 @@ mod tests {
     fn validation_rejects_empty_or_missing_essentials() {
         let known = vec!["clothing--dresses".to_owned(), "hair--long".to_owned()];
         // {} rejected
-        assert!(validate_enrichment(&json!({}), &known, false, &json!({})).is_err());
+        assert!(validate_enrichment(&json!({}), &known, &json!({})).is_err());
         // reviewer repro: {"content_rating":"SFW","categories":["clothing--dresses"]} rejected (missing translations, features, smart_price)
         assert!(validate_enrichment(
             &json!({"content_rating": "SFW", "categories": ["clothing--dresses"]}),
             &known,
-            false,
             &json!({})
         ).is_err());
         // missing categories rejected
@@ -278,7 +261,6 @@ mod tests {
                 }
             }),
             &known,
-            false,
             &json!({})
         ).is_err());
         // missing content_rating rejected
@@ -294,7 +276,6 @@ mod tests {
                 }
             }),
             &known,
-            false,
             &json!({})
         ).is_err());
         // missing one of the titles rejected
@@ -310,7 +291,6 @@ mod tests {
                 }
             }),
             &known,
-            false,
             &json!({})
         ).is_err());
         // missing features array rejected
@@ -326,7 +306,6 @@ mod tests {
                 }
             }),
             &known,
-            false,
             &json!({})
         ).is_err());
         // missing smart_price key rejected
@@ -342,7 +321,6 @@ mod tests {
                 }
             }),
             &known,
-            false,
             &json!({})
         ).is_err());
     }
@@ -372,8 +350,8 @@ mod tests {
             },
             "original_language": "ja"
         });
-        // normal (not truncated): bio is kept
-        let e = validate_enrichment(&v, &known, false, &json!({})).unwrap();
+        // a bio or variations the model sends anyway are dropped: only titles are stored
+        let e = validate_enrichment(&v, &known, &json!({})).unwrap();
         assert_eq!(e.categories, ["clothing--dresses", "hair--long"]);
         assert_eq!(e.features, ["liltoon"]);
         assert_eq!(e.content_rating.as_deref(), Some("SFW"));
@@ -382,33 +360,22 @@ mod tests {
         assert_eq!(
             e.translations,
             json!({
-                "en": {
-                    "title": "Dress",
-                    "bio": "b",
-                    "variations": {"A": "String Val"}
-                },
-                "ja": {"title": "ドレス", "bio": "", "variations": {}},
-                "ko": {"title": "드레스", "bio": "", "variations": {}},
+                "en": {"title": "Dress"},
+                "ja": {"title": "ドレス"},
+                "ko": {"title": "드레스"},
                 "original_language": "ja"
             })
         );
 
         // smart_price: null accepted
         v["smart_price"] = Value::Null;
-        let e_null = validate_enrichment(&v, &known, false, &json!({})).unwrap();
+        let e_null = validate_enrichment(&v, &known, &json!({})).unwrap();
         assert_eq!(e_null.smart_price, None);
-
-        // truncated: bio is cleared to "" so UI falls back to original
-        let e_trunc = validate_enrichment(&v, &known, true, &json!({})).unwrap();
-        assert_eq!(e_trunc.translations["en"]["bio"], "");
-        assert_eq!(e_trunc.translations["en"]["title"], "Dress");
-        assert_eq!(e_trunc.translations["en"]["variations"], json!({"A": "String Val"}));
     }
 
     #[test]
-    fn omitted_translation_parts_keep_existing_values() {
+    fn titles_replace_old_translations_and_original_language_is_kept() {
         let known = vec!["clothing--dresses".to_owned()];
-        // review repro: titles only, no bio / variations / original_language
         let reply = json!({
             "categories": ["clothing--dresses"], "content_rating": "SFW", "features": [], "smart_price": null,
             "translations": {"en": {"title": "Dress"}, "ja": {"title": "ドレス"}, "ko": {"title": "드레스"}}
@@ -418,28 +385,12 @@ mod tests {
             "ja": {"title": "旧", "bio": "日本語の説明", "variations": {"A": "セットA"}},
             "original_language": "ja"
         });
-        let e = validate_enrichment(&reply, &known, false, &existing).unwrap();
-        assert_eq!(e.translations["en"]["title"], "Dress");
-        assert_eq!(e.translations["en"]["bio"], "Full English description");
-        assert_eq!(e.translations["en"]["variations"], json!({"A": "Set A"}));
-        assert_eq!(e.translations["ja"]["bio"], "日本語の説明");
-        // no previous Korean data: falls back to empty, not an error
-        assert_eq!(e.translations["ko"]["bio"], "");
-        assert_eq!(e.translations["ko"]["variations"], json!({}));
-        assert_eq!(e.translations["original_language"], "ja");
-        // values the reply does send still replace the old ones
-        let reply2 = json!({
-            "categories": ["clothing--dresses"], "content_rating": "SFW", "features": [], "smart_price": null,
-            "translations": {"en": {"title": "Dress", "bio": "New", "variations": {"A": "New A"}}, "ja": {"title": "ド"}, "ko": {"title": "드"}},
-            "original_language": "en"
-        });
-        let e2 = validate_enrichment(&reply2, &known, false, &existing).unwrap();
-        assert_eq!(e2.translations["en"]["bio"], "New");
-        assert_eq!(e2.translations["en"]["variations"], json!({"A": "New A"}));
-        assert_eq!(e2.translations["original_language"], "en");
-        // a truncated source still blanks the bio on purpose, even with an old one present
-        let e3 = validate_enrichment(&reply, &known, true, &existing).unwrap();
-        assert_eq!(e3.translations["en"]["bio"], "");
+        // old descriptions and variation names go; a missing original_language keeps the old one
+        let e = validate_enrichment(&reply, &known, &existing).unwrap();
+        assert_eq!(
+            e.translations,
+            json!({"en": {"title": "Dress"}, "ja": {"title": "ドレス"}, "ko": {"title": "드레스"}, "original_language": "ja"})
+        );
     }
 
     #[test]
@@ -451,14 +402,14 @@ mod tests {
                 "translations": {"en": {"title": "Dress"}, "ja": {"title": "ドレス"}, "ko": {"title": "드레스"}, "zh": zh}
             })
         };
-        let e = validate_enrichment(&reply(json!({"title": "连衣裙", "bio": "说明"})), &known, false, &json!({})).unwrap();
-        assert_eq!(e.translations["zh"], json!({"title": "连衣裙", "bio": "说明", "variations": {}}));
+        let e = validate_enrichment(&reply(json!({"title": "连衣裙", "bio": "说明"})), &known, &json!({})).unwrap();
+        assert_eq!(e.translations["zh"], json!({"title": "连衣裙"}));
         // missing or invalid zh: no error, no zh entry, or the earlier one kept
-        let e = validate_enrichment(&reply(Value::Null), &known, false, &json!({})).unwrap();
+        let e = validate_enrichment(&reply(Value::Null), &known, &json!({})).unwrap();
         assert!(e.translations.get("zh").is_none());
         let old = json!({"zh": {"title": "旧", "bio": "", "variations": {}}});
-        let e = validate_enrichment(&reply(json!({"title": ""})), &known, false, &old).unwrap();
-        assert_eq!(e.translations["zh"], old["zh"]);
+        let e = validate_enrichment(&reply(json!({"title": ""})), &known, &old).unwrap();
+        assert_eq!(e.translations["zh"], json!({"title": "旧"}));
     }
 
     #[test]

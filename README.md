@@ -29,18 +29,19 @@ data and images belong to their creators; every item links back to its BOOTH pag
 - Browsing: a model view grouped by gender, an item panel with the full BOOTH gallery, variations,
   translations and image download, and a Ctrl+K palette across items, models, authors and tags.
 - Accounts: favourites, saved searches, a remembered model, and RSS feeds for any search.
-- Interface: Chinese, English, Japanese and Korean; item text in the original language or translated;
+- Interface: Chinese, English, Japanese and Korean; item titles in the original language or translated;
   currency display; light and dark themes; mobile-first layout.
 - Crawling: a worker checks BOOTH hourly for new items, sweeps the full listing daily, re-checks popular
   items and marks delisted ones.
 - AI enrichment (optional, any OpenAI-compatible API, configurable reasoning effort): categories, content
-  rating, features and translations for new items, model links by name matching, and Chinese names for
+  rating, features and title translations (Chinese, English, Japanese, Korean) for new items, model links by name matching, and Chinese names for
   categories and tags. Embeddings for semantic search come from the same provider.
 - Images: a proxy re-encodes BOOTH images to WebP and caches them; archived copies cover delisted items.
 - Administration: live job progress, schedules, resource usage, AI settings and password resets.
 
 There are no standalone item pages, price history, social logins or password-reset emails (administrators
-reset passwords). Item titles and descriptions are not translated into Chinese; only the taxonomy is.
+reset passwords). Item descriptions and variation names are not translated: titles are, for cross-language
+search.
 
 ## Getting started
 

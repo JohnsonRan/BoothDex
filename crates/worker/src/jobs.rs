@@ -336,10 +336,8 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     use futures_util::StreamExt;
     while let Some((it, reply)) = stream.next().await {
         let id = it["id"].as_i64().unwrap_or_default();
-        let bio_len = it["bio"].as_str().unwrap_or_default().chars().count();
-        let bio_truncated = bio_len > 2500;
         let validation = match reply {
-            Ok(v) => crate::ai::validate_enrichment(&v, &known, bio_truncated, &it["translations"]),
+            Ok(v) => crate::ai::validate_enrichment(&v, &known, &it["translations"]),
             Err(e) => Err(e),
         };
         match validation {
