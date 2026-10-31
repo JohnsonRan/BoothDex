@@ -187,8 +187,10 @@ export function Browse() {
       })
       // one status line instead of a toast per attempt; no automatic retry from here
       .catch(async () => {
-        if (id === request.current)
-          setApiState((await apiReady()) ? "error" : "starting");
+        if (id !== request.current) return;
+        const ready = await apiReady();
+        // a newer request may have succeeded while readiness was checked
+        if (id === request.current) setApiState(ready ? "error" : "starting");
       })
       .finally(() => {
         if (id === request.current) setLoading(false);

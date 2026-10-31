@@ -476,7 +476,9 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
 
     let total: i64 = sqlx::query_scalar("select count(*) from items where status = 'ok' and embedding is null").fetch_one(ctx.pool).await?;
     let http = reqwest::Client::builder().timeout(Duration::from_secs(120)).build()?;
-    let (mut done, mut below) = (0i64, i64::MAX);
+    // done: vectors written; sent: items sent to the provider, which bounds a trial run's `limit` even when
+    // vectors are discarded because the item changed meanwhile
+    let (mut done, mut sent, mut below) = (0i64, 0i64, i64::MAX);
     loop {
         // keyset paging: an item the provider can't embed is not fetched again in this run
         let rows: Vec<EmbedRow> = sqlx::query_as(
@@ -486,11 +488,12 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
              where status = 'ok' and embedding is null and id < $1 order by id desc limit $2",
         )
         .bind(below)
-        .bind(((batch * concurrency) as i64).min(limit - done))
+        .bind(((batch * concurrency) as i64).min(limit - sent))
         .fetch_all(ctx.pool)
         .await?;
         let Some(last) = rows.last() else { break };
         below = last.0;
+        sent += rows.len() as i64;
         let chunks: Vec<Vec<(i64, String, String)>> = rows
             .chunks(batch)
             .map(|c| {
@@ -529,7 +532,7 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
             ctx.log("cancelled").await?;
             break;
         }
-        if done >= limit {
+        if sent >= limit {
             break;
         }
     }
