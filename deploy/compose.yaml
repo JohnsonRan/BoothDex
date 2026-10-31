@@ -34,6 +34,7 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_MODEL: ${AI_MODEL:-}
+      AI_REASONING_EFFORT: ${AI_REASONING_EFFORT:-}
     volumes:
       - textindex:/index # on-disk search index, reused across restarts
     # ~0.5 GB steady, ~1.6 GB peak while (re)building; a hot reload briefly holds old + new
@@ -48,6 +49,7 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_MODEL: ${AI_MODEL:-}
+      AI_REASONING_EFFORT: ${AI_REASONING_EFFORT:-}
     mem_limit: 512m
 
   imgproxy:

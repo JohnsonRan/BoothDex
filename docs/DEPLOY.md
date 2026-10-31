@@ -57,7 +57,7 @@ $EDITOR .env    # SITE_DOMAIN, SITE_URL, POSTGRES_PASSWORD, ADMIN_USERNAMES, ARC
 | `ADMIN_USERNAMES` | api | comma-separated; applied at every api start (anyone not listed loses admin) |
 | `ARCHIVE_IMAGES_DIR` | imgproxy | host path of the extracted images |
 | `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | imgproxy | transcoded-image cache |
-| `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` | api, worker | optional; override the admin console AI settings and lock them there, so the key stays out of the database |
+| `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` | api, worker | optional; override the admin console AI settings and lock them there, so the key stays out of the database |
 
 Set in compose and not needed in `.env`: `DATABASE_URL`, `IMGPROXY_URL`, `COOKIE_SECURE=1` (session cookie only over HTTPS), `BIND`.
 

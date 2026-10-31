@@ -345,6 +345,13 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
                 write_enrichment(ctx.pool, id, &e, &linked).await?;
                 ok += 1;
             }
+            // provider-level failure: stop instead of charging it to every item in the batch
+            Err(err) if err.is::<crate::ai::ProviderError>() => {
+                if ok > 0 {
+                    bump_catalog(ctx.pool).await?;
+                }
+                return Err(err.context(format!("AI provider error after {ok} enriched; no item was marked as failed")));
+            }
             Err(err) => {
                 failed += 1;
                 sqlx::query("update items set enrich_failures = enrich_failures + 1 where id = $1")

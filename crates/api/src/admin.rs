@@ -275,6 +275,7 @@ struct AiSettings {
     model: Option<String>,
     /// empty or missing keeps the stored key
     api_key: Option<String>,
+    reasoning_effort: Option<String>,
 }
 
 fn key_hint(k: &str) -> String {
@@ -286,10 +287,11 @@ use catalogue_core::settings::{self, AiConfig};
 
 fn public_ai(c: &AiConfig) -> Value {
     json!({
-        "base_url": c.base_url, "model": c.model,
+        "base_url": c.base_url, "model": c.model, "reasoning_effort": c.reasoning_effort,
         "api_key_set": c.api_key.is_some(), "api_key_hint": c.api_key.as_deref().map(key_hint),
         // fields set by AI_* environment variables can't be edited in the console
-        "from_env": { "base_url": c.base_url_from_env, "model": c.model_from_env, "api_key": c.api_key_from_env },
+        "from_env": { "base_url": c.base_url_from_env, "model": c.model_from_env, "api_key": c.api_key_from_env,
+                      "reasoning_effort": c.reasoning_effort_from_env },
     })
 }
 
@@ -301,8 +303,12 @@ async fn get_settings(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Res
 async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<AiSettings>) -> Result<Response, ApiError> {
     admin!(s, headers);
     let url_ok = b.base_url.as_deref().is_none_or(|u| u.len() <= 300 && (u.starts_with("https://") || u.starts_with("http://")));
-    if !url_ok || b.model.as_deref().is_some_and(|m| m.len() > 100) || b.api_key.as_deref().is_some_and(|k| k.len() > 500) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars"));
+    let effort = b.reasoning_effort.as_deref().map(settings::reasoning_effort);
+    if !url_ok || b.model.as_deref().is_some_and(|m| m.len() > 100) || b.api_key.as_deref().is_some_and(|k| k.len() > 500) || effort == Some(None) {
+        return Ok(err(
+            StatusCode::BAD_REQUEST,
+            "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars; reasoning effort: none, minimal, low, medium, high or xhigh",
+        ));
     }
     let mut v = settings::stored_ai(&s.pool).await?;
     if let Some(u) = b.base_url {
@@ -310,6 +316,9 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
     }
     if let Some(m) = b.model {
         v["model"] = json!(m.trim());
+    }
+    if let Some(Some(e)) = effort {
+        v["reasoning_effort"] = json!(e);
     }
     if let Some(k) = b.api_key.filter(|k| !k.trim().is_empty()) {
         v["api_key"] = json!(k.trim());

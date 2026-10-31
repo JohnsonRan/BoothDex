@@ -737,8 +737,22 @@ type Ai = {
   model?: string | null;
   api_key_set: boolean;
   api_key_hint?: string | null;
-  from_env?: { base_url: boolean; model: boolean; api_key: boolean };
+  reasoning_effort?: string;
+  from_env?: {
+    base_url: boolean;
+    model: boolean;
+    api_key: boolean;
+    reasoning_effort?: boolean;
+  };
 };
+const EFFORTS = [
+  ["none", "不思考"],
+  ["minimal", "最少"],
+  ["low", "低"],
+  ["medium", "中"],
+  ["high", "高"],
+  ["xhigh", "最高"],
+] as const;
 const ENV_NOTE = "(由服务器环境变量设置，此处不能修改)";
 
 /** OpenAI-compatible provider used by the enrichment job. The key is write-only: the API only returns a hint. */
@@ -747,6 +761,7 @@ function AiSettingsCard() {
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [key, setKey] = useState("");
+  const [effort, setEffort] = useState("none");
   const [busy, setBusy] = useState(false);
   const [models, setModels] = useState<string[]>([]);
 
@@ -755,6 +770,7 @@ function AiSettingsCard() {
       setAi(ai);
       setBaseUrl(ai.base_url ?? "");
       setModel(ai.model ?? "");
+      setEffort(ai.reasoning_effort ?? "none");
     });
   }, []);
 
@@ -765,7 +781,12 @@ function AiSettingsCard() {
       setAi(
         await api<Ai>("/api/admin/settings/ai", {
           method: "PUT",
-          json: { base_url: baseUrl, model, api_key: key },
+          json: {
+            base_url: baseUrl,
+            model,
+            api_key: key,
+            reasoning_effort: effort,
+          },
         }),
       );
       setKey("");
@@ -785,8 +806,8 @@ function AiSettingsCard() {
       );
       setModels(r.models);
       r.model_found
-        ? toast.success(`连接成功，可用模型 ${r.models.length} 个`)
-        : toast.warning("连接成功，但没找到你填的模型");
+        ? toast.success(`连接成功，可用 AI 模型 ${r.models.length} 个`)
+        : toast.warning("连接成功，但没找到你填的 AI 模型");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -815,7 +836,7 @@ function AiSettingsCard() {
           </label>
           <label htmlFor="ai-model" className="space-y-1.5 text-sm">
             <span className="text-muted-foreground">
-              模型{ai?.from_env?.model && ENV_NOTE}
+              AI 模型{ai?.from_env?.model && ENV_NOTE}
             </span>
             <Input
               id="ai-model"
@@ -831,7 +852,32 @@ function AiSettingsCard() {
               ))}
             </datalist>
           </label>
-          <label htmlFor="ai-key" className="space-y-1.5 text-sm md:col-span-2">
+          <div className="space-y-1.5 text-sm">
+            <span id="ai-effort" className="text-muted-foreground">
+              思考等级{ai?.from_env?.reasoning_effort && ENV_NOTE}
+            </span>
+            <Select
+              value={effort}
+              onValueChange={setEffort}
+              disabled={ai?.from_env?.reasoning_effort}
+            >
+              <SelectTrigger className="w-full" aria-labelledby="ai-effort">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EFFORTS.map(([v, label]) => (
+                  <SelectItem key={v} value={v}>
+                    {v}({label})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">
+              作为 reasoning_effort 原样发送。服务商不支持时，AI
+              任务会停止并显示错误。
+            </p>
+          </div>
+          <label htmlFor="ai-key" className="space-y-1.5 text-sm">
             <span className="text-muted-foreground">
               API 密钥{" "}
               {ai?.from_env?.api_key

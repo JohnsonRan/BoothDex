@@ -11,23 +11,42 @@ pub struct Ai {
     base_url: String,
     model: String,
     api_key: String,
+    reasoning_effort: &'static str,
 }
+
+/// The provider refused or kept failing (bad key/model/parameter, outage): a configuration problem, not the item's fault.
+#[derive(Debug)]
+pub struct ProviderError(pub String);
+
+impl std::fmt::Display for ProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ProviderError {}
 
 impl Ai {
     /// `None` when the provider isn't configured (base URL, model and key are all needed).
     pub fn from_config(c: &AiConfig) -> Result<Option<Self>> {
         let (Some(base_url), Some(model), Some(api_key)) = (c.base_url.clone(), c.model.clone(), c.api_key.clone()) else { return Ok(None) };
-        Ok(Some(Self { http: reqwest::Client::builder().timeout(Duration::from_secs(120)).build()?, base_url, model, api_key }))
+        let http = reqwest::Client::builder().timeout(Duration::from_secs(120)).build()?;
+        Ok(Some(Self { http, base_url, model, api_key, reasoning_effort: c.reasoning_effort }))
+    }
+
+    fn body(&self, system: &str, user: &str) -> Value {
+        json!({
+            "model": self.model,
+            "temperature": 0,
+            "reasoning_effort": self.reasoning_effort,
+            "response_format": { "type": "json_object" },
+            "messages": [{ "role": "system", "content": system }, { "role": "user", "content": user }],
+        })
     }
 
     /// One JSON-mode chat completion; retries 429/5xx with backoff. Returns the parsed JSON object.
     pub async fn json(&self, system: &str, user: &str) -> Result<Value> {
-        let body = json!({
-            "model": self.model,
-            "temperature": 0,
-            "response_format": { "type": "json_object" },
-            "messages": [{ "role": "system", "content": system }, { "role": "user", "content": user }],
-        });
+        let body = self.body(system, user);
         for attempt in 0..5u32 {
             let res = self.http.post(format!("{}/chat/completions", self.base_url)).bearer_auth(&self.api_key).json(&body).send().await;
             match res {
@@ -41,16 +60,17 @@ impl Ai {
                 }
                 Ok(r) => {
                     let status = r.status();
-                    bail!("provider answered {status}: {}", r.text().await.unwrap_or_default().chars().take(300).collect::<String>());
+                    let text: String = r.text().await.unwrap_or_default().chars().take(300).collect();
+                    return Err(ProviderError(format!("provider answered {status}: {text}")).into());
                 }
                 Err(e) if attempt < 4 => {
                     eprintln!("ai request: {e}");
                     tokio::time::sleep(Duration::from_secs(2u64.pow(attempt + 1))).await;
                 }
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(ProviderError(format!("provider unreachable: {e}")).into()),
             }
         }
-        bail!("provider kept failing")
+        Err(ProviderError("provider kept failing (rate limit or server errors)".into()).into())
     }
 }
 
@@ -412,5 +432,14 @@ mod tests {
         // a truncated source still blanks the bio on purpose, even with an old one present
         let e3 = validate_enrichment(&reply, &known, true, &existing).unwrap();
         assert_eq!(e3.translations["en"]["bio"], "");
+    }
+
+    #[test]
+    fn request_sends_reasoning_effort_as_configured() {
+        let mut c = catalogue_core::settings::resolve(&json!({ "base_url": "http://x/v1", "model": "m", "api_key": "k" }), |_| None);
+        let ai = Ai::from_config(&c).unwrap().unwrap();
+        assert_eq!(ai.body("s", "u")["reasoning_effort"], "none");
+        c.reasoning_effort = "high";
+        assert_eq!(Ai::from_config(&c).unwrap().unwrap().body("s", "u")["reasoning_effort"], "high");
     }
 }
