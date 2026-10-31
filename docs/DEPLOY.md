@@ -74,7 +74,7 @@ $EDITOR .env    # SITE_DOMAIN, SITE_URL, POSTGRES_PASSWORD, ADMIN_USERNAMES, ARC
 | `BOOTHDEX_TAG` | api, worker, imgproxy, web | image version on ghcr.io: `latest` (default, follows master), a release such as `0.1.0`, or `sha-<commit>` |
 | `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` | api, worker | optional; override the admin console AI settings and lock them there, so the key stays out of the database |
 
-Set in compose and not needed in `.env`: `DATABASE_URL`, `IMGPROXY_URL`, `COOKIE_SECURE=1` (session cookie only over HTTPS), `BIND`.
+Set in compose and not needed in `.env`: `DATABASE_URL` and `PGPASSWORD` (from `POSTGRES_PASSWORD`; any characters work), `IMGPROXY_URL`, `COOKIE_SECURE=1` (session cookie only over HTTPS), `BIND`.
 
 ## 4. First start
 
