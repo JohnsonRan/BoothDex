@@ -1,7 +1,7 @@
 //! Tantivy text index, kept on disk (memory-mapped) when a directory is given, otherwise in RAM. Two ways to match:
 //! - words: Lindera (IPADIC) morphological tokens over title/tags/author/bio, BM25-ranked
-//! - substring: character bigrams over title/tags, verified by `contains` so results are exact
-//!   (covers partial names like "ミル" → "ミルティナ" that morphological tokens miss)
+//! - substring: character bigrams over title/tags with spaces and punctuation removed, verified per query word by
+//!   `contains` (covers partial names like "ミル" → "ミルティナ", and "shorthair" / "short hair" / "short-hair")
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -13,7 +13,7 @@ use roaring::RoaringBitmap;
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
 use tantivy::schema::{FAST, Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions};
-use tantivy::tokenizer::{LowerCaser, NgramTokenizer, TextAnalyzer};
+use tantivy::tokenizer::{LowerCaser, NgramTokenizer, SimpleTokenizer, TextAnalyzer};
 use tantivy::{Index, IndexReader, TantivyDocument, Term};
 
 pub struct TextDoc {
@@ -29,7 +29,7 @@ pub struct TextIndex {
     gram: Field,
     /// per segment: tantivy doc id -> catalog doc index
     seg_docs: Vec<Vec<u32>>,
-    /// lowercased title + tags, for exact substring verification
+    /// title + tags, compacted (see `compact`), for substring verification
     haystack: Vec<String>,
     doc_count: usize,
 }
@@ -40,6 +40,39 @@ fn text_field(tokenizer: &str, positions: bool) -> TextOptions {
             .set_tokenizer(tokenizer)
             .set_index_option(if positions { IndexRecordOption::WithFreqsAndPositions } else { IndexRecordOption::Basic }),
     )
+}
+
+/// Bump when what goes into the index changes, so indexes already on disk are rebuilt.
+const FORMAT: u32 = 2;
+
+/// Lowercase letters and digits only: "Short-Hair" and "short hair" both become "shorthair".
+fn compact(s: &str) -> String {
+    s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+}
+
+/// Adjacent Latin words joined ("Short Hair" -> "shorthair"), indexed so a query written as one word finds text
+/// written as two. The other direction ("short hair" finding "ShortHair") is covered by the substring path.
+fn joined_pairs(texts: &[&str]) -> String {
+    let mut out = String::new();
+    for t in texts {
+        let words: Vec<String> = t
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|w| w.chars().any(|c| c.is_ascii_alphabetic()))
+            .map(str::to_ascii_lowercase)
+            .collect();
+        for w in words.windows(2) {
+            out.push_str(&w[0]);
+            out.push_str(&w[1]);
+            out.push(' ');
+        }
+    }
+    out
+}
+
+/// Separators users type between words ("short-hair", "a/b") mean a word break, not query syntax
+/// (a leading "-" would otherwise exclude the word).
+fn query_words(q: &str) -> String {
+    q.chars().map(|c| if c.is_alphanumeric() || c == '"' { c } else { ' ' }).collect()
 }
 
 fn bigrams(s: &str) -> Vec<String> {
@@ -60,11 +93,12 @@ impl TextIndex {
         let author = sb.add_text_field("author", text_field("ja", true));
         let bio = sb.add_text_field("bio", text_field("ja", true));
         let gram = sb.add_text_field("gram", text_field("bigram", false));
+        let pairs = sb.add_text_field("pairs", text_field("simple", false));
         let schema = sb.build();
         let doc_count = docs.len();
         // the marker records doc count and content fingerprint, so a half-written or stale index is never reused
         let marker = dir.map(|d| d.join("READY"));
-        let expected_marker = format!("{doc_count}:{fingerprint:016x}");
+        let expected_marker = format!("v{FORMAT}:{doc_count}:{fingerprint:016x}");
         let reuse = marker.as_ref().is_some_and(|m| std::fs::read_to_string(m).ok().as_deref() == Some(&expected_marker));
         let index = match dir {
             Some(d) if reuse => Index::open_in_dir(d)?,
@@ -83,15 +117,16 @@ impl TextIndex {
         index
             .tokenizers()
             .register("bigram", TextAnalyzer::builder(NgramTokenizer::new(2, 2, false)?).filter(LowerCaser).build());
+        index.tokenizers().register("simple", TextAnalyzer::builder(SimpleTokenizer::default()).filter(LowerCaser).build());
 
         let mut haystack = Vec::with_capacity(doc_count);
         if reuse {
-            haystack.extend(docs.map(|d| format!("{}\n{}", d.title, d.tags).to_lowercase()));
+            haystack.extend(docs.map(|d| compact(&format!("{} {}", d.title, d.tags))));
         } else {
             // a smaller indexing heap lowers peak memory during (re)builds
             let mut writer = index.writer::<TantivyDocument>(192 * 1024 * 1024)?;
             for (i, d) in docs.enumerate() {
-                let hay = format!("{}\n{}", d.title, d.tags).to_lowercase();
+                let hay = compact(&format!("{} {}", d.title, d.tags));
                 let mut td = TantivyDocument::default();
                 td.add_u64(doc, i as u64);
                 td.add_text(title, &d.title);
@@ -99,6 +134,7 @@ impl TextIndex {
                 td.add_text(author, &d.author);
                 td.add_text(bio, &d.bio);
                 td.add_text(gram, &hay);
+                td.add_text(pairs, joined_pairs(&[&d.title, &d.tags, &d.bio]));
                 writer.add_document(td)?;
                 haystack.push(hay);
             }
@@ -119,7 +155,7 @@ impl TextIndex {
             })
             .collect::<Result<_>>()?;
 
-        let mut parser = QueryParser::for_index(&index, vec![title, tags, author, bio]);
+        let mut parser = QueryParser::for_index(&index, vec![title, tags, author, bio, pairs]);
         parser.set_conjunction_by_default();
         parser.set_field_boost(title, 3.0);
         parser.set_field_boost(tags, 2.0);
@@ -133,16 +169,28 @@ impl TextIndex {
         let mut hits = RoaringBitmap::new();
         let mut scores = HashMap::new();
 
-        let (query, _errors) = self.parser.parse_query_lenient(q);
+        let (query, _errors) = self.parser.parse_query_lenient(&query_words(q));
         for (score, addr) in searcher.search(&query, &TopDocs::with_limit(self.doc_count.max(1)).order_by_score())? {
             let d = self.seg_docs[addr.segment_ord as usize][addr.doc_id as usize];
             hits.insert(d);
             scores.insert(d, score);
         }
 
-        let needle = q.trim().to_lowercase();
-        let grams = bigrams(&needle);
-        if !grams.is_empty() {
+        // every query word must appear in the compacted title + tags; also tried with all words joined, so
+        // "short hair" finds "ShortHair" and "shorthair" finds "Short Hair"
+        let words: Vec<String> = query_words(q).split_whitespace().map(compact).filter(|w| !w.is_empty()).collect();
+        let mut needles = vec![words.clone()];
+        if words.len() > 1 {
+            needles.push(vec![words.concat()]);
+        }
+        for needles in needles {
+            // single characters have no bigram; they would match nearly everything anyway
+            if needles.is_empty() || needles.iter().any(|w| w.chars().count() < 2) {
+                continue;
+            }
+            let mut grams: Vec<String> = needles.iter().flat_map(|w| bigrams(w)).collect();
+            grams.sort();
+            grams.dedup();
             let gram_query = BooleanQuery::new(
                 grams
                     .iter()
@@ -154,7 +202,8 @@ impl TextIndex {
             );
             for (_, addr) in searcher.search(&gram_query, &TopDocs::with_limit(self.doc_count.max(1)).order_by_score())? {
                 let d = self.seg_docs[addr.segment_ord as usize][addr.doc_id as usize];
-                if !hits.contains(d) && self.haystack[d as usize].contains(&needle) {
+                let hay = &self.haystack[d as usize];
+                if !hits.contains(d) && needles.iter().all(|w| hay.contains(w.as_str())) {
                     hits.insert(d);
                     scores.insert(d, 0.01);
                 }
@@ -196,7 +245,7 @@ mod tests {
         let s1 = sample().collect::<Vec<_>>();
         let fp1 = fingerprint(&s1);
         drop(TextIndex::build(s1.into_iter(), Some(&dir), fp1).unwrap());
-        assert_eq!(std::fs::read_to_string(dir.join("READY")).unwrap(), format!("3:{fp1:016x}"));
+        assert_eq!(std::fs::read_to_string(dir.join("READY")).unwrap(), format!("v{FORMAT}:3:{fp1:016x}"));
         // reopened from disk: same results
         let reopened = TextIndex::build(sample(), Some(&dir), fp1).unwrap();
         assert_eq!(reopened.search("dress").unwrap().0.iter().collect::<Vec<_>>(), [1]);
@@ -233,5 +282,25 @@ mod tests {
         assert_eq!(hits.iter().collect::<Vec<_>>(), [0]);
         let (hits, _) = idx.search("nothing-here").unwrap();
         assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn spacing_and_hyphens_do_not_matter() {
+        let docs = vec![
+            doc("Shinano Short Hair", "VRChat"),
+            doc("ShortHair for しなの", "Shinano"),
+            doc("short-hair set", "shinano"),
+            doc("Long Hair", "Shinano"),
+            doc("Shinano Shirt", "hair accessory"),
+            TextDoc { title: "Hair cutting tool".into(), tags: "tool".into(), author: String::new(), bio: "Works on Shinano, makes short hair.".into() },
+        ];
+        let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
+        let ids = |q: &str| idx.search(q).unwrap().0.iter().collect::<Vec<_>>();
+        for q in ["shinano short hair", "shinano shorthair", "shinano short-hair", "Shinano  Short/Hair"] {
+            assert_eq!(ids(q), [0, 1, 2, 5], "query {q:?}");
+        }
+        // a hyphen inside a word is a separator, not an exclusion
+        assert_eq!(ids("short-hair"), [0, 1, 2, 5]);
+        assert!(joined_pairs(&["Short Hair 2.0 for しなの"]).contains("shorthair"));
     }
 }
