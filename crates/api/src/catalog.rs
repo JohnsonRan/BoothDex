@@ -330,13 +330,15 @@ impl Catalog {
         cs.iter().filter(|(g, _)| Some(*g) != skip).fold(self.all.clone(), |acc, (_, b)| acc & b)
     }
 
-    /// `semantic`: item ids nearest to the query embedding, best first (see main.rs); they join the text hits and,
-    /// when sorting by relevance, the two rankings are merged.
-    pub fn search(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<&[i64]>) -> Result<SearchResult> {
+    /// `semantic`: item ids nearest to the query by meaning (see main.rs); they join the text hits and, when
+    /// sorting by relevance, the two rankings are merged.
+    pub fn search(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>) -> Result<SearchResult> {
         let q = p.get("q").filter(|q| !q.trim().is_empty());
         let mut text = q.as_deref().map(|q| self.text.search(q)).transpose()?;
         if let (Some((hits, scores)), Some(sem)) = (text.as_mut(), semantic) {
-            let docs: Vec<u32> = sem.iter().filter_map(|id| self.doc_of.get(id)).copied().collect();
+            // models named in the query: a meaning-based match must fit one of them
+            let fits = (!sem.models.is_empty()).then(|| self.avatars.any(sem.models));
+            let docs: Vec<u32> = sem.ids.iter().filter_map(|id| self.doc_of.get(id)).copied().filter(|d| fits.as_ref().is_none_or(|f| f.contains(*d))).collect();
             *scores = fuse(scores, &docs);
             hits.extend(docs);
         }
@@ -405,6 +407,14 @@ impl Catalog {
             facets,
         })
     }
+}
+
+#[derive(Clone, Copy)]
+pub struct Semantic<'a> {
+    /// nearest first
+    pub ids: &'a [i64],
+    /// model slugs named in the query
+    pub models: &'a [String],
 }
 
 /// Reciprocal rank fusion: each list contributes 1 / (60 + rank), robust to the two scores' different scales.

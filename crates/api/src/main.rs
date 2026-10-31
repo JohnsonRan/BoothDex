@@ -30,6 +30,31 @@ use params::Params;
 struct Lookup(Vec<(Vec<String>, Value, u64)>);
 
 impl Lookup {
+    /// Splits model names out of a search ("shinano short hair" -> "short hair" + [shinano]); a name is a whole
+    /// word (or two) equal to a model's slug or name in any language, at least 3 characters.
+    fn split_names(&self, q: &str) -> (String, Vec<String>) {
+        let words: Vec<&str> = q.split_whitespace().collect();
+        let slug_of = |w: &str| {
+            let w = w.to_lowercase();
+            (w.chars().count() >= 3).then(|| self.0.iter().find(|(keys, _, _)| keys.contains(&w))).flatten().and_then(|e| e.1["slug"].as_str().map(str::to_owned))
+        };
+        let (mut rest, mut slugs, mut i) = (Vec::new(), Vec::new(), 0);
+        while i < words.len() {
+            if let Some(slug) = words.get(i + 1).and_then(|next| slug_of(&format!("{} {next}", words[i]))) {
+                slugs.push(slug);
+                i += 2;
+            } else if let Some(slug) = slug_of(words[i]) {
+                slugs.push(slug);
+                i += 1;
+            } else {
+                rest.push(words[i]);
+                i += 1;
+            }
+        }
+        slugs.dedup();
+        (rest.join(" "), slugs)
+    }
+
     fn new(mut entries: Vec<(Vec<String>, Value, u64)>) -> Self {
         entries.retain(|e| e.2 > 0);
         for e in &mut entries {
@@ -122,13 +147,18 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
     };
     // page 1 decides whether meaning-based matches are used; the site sends sem=0 for later pages when they
     // weren't, so the result set can't change between pages if the provider answers late
+    // model names in the query become a requirement for meaning-based matches and are left out of the
+    // embedding, so "shinano short hair" adds short hair that fits Shinano, not other Shinano items
+    let (meaning, models) = s.snap().avatars.split_names(&p.get("q").unwrap_or_default());
     let (semantic, semantic_status) = match p.get("q").filter(|q| !q.trim().is_empty()) {
         Some(_) if p.get("sem").as_deref() == Some("0") => (None, "skipped"),
-        Some(q) => semantic_ids(s.clone(), &q).await,
+        Some(_) if meaning.is_empty() => (None, "skipped"),
+        Some(_) => semantic_ids(s.clone(), &meaning).await,
         None => (None, "off"),
     };
     let catalog_now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref(), semantic.as_deref()))?;
+    let semantic = semantic.as_deref().map(|ids| catalog::Semantic { ids, models: &models });
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref(), semantic))?;
     let search_ms = t0.elapsed().as_secs_f64() * 1e3;
     let items = db::load_items(&s.pool, &r.ids).await?;
     Ok(Json(json!({
@@ -485,5 +515,24 @@ mod tests {
         // values seen during calibration: a relevant query, and gibberish whose best neighbour is still 0.707
         assert!((super::semantic_cutoff(0.787) - 0.727).abs() < 1e-9);
         assert!(0.707 < super::semantic_cutoff(0.707));
+    }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+
+    #[test]
+    fn model_names_are_split_out_of_the_query() {
+        let entry = |slug: &str, names: &[&str]| {
+            (names.iter().map(|n| n.to_string()).chain([slug.to_string()]).collect(), json!({ "slug": slug }), 10u64)
+        };
+        let l = Lookup::new(vec![entry("shinano", &["Shinano", "しなの"]), entry("rusk", &["Rusk Dragon"]), entry("io", &["IO"])]);
+        assert_eq!(l.split_names("Shinano short hair"), ("short hair".into(), vec!["shinano".into()]));
+        assert_eq!(l.split_names("しなの ボブ"), ("ボブ".into(), vec!["shinano".into()]));
+        assert_eq!(l.split_names("rusk dragon wings"), ("wings".into(), vec!["rusk".into()]));
+        // too short to be taken as a name
+        assert_eq!(l.split_names("io hair"), ("io hair".into(), vec![]));
+        assert_eq!(l.split_names("short hair"), ("short hair".into(), vec![]));
     }
 }
