@@ -228,15 +228,6 @@ Safe to lose (rebuilt automatically): `imgcache` (re-fetched from BOOTH on deman
 - [ ] Off-server daily `pg_dump` backup is scheduled
 - [ ] AI provider is configured (otherwise newly crawled items lack smart categories, avatar-fit links and translated titles)
 
-## 8. Tested so far
-
-- Container images build cleanly on Linux (Podman / Buildx): `api` 156 MB, `worker` 100 MB, `imgproxy` 99 MB, `web` 272 MB; `/index` and `/cache` are owned and writable by non-root `app` (`uid 10001`).
-- Linux container memory profile verified under reload load: `MALLOC_ARENA_MAX=2` and title-only translation keep `api` reload peaks around 2.5–3 GB inside `mem_limit: 4g`.
-- `catalogue.dump` restores cleanly into `pgvector:pg17` via stdin (`scripts/test-restore.sh`): 215,911 items, 207,962 image rows, 379 avatars, 0 users.
-- `compose.yaml` validates cleanly both with `ARCHIVE_IMAGES_DIR` set and empty; Next.js standalone server forwards `/api` (with cookies), `/img` (with immutable cache headers) and `/api/admin/stream` (SSE).
-
-Not yet battle-tested long-term as a public multi-user site, or from a multi-day empty-database crawl end-to-end.
-
-## 9. Local development
+## 8. Local development
 
 See [`README.md`](../README.md#development) (`scripts/dev-up.sh`, `scripts/dev-down.sh`, `scripts/dev-restart.sh`). The dev scripts use a local `dev` password and are never used in production deployments.

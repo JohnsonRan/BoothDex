@@ -1,0 +1,180 @@
+<div align="center">
+
+# BoothDex
+
+**Rust と Next.js で構築された、BOOTH 向け VRChat アセットのセルフホスト型検索エンジンです。**
+
+**[デプロイガイド](docs/DEPLOY.md)** (英語) / **[API](#api)** / **[ライセンス](#ライセンス)**
+
+[English](README.md) / [简体中文](README.zh-CN.md) / 日本語
+
+[主な機能](#主な機能) / [はじめに](#はじめに) / [アーキテクチャ](#アーキテクチャ) / [開発](#開発)
+
+</div>
+
+> **開発初期段階のソフトウェアです。** 各サービスおよび Linux コンテナー環境での一連の動作は確認済みですが、公開マルチユーザーサイトとしての長期運用実績はまだありません。あらかじめご了承ください。
+
+BoothDex は、[BOOTH](https://booth.pm) で販売されている VRChat 向け商品をインデックス化し、対応アバター、カテゴリ、タグ、機能、価格などの条件で高速に絞り込める検索エンジンです。2026-11-01 に閉鎖された VRCatalogue の後継を目指して開発が始まり、互換性のある検索構文を備えています。本プロジェクトは独立したオープンソースプロジェクトであり、pixiv、BOOTH、および VRCatalogue とは一切関係ありません。商品データおよび画像の権利は各制作者に帰属し、すべての商品は BOOTH の販売ページへ直接リンクしています。
+
+## 主な機能
+
+- **検索**: 約 20 万件の商品を数ミリ秒でファセット検索できます。対応アバター、スマートカテゴリ、BOOTH カテゴリ、タグ (含む・除外)、機能 (MA・lilToon・Poiyomi・VRCFury)、価格、公開日、無料のみ、年齢制限での絞り込みに対応しています。日本語の全文検索には Lindera (IPADIC) を使用し、オプションのセマンティック検索を有効にすると言語をまたいで意味の近い商品 (“哥特裙” でゴスロリ衣装がヒットするなど) を検索し、キーワード検索の結果と統合して並べ替えます。
+- **ブラウジング**: 性別ごとに整理されたアバター本体一覧、BOOTH の全画像ギャラリー・バリエーション・翻訳タイトル・元画像ダウンロードを備えた商品詳細パネル、および商品・アバター・ショップ・タグを横断検索できる `Ctrl+K` クイック検索パレットを提供します。
+- **アカウント**: お気に入り、最近見た商品 (検索結果で控えめに表示)、保存した検索、よく使うアバターの記憶、および任意の検索条件に対する RSS フィード購読に対応しています。
+- **インターフェイス**: 表示言語は日本語・英語・簡体字中国語・韓国語に対応しています。商品タイトルの原文/翻訳切り替え、通貨換算表示、ライト/ダークテーマ、モバイルファーストのレイアウトを備えています。
+- **クローラー**: `worker` が 1 時間ごとに BOOTH の新着商品を取得し、毎日全件を巡回して価格更新や販売終了の判定を行い、人気商品も定期的に再確認します。
+- **AI エンリッチメント** *(オプション、任意の OpenAI 互換 API に対応、推論強度を設定可能)*: 新着商品に対してスマートカテゴリ、年齢制限、対応機能、および 4 言語 (日本語・英語・簡体字中国語・韓国語) のタイトル翻訳を自動付与し、名前照合による対応アバターの紐付けやカテゴリ・タグ名の翻訳も行います。セマンティック検索用の埋め込みベクトルも同じプロバイダーで生成します。
+- **画像プロキシ**: BOOTH の画像を WebP に再エンコードしてキャッシュします。販売終了した商品の画像はアーカイブ済みのコピーから配信します。
+- **管理画面**: リアルタイムのジョブ進捗 (SSE)、実行スケジュール、リソース使用状況、AI 設定、およびユーザーのパスワードリセットを `/admin` から管理できます。
+
+商品ごとの単独ページ、価格推移グラフ、ソーシャルログイン、およびパスワード再設定メールは意図的に設けていません (パスワードは管理者がリセットします)。商品説明文やバリエーション名は翻訳せず、言語横断検索に必要なタイトルのみを翻訳します。
+
+## はじめに
+
+詳細な構築手順、リバースプロキシの設定例、バックアップ運用については [デプロイガイド](docs/DEPLOY.md) (英語) を参照してください。Docker または Podman Compose を使用して PostgreSQL 17 (`pgvector`)、3 つの Rust サービス、Next.js サイトを起動し、TLS リバースプロキシ向けに単一ポート (`WEB_LISTEN`、既定値 `3100`) のみを公開します。**6 GB 以上のメモリ**を備えた Linux サーバーが必要です (8 GB 推奨、スワップ併用時は 4 GB から動作可能)。
+
+```mermaid
+flowchart LR
+  env["1. compose.yaml と .env を配置<br/>(パスワード・SITE_URL を設定)"] --> data{"2. 初期データの準備"}
+
+  data -- "データバンドル (約 5 分)" --> bundle["images.tar を展開<br/>pg_restore で catalogue.dump を復元"]
+  data -- "空の DB から取得 (約 2～3 日)" --> crawl["カテゴリと約 380 体のアバターを自動投入<br/>初回フルクロールを実行"]
+
+  bundle --> up["3. docker compose up -d"]
+  crawl --> up
+  up --> admin["4. アカウント登録 → ADMIN_USERNAMES 設定<br/>/admin で AI プロバイダーを設定 (任意)"]
+```
+
+新規データベースには、起動時のマイグレーションによってカテゴリツリー、スマートタグ、および約 380 体のアバター本体が自動的に登録されます。数日かかる初回フルクロール ([データバンドルを使わない起動手順](docs/DEPLOY.md#starting-without-a-data-bundle)) を省略したい場合は、[公開済みデータバンドル](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-10-31) (2026-10-31 時点のスナップショット、約 21.6 万件の商品と販売終了商品のアーカイブ画像を収録、約 1.4 GB) を復元してください。
+
+```sh
+mkdir -p /srv/boothdex && cd /srv/boothdex
+curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
+curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
+$EDITOR .env    # POSTGRES_PASSWORD、SITE_URL、WEB_LISTEN を設定 (バンドル利用時は ARCHIVE_IMAGES_DIR も指定)
+docker compose pull && docker compose up -d
+```
+
+## アーキテクチャ
+
+### サービス構成
+
+```mermaid
+flowchart LR
+  browser["ブラウザー / RSS リーダー"] --> web["web (Next.js :3100)<br/>UI と /admin"]
+
+  subgraph stack["BoothDex サービス群"]
+    web -- "/api/*" --> api["api (Rust, Axum :3000)<br/>Roaring ビットマップ・Tantivy"]
+    web -- "/img/*" --> imgproxy["imgproxy (Rust :3001)<br/>foyer WebP キャッシュ"]
+    worker["worker (Rust)<br/>booth・ai・embed の 3 レーン"]
+    pg[("PostgreSQL 17<br/>+ pgvector")]
+
+    api --> pg
+    worker --> pg
+    api --- idx[("INDEX_DIR<br/>(Tantivy インデックス)")]
+    imgproxy --- cache[("imgcache と<br/>アーカイブ WebP")]
+  end
+
+  imgproxy --> pximg["booth.pximg.net"]
+  worker --> booth["booth.pm"]
+  worker -. "分類・翻訳・埋め込み" .-> ai["OpenAI 互換 API"]
+  api -. "検索クエリ埋め込み" .-> ai
+```
+
+### ハイブリッド検索とデータ更新フロー
+
+```mermaid
+flowchart TD
+  subgraph query["ハイブリッド検索 (/api/search)"]
+    q["検索クエリ + 絞り込み条件"] --> parse["アバター名・カテゴリ語句の抽出"]
+    parse --> kw["Lindera (IPADIC) + Tantivy<br/>& Roaring ビットマップ絞り込み"]
+    parse -. "セマンティック検索有効時" .-> embq["検索ベクトル取得<br/>(メモリ → DB キャッシュ → AI API、上限 2.5 秒)"]
+    embq -.-> ann["pgvector HNSW 近傍検索"]
+    kw --> merge["スコア統合・ファセット集計"]
+    ann -.-> merge
+    merge --> hydrate["PostgreSQL から表示ページの商品を取得"]
+  end
+
+  subgraph ingest["バックグラウンドジョブと無停止リロード"]
+    crawl_job["booth レーン:<br/>incremental・sweep・refresh"] --> dbw[("PostgreSQL")]
+    ai_job["ai レーン:<br/>enrich (200 件ずつ連続実行)・localize"] --> dbw
+    ai_job -. "連続実行の完了後" .-> emb_job["embed レーン:<br/>1024 次元 halfvec 生成"]
+    emb_job --> dbw
+    dbw -- "catalog_meta.version を更新" --> snap["api が裏で新スナップショットを構築<br/>ArcSwap でアトミックに切り替え"]
+  end
+```
+
+### ディレクトリ構成
+
+| パス | 内容 |
+|---|---|
+| `crates/core` | 共通型、BOOTH クライアント、および起動時に自動適用される `migrations/` 内の PostgreSQL スキーマ |
+| `crates/api` | 検索 API。絞り込みにはメモリ上の Roaring ビットマップを使用し、Tantivy 全文検索インデックスはディスク (`INDEX_DIR`) に保持して再起動時も再利用します。ページ表示用の商品データは PostgreSQL から取得します |
+| `crates/worker` | 3 レーン構成のジョブランナー: `incremental` (新着取得)、`sweep` (全件巡回)、`details`、`refresh`、`enrich`、`localize`、`embed` (AI)。`worker run` でデーモン起動、`worker once <kind> [params-json]` で単発実行します |
+| `crates/imgproxy` | `/b/{size}/...` で BOOTH 画像を WebP に変換・キャッシュ配信し、`/v/{sha1}.webp` でアーカイブ画像を配信します |
+| `crates/importer` | VRCatalogue 形式のアーカイブディレクトリを一括インポートするツール |
+| `web` | Next.js フロントエンドおよび `/admin` 管理画面 |
+| `deploy` | Dockerfile、`docker-bake.hcl`、`compose.yaml`、および `.env.example` |
+| `scripts` | ローカル開発用起動スクリプト (Windows / Git Bash)、データバンドル作成ツール、モック AI サーバー |
+
+32 スレッド環境で約 21.6 万件の商品を検索した場合、API 内部の処理時間は 1～6 ミリ秒、リクエスト全体では 5～40 ミリ秒で応答し、32 クライアント同時接続時に毎秒約 550 リクエストを処理します。Linux コンテナー上での `api` のメモリ使用量は通常時で約 1.3～2.4 GB (メモリマップされた Tantivy インデックスを含む)、カタログ再読み込み時のピークで約 2.5～3 GB です (`mem_limit: 4g`)。
+
+## 開発
+
+必要な環境: Rust (stable)、[Bun](https://bun.sh)、および `pgvector` 拡張入りの PostgreSQL 17 (Podman または Docker 上で実行)。
+
+```sh
+podman run -d --name boothdex-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalogue \
+  -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql/data docker.io/pgvector/pgvector:pg17
+
+cargo build --release            # 初回ビルド時に IPADIC 辞書をダウンロードします (失敗した場合は再実行してください)
+(cd web && bun install)
+
+export DATABASE_URL=postgres://postgres:dev@localhost:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
+target/release/api &             # :3000
+target/release/imgproxy &        # :3001
+target/release/worker run &
+(cd web && bun run dev)          # :3100 (/api と /img を上記サービスへ転送)
+```
+
+アカウント `admin` を新規登録し、`http://localhost:3100/admin` を開いてから、数ページ分クロールして商品データを取得してください。
+
+```sh
+target/release/worker once incremental '{"max_pages": 3, "full": true}'
+```
+
+- **Windows (Git Bash)**: `scripts/dev-up.sh`、`scripts/dev-down.sh`、`scripts/dev-restart.sh` で 4 つのサービスをまとめてバックグラウンド起動・停止できます。ログは `<service>.log` に出力されます。
+- **モック AI プロバイダー**: API キーがない場合でも、`bun scripts/mock-ai.ts` を起動して管理画面の AI 接続先に `http://127.0.0.1:3555/v1` を指定すると AI ジョブの動作を確認できます。
+- **VRCatalogue アーカイブのインポート**: VRCatalogue API 形式のアーカイブ (`items/`、`avatars/`、`dict/`、`labels/`) がある場合は、`DATABASE_URL=... cargo run --release -p importer -- <アーカイブディレクトリ>` でインポートできます (再実行しても安全です。約 21.5 万件で所要時間は約 90 秒です)。
+
+テストと静的解析:
+
+```sh
+cargo test
+cd web && bun test src/lib && bunx tsc --noEmit && bunx biome check src
+```
+
+## API
+
+`/api/search` は VRCatalogue 互換のクエリパラメーターを受け付けます: `v q sort dir page pageSize adult avatars authors tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender`。その他のエンドポイントとして `/api/avatars`、`/api/authors`、`/api/tags`、`/api/booth-tags` (`?q=&offset=&limit=`)、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、および `/api/rss?<検索クエリ>` があります。
+
+VRCatalogue との違い: 機能 (Features) のファセット件数が選択中のカテゴリを反映します。「人気」(Trending) 順は経過時間で減衰させた「スキ!」数で算出します。`range` パラメーターでは `7d`、`30d`、`90d` も指定できます。
+
+## 謝辞
+
+- VRCatalogue: オリジナルのサイト、検索モデル、および本プロジェクトの出発点となった分類体系
+- [BOOTH](https://booth.pm): 商品データおよび画像配信元
+- [Tantivy](https://github.com/quickwit-oss/tantivy) および [Lindera](https://github.com/lindera/lindera): 全文検索と日本語形態素解析
+- [roaring-rs](https://github.com/RoaringBitmap/roaring-rs): 絞り込み用ビットマップ
+- [foyer](https://github.com/foyer-rs/foyer): ハイブリッド画像キャッシュ
+- [shadcn/ui](https://ui.shadcn.com): UI コンポーネント
+- [MiSans](https://hyperos.mi.com/font/): Xiaomi 製インターフェイスフォント
+
+## ライセンス
+
+[AGPL-3.0-or-later](LICENSE) の下で提供されています。改変したバージョンを公開サービスとして運用する場合は、変更後のソースコードを公開する必要があります。
+
+```text
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (c) 2026, BoothDex contributors
+```
