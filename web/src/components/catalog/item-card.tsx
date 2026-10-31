@@ -39,7 +39,9 @@ export const ItemCard = memo(function ItemCard({
         type="button"
         onClick={() => onOpen(item)}
         className="block w-full text-left"
-        aria-label={item.title}
+        aria-label={
+          viewed ? `${item.title} (${t("viewed.badge")})` : item.title
+        }
       >
         <div className="relative aspect-square overflow-hidden rounded-md bg-muted ring-1 ring-foreground/5">
           <img
@@ -60,9 +62,12 @@ export const ItemCard = memo(function ItemCard({
             />
           )}
           {viewed && (
-            <div className="absolute inset-0 bg-background/55 transition-opacity [@media(hover:hover)]:group-hover:opacity-0">
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 bg-background/55 transition-opacity [@media(hover:hover)]:group-hover:opacity-0"
+            >
               <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-sm bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur">
-                <Eye className="size-3" aria-hidden />
+                <Eye className="size-3" aria-hidden="true" />
                 {t("viewed.badge")}
               </span>
             </div>

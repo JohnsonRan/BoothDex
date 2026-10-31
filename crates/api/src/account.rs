@@ -464,9 +464,36 @@ async fn list_views(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Resul
 }
 
 #[derive(Deserialize)]
+struct ViewEntry {
+    id: i64,
+    /// view timestamp in epoch milliseconds (optional, missing defaults to server now())
+    #[serde(default)]
+    at: Option<i64>,
+}
+
+#[derive(Deserialize)]
 struct Views {
     /// newest first: one item just opened, or a signed-out browser's history merged in at sign-in
-    ids: Vec<i64>,
+    views: Vec<ViewEntry>,
+}
+
+fn dedupe_views(entries: Vec<ViewEntry>) -> (Vec<i64>, Vec<Option<f64>>) {
+    let mut seen = HashMap::new();
+    let mut deduped = Vec::new();
+    for entry in entries {
+        let at = entry.at.filter(|&ms| ms > 0 && ms < 4_102_444_800_000);
+        if let Some(&idx) = seen.get(&entry.id) {
+            let (_, existing_at): &mut (i64, Option<i64>) = &mut deduped[idx];
+            *existing_at = match (*existing_at, at) {
+                (None, _) | (_, None) => None,
+                (Some(a), Some(b)) => Some(a.max(b)),
+            };
+        } else {
+            seen.insert(entry.id, deduped.len());
+            deduped.push((entry.id, at));
+        }
+    }
+    deduped.into_iter().map(|(id, at)| (id, at.map(|ms| ms as f64 / 1000.0))).unzip()
 }
 
 async fn add_views(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<Views>) -> Result<Response, ApiError> {
@@ -474,17 +501,26 @@ async fn add_views(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): 
         Ok(u) => u,
         Err(r) => return Ok(r),
     };
-    let ids: Vec<i64> = b.ids.into_iter().take(MAX_VIEWS as usize).collect();
+    let entries: Vec<ViewEntry> = b.views.into_iter().take(MAX_VIEWS as usize).collect();
+    if entries.is_empty() {
+        return Ok(Json(json!({ "ok": true })).into_response());
+    }
+    let (ids, ats) = dedupe_views(entries);
+
     let mut tx = s.pool.begin().await?;
-    // list order becomes time order (1 ms apart); unknown ids are skipped, an older view never overwrites a newer one
+    // serialize per account so concurrent imports cannot skip the retention trim
+    sqlx::query("select 1 from users where id = $1 for update").bind(u.id).execute(&mut *tx).await?;
+
+    // missing at defaults to now(); future timestamps are clamped to server now()
     sqlx::query(
         "insert into item_views (user_id, item_id, viewed_at)
-         select $1, v.id, now() - (v.n * interval '1 millisecond')
-         from unnest($2::bigint[]) with ordinality v(id, n) join items i on i.id = v.id
+         select $1, v.id, least(coalesce(to_timestamp(v.at_sec), now()), now())
+         from unnest($2::bigint[], $3::double precision[]) as v(id, at_sec) join items i on i.id = v.id
          on conflict (user_id, item_id) do update set viewed_at = greatest(item_views.viewed_at, excluded.viewed_at)",
     )
     .bind(u.id)
     .bind(&ids)
+    .bind(&ats)
     .execute(&mut *tx)
     .await?;
     sqlx::query(
@@ -625,5 +661,14 @@ mod tests {
         assert!(t.blocked("x"));
         t.clear("x");
         assert!(!t.blocked("x"));
+    }
+
+    #[test]
+    fn views_deduplication_and_timestamps() {
+        let json = r#"{"views": [{"id": 1, "at": 1000}, {"id": 2}, {"id": 1, "at": 2000}, {"id": 1, "at": 500}]}"#;
+        let b: Views = serde_json::from_str(json).unwrap();
+        let (ids, ats) = dedupe_views(b.views);
+        assert_eq!(ids, vec![1, 2]);
+        assert_eq!(ats, vec![Some(2.0), None]);
     }
 }

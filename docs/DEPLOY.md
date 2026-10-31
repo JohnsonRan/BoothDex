@@ -41,7 +41,7 @@ Bundle contents:
 
 | File | What | Size |
 |---|---|---|
-| `catalogue.dump` | Postgres dump: all items, crawled Booth images, schema. **No user accounts, sessions, favourites, job history or AI settings** — those were test data | ~0.5–1 GB |
+| `catalogue.dump` | Postgres dump: all items, crawled Booth images, schema. **No user accounts, sessions, favourites, viewed history, job history or AI settings** — those were test data | ~0.5–1 GB |
 | `images.tar` | Archived images of delisted items (`images/<sha1>.webp`). Booth no longer serves these and the original CDN is gone | ~1 GB |
 | `SHA256SUMS` | Checksums | |
 

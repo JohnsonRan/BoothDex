@@ -39,7 +39,12 @@ import { addQuery, loadHistory, saveHistory } from "@/lib/history";
 import type { MessageKey } from "@/lib/messages";
 import { useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
-import { addViewed, loadViewed, saveViewed } from "@/lib/viewed";
+import {
+  addViewed,
+  loadViewed,
+  recordLocalView,
+  saveViewed,
+} from "@/lib/viewed";
 import { AccountMenu, type Me } from "./account-menu";
 import { AvatarStrip } from "./avatar-strip";
 import { CommandPalette } from "./command-palette";
@@ -96,12 +101,12 @@ export function Browse() {
   const [favs, setFavs] = useState<Set<number> | null>(null);
   // opened items, newest first (null until the account or this browser's list is read)
   const [viewed, setViewed] = useState<number[] | null>(null);
+  const [viewedGen, setViewedGen] = useState(0);
   const viewedRef = useRef(viewed);
   viewedRef.current = viewed;
   const viewedSet = useMemo(() => new Set(viewed), [viewed]);
   const recent = filters.view === "recent";
-  // the recently viewed list loads once the ids are known, not again for each item opened while it shows
-  const recentReady = recent && viewed !== null;
+  const recentKey = recent ? viewedGen : 0;
   const [open, setOpen] = useState<Item | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -133,6 +138,7 @@ export function Browse() {
 
   // session: who am I, my favourites, what I viewed; rerun after login/logout
   const loadAccount = useCallback(async () => {
+    setViewed(null);
     const user = await api<Me>("/api/account").catch(() => null);
     setMe(user);
     if (user) {
@@ -141,18 +147,23 @@ export function Browse() {
       if (local.length)
         await api("/api/account/views", {
           method: "POST",
-          json: { ids: local },
+          json: { views: local.map(([id, at]) => ({ id, at })) },
         })
           .then(() => saveViewed([]))
           .catch(() => {});
-      setViewed(
-        (
-          await api<{ ids: number[] }>("/api/account/views").catch(() => ({
-            ids: [],
-          }))
-        ).ids,
+      const res = await api<{ ids: number[] }>("/api/account/views").catch(
+        () => ({
+          ids: [],
+        }),
       );
-    } else setViewed(loadViewed());
+      setViewed((cur) => [
+        ...(cur ?? []),
+        ...res.ids.filter((id) => !cur?.includes(id)),
+      ]);
+    } else {
+      setViewed(loadViewed().map(([id]) => id));
+    }
+    setViewedGen((g) => g + 1);
     setFavs(
       user
         ? new Set((await api<{ ids: number[] }>("/api/account/favourites")).ids)
@@ -163,7 +174,12 @@ export function Browse() {
 
   const update = useCallback(
     (patch: Partial<Filters>) => {
-      const next = filtersToQuery({ ...filters, ...patch });
+      // search, author or avatar filters picked from palette or detail leave the recent view
+      const viewPatch =
+        filters.view === "recent" && !patch.view
+          ? { view: "items" as const }
+          : {};
+      const next = filtersToQuery({ ...filters, ...viewPatch, ...patch });
       router.replace(next ? `${pathname}?${next}` : pathname, {
         scroll: false,
       });
@@ -208,7 +224,7 @@ export function Browse() {
     const started = performance.now();
     // the previous results stay (dimmed) until the new ones arrive
     setLoading(true);
-    if (filters.view === "recent" && !recentReady) return;
+    if (filters.view === "recent" && viewedRef.current === null) return;
     const ids = (viewedRef.current ?? []).slice(0, PAGE_SIZE);
     const load: Promise<SearchResult> =
       filters.view !== "recent"
@@ -248,7 +264,7 @@ export function Browse() {
       .finally(() => {
         if (id === request.current) setLoading(false);
       });
-  }, [filters, filterKey, page, epoch, recentReady]);
+  }, [filters, filterKey, page, epoch, recentKey]);
 
   const goPage = useCallback(
     (n: number) => {
@@ -381,9 +397,9 @@ export function Browse() {
     if (me)
       api("/api/account/views", {
         method: "POST",
-        json: { ids: [openId] },
+        json: { views: [{ id: openId }] },
       }).catch(() => {});
-    else saveViewed(addViewed(loadViewed(), openId));
+    else recordLocalView(openId);
   }, [openId, me]);
 
   const clearViewed = async () => {
@@ -567,6 +583,7 @@ export function Browse() {
             <button
               type="button"
               onClick={clearViewed}
+              aria-label={t("recent.clear")}
               className="ml-auto flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
               <Trash2 className="size-3.5" />
