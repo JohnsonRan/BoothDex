@@ -56,7 +56,10 @@ export function SearchTrace({ meta }: { meta: TraceMeta }) {
         <Activity className="size-3" aria-hidden />
         {t(mode)} · {ms(meta.clientMs ?? server)}
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 p-0 text-sm">
+      <PopoverContent
+        align="start"
+        className="w-max min-w-72 max-w-[calc(100vw-2rem)] p-0 text-sm"
+      >
         <p className="border-b px-4 py-2 font-semibold text-muted-foreground text-xs uppercase tracking-wide">
           {t("trace.title")}
         </p>
@@ -79,8 +82,10 @@ export function SearchTrace({ meta }: { meta: TraceMeta }) {
                   }
                 >
                   <td className="px-4 py-1">{key ? t(key) : s.step}</td>
-                  <td className="py-1 text-right">+{ms(s.ms)}</td>
-                  <td className="px-4 py-1 text-right text-muted-foreground">
+                  <td className="whitespace-nowrap py-1 text-right">
+                    +{ms(s.ms)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-1 text-right text-muted-foreground">
                     {ms(sum)}
                   </td>
                 </tr>
@@ -88,7 +93,7 @@ export function SearchTrace({ meta }: { meta: TraceMeta }) {
             })}
           </tbody>
         </table>
-        <p className="flex justify-between border-t px-4 py-2 text-muted-foreground text-xs">
+        <p className="flex justify-between gap-4 whitespace-nowrap border-t px-4 py-2 text-muted-foreground text-xs">
           <span>
             {t("trace.server")} {ms(server)}
           </span>
