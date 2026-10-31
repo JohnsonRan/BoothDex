@@ -64,7 +64,8 @@ type Kind =
   | "refresh"
   | "sweep"
   | "enrich"
-  | "localize";
+  | "localize"
+  | "embed";
 type Schedule = {
   kind: Kind;
   enabled: boolean;
@@ -150,6 +151,10 @@ const KIND: Record<Kind, { label: string; desc: string }> = {
   enrich: {
     label: "AI 处理",
     desc: "为新商品生成分类、分级、推断价格和英日韩翻译，并按名称匹配适配模型(每次 200 个；在下方“AI 处理设置”配置 AI 模型之前不会运行)",
+  },
+  embed: {
+    label: "语义向量",
+    desc: "为商品生成用于语义搜索的向量(新商品和改过标题或简介的商品；在下方设置向量模型之前不会运行)",
   },
   localize: {
     label: "翻译分类",
@@ -738,11 +743,13 @@ type Ai = {
   api_key_set: boolean;
   api_key_hint?: string | null;
   reasoning_effort?: string;
+  embed_model?: string | null;
   from_env?: {
     base_url: boolean;
     model: boolean;
     api_key: boolean;
     reasoning_effort?: boolean;
+    embed_model?: boolean;
   };
 };
 const EFFORTS = [
@@ -760,6 +767,7 @@ function AiSettingsCard() {
   const [ai, setAi] = useState<Ai | null>(null);
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
+  const [embedModel, setEmbedModel] = useState("");
   const [key, setKey] = useState("");
   const [effort, setEffort] = useState("none");
   const [busy, setBusy] = useState(false);
@@ -770,6 +778,7 @@ function AiSettingsCard() {
       setAi(ai);
       setBaseUrl(ai.base_url ?? "");
       setModel(ai.model ?? "");
+      setEmbedModel(ai.embed_model ?? "");
       setEffort(ai.reasoning_effort ?? "none");
     });
   }, []);
@@ -786,6 +795,7 @@ function AiSettingsCard() {
             model,
             api_key: key,
             reasoning_effort: effort,
+            embed_model: embedModel,
           },
         }),
       );
@@ -800,14 +810,17 @@ function AiSettingsCard() {
   const test = async () => {
     setBusy(true);
     try {
-      const r = await api<{ models: string[]; model_found: boolean }>(
-        "/api/admin/settings/ai/test",
-        { method: "POST" },
-      );
+      const r = await api<{
+        models: string[];
+        model_found: boolean;
+        embed_error?: string | null;
+      }>("/api/admin/settings/ai/test", { method: "POST" });
       setModels(r.models);
-      r.model_found
-        ? toast.success(`连接成功，可用 AI 模型 ${r.models.length} 个`)
-        : toast.warning("连接成功，但没找到你填的 AI 模型");
+      if (r.embed_error)
+        toast.error(`向量模型不可用：${r.embed_error}`, { duration: 15000 });
+      else if (r.model_found)
+        toast.success(`连接成功，可用 AI 模型 ${r.models.length} 个`);
+      else toast.warning("连接成功，但没找到你填的 AI 模型");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -877,6 +890,23 @@ function AiSettingsCard() {
               任务会停止并显示错误。
             </p>
           </div>
+          <label htmlFor="ai-embed" className="space-y-1.5 text-sm">
+            <span className="text-muted-foreground">
+              向量模型(语义搜索){ai?.from_env?.embed_model && ENV_NOTE}
+            </span>
+            <Input
+              id="ai-embed"
+              disabled={ai?.from_env?.embed_model}
+              value={embedModel}
+              onChange={(e) => setEmbedModel(e.target.value)}
+              placeholder="Qwen/Qwen3-Embedding-4B"
+              list="ai-models"
+            />
+            <p className="text-muted-foreground text-xs">
+              使用上面的 API 地址和密钥。模型需要支持输出 1024
+              维向量。留空则不使用语义搜索；更换模型后会重新生成所有向量。
+            </p>
+          </label>
           <label htmlFor="ai-key" className="space-y-1.5 text-sm">
             <span className="text-muted-foreground">
               API 密钥{" "}

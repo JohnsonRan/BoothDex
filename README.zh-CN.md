@@ -22,14 +22,14 @@ VRCatalogue 均无关联。商品数据和图片归其作者所有，每个商�
 ## 功能
 
 - 搜索:在约 20 万个商品中按适配模型、智能分类、BOOTH 分类、标签(包含和排除)、功能(MA、lilToon、Poiyomi、
-  VRCFury)、价格、发布时间、免费商品和成人内容模式筛选，耗时只有几毫秒。日文全文搜索使用 Lindera(IPADIC)。
+  VRCFury)、价格、发布时间、免费商品和成人内容模式筛选，耗时只有几毫秒。日文全文搜索使用 Lindera(IPADIC);可选的语义搜索按意思跨语言查找(搜"哥特裙"能找到ゴスロリ连衣裙)，并与关键词结果合并排序。
 - 浏览:按性别分组的模型视图;商品详情面板，含完整的 BOOTH 图集、变体、翻译和图片下载;用 Ctrl+K 搜索商品、
   模型、作者和标签。
 - 账户:收藏、保存的搜索、记住你的模型，以及任意搜索的 RSS 订阅。
 - 界面:中文、英语、日语和韩语;商品文字可显示原文或译文;货币换算显示;浅色和深色主题;移动端优先的布局。
 - 抓取:worker 每小时从 BOOTH 获取新商品，每天巡检完整列表，定期重新检查热门商品，并标记已下架的商品。
 - AI 处理(可选，支持任何兼容 OpenAI 的 API，可配置思考等级):为新商品生成分类、内容分级、功能和翻译，按名称
-  匹配适配模型，并把分类和标签名翻译成中文。
+  匹配适配模型，并把分类和标签名翻译成中文。语义搜索的向量也由同一个服务生成。
 - 图片:代理把 BOOTH 图片转成 WebP 并缓存;已下架商品的图片使用存档副本。
 - 管理:实时查看任务进度，管理定时任务、资源占用、AI 设置，以及重置用户密码。
 
@@ -58,7 +58,7 @@ VRCatalogue 均无关联。商品数据和图片归其作者所有，每个商�
 |---|---|
 | `crates/core` | 公共代码;`migrations/` 中的 PostgreSQL 表结构，服务启动时自动应用 |
 | `crates/api` | 搜索 API。筛选用内存中的 roaring 位图;Tantivy 文本索引放在磁盘上(`INDEX_DIR`)，目录不变时直接复用;分页数据从 PostgreSQL 读取 |
-| `crates/worker` | 任务执行器:`incremental`(新商品)、`sweep`(完整列表)、`details`、`refresh`、`enrich` 和 `localize`(AI)。`worker run` 以守护进程运行;`worker once <kind> [params-json]` 立即运行一个任务 |
+| `crates/worker` | 任务执行器:`incremental`(新商品)、`sweep`(完整列表)、`details`、`refresh`、`enrich`、`localize` 和 `embed`(AI)。`worker run` 以守护进程运行;`worker once <kind> [params-json]` 立即运行一个任务 |
 | `crates/imgproxy` | `/b/{size}/...` 把 BOOTH 图片转成 WebP 提供;`/v/{sha1}.webp` 提供存档图片 |
 | `crates/importer` | 一次性导入 VRCatalogue 存档目录 |
 | `web` | Next.js 网站和 `/admin` 管理后台 |

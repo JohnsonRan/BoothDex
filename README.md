@@ -24,7 +24,8 @@ data and images belong to their creators; every item links back to its BOOTH pag
 
 - Search: faceted filtering over ~200k items in a few milliseconds by model fit, smart category, BOOTH
   category, tags (include and exclude), features (MA, lilToon, Poiyomi, VRCFury), price, release date, free
-  items and adult-content mode. Japanese text search uses Lindera (IPADIC).
+  items and adult-content mode. Japanese text search uses Lindera (IPADIC); optional semantic search finds items
+  by meaning across languages ("哥特裙" finds ゴスロリ dresses) and merges both rankings.
 - Browsing: a model view grouped by gender, an item panel with the full BOOTH gallery, variations,
   translations and image download, and a Ctrl+K palette across items, models, authors and tags.
 - Accounts: favourites, saved searches, a remembered model, and RSS feeds for any search.
@@ -34,7 +35,7 @@ data and images belong to their creators; every item links back to its BOOTH pag
   items and marks delisted ones.
 - AI enrichment (optional, any OpenAI-compatible API, configurable reasoning effort): categories, content
   rating, features and translations for new items, model links by name matching, and Chinese names for
-  categories and tags.
+  categories and tags. Embeddings for semantic search come from the same provider.
 - Images: a proxy re-encodes BOOTH images to WebP and caches them; archived copies cover delisted items.
 - Administration: live job progress, schedules, resource usage, AI settings and password resets.
 
@@ -64,7 +65,7 @@ browser ─► web (Next.js) ─┬─ /api/*  ─► api (Rust, Axum) ──►
 |---|---|
 | `crates/core` | Shared code; the PostgreSQL schema in `migrations/`, applied by the services at start |
 | `crates/api` | Search API. Filters are roaring bitmaps in memory; the Tantivy text index lives on disk (`INDEX_DIR`) and is reused while the catalogue is unchanged; page payloads come from PostgreSQL |
-| `crates/worker` | Job runner: `incremental` (new items), `sweep` (full listing), `details`, `refresh`, `enrich` and `localize` (AI). `worker run` is the daemon; `worker once <kind> [params-json]` runs one job |
+| `crates/worker` | Job runner: `incremental` (new items), `sweep` (full listing), `details`, `refresh`, `enrich`, `localize` and `embed` (AI). `worker run` is the daemon; `worker once <kind> [params-json]` runs one job |
 | `crates/imgproxy` | `/b/{size}/...` serves BOOTH images as WebP; `/v/{sha1}.webp` serves archived images |
 | `crates/importer` | One-off import of a VRCatalogue archive directory |
 | `web` | Next.js website and the `/admin` console |

@@ -281,6 +281,8 @@ struct AiSettings {
     /// empty or missing keeps the stored key
     api_key: Option<String>,
     reasoning_effort: Option<String>,
+    /// empty clears it (semantic search off)
+    embed_model: Option<String>,
 }
 
 fn key_hint(k: &str) -> String {
@@ -292,11 +294,11 @@ use catalogue_core::settings::{self, AiConfig};
 
 fn public_ai(c: &AiConfig) -> Value {
     json!({
-        "base_url": c.base_url, "model": c.model, "reasoning_effort": c.reasoning_effort,
+        "base_url": c.base_url, "model": c.model, "reasoning_effort": c.reasoning_effort, "embed_model": c.embed_model,
         "api_key_set": c.api_key.is_some(), "api_key_hint": c.api_key.as_deref().map(key_hint),
         // fields set by AI_* environment variables can't be edited in the console
         "from_env": { "base_url": c.base_url_from_env, "model": c.model_from_env, "api_key": c.api_key_from_env,
-                      "reasoning_effort": c.reasoning_effort_from_env },
+                      "reasoning_effort": c.reasoning_effort_from_env, "embed_model": c.embed_model_from_env },
     })
 }
 
@@ -309,7 +311,7 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
     admin!(s, headers);
     let url_ok = b.base_url.as_deref().is_none_or(|u| u.len() <= 300 && (u.starts_with("https://") || u.starts_with("http://")));
     let effort = b.reasoning_effort.as_deref().map(settings::reasoning_effort);
-    if !url_ok || b.model.as_deref().is_some_and(|m| m.len() > 100) || b.api_key.as_deref().is_some_and(|k| k.len() > 500) || effort == Some(None) {
+    if !url_ok || [&b.model, &b.embed_model].iter().any(|m| m.as_deref().is_some_and(|m| m.len() > 100)) || b.api_key.as_deref().is_some_and(|k| k.len() > 500) || effort == Some(None) {
         return Ok(err(
             StatusCode::BAD_REQUEST,
             "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars; reasoning effort: none, minimal, low, medium, high or xhigh",
@@ -321,6 +323,9 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
     }
     if let Some(m) = b.model {
         v["model"] = json!(m.trim());
+    }
+    if let Some(m) = b.embed_model {
+        v["embed_model"] = json!(m.trim());
     }
     if let Some(Some(e)) = effort {
         v["reasoning_effort"] = json!(e);
@@ -359,7 +364,8 @@ pub async fn queue_localize_if_needed(pool: &PgPool, c: &AiConfig) -> Result<(),
     Ok(())
 }
 
-/// Calls `GET {base_url}/models` with the stored key, so the admin can check the endpoint before enabling enrichment.
+/// Calls `GET {base_url}/models` with the stored key, so the admin can check the endpoint before enabling enrichment;
+/// with an embeddings model set, also embeds one word to check that model (access, 1024-dimension support).
 async fn test_ai(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
     admin!(s, headers);
     let c = settings::ai(&s.pool).await?;
@@ -372,7 +378,12 @@ async fn test_ai(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<R
             let body: Value = r.json().await.unwrap_or(Value::Null);
             let models: Vec<&str> = body["data"].as_array().into_iter().flatten().filter_map(|m| m["id"].as_str()).take(50).collect();
             let model = c.model.as_deref().unwrap_or_default();
-            Json(json!({ "ok": true, "models": models, "model_found": model.is_empty() || models.is_empty() || models.contains(&model) })).into_response()
+            let embed_error = match c.embed_model.as_deref() {
+                Some(m) => catalogue_core::embed::embed(&s.http, base, key, m, &["test".into()], 1).await.err().map(|e| format!("{e:#}")),
+                None => None,
+            };
+            Json(json!({ "ok": true, "models": models, "model_found": model.is_empty() || models.is_empty() || models.contains(&model), "embed_error": embed_error }))
+                .into_response()
         }
         Ok(r) => err(StatusCode::BAD_GATEWAY, &format!("Provider answered {}", r.status())),
         Err(e) => err(StatusCode::BAD_GATEWAY, &format!("Could not reach provider: {e}")),

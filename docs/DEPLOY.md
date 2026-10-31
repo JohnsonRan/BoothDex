@@ -20,7 +20,7 @@ reachable only on the compose network; for maintenance use `docker compose exec`
 |---|---|---|
 | RAM | **4 GB** (8 GB comfortable) | api ≈0.5 GB steady, ≈1.6 GB peak while it rebuilds the catalogue after crawls (the search index is memory-mapped from disk); Postgres ≈1 GB; the rest is small |
 | CPU | 2 vCPU (4 better) | image transcoding and index rebuilds are CPU-bound |
-| Disk | 40 GB SSD | database ≈3 GB, archived images ≈1 GB, image cache 10 GB (configurable), container images, backups |
+| Disk | 40 GB SSD | database ≈3 GB (≈4 GB with semantic search), archived images ≈1 GB, image cache 10 GB (configurable), container images, backups |
 | OS | Any Linux with Docker or Podman (+ compose) | |
 
 ## 2. Get the code and data onto the server
@@ -77,7 +77,7 @@ $EDITOR .env    # WEB_LISTEN, SITE_URL, POSTGRES_PASSWORD, ADMIN_USERNAMES, ARCH
 | `ARCHIVE_IMAGES_DIR` | imgproxy | host path of the extracted images; without a bundle, any empty directory |
 | `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | imgproxy | transcoded-image cache |
 | `BOOTHDEX_TAG` | api, worker, imgproxy, web | image version on ghcr.io: `latest` (default, follows master), a release such as `0.1.0`, or `sha-<commit>` |
-| `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` | api, worker | optional; override the admin console AI settings and lock them there, so the key stays out of the database |
+| `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` / `AI_EMBED_MODEL` | api, worker | optional; override the admin console AI settings and lock them there, so the key stays out of the database |
 
 Set in compose and not needed in `.env`: `DATABASE_URL` and `PGPASSWORD` (from `POSTGRES_PASSWORD`; any characters work), `IMGPROXY_URL`, `BIND`.
 
@@ -115,6 +115,23 @@ The site is usable while it runs (the api reloads as items arrive). Crawled item
 links or translations until the `enrich` job has handled them. It runs hourly (200 items per run) once the AI
 provider is configured; at ~200k items, check your provider's price per call first, and change or pause the
 schedule in the admin console.
+
+### Semantic search (optional)
+
+Set an embeddings model in the admin console (or `AI_EMBED_MODEL`), served by the same provider. It must be able
+to return 1024-dimension vectors through the `dimensions` parameter, as Qwen3-Embedding does; the console's
+connection test checks this. The hourly `embed` job then embeds every item without a vector: the first run
+covers the whole catalogue (about 70 items per second during development, so roughly an hour for ~200k items;
+at the $0.02 per million tokens Qwen3-Embedding-4B cost there, a few dollars in total). After that it only
+handles new and edited items.
+
+While items are missing vectors, search finds fewer of them by meaning; nothing else changes.
+
+Each new search text waits for one embeddings request before results appear (on the development provider: median
+0.7 s, 95th percentile 1.2 s; repeated searches and further pages use a cache). If the provider takes longer than
+2.5 s or fails, that search uses words alone and the site says so above the results. Queries that only match by
+meaning (Chinese queries for Japanese items, for example) then show nothing until the user searches again. Vectors take about 0.5 GB in the database plus a similar
+amount for the index.
 
 ## 5. Putting a proxy in front
 
