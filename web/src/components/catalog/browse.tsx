@@ -45,6 +45,7 @@ import { CommandPalette } from "./command-palette";
 import { activeFilterCount, FilterPanel } from "./filter-panel";
 import { ItemCard } from "./item-card";
 import { ItemDetail } from "./item-detail";
+import { Logo } from "./logo";
 import { Pagination } from "./pagination";
 import { SearchTrace, type TraceMeta } from "./search-trace";
 import { SettingsMenu } from "./settings-menu";
@@ -405,7 +406,7 @@ export function Browse() {
           href="/"
           className="flex shrink-0 items-center gap-2 font-heading text-[17px] font-semibold tracking-wide"
         >
-          <span className="size-[18px] rounded-[3px] bg-primary" />
+          <Logo />
           <span className="hidden sm:inline">BoothDex</span>
         </a>
         <button
