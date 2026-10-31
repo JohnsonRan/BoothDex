@@ -149,7 +149,7 @@ const KIND: Record<Kind, { label: string; desc: string }> = {
   },
   enrich: {
     label: "AI 处理",
-    desc: "为新商品生成分类、分级、推断价格和英日韩翻译，并按名称匹配适配模型(每次 200 个，在下方“AI 处理设置”配置 AI 模型)",
+    desc: "为新商品生成分类、分级、推断价格和英日韩翻译，并按名称匹配适配模型(每次 200 个；在下方“AI 处理设置”配置 AI 模型之前不会运行)",
   },
   localize: {
     label: "翻译分类",

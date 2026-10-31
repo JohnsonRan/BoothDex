@@ -112,8 +112,9 @@ docker compose exec worker worker once incremental '{"max_pages": 5000, "full": 
 ```
 
 The site is usable while it runs (the api reloads as items arrive). Crawled items have no AI categories, avatar
-links or translations until the `enrich` job runs, so configure the AI provider and enable the `enrich`
-schedule in the admin console; at ~200k items, check your provider's price per call first.
+links or translations until the `enrich` job has handled them. It runs hourly (200 items per run) once the AI
+provider is configured; at ~200k items, check your provider's price per call first, and change or pause the
+schedule in the admin console.
 
 ## 5. Putting a proxy in front
 

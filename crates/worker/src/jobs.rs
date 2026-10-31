@@ -295,7 +295,10 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
 /// AI enrichment for items our crawler ingested (needs_enrichment): categories, rating, Quest, smart price,
 /// translations and features via the model; avatar links by name matching (see avatars.rs).
 pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
-    let ai = ai_client(ctx.pool).await?;
+    // scheduled hourly by default; without a provider there is nothing to do, which isn't a failure
+    let Some(ai) = crate::ai::Ai::from_config(&catalogue_core::settings::ai(ctx.pool).await?)? else {
+        return Ok("skipped: AI provider not configured".into());
+    };
     let batch: i64 = param(params, "batch", 200);
     let concurrency: usize = param(params, "concurrency", 4usize).clamp(1, 16);
 
