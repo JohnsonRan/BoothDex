@@ -12,7 +12,6 @@ struct Row {
     title: String,
     titles_translated: Vec<String>,
     bio: String,
-    bio_en: Option<String>,
     author_name: String,
     booth_category: Option<String>,
     price: Option<i32>,
@@ -41,10 +40,15 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
     let parent: HashMap<String, String> =
         sqlx::query_as::<_, (String, String)>("select slug, parent_slug from smart_categories where parent_slug is not null").fetch_all(pool).await?.into_iter().collect();
 
+    // the English description is joined in SQL: concatenating here held both parts and the result at once,
+    // which pushed reload peaks toward the container's memory limit
     let rows: Vec<Row> = sqlx::query_as(
-        "select i.id, i.title, i.bio, i.author_name, i.booth_category, coalesce(i.smart_price, i.price_jpy) as price, i.likes,
+        "select i.id, i.title,
+                case when i.translations->'en'->>'bio' is null or i.translations->'en'->>'bio' = i.bio then i.bio
+                     else i.bio || E'\\n' || (i.translations->'en'->>'bio') end as bio,
+                i.author_name, i.booth_category, coalesce(i.smart_price, i.price_jpy) as price, i.likes,
                 extract(epoch from i.published_at)::bigint as published, i.is_adult, i.content_rating, i.quest, i.features,
-                i.booth_tags, i.supported, i.gender, i.translations->'en'->>'bio' as bio_en,
+                i.booth_tags, i.supported, i.gender,
                 array_remove(array[i.translations->'en'->>'title', i.translations->'ja'->>'title', i.translations->'ko'->>'title', i.translations->'zh'->>'title'], null) as titles_translated,
                 coalesce(ia.avatars, '{}') as avatars, coalesce(ic.cats, '{}') as cats, coalesce(ic.cats_primary, '{}') as cats_primary
          from items i
@@ -81,10 +85,7 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
             let titles_translated = r.titles_translated.into_iter().filter(|t| *t != r.title).collect();
             DocInput {
                 id: r.id,
-                bio: match r.bio_en {
-                    Some(en) if en != r.bio => format!("{}\n{en}", r.bio),
-                    _ => r.bio,
-                },
+                bio: r.bio,
                 title: r.title,
                 titles_translated,
                 author: r.author_name,
