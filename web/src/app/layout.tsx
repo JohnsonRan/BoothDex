@@ -1,20 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Noto_Sans_JP } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
+// MiSans variable font in unicode-range slices: the browser downloads only the slices a page uses.
+// No CJK web-font fallback: the browser fetches it too while MiSans loads; the few missing glyphs use system fonts
+import "subsetted-fonts/MiSans-VF/MiSans-VF.css";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-});
-// Japanese/kanji glyphs (listings are mostly Japanese); not preloaded: CJK fonts come in many unicode-range
-// slices and the browser fetches only those a page uses
-const notoJp = Noto_Sans_JP({
-  variable: "--font-noto-jp",
-  subsets: ["latin"],
-  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -39,7 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     // class/lang may be changed by the script above before hydration
     <html
       lang="zh-CN"
-      className={`dark ${geistSans.variable} ${geistMono.variable} ${notoJp.variable} h-full antialiased`}
+      className={`dark ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>
