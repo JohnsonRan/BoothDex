@@ -73,7 +73,7 @@ export function Browse() {
   const [items, setItems] = useState<Item[]>([]);
   const [meta, setMeta] = useState<Pick<
     SearchResult,
-    "count" | "smartCounts" | "featureCounts"
+    "count" | "smartCounts" | "featureCounts" | "semantic"
   > | null>(null);
   const [loading, setLoading] = useState(true);
   const [favs, setFavs] = useState<Set<number> | null>(null);
@@ -85,6 +85,8 @@ export function Browse() {
     total: 1,
     busy: false,
     failed: false,
+    // page 1 searched without meaning-based matches: later pages must too, or the result set would change
+    noSemantic: false,
     key: "",
   });
   // "starting": the API is still loading after a restart; "error": it is up but the request failed
@@ -165,13 +167,16 @@ export function Browse() {
     const key = p.key;
     try {
       const r = await api<SearchResult>(
-        `/api/search?${searchQuery(filters, p.page + 1)}`,
+        `/api/search?${searchQuery(filters, p.page + 1)}${p.page > 0 && p.noSemantic ? "&sem=0" : ""}`,
       );
       if (key !== paging.current.key) return;
       p.page += 1;
       p.total = r.totalPages;
       setItems((prev) => (p.page === 1 ? r.items : [...prev, ...r.items]));
-      if (p.page === 1) setMeta(r);
+      if (p.page === 1) {
+        setMeta(r);
+        p.noSemantic = r.semantic !== "used";
+      }
     } catch {
       // one status line instead of a toast per attempt; no automatic retry from here
       if (key === paging.current.key) {
@@ -203,6 +208,7 @@ export function Browse() {
       total: 1,
       busy: false,
       failed: false,
+      noSemantic: false,
       key: query,
     };
     setLoading(true);
@@ -527,6 +533,11 @@ export function Browse() {
                 {t("list.retry")}
               </Button>
             </div>
+          )}
+          {meta?.semantic === "unavailable" && (
+            <p className="pb-3 text-center text-muted-foreground text-xs">
+              {t("list.semanticUnavailable")}
+            </p>
           )}
           {apiState === "ready" && !loading && items.length === 0 && (
             <p className="py-20 text-center text-muted-foreground">

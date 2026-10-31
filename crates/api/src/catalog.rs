@@ -330,9 +330,16 @@ impl Catalog {
         cs.iter().filter(|(g, _)| Some(*g) != skip).fold(self.all.clone(), |acc, (_, b)| acc & b)
     }
 
-    pub fn search(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>) -> Result<SearchResult> {
+    /// `semantic`: item ids nearest to the query embedding, best first (see main.rs); they join the text hits and,
+    /// when sorting by relevance, the two rankings are merged.
+    pub fn search(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<&[i64]>) -> Result<SearchResult> {
         let q = p.get("q").filter(|q| !q.trim().is_empty());
-        let text = q.as_deref().map(|q| self.text.search(q)).transpose()?;
+        let mut text = q.as_deref().map(|q| self.text.search(q)).transpose()?;
+        if let (Some((hits, scores)), Some(sem)) = (text.as_mut(), semantic) {
+            let docs: Vec<u32> = sem.iter().filter_map(|id| self.doc_of.get(id)).copied().collect();
+            *scores = fuse(scores, &docs);
+            hits.extend(docs);
+        }
         let cs = self.constraints(p, now, text.as_ref().map(|(b, _)| b), favourites);
         let hits = self.intersect(&cs, None);
 
@@ -400,6 +407,23 @@ impl Catalog {
     }
 }
 
+/// Reciprocal rank fusion: each list contributes 1 / (60 + rank), robust to the two scores' different scales.
+/// Meaning-only matches count half: they add recall, but a word match is the stronger signal, so a semantic-only
+/// item ranks with text hits around 60th place unless both lists agree on it.
+fn fuse(text: &HashMap<u32, f32>, semantic: &[u32]) -> HashMap<u32, f32> {
+    const K: f32 = 60.0;
+    let mut ranked: Vec<(u32, f32)> = text.iter().map(|(d, s)| (*d, *s)).collect();
+    ranked.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    let mut out = HashMap::with_capacity(ranked.len() + semantic.len());
+    for (rank, (d, _)) in ranked.iter().enumerate() {
+        *out.entry(*d).or_default() += 1.0 / (K + rank as f32 + 1.0);
+    }
+    for (rank, d) in semantic.iter().enumerate() {
+        *out.entry(*d).or_default() += 0.5 / (K + rank as f32 + 1.0);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,7 +452,7 @@ mod tests {
     }
 
     fn ids(c: &Catalog, q: &str) -> Vec<i64> {
-        let mut v = c.search(&Params::parse(&format!("{q}&pageSize=100")), 0, None).unwrap().ids;
+        let mut v = c.search_plain(&Params::parse(&format!("{q}&pageSize=100")), 0, None).unwrap().ids;
         v.sort();
         v
     }
@@ -449,6 +473,22 @@ mod tests {
         d[5].supported = true;
         d[5].gender = Some("female".into());
         Catalog::build(d, 0, None).unwrap()
+    }
+
+    impl Catalog {
+        fn search_plain(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>) -> Result<SearchResult> {
+            self.search(p, now, favourites, None)
+        }
+    }
+
+    #[test]
+    fn fusion_rewards_agreement_and_keeps_semantic_only_hits() {
+        let text: HashMap<u32, f32> = [(1, 9.0), (2, 5.0), (3, 1.0)].into();
+        let f = fuse(&text, &[3, 7]);
+        // in both lists beats first in one list; a semantic-only hit stays below the text hits
+        assert!(f[&3] > f[&1]);
+        assert!(f[&7] > 0.0 && f[&7] < f[&2]);
+        assert_eq!(f.len(), 4);
     }
 
     #[test]
@@ -475,7 +515,7 @@ mod tests {
     #[test]
     fn facets_ignore_own_group() {
         let c = catalog();
-        let r = c.search(&Params::parse("if=liltoon"), 0, None).unwrap();
+        let r = c.search_plain(&Params::parse("if=liltoon"), 0, None).unwrap();
         assert_eq!(r.count, 1);
         assert_eq!(r.facets.features["ma"], 2); // feature counts ignore the feature filter
         assert_eq!(r.facets.smart["clothing"], 1); // other groups respect it
@@ -484,10 +524,10 @@ mod tests {
     #[test]
     fn sort_and_paging() {
         let c = catalog();
-        let r = c.search(&Params::parse("adult=include&sort=price&dir=asc&pageSize=2&page=1"), 0, None).unwrap();
+        let r = c.search_plain(&Params::parse("adult=include&sort=price&dir=asc&pageSize=2&page=1"), 0, None).unwrap();
         assert_eq!(r.ids, [2, 1]); // free first, then id order for ties
         assert_eq!(r.total_pages, 3);
-        let r = c.search(&Params::parse("adult=include&page=99"), 0, None).unwrap();
+        let r = c.search_plain(&Params::parse("adult=include&page=99"), 0, None).unwrap();
         assert_eq!(r.page, 1);
     }
 
@@ -495,7 +535,7 @@ mod tests {
     fn favourites_view_spans_all_kinds() {
         let c = catalog();
         let favs = c.docs_for(&[1, 6, 999]);
-        let r = c.search(&Params::parse("v=favourites&adult=include"), 0, Some(&favs)).unwrap();
+        let r = c.search_plain(&Params::parse("v=favourites&adult=include"), 0, Some(&favs)).unwrap();
         let mut ids = r.ids;
         ids.sort();
         assert_eq!(ids, [1, 6]);

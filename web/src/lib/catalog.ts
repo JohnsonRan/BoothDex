@@ -79,6 +79,8 @@ export type SearchResult = {
   smartCounts: Record<string, number>;
   featureCounts: Record<string, number>;
   items: Item[];
+  /** meaning-based matching: used, off, unavailable (provider slow or failing), skipped */
+  semantic?: "used" | "off" | "unavailable" | "skipped";
 };
 
 export const FEATURES = {

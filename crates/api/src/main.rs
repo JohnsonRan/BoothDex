@@ -84,6 +84,8 @@ struct AppState {
     sys: admin::SysMetrics,
     http: reqwest::Client,
     imgproxy_url: Option<String>,
+    /// query text -> embedding, so paging through results doesn't call the provider again
+    embed_cache: std::sync::Mutex<std::collections::HashMap<String, Vec<f32>>>,
 }
 
 impl AppState {
@@ -118,8 +120,15 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
     } else {
         None
     };
+    // page 1 decides whether meaning-based matches are used; the site sends sem=0 for later pages when they
+    // weren't, so the result set can't change between pages if the provider answers late
+    let (semantic, semantic_status) = match p.get("q").filter(|q| !q.trim().is_empty()) {
+        Some(_) if p.get("sem").as_deref() == Some("0") => (None, "skipped"),
+        Some(q) => semantic_ids(s.clone(), &q).await,
+        None => (None, "off"),
+    };
     let catalog_now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref()))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref(), semantic.as_deref()))?;
     let search_ms = t0.elapsed().as_secs_f64() * 1e3;
     let items = db::load_items(&s.pool, &r.ids).await?;
     Ok(Json(json!({
@@ -133,9 +142,86 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
         "smartCounts": r.facets.smart,
         "featureCounts": r.facets.features,
         "items": items,
+        // "used", "off" (no embeddings model or no query), "unavailable" (provider slow or failing), "skipped"
+        "semantic": semantic_status,
         "timing": { "searchMs": search_ms, "totalMs": t0.elapsed().as_secs_f64() * 1e3 },
     }))
     .into_response())
+}
+
+/// Items nearest to the query by meaning (the embeddings job must have run), with a status for the response:
+/// "off" without an embeddings model, "unavailable" when the provider is slow or failing (words alone then).
+async fn semantic_ids(s: Arc<AppState>, q: &str) -> (Option<Vec<i64>>, &'static str) {
+    let Ok(c) = catalogue_core::settings::ai(&s.pool).await else { return (None, "unavailable") };
+    let (Some(base), Some(key), Some(model)) = (c.base_url, c.api_key, c.embed_model) else { return (None, "off") };
+    match nearest(s, q, base, key, model).await {
+        Some(ids) => (Some(ids), "used"),
+        None => (None, "unavailable"),
+    }
+}
+
+async fn nearest(s: Arc<AppState>, q: &str, base: String, key: String, model: String) -> Option<Vec<i64>> {
+    use catalogue_core::embed;
+    let cache_key = format!("{model}\n{}", q.trim().to_lowercase());
+    let cached = s.embed_cache.lock().unwrap().get(&cache_key).cloned();
+    let vector = match cached {
+        Some(v) => v,
+        None => {
+            let input = vec![format!("{}{}", embed::QUERY_PREFIX, q.trim())];
+            // the request runs on: if it outlasts the wait below, it still fills the cache for the next page or retry
+            let state = s.clone();
+            let mut task = tokio::spawn(async move {
+                let v = embed::embed(&state.http, &base, &key, &model, &input, 1).await?.pop().ok_or_else(|| anyhow::anyhow!("no embedding"))?;
+                let mut cache = state.embed_cache.lock().unwrap();
+                // shortcut: dropped wholesale when full; an LRU would keep popular queries, worth it only under real load
+                if cache.len() >= 2000 {
+                    cache.clear();
+                }
+                cache.insert(cache_key, v.clone());
+                anyhow::Ok(v)
+            });
+            // measured on the development provider: median 0.7 s, 95th percentile 1.2 s, occasional spikes past 3 s
+            match tokio::time::timeout(std::time::Duration::from_millis(2500), &mut task).await {
+                Ok(Ok(Ok(v))) => v,
+                Ok(Ok(Err(e))) => {
+                    eprintln!("query embedding: {e:#}");
+                    return None;
+                }
+                Ok(Err(e)) => {
+                    eprintln!("query embedding task: {e}");
+                    return None;
+                }
+                Err(_) => {
+                    eprintln!("query embedding: still waiting after 2.5 s; searching by words only this time");
+                    return None;
+                }
+            }
+        }
+    };
+    let mut tx = s.pool.begin().await.ok()?;
+    // HNSW returns at most ef_search rows; the default 40 is too few to fill a few pages
+    sqlx::query("set local hnsw.ef_search = 200").execute(&mut *tx).await.ok()?;
+    let rows: Vec<(i64, f64)> = sqlx::query_as(
+        "select id, 1 - (embedding <=> $1::halfvec) from items where embedding is not null and status = 'ok'
+         order by embedding <=> $1::halfvec limit 200",
+    )
+    .bind(embed::to_pg(&vector))
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| eprintln!("semantic search: {e}"))
+    .ok()?;
+    let cutoff = semantic_cutoff(rows.first()?.1);
+    Some(rows.into_iter().take_while(|r| r.1 >= cutoff).map(|r| r.0).collect())
+}
+
+/// Similarities from Qwen3-Embedding-4B sit in a narrow band (about 0.65-0.82 for the 200 nearest, even for
+/// gibberish), so a fixed threshold can't separate matches from noise. Keep neighbours close to the best one,
+/// and nothing when even the best is weak.
+/// shortcut: calibrated by hand on a few queries for this one model; other models may need other numbers.
+fn semantic_cutoff(best: f64) -> f64 {
+    const FLOOR: f64 = 0.72;
+    const MARGIN: f64 = 0.06;
+    FLOOR.max(best - MARGIN)
 }
 
 async fn rss_feed(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
@@ -143,7 +229,7 @@ async fn rss_feed(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resu
     // first occurrence wins in Params, so the prefix pins ordering and size
     let p = Params::parse(&format!("sort=newest&dir=desc&page=1&pageSize=50&{user_q}"));
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, now, None))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, now, None, None))?;
     let items = db::load_items(&s.pool, &r.ids).await?;
     let link = format!("{}/?{user_q}", s.site_url);
     Ok(([(axum::http::header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")], rss::render(&link, &user_q, &items)).into_response())
@@ -173,7 +259,7 @@ async fn palette(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resul
     let adult = p.get("adult").unwrap_or_else(|| "safe".into());
     let item_params = Params::parse(&format!("q={}&adult={}&sort=relevant&pageSize=8", urlencode(&text), urlencode(&adult)));
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&item_params, now, None))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&item_params, now, None, None))?;
     let items: Vec<Value> = db::load_items(&s.pool, &r.ids)
         .await?
         .into_iter()
@@ -329,6 +415,7 @@ async fn build_state(pool: PgPool) -> Result<AppState> {
         sys: admin::SysMetrics::new(),
         http: reqwest::Client::new(),
         imgproxy_url: std::env::var("IMGPROXY_URL").ok().or_else(|| Some("http://127.0.0.1:3001".into())),
+        embed_cache: Default::default(),
     })
 }
 
@@ -389,4 +476,14 @@ async fn main() -> Result<()> {
     println!("listening on http://{bind}");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn semantic_cutoff_follows_the_best_match_and_drops_weak_ones() {
+        // values seen during calibration: a relevant query, and gibberish whose best neighbour is still 0.707
+        assert!((super::semantic_cutoff(0.787) - 0.727).abs() < 1e-9);
+        assert!(0.707 < super::semantic_cutoff(0.707));
+    }
 }

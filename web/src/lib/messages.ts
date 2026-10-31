@@ -71,6 +71,8 @@ const zh = {
   "list.loadFailed": "加载失败",
   "list.starting": "服务正在启动，通常需要半分钟。启动后会自动加载。",
   "list.retry": "重试",
+  "list.semanticUnavailable":
+    "按意思搜索暂时不可用，这次只按关键词查找。稍后再搜一次通常就会恢复。",
   "fav.add": "收藏",
   "fav.remove": "取消收藏",
   "fav.added": "已收藏",
@@ -230,6 +232,8 @@ const en: Dict = {
   "list.starting":
     "The service is starting. This usually takes about half a minute; items load automatically when it's ready.",
   "list.retry": "Try again",
+  "list.semanticUnavailable":
+    "Search by meaning is unavailable right now, so these results match your words only. Searching again in a moment usually brings it back.",
   "fav.add": "Favourite",
   "fav.remove": "Remove favourite",
   "fav.added": "Favourited",
@@ -387,6 +391,8 @@ const ja: Dict = {
   "list.starting":
     "サービスを起動しています。通常 30 秒ほどかかります。起動すると自動的に読み込みます。",
   "list.retry": "再試行",
+  "list.semanticUnavailable":
+    "意味による検索は一時的に利用できないため、キーワードのみで検索しました。少し時間をおいて再検索すると通常は戻ります。",
   "fav.add": "お気に入り",
   "fav.remove": "お気に入りから外す",
   "fav.added": "お気に入り済み",
@@ -545,6 +551,8 @@ const ko: Dict = {
   "list.starting":
     "서비스를 시작하는 중입니다. 보통 30초 정도 걸리며, 시작되면 자동으로 불러옵니다.",
   "list.retry": "다시 시도",
+  "list.semanticUnavailable":
+    "의미 기반 검색을 일시적으로 사용할 수 없어 키워드로만 검색했습니다. 잠시 후 다시 검색하면 보통 복구됩니다.",
   "fav.add": "즐겨찾기",
   "fav.remove": "즐겨찾기 해제",
   "fav.added": "즐겨찾기됨",
