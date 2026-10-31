@@ -70,7 +70,13 @@ export function Browse() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const query = params.toString();
+  // the open item lives in the URL too (shareable, Back closes it) but is not part of the search
+  const itemParam = Number(params.get("item")) || 0;
+  const query = useMemo(() => {
+    const p = new URLSearchParams(params);
+    p.delete("item");
+    return p.toString();
+  }, [params]);
   const filters = useMemo(() => parseFilters(query), [query]);
   // the page lives in the URL next to the filters; changing a filter drops it, so a new search starts at 1
   const page = Math.max(1, Number.parseInt(params.get("page") ?? "", 10) || 1);
@@ -253,9 +259,79 @@ export function Browse() {
     [favs],
   );
 
-  const openById = async (id: number) => {
-    const r = await api<{ items: Item[] }>(`/api/items?ids=${id}`);
-    if (r.items[0]) setOpen(r.items[0]);
+  // the item=<id> URL parameter: push on open so Back closes it, replace when moving between items
+  const itemUrl = useCallback(
+    (id: number, push: boolean) => {
+      const p = new URLSearchParams(query);
+      if (id) p.set("item", String(id));
+      const next = p.toString();
+      const url = next ? `${pathname}?${next}` : pathname;
+      if (push) history.pushState(null, "", url);
+      else history.replaceState(null, "", url);
+    },
+    [query, pathname],
+  );
+  const openedHere = useRef(false);
+  // stable so the memoised cards do not all re-render
+  const openItem = useCallback(
+    (it: Item) => {
+      setOpen(it);
+      if (it.id === itemParam) return;
+      if (!itemParam) openedHere.current = true;
+      itemUrl(it.id, !itemParam);
+    },
+    [itemParam, itemUrl],
+  );
+  const closeItem = () => {
+    setOpen(null);
+    // step back over the entry opening pushed; a shared link has nothing to go back to
+    if (openedHere.current) history.back();
+    else itemUrl(0, false);
+    openedHere.current = false;
+  };
+  // follow the URL: a shared link or Forward opens the item, Back closes it
+  const openRef = useRef(open);
+  openRef.current = open;
+  // waits while the API starts and retries once it is back, whichever request (poll or search) notices first
+  const starting = apiState === "starting";
+  // biome-ignore lint/correctness/useExhaustiveDependencies: epoch and starting only trigger a retry
+  useEffect(() => {
+    if (!itemParam) {
+      openedHere.current = false;
+      setOpen(null);
+      return;
+    }
+    if (openRef.current?.id === itemParam || starting) return;
+    let live = true;
+    api<{ items: Item[] }>(`/api/items?ids=${itemParam}`)
+      .then((r) => {
+        if (!live) return;
+        if (r.items[0]) setOpen(r.items[0]);
+        else {
+          toast.error(tRef.current("list.loadFailed"));
+          itemUrl(0, false);
+        }
+      })
+      .catch(async () => {
+        if (!live) return;
+        const ready = await apiReady();
+        if (!live) return;
+        if (!ready) {
+          setApiState("starting");
+          return;
+        }
+        toast.error(tRef.current("list.loadFailed"));
+        itemUrl(0, false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [itemParam, epoch, itemUrl, starting]);
+
+  const openById = (id: number) => {
+    if (id === itemParam && open?.id === id) return;
+    if (!itemParam) openedHere.current = true;
+    itemUrl(id, !itemParam);
   };
 
   const myAvatar = avatars.find((a) => a.slug === filters.avatar) ?? null;
@@ -493,7 +569,7 @@ export function Browse() {
                 key={it.id}
                 item={it}
                 favourite={!!favs?.has(it.id)}
-                onOpen={setOpen}
+                onOpen={openItem}
                 onFavourite={toggleFav}
               />
             ))}
@@ -590,17 +666,19 @@ export function Browse() {
         myAvatar={myAvatar}
         favourite={!!open && !!favs?.has(open.id)}
         adult={filters.adult}
-        onClose={() => setOpen(null)}
+        onClose={closeItem}
         onFavourite={toggleFav}
         onPickAvatar={(slug) => {
           setOpen(null);
+          openedHere.current = false;
           update({ avatar: slug });
         }}
         onSearch={(patch) => {
           setOpen(null);
+          openedHere.current = false;
           update({ q: "", author: "", sc: "", avatar: "", ...patch });
         }}
-        onOpenItem={setOpen}
+        onOpenItem={openItem}
       />
       <CommandPalette
         open={paletteOpen}
