@@ -56,9 +56,14 @@ impl SysMetrics {
     }
 }
 
+/// Lowercased `ADMIN_USERNAMES`; None when the variable isn't set (admin flags are then left as they are).
+pub fn admin_names() -> Option<Vec<String>> {
+    let list = std::env::var("ADMIN_USERNAMES").ok()?;
+    Some(list.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()).collect())
+}
+
 pub async fn apply_admin_env(pool: &PgPool) -> anyhow::Result<()> {
-    if let Ok(list) = std::env::var("ADMIN_USERNAMES") {
-        let names: Vec<String> = list.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()).collect();
+    if let Some(names) = admin_names() {
         sqlx::query("update users set is_admin = lower(username) = any($1)").bind(&names).execute(pool).await?;
     }
     Ok(())

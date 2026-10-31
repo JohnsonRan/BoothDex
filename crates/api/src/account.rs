@@ -238,11 +238,14 @@ async fn register(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): J
         return Ok(err(StatusCode::BAD_REQUEST, "Your password must be at least 10 characters."));
     }
     let hash = hash_password(b.password).await?;
-    let id: i64 = match sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ($1, $2, $3, $4) returning id")
+    // listed in ADMIN_USERNAMES: admin right away, not only after the next api restart
+    let is_admin = crate::admin::admin_names().is_some_and(|n| n.contains(&b.username.to_lowercase()));
+    let id: i64 = match sqlx::query_scalar("insert into users (username, email, display_name, password_hash, is_admin) values ($1, $2, $3, $4, $5) returning id")
         .bind(&b.username)
         .bind(b.email.trim())
         .bind(b.display_name.trim())
         .bind(hash)
+        .bind(is_admin)
         .fetch_one(&s.pool)
         .await
     {
