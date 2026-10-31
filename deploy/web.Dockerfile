@@ -6,7 +6,7 @@ COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY web ./
 RUN bun run build \
- && cp -r public .next/standalone/ \
+ && { [ ! -d public ] || cp -r public .next/standalone/; } \
  && cp -r .next/static .next/standalone/.next/
 
 FROM docker.io/library/node:22-bookworm-slim
