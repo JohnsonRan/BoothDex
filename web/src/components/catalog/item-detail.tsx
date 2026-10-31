@@ -102,6 +102,7 @@ function Body({
   const [idx, setIdx] = useState(0);
   const [bioOpen, setBioOpen] = useState(false);
   const [zoom, setZoom] = useState(false);
+  const [allAvatars, setAllAvatars] = useState(false);
   const [same, setSame] = useState<Item[] | null>(null);
   const strip = useRef<HTMLDivElement>(null);
   const sameStrip = useRef<HTMLDivElement>(null);
@@ -156,6 +157,19 @@ function Body({
     (lang === "original"
       ? name
       : item.translations?.[lang]?.variations?.[name]) || name;
+  // one price for the whole list when every variation costs the same
+  const varPrice = new Set(item.variations.map((v) => v.price_jpy ?? 0));
+  const samePrice = varPrice.size === 1 ? [...varPrice][0] : null;
+  const varTitle = [
+    t("detail.variations", { n: item.variations.length }),
+    samePrice != null && money(samePrice),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const AVATARS_SHOWN = 12;
+  const avatarsShown = allAvatars
+    ? item.linked_avatars
+    : item.linked_avatars.slice(0, AVATARS_SHOWN);
   const showWhy =
     item.smart_price != null && item.smart_price !== item.price_jpy;
   const fits =
@@ -398,28 +412,50 @@ function Body({
             </div>
 
             {item.variations.length > 0 && (
-              <Section
-                title={t("detail.variations", { n: item.variations.length })}
-              >
-                <div className="divide-y overflow-hidden rounded-lg border text-sm">
-                  {item.variations.map((v) => (
-                    <div
-                      key={v.id}
-                      className={cn(
-                        "flex justify-between gap-3 px-3 py-2",
-                        v.status !== "addable_to_cart" &&
-                          "text-muted-foreground line-through",
-                      )}
-                    >
-                      <span className="min-w-0">
-                        {varName(v.name) || t("detail.defaultVariation")}
-                      </span>
-                      <b className="shrink-0 tabular-nums">
-                        {money(v.price_jpy ?? 0)}
-                      </b>
-                    </div>
-                  ))}
-                </div>
+              <Section title={varTitle}>
+                {/* long variation lists scroll in place instead of pushing the avatars down */}
+                <section
+                  aria-label={varTitle}
+                  // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable container requires keyboard focus
+                  tabIndex={0}
+                  className="max-h-72 divide-y overflow-y-auto overscroll-contain rounded-lg border text-sm focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  {item.variations.map((v) => {
+                    const available =
+                      v.status === "addable_to_cart" ||
+                      v.status === "free_download" ||
+                      v.status === "prepurchasable";
+                    return (
+                      <div
+                        key={v.id}
+                        className={cn(
+                          "flex items-center justify-between gap-3 px-3 py-2",
+                          !available && "text-muted-foreground",
+                        )}
+                      >
+                        <span className="min-w-0">
+                          {varName(v.name) || t("detail.defaultVariation")}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          {!available && (
+                            <span className="rounded-full border px-2 py-0.5 text-xs">
+                              {v.status === "soldout" ||
+                              v.status === "sold_out" ||
+                              v.status === "restock_not_requested"
+                                ? t("detail.soldOut")
+                                : t("detail.unavailable")}
+                            </span>
+                          )}
+                          {samePrice == null && (
+                            <b className="tabular-nums">
+                              {money(v.price_jpy ?? 0)}
+                            </b>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </section>
               </Section>
             )}
 
@@ -428,7 +464,7 @@ function Body({
                 title={t("detail.avatars", { n: item.linked_avatars.length })}
               >
                 <div className="flex flex-wrap gap-1.5">
-                  {item.linked_avatars.map((a) => (
+                  {avatarsShown.map((a) => (
                     <button
                       key={a.slug}
                       type="button"
@@ -450,6 +486,20 @@ function Body({
                       {avatarName(a, ui)}
                     </button>
                   ))}
+                  {item.linked_avatars.length > AVATARS_SHOWN && (
+                    <button
+                      type="button"
+                      onClick={() => setAllAvatars((o) => !o)}
+                      aria-expanded={allAvatars}
+                      className="rounded-full px-2.5 py-1 text-xs text-primary hover:bg-accent"
+                    >
+                      {allAvatars
+                        ? t("detail.less")
+                        : t("detail.allAvatars", {
+                            n: item.linked_avatars.length,
+                          })}
+                    </button>
+                  )}
                 </div>
               </Section>
             )}
