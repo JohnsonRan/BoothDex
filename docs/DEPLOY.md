@@ -124,8 +124,8 @@ to return 1024-dimension vectors through the `dimensions` parameter, as Qwen3-Em
 connection test checks this. The hourly `embed` job then embeds every item without a vector: the first run
 covers the whole catalogue (about 70 items per second during development, so roughly an hour for ~200k items;
 at the $0.02 per million tokens Qwen3-Embedding-4B cost there, a few dollars in total). After that it only
-handles new and edited items. Once an `enrich` run has worked through the backlog, it queues an `embed` run
-so their vectors pick up the English title without waiting for the hourly tick.
+handles new and edited items. When an `enrich` chain ends (backlog worked through, or a batch without success), it queues
+an `embed` run for the enriched items still missing a vector, so their vectors pick up the English title without waiting for the hourly tick.
 
 While items are missing vectors, search finds fewer of them by meaning; nothing else changes.
 

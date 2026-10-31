@@ -383,10 +383,17 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         ctx.again = sqlx::query_scalar("select exists (select 1 from items where needs_enrichment and status = 'ok' and enrich_failures < 3)")
             .fetch_one(ctx.pool)
             .await?;
-        // once the backlog is worked through, embed all items missing vectors (including these) in one run
-        if !ctx.again && cfg.embed_model.is_some() {
-            sqlx::query("insert into jobs (kind, params, created_by) values ('embed', '{}', 'enrich') on conflict do nothing").execute(ctx.pool).await?;
-        }
+    }
+    // the chain ends here (backlog done, or a batch without success): embed what enrichment left without a
+    // vector in one run, not after every batch, which would also embed the not-yet-enriched backlog
+    if !ctx.again && cfg.embed_model.is_some() {
+        sqlx::query(
+            "insert into jobs (kind, params, created_by) select 'embed', '{}', 'enrich'
+             where exists (select 1 from items where status = 'ok' and not needs_enrichment and embedding is null)
+             on conflict do nothing",
+        )
+        .execute(ctx.pool)
+        .await?;
     }
     Ok(format!("{ok} enriched, {failed} failed of {total}"))
 }
