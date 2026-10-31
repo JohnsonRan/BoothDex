@@ -10,6 +10,7 @@ mod params;
 mod rss;
 mod text;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -84,9 +85,42 @@ impl Lookup {
     }
 }
 
+/// Search texts that name one smart category, without spaces and lowercased ("shorthair", "ショート" -> hair--short):
+/// a parent's name, a child's name when no other child shares it, or child and parent names together
+/// in either order, per language.
+fn category_phrases(categories: &Value) -> HashMap<String, String> {
+    let norm = |s: &str| s.split_whitespace().collect::<String>().to_lowercase();
+    let langs = ["en", "ja", "ko", "zh"];
+    let parents = categories.as_array().map(Vec::as_slice).unwrap_or_default();
+    let mut child_names: HashMap<String, Vec<String>> = HashMap::new();
+    let mut out = HashMap::new();
+    for p in parents {
+        let slug = p["slug"].as_str().unwrap_or_default();
+        for l in langs {
+            let Some(pn) = p[l].as_str().map(norm).filter(|n| !n.is_empty()) else { continue };
+            out.insert(pn.clone(), slug.to_owned());
+            for c in p["children"].as_array().into_iter().flatten() {
+                let (Some(cs), Some(cn)) = (c["slug"].as_str(), c[l].as_str().map(norm).filter(|n| !n.is_empty())) else { continue };
+                out.insert(format!("{cn}{pn}"), cs.to_owned());
+                out.insert(format!("{pn}{cn}"), cs.to_owned());
+                child_names.entry(cn).or_default().push(cs.to_owned());
+            }
+        }
+    }
+    for (name, mut slugs) in child_names {
+        slugs.dedup();
+        if let [only] = slugs.as_slice() {
+            out.entry(name).or_insert_with(|| only.clone());
+        }
+    }
+    out
+}
+
 /// Everything derived from the catalogue; rebuilt off to the side and swapped in atomically.
 struct Snapshot {
     catalog: Catalog,
+    /// see `category_phrases`
+    category_phrases: HashMap<String, String>,
     avatars: Lookup,
     authors: Lookup,
     tags: Lookup,
@@ -177,11 +211,16 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
     let (semantic, semantic_status) = match p.get("q").filter(|q| !q.trim().is_empty()) {
         Some(_) if p.get("sem").as_deref() == Some("0") => (None, "skipped"),
         Some(_) if meaning.is_empty() => (None, "skipped"),
-        Some(_) => semantic_ids(s.clone(), &meaning, &mut trace).await,
+        Some(_) => semantic_ids(s.clone(), &meaning, &models, &mut trace).await,
         None => (None, "off"),
     };
+    // a query that names a category ("short hair", "shorthair") also matches the items enriched into it, so
+    // spellings of one meaning end up with the same results
+    let categories: Vec<String> =
+        s.snap().category_phrases.get(&meaning.split_whitespace().collect::<String>().to_lowercase()).cloned().into_iter().collect();
     let catalog_now = chrono::Utc::now().timestamp();
-    let semantic = semantic.as_deref().map(|ids| catalog::Semantic { ids, models: &models });
+    let semantic = (semantic.is_some() || !categories.is_empty())
+        .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models });
     let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref(), semantic))?;
     trace.step("search");
     let search_ms = t0.elapsed().as_secs_f64() * 1e3;
@@ -208,12 +247,12 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
 
 /// Items nearest to the query by meaning (the embeddings job must have run), with a status for the response:
 /// "off" without an embeddings model, "unavailable" when the provider is slow or failing (words alone then).
-async fn semantic_ids(s: Arc<AppState>, q: &str, trace: &mut Trace) -> (Option<Vec<i64>>, &'static str) {
+async fn semantic_ids(s: Arc<AppState>, q: &str, models: &[String], trace: &mut Trace) -> (Option<Vec<i64>>, &'static str) {
     let Ok(c) = catalogue_core::settings::ai(&s.pool).await else { return (None, "unavailable") };
     let (Some(base), Some(key), Some(model)) = (c.base_url, c.api_key, c.embed_model) else { return (None, "off") };
     trace.step("settings");
     let Some(vector) = query_embedding(s.clone(), q, base, key, model, trace).await else { return (None, "unavailable") };
-    match nearest(&s, &vector).await {
+    match nearest(&s, &vector, models).await {
         Some(ids) => {
             trace.step("neighbours");
             (Some(ids), "used")
@@ -305,21 +344,34 @@ fn remember(s: &AppState, key: String, v: Vec<f32>) {
     cache.insert(key, v);
 }
 
-/// Listed items nearest to the vector, cut where they stop resembling the best match.
-async fn nearest(s: &AppState, vector: &[f32]) -> Option<Vec<i64>> {
+/// Listed items nearest to the vector, cut where they stop resembling the best match. With models named,
+/// only items fitting one of them: searched among those directly, as the 200 nearest of the whole catalogue
+/// hold only a few that fit.
+async fn nearest(s: &AppState, vector: &[f32], models: &[String]) -> Option<Vec<i64>> {
     let mut tx = s.pool.begin().await.ok()?;
     // HNSW returns at most ef_search rows; the default 40 is too few to fill a few pages
     sqlx::query("set local hnsw.ef_search = 200").execute(&mut *tx).await.ok()?;
-    let rows: Vec<(i64, f64)> = sqlx::query_as(
+    let sql = if models.is_empty() {
         "select id, 1 - (embedding <=> $1::halfvec) from items where embedding is not null and status = 'ok'
-         order by embedding <=> $1::halfvec limit 200",
-    )
-    .bind(catalogue_core::embed::to_pg(vector))
-    .fetch_all(&mut *tx)
-    .await
-    .map_err(|e| eprintln!("semantic search: {e}"))
-    .ok()?;
-    let cutoff = semantic_cutoff(rows.first()?.1);
+         order by embedding <=> $1::halfvec limit 200"
+    } else {
+        // iterative scan: the index keeps going until enough fitting items turn up instead of filtering its
+        // first 200 candidates (Shinano: ~50 ms, vs ~300 ms for an exact scan of its 17k items)
+        sqlx::query("set local hnsw.iterative_scan = relaxed_order").execute(&mut *tx).await.ok()?;
+        "select id, 1 - (embedding <=> $1::halfvec) from items where embedding is not null and status = 'ok'
+           and id in (select item_id from item_avatars where avatar_slug = any($2))
+         order by embedding <=> $1::halfvec limit 400"
+    };
+    let mut rows: Vec<(i64, f64)> = sqlx::query_as(sql)
+        .bind(catalogue_core::embed::to_pg(vector))
+        .bind(models)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|e| eprintln!("semantic search: {e}"))
+        .ok()?;
+    // relaxed order comes back almost sorted
+    rows.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let cutoff = semantic_cutoff(rows.first()?.1, !models.is_empty());
     Some(rows.into_iter().take_while(|r| r.1 >= cutoff).map(|r| r.0).collect())
 }
 
@@ -327,10 +379,12 @@ async fn nearest(s: &AppState, vector: &[f32]) -> Option<Vec<i64>> {
 /// gibberish), so a fixed threshold can't separate matches from noise. Keep neighbours close to the best one,
 /// and nothing when even the best is weak.
 /// shortcut: calibrated by hand on a few queries for this one model; other models may need other numbers.
-fn semantic_cutoff(best: f64) -> f64 {
+/// Among one model's items the margin is wider: sampled on Shinano, "short hair" neighbours down to 0.72 were
+/// ~90% hair items, below that hair pins and clothes take over.
+fn semantic_cutoff(best: f64, scoped: bool) -> f64 {
     const FLOOR: f64 = 0.72;
-    const MARGIN: f64 = 0.06;
-    FLOOR.max(best - MARGIN)
+    let margin = if scoped { 0.10 } else { 0.06 };
+    FLOOR.max(best - margin)
 }
 
 async fn rss_feed(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
@@ -499,6 +553,7 @@ async fn build_snapshot(pool: &PgPool, version: i64) -> Result<Snapshot> {
 
     Ok(Snapshot {
         catalog,
+        category_phrases: category_phrases(&categories),
         avatars: Lookup::new(avatars),
         authors: Lookup::new(authors),
         tags: Lookup::new(tags),
@@ -597,8 +652,27 @@ mod tests {
     #[test]
     fn semantic_cutoff_follows_the_best_match_and_drops_weak_ones() {
         // values seen during calibration: a relevant query, and gibberish whose best neighbour is still 0.707
-        assert!((super::semantic_cutoff(0.787) - 0.727).abs() < 1e-9);
-        assert!(0.707 < super::semantic_cutoff(0.707));
+        assert!((super::semantic_cutoff(0.787, false) - 0.727).abs() < 1e-9);
+        assert!(0.707 < super::semantic_cutoff(0.707, false));
+        assert!(0.707 < super::semantic_cutoff(0.707, true));
+        assert!((super::semantic_cutoff(0.830, true) - 0.730).abs() < 1e-9);
+    }
+
+    #[test]
+    fn queries_naming_a_category_find_it() {
+        let cats = serde_json::json!([
+            {"slug": "hair", "en": "Hair", "ja": "髪型", "children": [
+                {"slug": "hair--short", "en": "Short", "ja": "ショート"}, {"slug": "hair--other", "en": "Other"}]},
+            {"slug": "clothing", "en": "Clothing", "children": [{"slug": "clothing--other", "en": "Other"}]}
+        ]);
+        let m = super::category_phrases(&cats);
+        for q in ["shorthair", "hairshort", "short", "ショート"] {
+            assert_eq!(m.get(q).map(String::as_str), Some("hair--short"), "{q}");
+        }
+        assert_eq!(m.get("hair").map(String::as_str), Some("hair"));
+        // a child name two parents share only counts together with its parent
+        assert_eq!(m.get("other"), None);
+        assert_eq!(m.get("otherclothing").map(String::as_str), Some("clothing--other"));
     }
 }
 

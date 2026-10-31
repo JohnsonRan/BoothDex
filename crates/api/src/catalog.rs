@@ -339,8 +339,13 @@ impl Catalog {
             // models named in the query: a meaning-based match must fit one of them
             let fits = (!sem.models.is_empty()).then(|| self.avatars.any(sem.models));
             let docs: Vec<u32> = sem.ids.iter().filter_map(|id| self.doc_of.get(id)).copied().filter(|d| fits.as_ref().is_none_or(|f| f.contains(*d))).collect();
-            *scores = fuse(scores, &docs);
+            let mut cat = self.cats.any(sem.categories);
+            if let Some(f) = &fits {
+                cat &= f;
+            }
+            *scores = fuse(scores, &docs, &cat);
             hits.extend(docs);
+            *hits |= cat;
         }
         let cs = self.constraints(p, now, text.as_ref().map(|(b, _)| b), favourites);
         let hits = self.intersect(&cs, None);
@@ -413,14 +418,18 @@ impl Catalog {
 pub struct Semantic<'a> {
     /// nearest first
     pub ids: &'a [i64],
+    /// smart categories the query names as a whole (see main.rs `category_phrases`)
+    pub categories: &'a [String],
     /// model slugs named in the query
     pub models: &'a [String],
 }
 
 /// Reciprocal rank fusion: each list contributes 1 / (60 + rank), robust to the two scores' different scales.
 /// Meaning-only matches count half: they add recall, but a word match is the stronger signal, so a semantic-only
-/// item ranks with text hits around 60th place unless both lists agree on it.
-fn fuse(text: &HashMap<u32, f32>, semantic: &[u32]) -> HashMap<u32, f32> {
+/// item ranks with text hits around 60th place unless both lists agree on it. Items in a category the query names
+/// get a little more than the best meaning-only match: below the top text hits, above meaning-only ones.
+/// shortcut: category-only items tie with each other (then by load order); rank them by meaning if that shows.
+fn fuse(text: &HashMap<u32, f32>, semantic: &[u32], category: &RoaringBitmap) -> HashMap<u32, f32> {
     const K: f32 = 60.0;
     let mut ranked: Vec<(u32, f32)> = text.iter().map(|(d, s)| (*d, *s)).collect();
     ranked.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -430,6 +439,9 @@ fn fuse(text: &HashMap<u32, f32>, semantic: &[u32]) -> HashMap<u32, f32> {
     }
     for (rank, d) in semantic.iter().enumerate() {
         *out.entry(*d).or_default() += 0.5 / (K + rank as f32 + 1.0);
+    }
+    for d in category {
+        *out.entry(d).or_default() += 0.5 / K;
     }
     out
 }
@@ -494,11 +506,15 @@ mod tests {
     #[test]
     fn fusion_rewards_agreement_and_keeps_semantic_only_hits() {
         let text: HashMap<u32, f32> = [(1, 9.0), (2, 5.0), (3, 1.0)].into();
-        let f = fuse(&text, &[3, 7]);
+        let f = fuse(&text, &[3, 7], &RoaringBitmap::new());
         // in both lists beats first in one list; a semantic-only hit stays below the text hits
         assert!(f[&3] > f[&1]);
         assert!(f[&7] > 0.0 && f[&7] < f[&2]);
         assert_eq!(f.len(), 4);
+        // a category hit joins, ranks above meaning-only matches, and lifts a text hit inside the category
+        let g = fuse(&text, &[7], &[2, 8].into_iter().collect());
+        assert!(g[&8] > g[&7] && g[&8] < g[&1]);
+        assert!(g[&2] > g[&1]);
     }
 
     #[test]
