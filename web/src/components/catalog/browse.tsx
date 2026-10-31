@@ -44,8 +44,11 @@ import { CommandPalette } from "./command-palette";
 import { activeFilterCount, FilterPanel } from "./filter-panel";
 import { ItemCard } from "./item-card";
 import { ItemDetail } from "./item-detail";
+import { Pagination } from "./pagination";
 import { SearchTrace, type TraceMeta } from "./search-trace";
 import { SettingsMenu } from "./settings-menu";
+
+const PAGE_SIZE = 100;
 
 /** stable keys for loading placeholders */
 const SKELETONS = Array.from({ length: 12 }, (_, i) => `skeleton-${i}`);
@@ -68,6 +71,9 @@ export function Browse() {
   const params = useSearchParams();
   const query = params.toString();
   const filters = useMemo(() => parseFilters(query), [query]);
+  // the page lives in the URL next to the filters; changing a filter drops it, so a new search starts at 1
+  const page = Math.max(1, Number.parseInt(params.get("page") ?? "", 10) || 1);
+  const filterKey = filtersToQuery(filters);
 
   const [avatars, setAvatars] = useState<Avatar[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -82,22 +88,19 @@ export function Browse() {
   const [open, setOpen] = useState<Item | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const paging = useRef({
-    page: 0,
-    total: 1,
-    busy: false,
-    failed: false,
-    // page 1 searched without meaning-based matches: later pages must too, or the result set would change
-    noSemantic: false,
-    key: "",
-  });
+  // the page the API answered (it clamps one past the end) and how many there are
+  const [shown, setShown] = useState({ page: 1, total: 1 });
+  // the first page fetched for a search went without meaning-based matches: its other pages must too, or the
+  // result set would change between pages
+  const semantic = useRef({ key: "", off: false });
+  // latest request; answers to older ones are dropped
+  const request = useRef(0);
   // "starting": the API is still loading after a restart; "error": it is up but the request failed
   const [apiState, setApiState] = useState<"ready" | "starting" | "error">(
     "ready",
   );
   // bumped to reload everything once the API is back
   const [epoch, setEpoch] = useState(0);
-  const sentinel = useRef<HTMLDivElement>(null);
 
   const [me, setMe] = useState<Me | null>(null);
 
@@ -161,63 +164,47 @@ export function Browse() {
     });
   }, [loadAccount, pathname, router]);
 
-  // one page of results; a filter change starts a new "key" so late responses for old filters are dropped
-  const loadMore = useCallback(async () => {
-    const p = paging.current;
-    if (p.busy || p.failed || p.page >= p.total) return;
-    p.busy = true;
-    const key = p.key;
-    try {
-      const started = performance.now();
-      const r = await api<SearchResult>(
-        `/api/search?${searchQuery(filters, p.page + 1)}${p.page > 0 && p.noSemantic ? "&sem=0" : ""}`,
-      );
-      if (key !== paging.current.key) return;
-      p.page += 1;
-      p.total = r.totalPages;
-      setItems((prev) => (p.page === 1 ? r.items : [...prev, ...r.items]));
-      if (p.page === 1) {
-        setMeta({ ...r, clientMs: performance.now() - started });
-        p.noSemantic = r.semantic !== "used";
-      }
-    } catch {
-      // one status line instead of a toast per attempt; no automatic retry from here
-      if (key === paging.current.key) {
-        p.failed = true;
-        setApiState((await apiReady()) ? "error" : "starting");
-      }
-    } finally {
-      if (key === paging.current.key) {
-        p.busy = false;
-        setLoading(false);
-        // IntersectionObserver only fires on changes: on tall screens the sentinel can stay in view after a
-        // page renders, so keep filling until it is pushed below the fold
-        if (!p.failed)
-          requestAnimationFrame(() => {
-            const el = sentinel.current;
-            if (el && el.getBoundingClientRect().top < window.innerHeight + 800)
-              loadMoreRef.current();
-          });
-      }
-    }
-  }, [filters]);
-  const loadMoreRef = useRef(loadMore);
-  loadMoreRef.current = loadMore;
-
+  // one page of results
   // biome-ignore lint/correctness/useExhaustiveDependencies: epoch only triggers a reload
   useEffect(() => {
-    paging.current = {
-      page: 0,
-      total: 1,
-      busy: false,
-      failed: false,
-      noSemantic: false,
-      key: query,
-    };
+    const id = ++request.current;
+    const sem = semantic.current;
+    const noSemantic = sem.key === filterKey && sem.off;
+    const started = performance.now();
     setLoading(true);
     setItems([]);
-    loadMore();
-  }, [query, loadMore, epoch]);
+    api<SearchResult>(
+      `/api/search?${searchQuery(filters, page, PAGE_SIZE)}${noSemantic ? "&sem=0" : ""}`,
+    )
+      .then((r) => {
+        if (id !== request.current) return;
+        setItems(r.items);
+        setShown({ page: r.page, total: r.totalPages });
+        setMeta({ ...r, clientMs: performance.now() - started });
+        if (sem.key !== filterKey)
+          semantic.current = { key: filterKey, off: r.semantic !== "used" };
+      })
+      // one status line instead of a toast per attempt; no automatic retry from here
+      .catch(async () => {
+        if (id === request.current)
+          setApiState((await apiReady()) ? "error" : "starting");
+      })
+      .finally(() => {
+        if (id === request.current) setLoading(false);
+      });
+  }, [filters, filterKey, page, epoch]);
+
+  const goPage = useCallback(
+    (n: number) => {
+      const next = [filterKey, n > 1 ? `page=${n}` : ""]
+        .filter(Boolean)
+        .join("&");
+      // push, not replace: the back button returns to the previous page
+      router.push(next ? `${pathname}?${next}` : pathname, { scroll: false });
+      window.scrollTo({ top: 0 });
+    },
+    [filterKey, pathname, router],
+  );
 
   // wait for the API to finish starting, then load everything again
   useEffect(() => {
@@ -231,17 +218,6 @@ export function Browse() {
     }, 3000);
     return () => clearInterval(timer);
   }, [apiState, loadAccount]);
-
-  useEffect(() => {
-    const el = sentinel.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (e) => e[0].isIntersecting && loadMore(),
-      { rootMargin: "800px" },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [loadMore]);
 
   const toggleFav = useCallback(
     async (it: Item) => {
@@ -548,7 +524,7 @@ export function Browse() {
               {t("list.empty")}
             </p>
           )}
-          <div ref={sentinel} className="h-px" />
+          <Pagination page={shown.page} total={shown.total} onPage={goPage} />
         </main>
       </div>
 
