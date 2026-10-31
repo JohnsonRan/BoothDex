@@ -31,20 +31,20 @@ export const ItemCard = memo(function ItemCard({
   const second = imgUrl(item, 1);
   const free = priceOf(item) === 0;
   return (
-    <article className="group relative overflow-hidden rounded-xl border bg-card transition-[transform,border-color,box-shadow] [@media(hover:hover)]:hover:-translate-y-0.5 [@media(hover:hover)]:hover:border-foreground/20 [@media(hover:hover)]:hover:shadow-xl">
+    <article className="group relative">
       <button
         type="button"
         onClick={() => onOpen(item)}
         className="block w-full text-left"
         aria-label={item.title}
       >
-        <div className="relative aspect-square bg-muted">
+        <div className="relative aspect-square overflow-hidden rounded-md bg-muted ring-1 ring-foreground/5">
           <img
             src={imgUrl(item, 0)}
             alt=""
             loading="lazy"
             decoding="async"
-            className="absolute inset-0 size-full object-cover"
+            className="absolute inset-0 size-full object-cover transition-transform duration-500 [@media(hover:hover)]:group-hover:scale-[1.04]"
           />
           {/* second image only on devices that can hover */}
           {second && (
@@ -58,22 +58,22 @@ export const ItemCard = memo(function ItemCard({
           )}
           <div className="absolute top-2 left-2 flex flex-wrap gap-1 pr-10">
             {isNew(item) && (
-              <span className="rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold text-white">
+              <span className="rounded-sm bg-primary px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-primary-foreground">
                 NEW
               </span>
             )}
             {item.features.slice(0, 2).map((f) => (
               <span
                 key={f}
-                className="rounded-full bg-background/75 px-2 py-0.5 text-[10px] font-semibold backdrop-blur"
+                className="rounded-sm bg-background/75 px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur"
               >
                 {FEATURES[f as Feature] ?? f}
               </span>
             ))}
           </div>
         </div>
-        <div className="space-y-2 p-2.5 sm:p-3">
-          <h3 className="line-clamp-2 min-h-[2.8em] text-[13px] leading-[1.4]">
+        <div className="space-y-1.5 px-0.5 pt-2 pb-1">
+          <h3 className="line-clamp-2 min-h-[2.8em] text-[13px] leading-[1.4] transition-colors [@media(hover:hover)]:group-hover:text-primary">
             {text(item, "title")}
           </h3>
           <div className="flex items-center justify-between gap-2">
@@ -90,10 +90,8 @@ export const ItemCard = memo(function ItemCard({
             </div>
             <span
               className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums",
-                free
-                  ? "bg-[var(--success)]/12 text-[var(--success)]"
-                  : "bg-primary/12 text-primary",
+                "shrink-0 text-xs font-bold tabular-nums",
+                free ? "text-[var(--success)]" : "text-primary",
               )}
             >
               {price(item)}

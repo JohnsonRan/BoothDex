@@ -325,9 +325,9 @@ export function Browse() {
       <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 px-3 backdrop-blur-md sm:px-5">
         <a
           href="/"
-          className="flex shrink-0 items-center gap-2 font-extrabold tracking-tight"
+          className="flex shrink-0 items-center gap-2 font-heading text-[17px] font-semibold tracking-wide"
         >
-          <span className="size-[18px] rounded-[5px] bg-brand" />
+          <span className="size-[18px] rounded-[3px] bg-primary" />
           <span className="hidden sm:inline">BoothDex</span>
         </a>
         <button
@@ -377,9 +377,9 @@ export function Browse() {
         </div>
       </header>
 
-      <section className="border-b bg-[radial-gradient(900px_260px_at_75%_-40%,color-mix(in_oklch,var(--brand-2)_18%,transparent),transparent_70%)] px-3 pt-4 sm:px-5">
+      <section className="border-b px-3 pt-4 sm:px-5">
         <div className="flex items-baseline gap-3">
-          <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-[22px]">
+          <h1 className="min-w-0 truncate font-heading text-xl font-semibold tracking-wide sm:text-[26px]">
             {filters.view === "favourites" ? (
               <span className="text-brand">{t("title.favourites")}</span>
             ) : filters.q ? (
