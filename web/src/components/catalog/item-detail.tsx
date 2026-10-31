@@ -180,7 +180,8 @@ function Body({
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(380px,1fr)]">
           {/* gallery: swipe on touch, arrows/keys/thumbnails on desktop */}
-          <div className="lg:border-r lg:p-5">
+          {/* stays in view while the details beside it scroll; the image shrinks on short screens so it always fits */}
+          <div className="lg:sticky lg:top-0 lg:self-start lg:p-5">
             <div className="relative bg-muted lg:overflow-hidden lg:rounded-xl">
               <div
                 ref={strip}
@@ -191,7 +192,7 @@ function Body({
                     ),
                   )
                 }
-                className="flex aspect-square snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                className="flex aspect-square snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] lg:mx-auto lg:max-h-[calc(92dvh-14rem)] [&::-webkit-scrollbar]:hidden"
               >
                 {Array.from({ length: count }, (_, i) => (
                   // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users page with arrow keys
@@ -243,7 +244,7 @@ function Body({
             )}
           </div>
 
-          <div className="space-y-4 p-4 lg:p-6">
+          <div className="space-y-4 p-4 lg:border-l lg:p-6">
             <div className="flex items-center gap-2.5 pr-10">
               {item.author_icon && (
                 <img
