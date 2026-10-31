@@ -105,6 +105,9 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
 
 /// Full item payloads for one result page, in the given order.
 pub async fn load_items(pool: &PgPool, ids: &[i64]) -> Result<Vec<Value>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
     let rows: Vec<(i64, Value)> = sqlx::query_as(
         "select i.id, to_jsonb(i) || jsonb_build_object(
             'linked_avatars', coalesce((select jsonb_agg(jsonb_build_object('slug', a.slug, 'en', a.name_en, 'ja', a.name_ja, 'ko', a.name_ko, 'image_url', coalesce((select b.images[1] from booth_images b where b.item_id = a.avatar_item_id), a.image_url)) order by a.slug)

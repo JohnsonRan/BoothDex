@@ -5,6 +5,8 @@ use std::collections::HashMap;
 
 use percent_encoding::percent_decode_str;
 
+const MAX_PAIRS: usize = 48;
+const MAX_KEY_LEN: usize = 32;
 const MAX_LIST: usize = 10;
 const MAX_VALUE_LEN: usize = 100;
 
@@ -14,8 +16,12 @@ pub struct Params(HashMap<String, Vec<String>>);
 impl Params {
     pub fn parse(query: &str) -> Self {
         let mut map = HashMap::new();
-        for pair in query.split('&').filter(|p| !p.is_empty()) {
+        for pair in query.split('&').filter(|p| !p.is_empty()).take(MAX_PAIRS) {
             let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+            let key = percent_decode_str(k).decode_utf8_lossy();
+            if key.len() > MAX_KEY_LEN {
+                continue;
+            }
             let values = v
                 .split('+')
                 .map(|s| percent_decode_str(s).decode_utf8_lossy().trim().chars().take(MAX_VALUE_LEN).collect::<String>())
@@ -23,7 +29,7 @@ impl Params {
                 .take(MAX_LIST)
                 .collect();
             // first occurrence wins, like URLSearchParams.get
-            map.entry(percent_decode_str(k).decode_utf8_lossy().into_owned()).or_insert(values);
+            map.entry(key.into_owned()).or_insert(values);
         }
         Self(map)
     }
@@ -34,7 +40,10 @@ impl Params {
 
     /// Single value; a `+` inside it is kept (e.g. free-text search).
     pub fn get(&self, key: &str) -> Option<String> {
-        self.0.get(key).filter(|v| !v.is_empty()).map(|v| v.join(" "))
+        self.0
+            .get(key)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.join(" ").chars().take(MAX_VALUE_LEN).collect())
     }
 
     pub fn num<T: std::str::FromStr>(&self, key: &str) -> Option<T> {
@@ -60,5 +69,9 @@ mod tests {
     fn caps_list_length() {
         let q = format!("tags={}", (0..20).map(|i| i.to_string()).collect::<Vec<_>>().join("+"));
         assert_eq!(Params::parse(&q).list("tags").len(), 10);
+        let many_keys = (0..100).map(|i| format!("k{i}=1")).collect::<Vec<_>>().join("&");
+        assert_eq!(Params::parse(&many_keys).0.len(), super::MAX_PAIRS);
+        let long_q = format!("q={}", vec!["a".repeat(30); 6].join("+"));
+        assert_eq!(Params::parse(&long_q).get("q").unwrap().chars().count(), super::MAX_VALUE_LEN);
     }
 }

@@ -6,6 +6,7 @@ mod admin;
 mod catalog;
 mod db;
 mod gallery;
+mod limit;
 mod params;
 mod rss;
 mod text;
@@ -131,6 +132,33 @@ struct Snapshot {
     build_secs: f64,
 }
 
+const EMBED_CACHE_CAP: usize = 2000;
+type EmbedWatch = tokio::sync::watch::Receiver<Option<Option<Vec<f32>>>>;
+
+#[derive(Default)]
+struct EmbedCache {
+    values: HashMap<String, Vec<f32>>,
+    order: std::collections::VecDeque<String>,
+}
+
+impl EmbedCache {
+    fn get(&self, key: &str) -> Option<Vec<f32>> {
+        self.values.get(key).cloned()
+    }
+
+    fn insert(&mut self, key: String, val: Vec<f32>) {
+        if !self.values.contains_key(&key) {
+            if self.values.len() >= EMBED_CACHE_CAP
+                && let Some(old) = self.order.pop_front()
+            {
+                self.values.remove(&old);
+            }
+            self.order.push_back(key.clone());
+        }
+        self.values.insert(key, val);
+    }
+}
+
 struct AppState {
     pool: PgPool,
     snap: arc_swap::ArcSwap<Snapshot>,
@@ -143,13 +171,29 @@ struct AppState {
     sys: admin::SysMetrics,
     http: reqwest::Client,
     imgproxy_url: Option<String>,
+    /// per-IP and global rate-limit tiers across API routes and upstream embedding calls
+    limits: limit::Limits,
+    /// caps concurrent in-flight catalogue search / item-load CPU + DB work so floods cannot starve other routes
+    search_permits: tokio::sync::Semaphore,
     /// query text -> embedding, so paging through results doesn't call the provider again
-    embed_cache: std::sync::Mutex<std::collections::HashMap<String, Vec<f32>>>,
+    embed_cache: std::sync::Mutex<EmbedCache>,
+    /// deduplicates concurrent identical uncached queries
+    embed_inflight: std::sync::Mutex<HashMap<String, EmbedWatch>>,
+    /// caps concurrent upstream /embeddings HTTP calls
+    embed_permits: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppState {
     fn snap(&self) -> arc_swap::Guard<Arc<Snapshot>> {
         self.snap.load()
+    }
+
+    async fn acquire_search(&self) -> std::result::Result<tokio::sync::SemaphorePermit<'_>, Response> {
+        tokio::time::timeout(std::time::Duration::from_secs(2), self.search_permits.acquire())
+            .await
+            .ok()
+            .and_then(std::result::Result::ok)
+            .ok_or_else(|| limit::too_many_requests(2))
     }
 }
 
@@ -188,7 +232,34 @@ impl Trace {
     }
 }
 
-async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
+enum EmbedPlan {
+    Vector(Vec<f32>),
+    Off,
+    Skipped,
+    Unavailable,
+}
+
+async fn lookup_rate_limit(
+    State(s): State<Arc<AppState>>,
+    limit::ClientIp(ip): limit::ClientIp,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if let Err(r) = s.limits.lookup.check(ip) {
+        return r;
+    }
+    next.run(req).await
+}
+
+async fn search(
+    State(s): State<Arc<AppState>>,
+    limit::ClientIp(ip): limit::ClientIp,
+    headers: axum::http::HeaderMap,
+    RawQuery(q): RawQuery,
+) -> Result<Response, ApiError> {
+    if let Err(r) = s.limits.search.check(ip) {
+        return Ok(r);
+    }
     let t0 = Instant::now();
     let mut trace = Trace::default();
     trace.start();
@@ -208,11 +279,28 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
     // model names in the query become a requirement for meaning-based matches and are left out of the
     // embedding, so "shinano short hair" adds short hair that fits Shinano, not other Shinano items
     let (meaning, models) = s.snap().avatars.split_names(&p.get("q").unwrap_or_default());
-    let (semantic, semantic_status) = match p.get("q").filter(|q| !q.trim().is_empty()) {
-        Some(_) if p.get("sem").as_deref() == Some("0") => (None, "skipped"),
-        Some(_) if meaning.is_empty() => (None, "skipped"),
-        Some(_) => semantic_ids(s.clone(), &meaning, &models, &mut trace).await,
-        None => (None, "off"),
+    let embed_plan = match p.get("q").filter(|q| !q.trim().is_empty()) {
+        Some(_) if p.get("sem").as_deref() == Some("0") => EmbedPlan::Skipped,
+        Some(_) if meaning.is_empty() => EmbedPlan::Skipped,
+        Some(_) => semantic_vector(s.clone(), ip, &meaning, &mut trace).await,
+        None => EmbedPlan::Off,
+    };
+    // acquired after any external provider wait so slow embeddings cannot block keyword/filter searches
+    let _permit = match s.acquire_search().await {
+        Ok(p) => p,
+        Err(r) => return Ok(r),
+    };
+    let (semantic, semantic_status) = match embed_plan {
+        EmbedPlan::Vector(vector) => match nearest(&s, &vector, &models).await {
+            Some(ids) => {
+                trace.step("neighbours");
+                (Some(ids), "used")
+            }
+            None => (None, "unavailable"),
+        },
+        EmbedPlan::Off => (None, "off"),
+        EmbedPlan::Skipped => (None, "skipped"),
+        EmbedPlan::Unavailable => (None, "unavailable"),
     };
     // a query that names a category ("short hair", "shorthair") also matches the items enriched into it, so
     // spellings of one meaning end up with the same results
@@ -245,19 +333,14 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
     .into_response())
 }
 
-/// Items nearest to the query by meaning (the embeddings job must have run), with a status for the response:
-/// "off" without an embeddings model, "unavailable" when the provider is slow or failing (words alone then).
-async fn semantic_ids(s: Arc<AppState>, q: &str, models: &[String], trace: &mut Trace) -> (Option<Vec<i64>>, &'static str) {
-    let Ok(c) = catalogue_core::settings::ai(&s.pool).await else { return (None, "unavailable") };
-    let (Some(base), Some(key), Some(model)) = (c.base_url, c.api_key, c.embed_model) else { return (None, "off") };
+/// Resolves the query embedding (or why there isn't one) before acquiring a search execution permit.
+async fn semantic_vector(s: Arc<AppState>, ip: std::net::IpAddr, q: &str, trace: &mut Trace) -> EmbedPlan {
+    let Ok(c) = catalogue_core::settings::ai(&s.pool).await else { return EmbedPlan::Unavailable };
+    let (Some(base), Some(key), Some(model)) = (c.base_url, c.api_key, c.embed_model) else { return EmbedPlan::Off };
     trace.step("settings");
-    let Some(vector) = query_embedding(s.clone(), q, base, key, model, trace).await else { return (None, "unavailable") };
-    match nearest(&s, &vector, models).await {
-        Some(ids) => {
-            trace.step("neighbours");
-            (Some(ids), "used")
-        }
-        None => (None, "unavailable"),
+    match query_embedding(s, ip, q, base, key, model, trace).await {
+        Some(v) => EmbedPlan::Vector(v),
+        None => EmbedPlan::Unavailable,
     }
 }
 
@@ -266,12 +349,31 @@ fn normalize_query(q: &str) -> String {
     q.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
 }
 
+struct ClearInflight {
+    state: Arc<AppState>,
+    key: String,
+}
+
+impl Drop for ClearInflight {
+    fn drop(&mut self) {
+        self.state.embed_inflight.lock().unwrap().remove(&self.key);
+    }
+}
+
 /// Embedding of a search text: process memory, then the query_embeddings table, then the provider.
-async fn query_embedding(s: Arc<AppState>, q: &str, base: String, key: String, model: String, trace: &mut Trace) -> Option<Vec<f32>> {
+async fn query_embedding(
+    s: Arc<AppState>,
+    ip: std::net::IpAddr,
+    q: &str,
+    base: String,
+    key: String,
+    model: String,
+    trace: &mut Trace,
+) -> Option<Vec<f32>> {
     use catalogue_core::embed;
     let text = normalize_query(q);
     let cache_key = format!("{model}\n{text}");
-    if let Some(v) = s.embed_cache.lock().unwrap().get(&cache_key).cloned() {
+    if let Some(v) = s.embed_cache.lock().unwrap().get(&cache_key) {
         trace.step("embed_memory");
         return Some(v);
     }
@@ -297,34 +399,71 @@ async fn query_embedding(s: Arc<AppState>, q: &str, base: String, key: String, m
         });
         return Some(v);
     }
-    let input = vec![format!("{}{text}", embed::QUERY_PREFIX)];
-    // the request runs on: if it outlasts the wait below, it still fills both caches for the next page or visitor
-    let state = s.clone();
-    let mut task = tokio::spawn(async move {
-        let v = embed::embed(&state.http, &base, &key, &model, &input, 1).await?.pop().ok_or_else(|| anyhow::anyhow!("no embedding"))?;
-        remember(&state, cache_key, v.clone());
-        sqlx::query("insert into query_embeddings (model, query, embedding) values ($1, $2, $3::halfvec) on conflict (model, query) do nothing")
-            .bind(&model)
-            .bind(&text)
-            .bind(embed::to_pg(&v))
-            .execute(&state.pool)
-            .await?;
-        anyhow::Ok(v)
-    });
+    let mut rx = {
+        let mut inflight = s.embed_inflight.lock().unwrap();
+        if let Some(existing) = inflight.get(&cache_key) {
+            existing.clone()
+        } else if let Some(v) = s.embed_cache.lock().unwrap().get(&cache_key) {
+            trace.step("embed_memory");
+            return Some(v);
+        } else if s.limits.embed_ip.take(ip).is_err() || s.limits.embed_global.take_global().is_err() {
+            // per-IP checked first so one noisy IP never drains the global uncached budget; search falls back to words
+            trace.step("embed_failed");
+            return None;
+        } else {
+            let (tx, rx) = tokio::sync::watch::channel(None);
+            inflight.insert(cache_key.clone(), rx.clone());
+            let input = vec![format!("{}{text}", embed::QUERY_PREFIX)];
+            // the request runs on: if it outlasts the wait below, it still fills both caches for the next page or visitor
+            let state = s.clone();
+            let key_owned = cache_key.clone();
+            tokio::spawn(async move {
+                let _guard = ClearInflight { state: state.clone(), key: key_owned.clone() };
+                // abandon before calling the provider if all 4 slots stay busy past the search timeout
+                let Ok(Ok(_permit)) = tokio::time::timeout(std::time::Duration::from_millis(2500), state.embed_permits.acquire()).await else {
+                    let _ = tx.send(Some(None));
+                    return;
+                };
+                match embed::embed(&state.http, &base, &key, &model, &input, 1)
+                    .await
+                    .and_then(|mut v| v.pop().ok_or_else(|| anyhow::anyhow!("no embedding")))
+                {
+                    Ok(v) => {
+                        remember(&state, key_owned, v.clone());
+                        let _ = tx.send(Some(Some(v.clone())));
+                        if let Err(e) = sqlx::query(
+                            "insert into query_embeddings (model, query, embedding) values ($1, $2, $3::halfvec) on conflict (model, query) do nothing",
+                        )
+                        .bind(&model)
+                        .bind(&text)
+                        .bind(embed::to_pg(&v))
+                        .execute(&state.pool)
+                        .await
+                        {
+                            eprintln!("query embedding store: {e}");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("query embedding: {e:#}");
+                        let _ = tx.send(Some(None));
+                    }
+                }
+            });
+            rx
+        }
+    };
     // measured on the development provider: median 0.7 s, 95th percentile 1.2 s, occasional spikes past 3 s
-    match tokio::time::timeout(std::time::Duration::from_millis(2500), &mut task).await {
-        Ok(Ok(Ok(v))) => {
+    match tokio::time::timeout(std::time::Duration::from_millis(2500), async {
+        rx.wait_for(Option::is_some).await.ok().and_then(|r| r.clone().flatten())
+    })
+    .await
+    {
+        Ok(Some(v)) => {
             trace.step("embed_provider");
             Some(v)
         }
-        Ok(Ok(Err(e))) => {
+        Ok(None) => {
             trace.step("embed_failed");
-            eprintln!("query embedding: {e:#}");
-            None
-        }
-        Ok(Err(e)) => {
-            trace.step("embed_failed");
-            eprintln!("query embedding task: {e}");
             None
         }
         Err(_) => {
@@ -336,12 +475,7 @@ async fn query_embedding(s: Arc<AppState>, q: &str, base: String, key: String, m
 }
 
 fn remember(s: &AppState, key: String, v: Vec<f32>) {
-    let mut cache = s.embed_cache.lock().unwrap();
-    // shortcut: dropped wholesale when full (the table keeps everything); an LRU only pays off under real load
-    if cache.len() >= 2000 {
-        cache.clear();
-    }
-    cache.insert(key, v);
+    s.embed_cache.lock().unwrap().insert(key, v);
 }
 
 /// Listed items nearest to the vector, cut where they stop resembling the best match. With models named,
@@ -387,7 +521,14 @@ fn semantic_cutoff(best: f64, scoped: bool) -> f64 {
     FLOOR.max(best - margin)
 }
 
-async fn rss_feed(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
+async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
+    if let Err(r) = s.limits.rss.check(ip) {
+        return Ok(r);
+    }
+    let _permit = match s.acquire_search().await {
+        Ok(p) => p,
+        Err(r) => return Ok(r),
+    };
     let user_q = q.unwrap_or_default();
     // first occurrence wins in Params, so the prefix pins ordering and size
     let p = Params::parse(&format!("sort=newest&dir=desc&page=1&pageSize=50&{user_q}"));
@@ -399,13 +540,20 @@ async fn rss_feed(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resu
 }
 
 /// Ctrl+K: one query across items, avatars, authors, tags and categories.
-async fn palette(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result<Json<Value>, ApiError> {
+async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
+    if let Err(r) = s.limits.palette.check(ip) {
+        return Ok(r);
+    }
     let raw = q.unwrap_or_default();
     let p = Params::parse(&raw);
     let text = p.get("q").unwrap_or_default();
     if text.trim().is_empty() {
-        return Ok(Json(json!({ "items": [], "avatars": [], "authors": [], "tags": [], "categories": [] })));
+        return Ok(Json(json!({ "items": [], "avatars": [], "authors": [], "tags": [], "categories": [] })).into_response());
     }
+    let _permit = match s.acquire_search().await {
+        Ok(p) => p,
+        Err(r) => return Ok(r),
+    };
     let small = Params::parse(&format!("limit=5&{raw}"));
     let needle = text.to_lowercase();
     let snap = s.snap();
@@ -441,12 +589,24 @@ async fn palette(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resul
         "authors": s.snap().authors.find(&small)["items"],
         "tags": s.snap().tags.find(&small)["items"],
         "categories": categories,
-    })))
+    }))
+    .into_response())
 }
 
 /// Full records by id (favourites list, palette picks): `/api/items?ids=1+2+3`, at most 100.
-async fn items_by_id(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result<Json<Value>, ApiError> {
-    Ok(Json(json!({ "items": db::load_items(&s.pool, &item_ids(q.as_deref().unwrap_or(""))).await? })))
+async fn items_by_id(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
+    if let Err(r) = s.limits.items.check(ip) {
+        return Ok(r);
+    }
+    let ids = item_ids(q.as_deref().unwrap_or(""));
+    if ids.is_empty() {
+        return Ok(Json(json!({ "items": [] })).into_response());
+    }
+    let _permit = match s.acquire_search().await {
+        Ok(p) => p,
+        Err(r) => return Ok(r),
+    };
+    Ok(Json(json!({ "items": db::load_items(&s.pool, &ids).await? })).into_response())
 }
 
 /// `ids=` from a raw query, at most 100. Not `Params`: that caps lists at 10, and the web proxy re-encodes the
@@ -582,9 +742,13 @@ async fn build_state(pool: PgPool) -> Result<AppState> {
         dummy_hash: account::dummy_hash(),
         gallery: gallery::Fetcher::new()?,
         sys: admin::SysMetrics::new(),
-        http: reqwest::Client::new(),
+        http: reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build()?,
         imgproxy_url: std::env::var("IMGPROXY_URL").ok().or_else(|| Some("http://127.0.0.1:3001".into())),
+        limits: Default::default(),
+        search_permits: tokio::sync::Semaphore::new(16),
         embed_cache: Default::default(),
+        embed_inflight: Default::default(),
+        embed_permits: Arc::new(tokio::sync::Semaphore::new(4)),
     })
 }
 
@@ -607,13 +771,25 @@ async fn main() -> Result<()> {
     let starting = serve_starting(&bind, ready_rx).await?;
     println!("starting on http://{bind}");
 
-    let pool = PgPool::connect(&std::env::var("DATABASE_URL")?).await?;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(20)
+        .acquire_timeout(std::time::Duration::from_secs(5))
+        .connect(&std::env::var("DATABASE_URL")?)
+        .await?;
     catalogue_core::MIGRATOR.run(&pool).await?;
     admin::apply_admin_env(&pool).await?;
     // AI configured through environment variables: translate the taxonomy on first start
     admin::queue_localize_if_needed(&pool, &catalogue_core::settings::ai(&pool).await?).await?;
     let state = Arc::new(build_state(pool).await?);
     tokio::spawn(reloader(state.clone()));
+
+    let lookups = Router::new()
+        .route("/api/avatars", get(lookup(|s| &s.avatars)))
+        .route("/api/authors", get(lookup(|s| &s.authors)))
+        .route("/api/tags", get(lookup(|s| &s.tags)))
+        .route("/api/booth-tags", get(lookup(|s| &s.booth_tags)))
+        .route("/api/categories", get(|State(s): State<Arc<AppState>>| async move { Json(s.snap().categories.clone()) }))
+        .route_layer(axum::middleware::from_fn_with_state(state.clone(), lookup_rate_limit));
 
     let app = Router::new()
         .route("/api/health", get(|| async { Json(json!({ "ok": true })) }))
@@ -622,11 +798,7 @@ async fn main() -> Result<()> {
         .route("/api/palette", get(palette))
         .route("/api/items", get(items_by_id))
         .route("/api/items/{id}/gallery", get(gallery::gallery))
-        .route("/api/avatars", get(lookup(|s| &s.avatars)))
-        .route("/api/authors", get(lookup(|s| &s.authors)))
-        .route("/api/tags", get(lookup(|s| &s.tags)))
-        .route("/api/booth-tags", get(lookup(|s| &s.booth_tags)))
-        .route("/api/categories", get(|State(s): State<Arc<AppState>>| async move { Json(s.snap().categories.clone()) }))
+        .merge(lookups)
         .merge(account::routes())
         .merge(admin::routes())
         // gzip would buffer the admin SSE stream
@@ -643,7 +815,7 @@ async fn main() -> Result<()> {
     starting.await?;
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     println!("listening on http://{bind}");
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
     Ok(())
 }
 
@@ -659,6 +831,127 @@ mod tests {
     #[test]
     fn queries_are_normalized_for_the_cache() {
         assert_eq!(super::normalize_query("  Gothic   Dress "), "gothic dress");
+    }
+
+    #[test]
+    fn embed_cache_evicts_oldest_instead_of_clearing_all() {
+        let mut c = super::EmbedCache::default();
+        for i in 0..super::EMBED_CACHE_CAP {
+            c.insert(format!("k{i}"), vec![i as f32]);
+        }
+        c.insert("k0".into(), vec![99.0]); // updating an existing key does not grow or evict
+        assert_eq!(c.values.len(), super::EMBED_CACHE_CAP);
+        c.insert("extra".into(), vec![1.0]);
+        assert!(c.get("k0").is_none()); // oldest inserted key evicted
+        assert_eq!(c.get("k1").as_deref(), Some(&[1.0][..]));
+        assert_eq!(c.get("extra").as_deref(), Some(&[1.0][..]));
+        assert_eq!(c.values.len(), super::EMBED_CACHE_CAP);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
+        use axum::extract::{FromRequestParts, RawQuery, State};
+        use axum::http::{HeaderMap, Request, StatusCode, header};
+
+        let catalog = super::Catalog::build(Vec::new(), 0, None).unwrap();
+        let snap = super::Snapshot {
+            catalog,
+            category_phrases: Default::default(),
+            avatars: super::Lookup::new(Vec::new()),
+            authors: super::Lookup::new(Vec::new()),
+            tags: super::Lookup::new(Vec::new()),
+            booth_tags: super::Lookup::new(Vec::new()),
+            categories: serde_json::json!({ "categories": [] }),
+            version: 1,
+            loaded_at: chrono::Utc::now(),
+            build_secs: 0.0,
+        };
+        let state = std::sync::Arc::new(super::AppState {
+            pool: sqlx::postgres::PgPoolOptions::new().connect_lazy("postgres://localhost/unused").unwrap(),
+            snap: arc_swap::ArcSwap::from_pointee(snap),
+            reload: tokio::sync::Notify::new(),
+            site_url: "http://127.0.0.1:3000".into(),
+            throttle: Default::default(),
+            dummy_hash: String::new(),
+            gallery: super::gallery::Fetcher::new().unwrap(),
+            sys: super::admin::SysMetrics::new(),
+            http: reqwest::Client::new(),
+            imgproxy_url: None,
+            limits: super::limit::Limits {
+                search: super::limit::RateLimiter::new(2.0, 3.0, 64),
+                palette: super::limit::RateLimiter::new(5.0, 2.0, 64),
+                rss: super::limit::RateLimiter::new(0.5, 2.0, 64),
+                items: super::limit::RateLimiter::new(1.0, 2.0, 64),
+                gallery: super::limit::RateLimiter::new(1.0, 2.0, 64),
+                lookup: super::limit::RateLimiter::new(5.0, 2.0, 64),
+                embed_ip: super::limit::RateLimiter::new(0.25, 8.0, 64),
+                embed_global: super::limit::RateLimiter::new(2.0, 20.0, 1),
+            },
+            search_permits: tokio::sync::Semaphore::new(16),
+            embed_cache: Default::default(),
+            embed_inflight: Default::default(),
+            embed_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
+        });
+
+        let ip_of = |xff: &'static str| {
+            let state = state.clone();
+            async move {
+                let (mut parts, _) = Request::builder().uri("/api/search").header("x-forwarded-for", xff).body(()).unwrap().into_parts();
+                super::limit::ClientIp::from_request_parts(&mut parts, &state).await.unwrap()
+            }
+        };
+        let call = |xff: &'static str| {
+            let state = state.clone();
+            async move {
+                let ip = ip_of(xff).await;
+                super::search(State(state), ip, HeaderMap::new(), RawQuery(None))
+                    .await
+                    .unwrap_or_else(axum::response::IntoResponse::into_response)
+            }
+        };
+
+        for _ in 0..3 {
+            assert_eq!(call("203.0.113.10").await.status(), StatusCode::OK);
+        }
+        let blocked = call("203.0.113.10").await;
+        assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(blocked.headers().contains_key(header::RETRY_AFTER));
+        // another visitor keeps searching unaffected
+        assert_eq!(call("203.0.113.11").await.status(), StatusCode::OK);
+
+        // exhausting palette, lookups, rss, items and gallery on a fresh IP never starves /api/search
+        let ip = "203.0.113.99";
+        for _ in 0..2 {
+            assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.ok().unwrap().status(), StatusCode::OK);
+        }
+        assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+
+        for _ in 0..2 {
+            assert!(state.limits.lookup.check(ip_of(ip).await.0).is_ok());
+        }
+        assert!(state.limits.lookup.check(ip_of(ip).await.0).is_err());
+
+        for _ in 0..2 {
+            assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::OK);
+        }
+        assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+
+        for _ in 0..2 {
+            assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::OK);
+        }
+        assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+
+        use axum::extract::Path;
+        for _ in 0..2 {
+            assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.ok().unwrap().status(), StatusCode::NOT_FOUND);
+        }
+        assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+
+        // /api/search for that same IP still succeeds with its full burst intact
+        for _ in 0..3 {
+            assert_eq!(call(ip).await.status(), StatusCode::OK);
+        }
+        assert_eq!(call(ip).await.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 
     #[test]

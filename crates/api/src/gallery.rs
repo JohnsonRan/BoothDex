@@ -42,7 +42,14 @@ impl Fetcher {
     }
 }
 
-pub async fn gallery(State(s): State<Arc<AppState>>, Path(id): Path<i64>) -> Result<Response, ApiError> {
+pub async fn gallery(
+    State(s): State<Arc<AppState>>,
+    crate::limit::ClientIp(ip): crate::limit::ClientIp,
+    Path(id): Path<i64>,
+) -> Result<Response, ApiError> {
+    if let Err(r) = s.limits.gallery.check(ip) {
+        return Ok(r);
+    }
     if s.snap().catalog.docs_for(&[id]).is_empty() {
         return Ok((StatusCode::NOT_FOUND, Json(json!({ "ok": false, "error": "Unknown item." }))).into_response());
     }
