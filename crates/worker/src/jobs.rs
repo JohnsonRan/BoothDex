@@ -383,7 +383,7 @@ async fn write_enrichment(pool: &PgPool, id: i64, e: &crate::ai::Enrichment, lin
     sqlx::query(
         "update items set content_rating = coalesce($2, content_rating), quest = coalesce($3, quest), smart_price = $4,
                 smart_price_reason = coalesce($5, smart_price_reason), translations = $6, features = $7, original_language = $6->>'original_language',
-                needs_enrichment = false, enrich_failures = 0
+                needs_enrichment = false, enrich_failures = 0, embedding = null
          where id = $1",
     )
     .bind(id)
@@ -416,8 +416,84 @@ async fn write_enrichment(pool: &PgPool, id: i64, e: &crate::ai::Enrichment, lin
     Ok(())
 }
 
+/// Embeddings for semantic search: every listed item without one (new, edited, or after a model change).
+/// Runs until done; requests go out `batch` items at a time, `concurrency` at once.
+pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
+    use catalogue_core::embed;
+    let c = catalogue_core::settings::ai(ctx.pool).await?;
+    let (Some(base), Some(key), Some(model)) = (c.base_url, c.api_key, c.embed_model) else {
+        return Ok("skipped: embeddings model not configured".into());
+    };
+    let batch: usize = param(params, "batch", 64usize).clamp(1, 256);
+    let concurrency: usize = param(params, "concurrency", 8usize).clamp(1, 16);
+    // for trial runs
+    let limit: i64 = param(params, "limit", i64::MAX);
+
+    // vectors from another model aren't comparable: start over when the model changes
+    let previous: Option<String> = sqlx::query_scalar("select value->>'model' from app_settings where key = 'embed_state'").fetch_optional(ctx.pool).await?.flatten();
+    if previous.as_deref() != Some(model.as_str()) {
+        if previous.is_some() {
+            let n = sqlx::query("update items set embedding = null where embedding is not null").execute(ctx.pool).await?.rows_affected();
+            ctx.log(&format!("model changed from {} to {model}: cleared {n} embeddings", previous.as_deref().unwrap_or("-"))).await?;
+        }
+        sqlx::query("insert into app_settings (key, value) values ('embed_state', $1) on conflict (key) do update set value = excluded.value, updated_at = now()")
+            .bind(serde_json::json!({ "model": model }))
+            .execute(ctx.pool)
+            .await?;
+    }
+
+    let total: i64 = sqlx::query_scalar("select count(*) from items where status = 'ok' and embedding is null").fetch_one(ctx.pool).await?;
+    let http = reqwest::Client::builder().timeout(Duration::from_secs(120)).build()?;
+    let (mut done, mut below) = (0i64, i64::MAX);
+    loop {
+        // keyset paging: an item the provider can't embed is not fetched again in this run
+        let rows: Vec<(i64, String, Vec<String>, Option<String>, String)> = sqlx::query_as(
+            "select id, title, booth_tags, translations->'en'->>'title', bio from items
+             where status = 'ok' and embedding is null and id < $1 order by id desc limit $2",
+        )
+        .bind(below)
+        .bind((batch * concurrency) as i64)
+        .fetch_all(ctx.pool)
+        .await?;
+        let Some(last) = rows.last() else { break };
+        below = last.0;
+        let chunks: Vec<Vec<(i64, String)>> = rows
+            .chunks(batch)
+            .map(|c| c.iter().map(|(id, title, tags, en, bio)| (*id, embed::document_text(title, en.as_deref(), tags, bio))).collect())
+            .collect();
+        let results = futures_util::future::try_join_all(chunks.iter().map(|c| {
+            let inputs: Vec<String> = c.iter().map(|r| r.1.clone()).collect();
+            let (http, base, key, model) = (&http, &base, &key, &model);
+            async move { embed::embed(http, base, key, model, &inputs, 4).await }
+        }))
+        .await?;
+        let (mut ids, mut vecs) = (Vec::new(), Vec::new());
+        for (chunk, vectors) in chunks.iter().zip(results) {
+            for ((id, _), v) in chunk.iter().zip(vectors) {
+                ids.push(*id);
+                vecs.push(embed::to_pg(&v));
+            }
+        }
+        sqlx::query("update items i set embedding = v.e::halfvec from unnest($1::bigint[], $2::text[]) as v(id, e) where i.id = v.id")
+            .bind(&ids)
+            .bind(&vecs)
+            .execute(ctx.pool)
+            .await?;
+        done += ids.len() as i64;
+        if !ctx.progress(done, Some(total.min(limit)), &format!("embed: {done} of {}", total.min(limit)), false).await? {
+            ctx.log("cancelled").await?;
+            break;
+        }
+        if done >= limit {
+            break;
+        }
+    }
+    Ok(format!("{done} items embedded with {model}"))
+}
+
 pub async fn run(ctx: &mut Ctx<'_>, kind: &str, params: &Value) -> Result<String> {
     match kind {
+        "embed" => embed(ctx, params).await,
         "localize" => localize(ctx, params).await,
         "sweep" => sweep(ctx, params).await,
         "incremental" => incremental(ctx, params).await,

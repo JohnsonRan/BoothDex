@@ -1,5 +1,6 @@
 //! AI provider settings. Environment variables win over the admin-edited row in `app_settings`, so a
-//! deployment can keep the key out of the database: AI_API_KEY, AI_BASE_URL, AI_MODEL, AI_REASONING_EFFORT.
+//! deployment can keep the key out of the database: AI_API_KEY, AI_BASE_URL, AI_MODEL, AI_REASONING_EFFORT,
+//! AI_EMBED_MODEL.
 
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -14,11 +15,14 @@ pub struct AiConfig {
     pub api_key: Option<String>,
     /// one of REASONING_EFFORTS; "none" by default
     pub reasoning_effort: &'static str,
+    /// embeddings model for semantic search, served by the same provider; none disables semantic search
+    pub embed_model: Option<String>,
     /// which fields came from the environment (the admin UI locks those)
     pub base_url_from_env: bool,
     pub model_from_env: bool,
     pub api_key_from_env: bool,
     pub reasoning_effort_from_env: bool,
+    pub embed_model_from_env: bool,
 }
 
 pub fn reasoning_effort(s: &str) -> Option<&'static str> {
@@ -47,7 +51,19 @@ pub fn resolve(stored: &Value, env: impl Fn(&str) -> Option<String>) -> AiConfig
         Some(e) => (e, true),
         None => (stored["reasoning_effort"].as_str().and_then(reasoning_effort).unwrap_or("none"), false),
     };
-    AiConfig { base_url, model, api_key, reasoning_effort, base_url_from_env, model_from_env, api_key_from_env, reasoning_effort_from_env }
+    let (embed_model, embed_model_from_env) = pick("AI_EMBED_MODEL", "embed_model", false);
+    AiConfig {
+        base_url,
+        model,
+        api_key,
+        reasoning_effort,
+        embed_model,
+        base_url_from_env,
+        model_from_env,
+        api_key_from_env,
+        reasoning_effort_from_env,
+        embed_model_from_env,
+    }
 }
 
 pub async fn ai(pool: &PgPool) -> Result<AiConfig, sqlx::Error> {

@@ -16,6 +16,6 @@ serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 tokio = { workspace = true, features = ["time", "sync"] }
-futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+futures-util = { version = "0.3", default-features = false, features = ["alloc", "std"] }
 unicode-normalization = "0.1"
 sysinfo = { version = "0.40", default-features = false, features = ["system"] }
