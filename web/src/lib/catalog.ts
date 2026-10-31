@@ -151,8 +151,8 @@ export const RANGES = ["7d", "30d", "90d", "1y"] as const;
 export type Range = (typeof RANGES)[number] | "";
 
 export type Filters = {
-  /** items, avatar bodies (API v=avatars), or the signed-in user's favourites */
-  view: "items" | "avatars" | "favourites";
+  /** items, avatar bodies (API v=avatars), the signed-in user's favourites, or recently viewed (site only) */
+  view: "items" | "avatars" | "favourites" | "recent";
   q: string;
   avatar: string;
   sc: string;
@@ -213,7 +213,7 @@ export function parseFilters(search: string): Filters {
   const v = one("v");
   const gender = one("gender");
   return {
-    view: v === "favourites" || v === "avatars" ? v : "items",
+    view: v === "favourites" || v === "avatars" || v === "recent" ? v : "items",
     tags: (raw.get("tags") ?? []).slice(0, 10),
     extags: (raw.get("extags") ?? []).slice(0, 10),
     free: one("free") === "1",

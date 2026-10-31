@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart } from "lucide-react";
+import { Eye, Heart } from "lucide-react";
 import { memo } from "react";
 import {
   FEATURES,
@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 type Props = {
   item: Item;
   favourite: boolean;
+  /** opened before: the card is dimmed until hovered */
+  viewed: boolean;
   onOpen: (it: Item) => void;
   onFavourite: (it: Item) => void;
 };
@@ -24,6 +26,7 @@ type Props = {
 export const ItemCard = memo(function ItemCard({
   item,
   favourite,
+  viewed,
   onOpen,
   onFavourite,
 }: Props) {
@@ -55,6 +58,14 @@ export const ItemCard = memo(function ItemCard({
               decoding="async"
               className="absolute inset-0 hidden size-full object-cover opacity-0 transition-opacity duration-300 [@media(hover:hover)]:block [@media(hover:hover)]:group-hover:opacity-100"
             />
+          )}
+          {viewed && (
+            <div className="absolute inset-0 bg-background/55 transition-opacity [@media(hover:hover)]:group-hover:opacity-0">
+              <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-sm bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur">
+                <Eye className="size-3" aria-hidden />
+                {t("viewed.badge")}
+              </span>
+            </div>
           )}
           <div className="absolute top-2 left-2 flex flex-wrap gap-1 pr-10">
             {isNew(item) && (

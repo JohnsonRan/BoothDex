@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Search, SlidersHorizontal, X } from "lucide-react";
+import { Loader2, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -39,6 +39,7 @@ import { addQuery, loadHistory, saveHistory } from "@/lib/history";
 import type { MessageKey } from "@/lib/messages";
 import { useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { addViewed, loadViewed, saveViewed } from "@/lib/viewed";
 import { AccountMenu, type Me } from "./account-menu";
 import { AvatarStrip } from "./avatar-strip";
 import { CommandPalette } from "./command-palette";
@@ -93,6 +94,14 @@ export function Browse() {
   >(null);
   const [loading, setLoading] = useState(true);
   const [favs, setFavs] = useState<Set<number> | null>(null);
+  // opened items, newest first (null until the account or this browser's list is read)
+  const [viewed, setViewed] = useState<number[] | null>(null);
+  const viewedRef = useRef(viewed);
+  viewedRef.current = viewed;
+  const viewedSet = useMemo(() => new Set(viewed), [viewed]);
+  const recent = filters.view === "recent";
+  // the recently viewed list loads once the ids are known, not again for each item opened while it shows
+  const recentReady = recent && viewed !== null;
   const [open, setOpen] = useState<Item | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -122,10 +131,28 @@ export function Browse() {
       .catch(() => {});
   }, [epoch]);
 
-  // session: who am I, my favourites; rerun after login/logout
+  // session: who am I, my favourites, what I viewed; rerun after login/logout
   const loadAccount = useCallback(async () => {
     const user = await api<Me>("/api/account").catch(() => null);
     setMe(user);
+    if (user) {
+      // what this browser viewed while signed out moves into the account
+      const local = loadViewed();
+      if (local.length)
+        await api("/api/account/views", {
+          method: "POST",
+          json: { ids: local },
+        })
+          .then(() => saveViewed([]))
+          .catch(() => {});
+      setViewed(
+        (
+          await api<{ ids: number[] }>("/api/account/views").catch(() => ({
+            ids: [],
+          }))
+        ).ids,
+      );
+    } else setViewed(loadViewed());
     setFavs(
       user
         ? new Set((await api<{ ids: number[] }>("/api/account/favourites")).ids)
@@ -181,9 +208,26 @@ export function Browse() {
     const started = performance.now();
     // the previous results stay (dimmed) until the new ones arrive
     setLoading(true);
-    api<SearchResult>(
-      `/api/search?${searchQuery(filters, page, PAGE_SIZE)}${noSemantic ? "&sem=0" : ""}`,
-    )
+    if (filters.view === "recent" && !recentReady) return;
+    const ids = (viewedRef.current ?? []).slice(0, PAGE_SIZE);
+    const load: Promise<SearchResult> =
+      filters.view !== "recent"
+        ? api<SearchResult>(
+            `/api/search?${searchQuery(filters, page, PAGE_SIZE)}${noSemantic ? "&sem=0" : ""}`,
+          )
+        : // newest first, one page; filters and sort don't apply
+          (ids.length
+            ? api<{ items: Item[] }>(`/api/items?ids=${ids.join(",")}`)
+            : Promise.resolve({ items: [] as Item[] })
+          ).then((r) => ({
+            items: r.items,
+            count: r.items.length,
+            page: 1,
+            totalPages: 1,
+            smartCounts: {},
+            featureCounts: {},
+          }));
+    load
       .then((r) => {
         if (id !== request.current) return;
         setItems(r.items);
@@ -204,7 +248,7 @@ export function Browse() {
       .finally(() => {
         if (id === request.current) setLoading(false);
       });
-  }, [filters, filterKey, page, epoch]);
+  }, [filters, filterKey, page, epoch, recentReady]);
 
   const goPage = useCallback(
     (n: number) => {
@@ -329,6 +373,33 @@ export function Browse() {
     };
   }, [itemParam, epoch, itemUrl, starting]);
 
+  // remember what was opened: in the account when signed in, otherwise in this browser
+  const openId = open?.id;
+  useEffect(() => {
+    if (!openId) return;
+    setViewed((v) => addViewed(v ?? [], openId));
+    if (me)
+      api("/api/account/views", {
+        method: "POST",
+        json: { ids: [openId] },
+      }).catch(() => {});
+    else saveViewed(addViewed(loadViewed(), openId));
+  }, [openId, me]);
+
+  const clearViewed = async () => {
+    try {
+      if (me) await api("/api/account/views", { method: "DELETE" });
+      else saveViewed([]);
+      setViewed([]);
+      if (recent) {
+        setItems([]);
+        setMeta((m) => m && { ...m, count: 0 });
+      }
+    } catch {
+      toast.error(t("recent.clearFailed"));
+    }
+  };
+
   const openById = (id: number) => {
     if (id === itemParam && open?.id === id) return;
     if (!itemParam) openedHere.current = true;
@@ -423,7 +494,10 @@ export function Browse() {
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="relative grid size-9 shrink-0 place-items-center rounded-lg border bg-card lg:hidden"
+          className={cn(
+            "relative grid size-9 shrink-0 place-items-center rounded-lg border bg-card lg:hidden",
+            recent && "hidden",
+          )}
           aria-label={
             nActive ? t("nav.filtersActive", { n: nActive }) : t("nav.filters")
           }
@@ -450,6 +524,16 @@ export function Browse() {
                 features: [],
               })
             }
+            // keeps the avatar, so going back to all shows it again
+            onShowRecent={() =>
+              update({
+                view: "recent",
+                q: "",
+                author: "",
+                sc: "",
+                features: [],
+              })
+            }
             currentQuery={filtersToQuery({ ...filters, view: "items" })}
             currentLabel={heading}
           />
@@ -461,6 +545,8 @@ export function Browse() {
           <h1 className="min-w-0 truncate font-heading text-xl font-semibold tracking-wide sm:text-[26px]">
             {filters.view === "favourites" ? (
               <span className="text-brand">{t("title.favourites")}</span>
+            ) : recent ? (
+              <span className="text-brand">{t("title.recent")}</span>
             ) : filters.q ? (
               highlight("title.search", "q", filters.q)
             ) : filters.author ? (
@@ -477,17 +563,30 @@ export function Browse() {
             {meta ? t("title.count", { n: meta.count.toLocaleString() }) : ""}
           </span>
           {meta && filters.q && <SearchTrace meta={meta} />}
-          {filters.view === "favourites" && (
+          {recent && !!viewed?.length && (
+            <button
+              type="button"
+              onClick={clearViewed}
+              className="ml-auto flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <Trash2 className="size-3.5" />
+              <span className="hidden sm:inline">{t("recent.clear")}</span>
+            </button>
+          )}
+          {(filters.view === "favourites" || recent) && (
             <button
               type="button"
               onClick={() => update({ view: "items" })}
-              className="ml-auto flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              className={cn(
+                "flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground",
+                !(recent && viewed?.length) && "ml-auto",
+              )}
             >
               <X className="size-3.5" />
               <span className="hidden sm:inline">{t("title.backToAll")}</span>
             </button>
           )}
-          {filters.avatar && filters.view !== "favourites" && (
+          {filters.avatar && filters.view !== "favourites" && !recent && (
             <button
               type="button"
               onClick={() => update({ avatar: "" })}
@@ -508,10 +607,12 @@ export function Browse() {
         {filters.view !== "items" && <div className="h-3" />}
       </section>
 
-      <div className="lg:grid lg:grid-cols-[232px_1fr]">
-        <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] overflow-y-auto border-r px-4 py-5 lg:block">
-          {panel}
-        </aside>
+      <div className={cn(!recent && "lg:grid lg:grid-cols-[232px_1fr]")}>
+        {!recent && (
+          <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] overflow-y-auto border-r px-4 py-5 lg:block">
+            {panel}
+          </aside>
+        )}
         <main className="min-w-0 px-3 pt-4 pb-16 sm:px-5 lg:px-6">
           <div className="mb-4 flex flex-wrap items-center gap-2">
             {chips.map(([label, patch]) => (
@@ -525,36 +626,38 @@ export function Browse() {
                 <X className="size-3" />
               </button>
             ))}
-            <Select
-              value={sortValue}
-              onValueChange={(v) => {
-                const [sort, dir] = v.split(":") as [
-                  Filters["sort"],
-                  Filters["dir"] | undefined,
-                ];
-                update({ sort, dir: dir ?? "desc" });
-              }}
-            >
-              <SelectTrigger
-                size="sm"
-                className="ml-auto w-36"
-                aria-label={t("sort.label")}
+            {!recent && (
+              <Select
+                value={sortValue}
+                onValueChange={(v) => {
+                  const [sort, dir] = v.split(":") as [
+                    Filters["sort"],
+                    Filters["dir"] | undefined,
+                  ];
+                  update({ sort, dir: dir ?? "desc" });
+                }}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                {SORTS.map(([v, label]) => (
-                  <SelectItem key={v} value={v}>
-                    {/* the default sort ranks a text search by relevance (see searchQuery) */}
-                    {t(
-                      (v === "trending" && filters.q
-                        ? "sort.relevant"
-                        : label) as MessageKey,
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  size="sm"
+                  className="ml-auto w-36"
+                  aria-label={t("sort.label")}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  {SORTS.map(([v, label]) => (
+                    <SelectItem key={v} value={v}>
+                      {/* the default sort ranks a text search by relevance (see searchQuery) */}
+                      {t(
+                        (v === "trending" && filters.q
+                          ? "sort.relevant"
+                          : label) as MessageKey,
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div
@@ -570,6 +673,7 @@ export function Browse() {
                 key={it.id}
                 item={it}
                 favourite={!!favs?.has(it.id)}
+                viewed={!recent && viewedSet.has(it.id)}
                 onOpen={openItem}
                 onFavourite={toggleFav}
               />
@@ -616,7 +720,7 @@ export function Browse() {
           )}
           {apiState === "ready" && !loading && items.length === 0 && (
             <p className="py-20 text-center text-muted-foreground">
-              {t("list.empty")}
+              {t(recent ? "recent.empty" : "list.empty")}
             </p>
           )}
           <Pagination page={shown.page} total={shown.total} onPage={goPage} />

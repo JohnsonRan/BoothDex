@@ -3,6 +3,7 @@
 import {
   Bookmark,
   Heart,
+  History,
   LayoutDashboard,
   Loader2,
   LogOut,
@@ -46,6 +47,7 @@ type Props = {
   me: Me | null;
   onAuthChange: () => void;
   onShowFavourites: () => void;
+  onShowRecent: () => void;
   currentQuery: string;
   currentLabel: string;
 };
@@ -54,6 +56,7 @@ export function AccountMenu({
   me,
   onAuthChange,
   onShowFavourites,
+  onShowRecent,
   currentQuery,
   currentLabel,
 }: Props) {
@@ -109,6 +112,10 @@ export function AccountMenu({
           <DropdownMenuItem onSelect={onShowFavourites}>
             <Heart />
             {t("account.myFavourites")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onShowRecent}>
+            <History />
+            {t("account.recent")}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setSavedOpen(true)}>
             <Rss />

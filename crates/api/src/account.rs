@@ -28,6 +28,8 @@ const SHORT_HOURS: i64 = 12;
 const MAX_FAILURES: u32 = 10;
 const LOCKOUT: Duration = Duration::from_secs(15 * 60);
 const MAX_SAVED_SEARCHES: i64 = 100;
+/// viewed items kept per user (the web keeps the same number in a signed-out browser)
+const MAX_VIEWS: i64 = 500;
 
 /// Failed logins per lowercased login name: (count, window start)
 #[derive(Default)]
@@ -380,7 +382,7 @@ async fn delete_account(State(s): State<Arc<AppState>>, headers: HeaderMap, Json
     if !verify_password(b.password, hash).await? {
         return Ok(err(StatusCode::FORBIDDEN, "Password is incorrect."));
     }
-    // sessions, favourites and saved searches cascade
+    // sessions, favourites, viewed items and saved searches cascade
     sqlx::query("delete from users where id = $1").bind(u.id).execute(&s.pool).await?;
     Ok(([(header::SET_COOKIE, clear_cookie())], Json(json!({ "ok": true }))).into_response())
 }
@@ -445,6 +447,64 @@ async fn remove_favourite(State(s): State<Arc<AppState>>, headers: HeaderMap, Pa
         Err(r) => return Ok(r),
     };
     sqlx::query("delete from favourites where user_id = $1 and item_id = $2").bind(u.id).bind(item).execute(&s.pool).await?;
+    Ok(Json(json!({ "ok": true })).into_response())
+}
+
+async fn list_views(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
+    let u = match require_user(&s, &headers).await? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    let ids: Vec<i64> = sqlx::query_scalar("select item_id from item_views where user_id = $1 order by viewed_at desc limit $2")
+        .bind(u.id)
+        .bind(MAX_VIEWS)
+        .fetch_all(&s.pool)
+        .await?;
+    Ok(Json(json!({ "ids": ids })).into_response())
+}
+
+#[derive(Deserialize)]
+struct Views {
+    /// newest first: one item just opened, or a signed-out browser's history merged in at sign-in
+    ids: Vec<i64>,
+}
+
+async fn add_views(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<Views>) -> Result<Response, ApiError> {
+    let u = match require_user(&s, &headers).await? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    let ids: Vec<i64> = b.ids.into_iter().take(MAX_VIEWS as usize).collect();
+    let mut tx = s.pool.begin().await?;
+    // list order becomes time order (1 ms apart); unknown ids are skipped, an older view never overwrites a newer one
+    sqlx::query(
+        "insert into item_views (user_id, item_id, viewed_at)
+         select $1, v.id, now() - (v.n * interval '1 millisecond')
+         from unnest($2::bigint[]) with ordinality v(id, n) join items i on i.id = v.id
+         on conflict (user_id, item_id) do update set viewed_at = greatest(item_views.viewed_at, excluded.viewed_at)",
+    )
+    .bind(u.id)
+    .bind(&ids)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "delete from item_views where user_id = $1 and item_id not in
+         (select item_id from item_views where user_id = $1 order by viewed_at desc limit $2)",
+    )
+    .bind(u.id)
+    .bind(MAX_VIEWS)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({ "ok": true })).into_response())
+}
+
+async fn clear_views(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
+    let u = match require_user(&s, &headers).await? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    sqlx::query("delete from item_views where user_id = $1").bind(u.id).execute(&s.pool).await?;
     Ok(Json(json!({ "ok": true })).into_response())
 }
 
@@ -513,6 +573,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/account/preferences", get(get_preferences).put(put_preferences))
         .route("/api/account/favourites", get(list_favourites))
         .route("/api/account/favourites/{id}", put(add_favourite).delete(remove_favourite))
+        .route("/api/account/views", get(list_views).post(add_views).delete(clear_views))
         .route("/api/account/searches", get(list_searches).post(add_search))
         .route("/api/account/searches/{id}", axum::routing::delete(remove_search))
 }
