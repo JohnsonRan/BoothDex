@@ -107,6 +107,10 @@ export function Browse() {
   const viewedSet = useMemo(() => new Set(viewed), [viewed]);
   const recent = filters.view === "recent";
   const recentKey = recent ? viewedGen : 0;
+  // recent cards only while they belong to the current owner's list: a sign-out or switch hides them at once
+  const shownItems = recent
+    ? items.filter((it) => viewedSet.has(it.id))
+    : items;
   const [open, setOpen] = useState<Item | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -417,10 +421,6 @@ export function Browse() {
       if (me) await api("/api/account/views", { method: "DELETE" });
       else saveViewed([]);
       setViewed([]);
-      if (recent) {
-        setItems([]);
-        setMeta((m) => m && { ...m, count: 0 });
-      }
     } catch {
       toast.error(t("recent.clearFailed"));
     }
@@ -586,7 +586,11 @@ export function Browse() {
             )}
           </h1>
           <span className="shrink-0 text-sm text-muted-foreground tabular-nums">
-            {meta ? t("title.count", { n: meta.count.toLocaleString() }) : ""}
+            {meta
+              ? t("title.count", {
+                  n: (recent ? shownItems.length : meta.count).toLocaleString(),
+                })
+              : ""}
           </span>
           {meta && filters.q && <SearchTrace meta={meta} />}
           {recent && !!viewed?.length && (
@@ -689,13 +693,13 @@ export function Browse() {
 
           <div
             aria-busy={loading}
-            inert={loading && items.length > 0}
+            inert={loading && shownItems.length > 0}
             className={cn(
               "grid grid-cols-2 gap-2.5 transition-opacity sm:grid-cols-3 sm:gap-4 lg:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]",
-              loading && items.length > 0 && "opacity-50",
+              loading && shownItems.length > 0 && "opacity-50",
             )}
           >
-            {items.map((it) => (
+            {shownItems.map((it) => (
               <ItemCard
                 key={it.id}
                 item={it}
@@ -706,7 +710,7 @@ export function Browse() {
               />
             ))}
             {loading &&
-              items.length === 0 &&
+              shownItems.length === 0 &&
               SKELETONS.map((k) => (
                 <div
                   key={k}
@@ -745,7 +749,7 @@ export function Browse() {
               {t("list.semanticUnavailable")}
             </p>
           )}
-          {apiState === "ready" && !loading && items.length === 0 && (
+          {apiState === "ready" && !loading && shownItems.length === 0 && (
             <p className="py-20 text-center text-muted-foreground">
               {t(recent ? "recent.empty" : "list.empty")}
             </p>

@@ -446,9 +446,14 @@ async fn palette(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Resul
 
 /// Full records by id (favourites list, palette picks): `/api/items?ids=1+2+3`, at most 100.
 async fn items_by_id(State(s): State<Arc<AppState>>, RawQuery(q): RawQuery) -> Result<Json<Value>, ApiError> {
-    let raw = q.unwrap_or_default();
-    let ids: Vec<i64> = Params::parse(&raw.replace(',', "+")).list("ids").iter().filter_map(|v| v.parse().ok()).take(100).collect();
-    Ok(Json(json!({ "items": db::load_items(&s.pool, &ids).await? })))
+    Ok(Json(json!({ "items": db::load_items(&s.pool, &item_ids(q.as_deref().unwrap_or(""))).await? })))
+}
+
+/// `ids=` from a raw query, at most 100. Not `Params`: that caps lists at 10, and the web proxy re-encodes the
+/// separators (`,` -> `%2C`, `+` -> `%2B`), so they're split after decoding.
+fn item_ids(query: &str) -> Vec<i64> {
+    let raw = query.split('&').find_map(|kv| kv.strip_prefix("ids=")).unwrap_or("");
+    percent_encoding::percent_decode_str(raw).decode_utf8_lossy().split([',', '+', ' ']).filter_map(|v| v.parse().ok()).take(100).collect()
 }
 
 fn urlencode(s: &str) -> String {
@@ -644,6 +649,13 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn item_ids_accept_any_separator_encoding() {
+        assert_eq!(super::item_ids("ids=1,2+3%2C4%2B5%206&x=7"), [1, 2, 3, 4, 5, 6]);
+        assert_eq!(super::item_ids(&format!("ids={}", (1..=150).map(|i| i.to_string()).collect::<Vec<_>>().join(","))).len(), 100);
+        assert!(super::item_ids("q=1").is_empty());
+    }
+
     #[test]
     fn queries_are_normalized_for_the_cache() {
         assert_eq!(super::normalize_query("  Gothic   Dress "), "gothic dress");
