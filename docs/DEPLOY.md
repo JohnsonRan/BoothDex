@@ -1,14 +1,18 @@
 # Deploying to a Linux server
 
-Everything runs in containers: Postgres (pgvector), the three Rust services, the Next.js site and Caddy.
-Caddy terminates TLS and serves one origin; Cloudflare can sit in front.
+Everything runs in containers: Postgres (pgvector), the three Rust services and the Next.js site. The site
+(`web`) is the only service meant to be reached from outside; it serves one origin and forwards `/api` and `/img`
+to the Rust services. TLS is up to you: put your own reverse proxy, Cloudflare Tunnel or similar in front of it.
 
 ```
-browser ─► Cloudflare ─► Caddy :443 ─┬─ /api/*  ─► api :3000 ──► postgres
-                                     ├─ /img/*  ─► imgproxy :3001 ──► booth.pximg.net, archived images
-                                     └─ /*      ─► web :3100 (Next.js)
-                        worker (no port) ──► booth.pm, postgres
+browser ─► your proxy (TLS) ─► web :3100 (Next.js) ─┬─ /api/*  ─► api :3000 ──► postgres
+                                                    └─ /img/*  ─► imgproxy :3001 ──► booth.pximg.net, archived images
+                                worker (no port) ──► booth.pm, postgres
 ```
+
+Published ports: `web` on `WEB_LISTEN` (default `3100`, all interfaces); `postgres` 5432, `api` 3000 and `imgproxy`
+3001 on 127.0.0.1 only, for maintenance from the host. Change the host side in `compose.yaml` if they clash with
+something already running.
 
 ## 1. Server
 
@@ -60,13 +64,14 @@ The importer (`crates/importer`) is only for a raw VRCatalogue archive; you don'
 ```sh
 cd /srv/boothdex/app/deploy
 cp .env.example .env
-$EDITOR .env    # SITE_DOMAIN, SITE_URL, POSTGRES_PASSWORD, ADMIN_USERNAMES, ARCHIVE_IMAGES_DIR
+$EDITOR .env    # WEB_LISTEN, SITE_URL, POSTGRES_PASSWORD, ADMIN_USERNAMES, ARCHIVE_IMAGES_DIR
 ```
 
 | Variable | Used by | Notes |
 |---|---|---|
-| `SITE_DOMAIN` | caddy | DNS A/AAAA record must point at the server (or at Cloudflare, proxied) |
-| `SITE_URL` | api | `https://<domain>`; appears in RSS links |
+| `WEB_LISTEN` | web | host `[address:]port` for the site; `127.0.0.1:3100` when the reverse proxy runs on the same host |
+| `SITE_URL` | api | the public URL, e.g. `https://<domain>`; appears in RSS links |
+| `COOKIE_SECURE` | api | `1` (default): session cookies over HTTPS only. `0` only for testing over plain `http://` |
 | `POSTGRES_PASSWORD` | postgres, api, worker | long random string |
 | `ADMIN_USERNAMES` | api | comma-separated; applied at every api start (anyone not listed loses admin) |
 | `ARCHIVE_IMAGES_DIR` | imgproxy | host path of the extracted images; without a bundle, any empty directory |
@@ -74,7 +79,7 @@ $EDITOR .env    # SITE_DOMAIN, SITE_URL, POSTGRES_PASSWORD, ADMIN_USERNAMES, ARC
 | `BOOTHDEX_TAG` | api, worker, imgproxy, web | image version on ghcr.io: `latest` (default, follows master), a release such as `0.1.0`, or `sha-<commit>` |
 | `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` | api, worker | optional; override the admin console AI settings and lock them there, so the key stays out of the database |
 
-Set in compose and not needed in `.env`: `DATABASE_URL` and `PGPASSWORD` (from `POSTGRES_PASSWORD`; any characters work), `IMGPROXY_URL`, `COOKIE_SECURE=1` (session cookie only over HTTPS), `BIND`.
+Set in compose and not needed in `.env`: `DATABASE_URL` and `PGPASSWORD` (from `POSTGRES_PASSWORD`; any characters work), `IMGPROXY_URL`, `BIND`.
 
 ## 4. First start
 
@@ -89,9 +94,9 @@ docker compose logs -f api                 # wait for "listening on"
 ```
 
 Then:
-1. Open `https://<domain>`, register your account.
+1. Open the site (through your proxy, or `http://<server>:3100` with `COOKIE_SECURE=0` for a quick test) and register your account.
 2. Put that username in `ADMIN_USERNAMES`, `docker compose up -d api` to apply.
-3. Open `https://<domain>/admin`: the worker should show as running; the hourly incremental crawl is on by default.
+3. Open `/admin`: the worker should show as running; the hourly incremental crawl is on by default.
 4. In the admin console: set the AI provider (and test it). The daily full sweep is enabled by default (runs daily at 03:00 JST); you can change its schedule or disable it in the admin console.
 
 ### Starting without a data bundle
@@ -110,12 +115,29 @@ The site is usable while it runs (the api reloads as items arrive). Crawled item
 links or translations until the `enrich` job runs, so configure the AI provider and enable the `enrich`
 schedule in the admin console; at ~200k items, check your provider's price per call first.
 
-## 5. Cloudflare
+## 5. Putting a proxy in front
 
-- DNS record proxied (orange cloud), SSL mode **Full (strict)** (Caddy has a real certificate).
-- Caching: `/img/*` responses are `Cache-Control: public, max-age=31536000, immutable`, so Cloudflare keeps them. Nothing else needs a cache rule.
-- Don't enable "Rocket Loader" or HTML minification (they can break the Next.js hydration).
-- The admin live view uses server-sent events on `/api/admin/stream`; Cloudflare passes them through.
+Forward everything for your domain to the `web` port; it needs no special paths. For example with Caddy on the
+host (`WEB_LISTEN=127.0.0.1:3100`):
+
+```
+boothdex.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3100 {
+		flush_interval -1
+	}
+}
+```
+
+- Turn off response buffering for `/api/admin/stream` (server-sent events for the admin console's live view);
+  `flush_interval -1` does that in Caddy, `proxy_buffering off` in nginx. Without it the live view only updates
+  on reload.
+- The site itself doesn't compress responses; let the proxy do it (`encode` above, `gzip on` in nginx).
+- Docker publishes ports past host firewalls such as ufw. If `WEB_LISTEN` is a bare port, the site is reachable
+  from anywhere on it; use `127.0.0.1:3100` when only a local proxy or tunnel should reach it.
+- Cloudflare: `/img/*` responses are `Cache-Control: public, max-age=31536000, immutable`, so Cloudflare keeps them;
+  nothing else needs a cache rule. Don't enable Rocket Loader or HTML minification (they can break Next.js
+  hydration). Server-sent events pass through.
 
 ## 6. Operations
 
@@ -128,7 +150,7 @@ schedule in the admin console; at ~200k items, check your provider's price per c
 | Backup images | the `images` directory never changes except when new delistings are archived; copy it once |
 | Restore | stop api/worker, `pg_restore --clean -d catalogue backup.dump`, start them |
 
-Not backed up and fine to lose: the `imgcache` volume (re-fills from Booth), `textindex` (rebuilt at start, ~10 s) and `caddydata` (certificates are re-issued).
+Not backed up and fine to lose: the `imgcache` volume (re-fills from Booth), `textindex` (rebuilt at start, ~10 s).
 
 ## 7. Before going live — checklist
 
@@ -151,8 +173,10 @@ Not backed up and fine to lose: the `imgcache` volume (re-fills from Booth), `te
   (`scripts/test-restore.sh`): 215,911 items, 207,962 image rows, 379 avatars, 0 users, 8 migrations.
 - `podman compose config` accepts `compose.yaml`; the Next.js production build passes.
 
-Not yet tested: the full stack running together on one server, Caddy obtaining a certificate, Cloudflare in
-front, and a full crawl from an empty database.
+- The Next.js server forwards `/api` and `/img`: JSON with cookies, binary images with their cache headers, and
+  server-sent events delivered as they are sent.
+
+Not yet tested: the full stack running together on one server, and a full crawl from an empty database.
 
 ## Local development
 

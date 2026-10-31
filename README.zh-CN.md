@@ -38,8 +38,8 @@ VRCatalogue 均无关联。商品数据和图片归其作者所有，每个商�
 
 ## 快速开始
 
-按照[部署指南](docs/DEPLOY.md)操作。它通过 Docker 或 Podman compose 运行 PostgreSQL、三个 Rust 服务、网站和
-Caddy，需要一台有 4 GB 内存的 Linux 服务器。
+按照[部署指南](docs/DEPLOY.md)操作。它通过 Docker 或 Podman compose 运行 PostgreSQL、三个 Rust 服务和网站，
+对外只开放一个端口，供你自己的反向代理接入，需要一台有 4 GB 内存的 Linux 服务器。
 
 新建的数据库已经包含分类树、智能标签和约 380 个模型本体。商品需要从 BOOTH 抓取:先完整抓取一次
 ([没有数据包时的首次启动](docs/DEPLOY.md#starting-without-a-data-bundle))，之后由每小时的抓取任务保持更新。
@@ -49,10 +49,9 @@ Caddy，需要一台有 4 GB 内存的 Linux 服务器。
 ## 架构
 
 ```
-浏览器 ─► Caddy ─┬─ /api/*  ─► api (Rust, Axum) ──► PostgreSQL
-                 ├─ /img/*  ─► imgproxy (Rust) ──► booth.pximg.net、存档图片
-                 └─ /*      ─► web (Next.js)
-      worker (Rust) ──► booth.pm、AI 服务、PostgreSQL
+浏览器 ─► web (Next.js) ─┬─ /api/*  ─► api (Rust, Axum) ──► PostgreSQL
+                         └─ /img/*  ─► imgproxy (Rust) ──► booth.pximg.net、存档图片
+         worker (Rust) ──► booth.pm、AI 服务、PostgreSQL
 ```
 
 | 路径 | 内容 |
@@ -63,7 +62,7 @@ Caddy，需要一台有 4 GB 内存的 Linux 服务器。
 | `crates/imgproxy` | `/b/{size}/...` 把 BOOTH 图片转成 WebP 提供;`/v/{sha1}.webp` 提供存档图片 |
 | `crates/importer` | 一次性导入 VRCatalogue 存档目录 |
 | `web` | Next.js 网站和 `/admin` 管理后台 |
-| `deploy` | 容器镜像、compose 配置和 Caddyfile |
+| `deploy` | 容器镜像和 compose 配置 |
 | `scripts` | 开发环境启动脚本(Windows 和 Git Bash)、数据包工具和模拟 AI 服务 |
 
 在一台 32 线程的开发机上，对 21.6 万个商品搜索时，API 内部耗时 1–6 毫秒，每个请求 5–40 毫秒;32 个客户端并发时

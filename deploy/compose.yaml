@@ -2,7 +2,9 @@
 #   cd deploy && docker compose pull && docker compose up -d     (prebuilt images from ghcr.io)
 #   cd deploy && docker compose up -d --build                    (build from this checkout instead)
 # podman compose works the same way.
-# Start order is handled by depends_on: postgres -> api/worker/imgproxy -> web -> caddy.
+# Start order is handled by depends_on: postgres -> api/worker/imgproxy -> web.
+# Only web is meant to be reached from outside (WEB_LISTEN); it forwards /api and /img to api and imgproxy.
+# Put your own reverse proxy (TLS) or a tunnel in front of it. The other services listen on 127.0.0.1 only.
 name: boothdex
 
 services:
@@ -16,6 +18,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./restore:/restore:ro # put catalogue.dump here for the first restore
+    ports: ["127.0.0.1:5432:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U catalogue -d catalogue"]
       interval: 5s
@@ -34,7 +37,7 @@ services:
       SITE_URL: ${SITE_URL:?set SITE_URL in .env}
       ADMIN_USERNAMES: ${ADMIN_USERNAMES:-}
       IMGPROXY_URL: http://imgproxy:3001
-      COOKIE_SECURE: "1"
+      COOKIE_SECURE: ${COOKIE_SECURE:-1}
       # optional: override the AI settings from the admin console (keeps the key out of the database)
       AI_API_KEY: ${AI_API_KEY:-}
       AI_BASE_URL: ${AI_BASE_URL:-}
@@ -42,6 +45,7 @@ services:
       AI_REASONING_EFFORT: ${AI_REASONING_EFFORT:-}
     volumes:
       - textindex:/index # on-disk search index, reused across restarts
+    ports: ["127.0.0.1:3000:3000"]
     # ~0.5 GB steady, ~1.6 GB peak while (re)building; a hot reload briefly holds old + new
     mem_limit: 3g
 
@@ -70,27 +74,18 @@ services:
     volumes:
       - ${ARCHIVE_IMAGES_DIR:?set ARCHIVE_IMAGES_DIR in .env}:/archive:ro
       - imgcache:/cache
+    ports: ["127.0.0.1:3001:3001"]
     mem_limit: 1g
 
   web:
     image: ghcr.io/johnsonran/boothdex-web:${BOOTHDEX_TAG:-latest}
     build: { context: .., dockerfile: deploy/web.Dockerfile }
     restart: unless-stopped
-    depends_on: [api]
-
-  caddy:
-    image: docker.io/library/caddy:2
-    restart: unless-stopped
-    depends_on: [web, api, imgproxy]
-    ports: ["80:80", "443:443"]
-    environment:
-      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN in .env}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddydata:/data
+    depends_on: [api, imgproxy]
+    # "[address:]port" on the host; e.g. 127.0.0.1:3100 when a reverse proxy on the same host is the only client
+    ports: ["${WEB_LISTEN:-3100}:3100"]
 
 volumes:
   pgdata:
   textindex:
   imgcache:
-  caddydata:

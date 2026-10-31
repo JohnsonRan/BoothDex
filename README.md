@@ -43,8 +43,9 @@ reset passwords). Item titles and descriptions are not translated into Chinese; 
 
 ## Getting started
 
-Follow the [deployment guide](docs/DEPLOY.md). It runs PostgreSQL, the three Rust services, the website and
-Caddy with Docker or Podman compose, and needs a Linux server with 4 GB of RAM.
+Follow the [deployment guide](docs/DEPLOY.md). It runs PostgreSQL, the three Rust services and the website
+with Docker or Podman compose, exposes one port for your own reverse proxy, and needs a Linux server with 4 GB
+of RAM.
 
 A fresh database already contains the category tree, smart tags and about 380 model bodies. Items come from
 BOOTH: run one full crawl ([Starting without a data bundle](docs/DEPLOY.md#starting-without-a-data-bundle)),
@@ -54,10 +55,9 @@ then the hourly crawl keeps up. To skip the crawl, restore the [published data b
 ## Architecture
 
 ```
-browser ─► Caddy ─┬─ /api/*  ─► api (Rust, Axum) ──► PostgreSQL
-                  ├─ /img/*  ─► imgproxy (Rust) ──► booth.pximg.net, archived images
-                  └─ /*      ─► web (Next.js)
-       worker (Rust) ──► booth.pm, AI provider, PostgreSQL
+browser ─► web (Next.js) ─┬─ /api/*  ─► api (Rust, Axum) ──► PostgreSQL
+                          └─ /img/*  ─► imgproxy (Rust) ──► booth.pximg.net, archived images
+          worker (Rust) ──► booth.pm, AI provider, PostgreSQL
 ```
 
 | Path | Contents |
@@ -68,7 +68,7 @@ browser ─► Caddy ─┬─ /api/*  ─► api (Rust, Axum) ──► Postgre
 | `crates/imgproxy` | `/b/{size}/...` serves BOOTH images as WebP; `/v/{sha1}.webp` serves archived images |
 | `crates/importer` | One-off import of a VRCatalogue archive directory |
 | `web` | Next.js website and the `/admin` console |
-| `deploy` | Container images, compose stack and Caddyfile |
+| `deploy` | Container images and compose stack |
 | `scripts` | Dev stack launcher (Windows and Git Bash), data bundle tools and a mock AI provider |
 
 On a 32-thread development machine with 216k items, searches take 1–6 ms inside the API and 5–40 ms per

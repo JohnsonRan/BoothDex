@@ -5,6 +5,8 @@ WORKDIR /web
 COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY web ./
+# the /api and /img rewrites are baked in at build time; these are the compose service names
+ENV API_ORIGIN=http://api:3000 IMG_ORIGIN=http://imgproxy:3001
 RUN bun run build \
  && { [ ! -d public ] || cp -r public .next/standalone/; } \
  && cp -r .next/static .next/standalone/.next/
