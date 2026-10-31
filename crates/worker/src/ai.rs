@@ -65,7 +65,7 @@ pub fn parse_json_reply(text: &str) -> Result<Value> {
 }
 
 pub const LOCALIZE_SYSTEM: &str = "You translate UI labels of a shop for VRChat avatar assets (clothing, hair, accessories, shaders, tools) \
-into Simplified Chinese (zh-CN). Use the terms Chinese VRChat users use (e.g. 衣装/服装, 发型, 配饰, 着色器, 头像 for avatar). \
+into Simplified Chinese (zh-CN). Use the terms Chinese VRChat users use (e.g. 衣装/服装, 发型, 配饰, 着色器, 模型 for avatar). \
 Keep brand and tool names (VRChat, Quest, lilToon, Poiyomi, Modular Avatar, VRCFury, FBX, Unity) untranslated. Labels are short; no trailing punctuation. \
 Reply with a JSON object mapping each given key to its translation, nothing else.";
 

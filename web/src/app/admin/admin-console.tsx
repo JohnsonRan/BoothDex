@@ -149,7 +149,7 @@ const KIND: Record<Kind, { label: string; desc: string }> = {
   },
   enrich: {
     label: "AI 处理",
-    desc: "为新商品生成分类、分级、推断价格和英日韩翻译，并按名称匹配适配头像(每次 200 个，在下方“AI 处理设置”配置模型)",
+    desc: "为新商品生成分类、分级、推断价格和英日韩翻译，并按名称匹配适配模型(每次 200 个，在下方“AI 处理设置”配置 AI 模型)",
   },
   localize: {
     label: "翻译分类",
@@ -323,7 +323,7 @@ export function AdminConsole() {
         <Stat
           label="待 AI 处理"
           value={fmt.num(d.needs_enrichment)}
-          sub="不会出现在头像适配和分类筛选里"
+          sub="不会出现在模型适配和分类筛选里"
           warn={d.needs_enrichment > 0}
         />
         <Stat
