@@ -350,8 +350,13 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
                     variation_names.join(" ")
                 );
                 let linked = matcher.find(&match_text);
-                write_enrichment(ctx.pool, id, &e, &linked).await?;
-                ok += 1;
+                let title = it["title"].as_str().unwrap_or_default();
+                let bio = it["bio"].as_str().unwrap_or_default();
+                if write_enrichment(ctx.pool, id, title, bio, &e, &linked).await? {
+                    ok += 1;
+                } else {
+                    ctx.log(&format!("item {id}: changed while enriching, left pending")).await?;
+                }
             }
             // provider-level failure: stop instead of charging it to every item in the batch
             Err(err) if err.is::<crate::ai::ProviderError>() => {
@@ -396,13 +401,13 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     Ok(format!("{ok} enriched, {failed} failed of {total}"))
 }
 
-async fn write_enrichment(pool: &PgPool, id: i64, e: &crate::ai::Enrichment, linked: &[String]) -> Result<()> {
+async fn write_enrichment(pool: &PgPool, id: i64, title: &str, bio: &str, e: &crate::ai::Enrichment, linked: &[String]) -> Result<bool> {
     let mut tx = pool.begin().await?;
-    sqlx::query(
+    let affected = sqlx::query(
         "update items set content_rating = coalesce($2, content_rating), quest = coalesce($3, quest), smart_price = $4,
                 smart_price_reason = coalesce($5, smart_price_reason), translations = $6, features = $7, original_language = $6->>'original_language',
                 needs_enrichment = false, enrich_failures = 0, embedding = null
-         where id = $1",
+         where id = $1 and title = $8 and bio = $9",
     )
     .bind(id)
     .bind(&e.content_rating)
@@ -411,8 +416,14 @@ async fn write_enrichment(pool: &PgPool, id: i64, e: &crate::ai::Enrichment, lin
     .bind(&e.smart_price_reason)
     .bind(&e.translations)
     .bind(&e.features)
+    .bind(title)
+    .bind(bio)
     .execute(&mut *tx)
-    .await?;
+    .await?
+    .rows_affected();
+    if affected == 0 {
+        return Ok(false);
+    }
     if !e.categories.is_empty() {
         sqlx::query("delete from item_categories where item_id = $1").bind(id).execute(&mut *tx).await?;
         for (i, slug) in e.categories.iter().enumerate() {
@@ -431,8 +442,11 @@ async fn write_enrichment(pool: &PgPool, id: i64, e: &crate::ai::Enrichment, lin
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
-    Ok(())
+    Ok(true)
 }
+
+/// (id, title, booth_tags, translations.en.title, bio, input_fingerprint)
+type EmbedRow = (i64, String, Vec<String>, Option<String>, String, String);
 
 /// Embeddings for semantic search: every listed item without one (new, edited, or after a model change).
 /// Runs until done; requests go out `batch` items at a time, `concurrency` at once.
@@ -465,8 +479,10 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let (mut done, mut below) = (0i64, i64::MAX);
     loop {
         // keyset paging: an item the provider can't embed is not fetched again in this run
-        let rows: Vec<(i64, String, Vec<String>, Option<String>, String)> = sqlx::query_as(
-            "select id, title, booth_tags, translations->'en'->>'title', bio from items
+        let rows: Vec<EmbedRow> = sqlx::query_as(
+            "select id, title, booth_tags, translations->'en'->>'title', bio,
+                    md5(concat_ws(E'\\x1f', title, bio, translations->'en'->>'title', array_to_string(booth_tags, E'\\x1e')))
+             from items
              where status = 'ok' and embedding is null and id < $1 order by id desc limit $2",
         )
         .bind(below)
@@ -475,9 +491,13 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         .await?;
         let Some(last) = rows.last() else { break };
         below = last.0;
-        let chunks: Vec<Vec<(i64, String)>> = rows
+        let chunks: Vec<Vec<(i64, String, String)>> = rows
             .chunks(batch)
-            .map(|c| c.iter().map(|(id, title, tags, en, bio)| (*id, embed::document_text(title, en.as_deref(), tags, bio))).collect())
+            .map(|c| {
+                c.iter()
+                    .map(|(id, title, tags, en, bio, fp)| (*id, embed::document_text(title, en.as_deref(), tags, bio), fp.clone()))
+                    .collect()
+            })
             .collect();
         let results = futures_util::future::try_join_all(chunks.iter().map(|c| {
             let inputs: Vec<String> = c.iter().map(|r| r.1.clone()).collect();
@@ -485,19 +505,26 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
             async move { embed::embed(http, base, key, model, &inputs, 4).await }
         }))
         .await?;
-        let (mut ids, mut vecs) = (Vec::new(), Vec::new());
+        let (mut ids, mut vecs, mut fps) = (Vec::new(), Vec::new(), Vec::new());
         for (chunk, vectors) in chunks.iter().zip(results) {
-            for ((id, _), v) in chunk.iter().zip(vectors) {
+            for ((id, _, fp), v) in chunk.iter().zip(vectors) {
                 ids.push(*id);
                 vecs.push(embed::to_pg(&v));
+                fps.push(fp.clone());
             }
         }
-        sqlx::query("update items i set embedding = v.e::halfvec from unnest($1::bigint[], $2::text[]) as v(id, e) where i.id = v.id")
-            .bind(&ids)
-            .bind(&vecs)
-            .execute(ctx.pool)
-            .await?;
-        done += ids.len() as i64;
+        let written = sqlx::query(
+            "update items i set embedding = v.e::halfvec
+             from unnest($1::bigint[], $2::text[], $3::text[]) as v(id, e, fp)
+             where i.id = v.id and md5(concat_ws(E'\\x1f', i.title, i.bio, i.translations->'en'->>'title', array_to_string(i.booth_tags, E'\\x1e'))) = v.fp",
+        )
+        .bind(&ids)
+        .bind(&vecs)
+        .bind(&fps)
+        .execute(ctx.pool)
+        .await?
+        .rows_affected();
+        done += written as i64;
         if !ctx.progress(done, Some(total.min(limit)), &format!("embed: {done} of {}", total.min(limit)), false).await? {
             ctx.log("cancelled").await?;
             break;

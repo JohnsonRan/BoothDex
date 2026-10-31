@@ -19,7 +19,7 @@ Bun.serve({
     const system: string = body.messages[0].content;
     const user: string = body.messages[1].content;
     let reply: unknown;
-    if (system.includes("Simplified Chinese")) {
+    if (system.includes("You translate UI labels")) {
       const input = JSON.parse(user) as Record<string, string>;
       reply = Object.fromEntries(Object.keys(input).map((k) => [k, `【中】${k}`]));
     } else {

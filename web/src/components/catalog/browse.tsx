@@ -181,6 +181,7 @@ export function Browse() {
         setItems(r.items);
         setShown({ page: r.page, total: r.totalPages });
         setMeta({ ...r, clientMs: performance.now() - started });
+        setApiState("ready");
         if (sem.key !== filterKey)
           semantic.current = { key: filterKey, off: r.semantic !== "used" };
       })
