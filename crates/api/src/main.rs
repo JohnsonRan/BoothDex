@@ -134,14 +134,38 @@ impl<E: Into<anyhow::Error>> From<E> for ApiError {
     }
 }
 
+/// Per-request timing, returned as `trace` so the site can show where the time went.
+#[derive(Default)]
+struct Trace {
+    steps: Vec<Value>,
+    last: Option<Instant>,
+}
+
+impl Trace {
+    fn start(&mut self) {
+        self.last = Some(Instant::now());
+    }
+    /// Records the time since `start` or the previous step.
+    fn step(&mut self, name: &'static str) {
+        let now = Instant::now();
+        let ms = self.last.map_or(0.0, |t| now.duration_since(t).as_secs_f64() * 1e3);
+        self.steps.push(json!({ "step": name, "ms": (ms * 10.0).round() / 10.0 }));
+        self.last = Some(now);
+    }
+}
+
 async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
     let t0 = Instant::now();
+    let mut trace = Trace::default();
+    trace.start();
     let p = Params::parse(q.as_deref().unwrap_or(""));
     let favourites = if p.get("v").as_deref() == Some("favourites") {
         let Some(u) = account::current_user(&s.pool, &headers).await? else {
             return Ok((StatusCode::UNAUTHORIZED, Json(json!({ "ok": false, "error": "Sign in required" }))).into_response());
         };
-        Some(s.snap().catalog.docs_for(&account::favourite_ids(&s.pool, u.id).await?))
+        let f = s.snap().catalog.docs_for(&account::favourite_ids(&s.pool, u.id).await?);
+        trace.step("favourites");
+        Some(f)
     } else {
         None
     };
@@ -153,14 +177,16 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
     let (semantic, semantic_status) = match p.get("q").filter(|q| !q.trim().is_empty()) {
         Some(_) if p.get("sem").as_deref() == Some("0") => (None, "skipped"),
         Some(_) if meaning.is_empty() => (None, "skipped"),
-        Some(_) => semantic_ids(s.clone(), &meaning).await,
+        Some(_) => semantic_ids(s.clone(), &meaning, &mut trace).await,
         None => (None, "off"),
     };
     let catalog_now = chrono::Utc::now().timestamp();
     let semantic = semantic.as_deref().map(|ids| catalog::Semantic { ids, models: &models });
     let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref(), semantic))?;
+    trace.step("search");
     let search_ms = t0.elapsed().as_secs_f64() * 1e3;
     let items = db::load_items(&s.pool, &r.ids).await?;
+    trace.step("items");
     Ok(Json(json!({
         "count": r.count,
         "page": r.page,
@@ -174,6 +200,7 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
         "items": items,
         // "used", "off" (no embeddings model or no query), "unavailable" (provider slow or failing), "skipped"
         "semantic": semantic_status,
+        "trace": trace.steps,
         "timing": { "searchMs": search_ms, "totalMs": t0.elapsed().as_secs_f64() * 1e3 },
     }))
     .into_response())
@@ -181,53 +208,105 @@ async fn search(State(s): State<Arc<AppState>>, headers: axum::http::HeaderMap, 
 
 /// Items nearest to the query by meaning (the embeddings job must have run), with a status for the response:
 /// "off" without an embeddings model, "unavailable" when the provider is slow or failing (words alone then).
-async fn semantic_ids(s: Arc<AppState>, q: &str) -> (Option<Vec<i64>>, &'static str) {
+async fn semantic_ids(s: Arc<AppState>, q: &str, trace: &mut Trace) -> (Option<Vec<i64>>, &'static str) {
     let Ok(c) = catalogue_core::settings::ai(&s.pool).await else { return (None, "unavailable") };
     let (Some(base), Some(key), Some(model)) = (c.base_url, c.api_key, c.embed_model) else { return (None, "off") };
-    match nearest(s, q, base, key, model).await {
-        Some(ids) => (Some(ids), "used"),
+    trace.step("settings");
+    let Some(vector) = query_embedding(s.clone(), q, base, key, model, trace).await else { return (None, "unavailable") };
+    match nearest(&s, &vector).await {
+        Some(ids) => {
+            trace.step("neighbours");
+            (Some(ids), "used")
+        }
         None => (None, "unavailable"),
     }
 }
 
-async fn nearest(s: Arc<AppState>, q: &str, base: String, key: String, model: String) -> Option<Vec<i64>> {
+/// The search text the embedding is cached under: case and spacing don't change the meaning.
+fn normalize_query(q: &str) -> String {
+    q.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// Embedding of a search text: process memory, then the query_embeddings table, then the provider.
+async fn query_embedding(s: Arc<AppState>, q: &str, base: String, key: String, model: String, trace: &mut Trace) -> Option<Vec<f32>> {
     use catalogue_core::embed;
-    let cache_key = format!("{model}\n{}", q.trim().to_lowercase());
-    let cached = s.embed_cache.lock().unwrap().get(&cache_key).cloned();
-    let vector = match cached {
-        Some(v) => v,
-        None => {
-            let input = vec![format!("{}{}", embed::QUERY_PREFIX, q.trim())];
-            // the request runs on: if it outlasts the wait below, it still fills the cache for the next page or retry
-            let state = s.clone();
-            let mut task = tokio::spawn(async move {
-                let v = embed::embed(&state.http, &base, &key, &model, &input, 1).await?.pop().ok_or_else(|| anyhow::anyhow!("no embedding"))?;
-                let mut cache = state.embed_cache.lock().unwrap();
-                // shortcut: dropped wholesale when full; an LRU would keep popular queries, worth it only under real load
-                if cache.len() >= 2000 {
-                    cache.clear();
-                }
-                cache.insert(cache_key, v.clone());
-                anyhow::Ok(v)
-            });
-            // measured on the development provider: median 0.7 s, 95th percentile 1.2 s, occasional spikes past 3 s
-            match tokio::time::timeout(std::time::Duration::from_millis(2500), &mut task).await {
-                Ok(Ok(Ok(v))) => v,
-                Ok(Ok(Err(e))) => {
-                    eprintln!("query embedding: {e:#}");
-                    return None;
-                }
-                Ok(Err(e)) => {
-                    eprintln!("query embedding task: {e}");
-                    return None;
-                }
-                Err(_) => {
-                    eprintln!("query embedding: still waiting after 2.5 s; searching by words only this time");
-                    return None;
-                }
-            }
+    let text = normalize_query(q);
+    let cache_key = format!("{model}\n{text}");
+    if let Some(v) = s.embed_cache.lock().unwrap().get(&cache_key).cloned() {
+        trace.step("embed_memory");
+        return Some(v);
+    }
+    let stored: Option<Vec<f32>> = sqlx::query_scalar("select embedding::vector::real[] from query_embeddings where model = $1 and query = $2")
+        .bind(&model)
+        .bind(&text)
+        .fetch_optional(&s.pool)
+        .await
+        .map_err(|e| eprintln!("query embedding cache: {e}"))
+        .ok()
+        .flatten();
+    if let Some(v) = stored {
+        trace.step("embed_db");
+        remember(&s, cache_key, v.clone());
+        // usage bookkeeping for pruning; the search doesn't wait for it
+        let pool = s.pool.clone();
+        tokio::spawn(async move {
+            let _ = sqlx::query("update query_embeddings set hits = hits + 1, last_used_at = now() where model = $1 and query = $2")
+                .bind(&model)
+                .bind(&text)
+                .execute(&pool)
+                .await;
+        });
+        return Some(v);
+    }
+    let input = vec![format!("{}{text}", embed::QUERY_PREFIX)];
+    // the request runs on: if it outlasts the wait below, it still fills both caches for the next page or visitor
+    let state = s.clone();
+    let mut task = tokio::spawn(async move {
+        let v = embed::embed(&state.http, &base, &key, &model, &input, 1).await?.pop().ok_or_else(|| anyhow::anyhow!("no embedding"))?;
+        remember(&state, cache_key, v.clone());
+        sqlx::query("insert into query_embeddings (model, query, embedding) values ($1, $2, $3::halfvec) on conflict (model, query) do nothing")
+            .bind(&model)
+            .bind(&text)
+            .bind(embed::to_pg(&v))
+            .execute(&state.pool)
+            .await?;
+        anyhow::Ok(v)
+    });
+    // measured on the development provider: median 0.7 s, 95th percentile 1.2 s, occasional spikes past 3 s
+    match tokio::time::timeout(std::time::Duration::from_millis(2500), &mut task).await {
+        Ok(Ok(Ok(v))) => {
+            trace.step("embed_provider");
+            Some(v)
         }
-    };
+        Ok(Ok(Err(e))) => {
+            trace.step("embed_failed");
+            eprintln!("query embedding: {e:#}");
+            None
+        }
+        Ok(Err(e)) => {
+            trace.step("embed_failed");
+            eprintln!("query embedding task: {e}");
+            None
+        }
+        Err(_) => {
+            trace.step("embed_timeout");
+            eprintln!("query embedding: still waiting after 2.5 s; searching by words only this time");
+            None
+        }
+    }
+}
+
+fn remember(s: &AppState, key: String, v: Vec<f32>) {
+    let mut cache = s.embed_cache.lock().unwrap();
+    // shortcut: dropped wholesale when full (the table keeps everything); an LRU only pays off under real load
+    if cache.len() >= 2000 {
+        cache.clear();
+    }
+    cache.insert(key, v);
+}
+
+/// Listed items nearest to the vector, cut where they stop resembling the best match.
+async fn nearest(s: &AppState, vector: &[f32]) -> Option<Vec<i64>> {
     let mut tx = s.pool.begin().await.ok()?;
     // HNSW returns at most ef_search rows; the default 40 is too few to fill a few pages
     sqlx::query("set local hnsw.ef_search = 200").execute(&mut *tx).await.ok()?;
@@ -235,7 +314,7 @@ async fn nearest(s: Arc<AppState>, q: &str, base: String, key: String, model: St
         "select id, 1 - (embedding <=> $1::halfvec) from items where embedding is not null and status = 'ok'
          order by embedding <=> $1::halfvec limit 200",
     )
-    .bind(embed::to_pg(&vector))
+    .bind(catalogue_core::embed::to_pg(vector))
     .fetch_all(&mut *tx)
     .await
     .map_err(|e| eprintln!("semantic search: {e}"))
@@ -510,6 +589,11 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn queries_are_normalized_for_the_cache() {
+        assert_eq!(super::normalize_query("  Gothic   Dress "), "gothic dress");
+    }
+
     #[test]
     fn semantic_cutoff_follows_the_best_match_and_drops_weak_ones() {
         // values seen during calibration: a relevant query, and gibberish whose best neighbour is still 0.707

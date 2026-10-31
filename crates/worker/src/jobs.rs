@@ -488,6 +488,18 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
             break;
         }
     }
+    // search-text cache: other models' rows are useless, stale ones and the long tail go
+    let pruned = sqlx::query(
+        "delete from query_embeddings where model <> $1 or last_used_at < now() - interval '90 days'
+            or ctid in (select ctid from query_embeddings order by last_used_at desc offset 50000)",
+    )
+    .bind(&model)
+    .execute(ctx.pool)
+    .await?
+    .rows_affected();
+    if pruned > 0 {
+        ctx.log(&format!("pruned {pruned} cached search embeddings")).await?;
+    }
     Ok(format!("{done} items embedded with {model}"))
 }
 
