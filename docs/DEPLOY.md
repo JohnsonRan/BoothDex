@@ -10,9 +10,9 @@ browser ─► your proxy (TLS) ─► web :3100 (Next.js) ─┬─ /api/*  ─
                                 worker (no port) ──► booth.pm, postgres
 ```
 
-Published ports: `web` on `WEB_LISTEN` (default `3100`, all interfaces); `postgres` 5432, `api` 3000 and `imgproxy`
-3001 on 127.0.0.1 only, for maintenance from the host. Change the host side in `compose.yaml` if they clash with
-something already running.
+Only `web` publishes a port, on `WEB_LISTEN` (default `3100`, all interfaces). `postgres`, `api` and `imgproxy` are
+reachable only on the compose network; for maintenance use `docker compose exec`, e.g.
+`docker compose exec postgres psql -U catalogue catalogue`.
 
 ## 1. Server
 
