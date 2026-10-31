@@ -138,9 +138,14 @@ function Body({
     const key = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight") go(idx + 1);
       if (e.key === "ArrowLeft") go(idx - 1);
+      // window capture runs before the dialog's own Escape handler, so Escape leaves the zoom, not the item
+      if (e.key === "Escape" && zoom) {
+        if (matchMedia("(min-width: 1024px)").matches) e.stopPropagation();
+        setZoom(false);
+      }
     };
-    addEventListener("keydown", key);
-    return () => removeEventListener("keydown", key);
+    addEventListener("keydown", key, true);
+    return () => removeEventListener("keydown", key, true);
   });
 
   const tr = (field: "title" | "bio") =>
@@ -201,7 +206,9 @@ function Body({
                     src={imgUrl(item, i, "620x620")}
                     alt={t("detail.image", { n: i + 1 })}
                     loading={i < 2 ? "eager" : "lazy"}
-                    onClick={() => setZoom(true)}
+                    onClick={() =>
+                      matchMedia("(min-width: 1024px)").matches && setZoom(true)
+                    }
                     className="size-full shrink-0 snap-center object-contain lg:cursor-zoom-in"
                   />
                 ))}
