@@ -128,7 +128,10 @@ handles new and edited items.
 While items are missing vectors, search finds fewer of them by meaning; nothing else changes.
 
 Each new search text waits for one embeddings request before results appear (on the development provider: median
-0.7 s, 95th percentile 1.2 s; repeated searches and further pages use a cache). If the provider takes longer than
+0.7 s, 95th percentile 1.2 s). The result is kept in the `query_embeddings` table, so a text searched before, by
+anyone and across restarts, takes milliseconds. The table stores search texts only (no user or session); the
+`embed` job drops entries unused for 90 days and keeps at most 50,000. The chip next to the result count shows
+how each search was answered and where the time went. If the provider takes longer than
 2.5 s or fails, that search uses words alone and the site says so above the results. Queries that only match by
 meaning (Chinese queries for Japanese items, for example) then show nothing until the user searches again. Vectors take about 0.5 GB in the database plus a similar
 amount for the index.
