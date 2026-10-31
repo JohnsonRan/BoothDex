@@ -296,7 +296,8 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
 /// translations and features via the model; avatar links by name matching (see avatars.rs).
 pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     // scheduled hourly by default; without a provider there is nothing to do, which isn't a failure
-    let Some(ai) = crate::ai::Ai::from_config(&catalogue_core::settings::ai(ctx.pool).await?)? else {
+    let cfg = catalogue_core::settings::ai(ctx.pool).await?;
+    let Some(ai) = crate::ai::Ai::from_config(&cfg)? else {
         return Ok("skipped: AI provider not configured".into());
     };
     let batch: i64 = param(params, "batch", 200);
@@ -374,6 +375,11 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     }
     if ok > 0 {
         bump_catalog(ctx.pool).await?;
+        // enriched items lost their embedding (new English title): re-embed now instead of at the next hourly tick;
+        // a live embed job already covers them, hence do nothing on conflict
+        if cfg.embed_model.is_some() {
+            sqlx::query("insert into jobs (kind, params, created_by) values ('embed', '{}', 'enrich') on conflict do nothing").execute(ctx.pool).await?;
+        }
     }
     Ok(format!("{ok} enriched, {failed} failed of {total}"))
 }
