@@ -1,6 +1,6 @@
 "use client";
 
-import { Hash, Search, Store } from "lucide-react";
+import { Hash, History, Search, Store, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   Command,
@@ -19,6 +19,7 @@ import {
   imgUrl,
   tagName,
 } from "@/lib/catalog";
+import { loadHistory, saveHistory } from "@/lib/history";
 import { useSettings } from "@/lib/settings";
 
 type PaletteResult = {
@@ -64,6 +65,16 @@ export function CommandPalette({
   const { t, price, ui } = useSettings();
   const [q, setQ] = useState("");
   const [res, setRes] = useState<PaletteResult | null>(null);
+  const [history, setHistory] = useState<string[]>([]);
+  // read on every open: searches made since the last open are recorded by the page
+  useEffect(() => {
+    if (open) setHistory(loadHistory());
+  }, [open]);
+  const forget = (h: string | null) => {
+    const next = h === null ? [] : history.filter((x) => x !== h);
+    setHistory(next);
+    saveHistory(next);
+  };
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -123,6 +134,38 @@ export function CommandPalette({
           <CommandEmpty>
             {q.trim() ? t("palette.empty") : t("palette.hint")}
           </CommandEmpty>
+          {!q.trim() && history.length > 0 && (
+            <CommandGroup heading={t("history.title")}>
+              {history.map((h) => (
+                <CommandItem
+                  key={h}
+                  value={`history:${h}`}
+                  onSelect={() => run(() => onQuery(h))}
+                >
+                  <History />
+                  <span className="flex-1 truncate">{h}</span>
+                  <button
+                    type="button"
+                    aria-label={t("history.remove", { q: h })}
+                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      forget(h);
+                    }}
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </CommandItem>
+              ))}
+              <CommandItem value="history:clear" onSelect={() => forget(null)}>
+                <Trash2 />
+                <span className="text-muted-foreground">
+                  {t("history.clear")}
+                </span>
+              </CommandItem>
+            </CommandGroup>
+          )}
           {res && q.trim() && (
             <>
               <CommandGroup>

@@ -35,6 +35,7 @@ import {
   type SearchResult,
   searchQuery,
 } from "@/lib/catalog";
+import { addQuery, loadHistory, saveHistory } from "@/lib/history";
 import type { MessageKey } from "@/lib/messages";
 import { useSettings } from "@/lib/settings";
 import { AccountMenu, type Me } from "./account-menu";
@@ -125,6 +126,7 @@ export function Browse() {
         scroll: false,
       });
       window.scrollTo({ top: 0 });
+      if (patch.q) saveHistory(addQuery(loadHistory(), patch.q));
       // remember "my avatar" (account preference when signed in, otherwise this browser)
       if (patch.avatar !== undefined) {
         localStorage.setItem("myAvatar", patch.avatar);
