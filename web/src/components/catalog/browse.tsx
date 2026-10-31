@@ -1,9 +1,10 @@
 "use client";
 
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Loader2, Search, SlidersHorizontal, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent,
@@ -19,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, apiReady } from "@/lib/api";
 import {
   type Avatar,
   avatarName,
@@ -78,19 +79,32 @@ export function Browse() {
   const [open, setOpen] = useState<Item | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const paging = useRef({ page: 0, total: 1, busy: false, key: "" });
+  const paging = useRef({
+    page: 0,
+    total: 1,
+    busy: false,
+    failed: false,
+    key: "",
+  });
+  // "starting": the API is still loading after a restart; "error": it is up but the request failed
+  const [apiState, setApiState] = useState<"ready" | "starting" | "error">(
+    "ready",
+  );
+  // bumped to reload everything once the API is back
+  const [epoch, setEpoch] = useState(0);
   const sentinel = useRef<HTMLDivElement>(null);
 
   const [me, setMe] = useState<Me | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: epoch only triggers a reload
   useEffect(() => {
-    api<{ items: Avatar[] }>("/api/avatars?limit=60").then((r) =>
-      setAvatars(r.items),
-    );
-    api<{ categories: Category[] }>("/api/categories").then((r) =>
-      setCategories(r.categories),
-    );
-  }, []);
+    api<{ items: Avatar[] }>("/api/avatars?limit=60")
+      .then((r) => setAvatars(r.items))
+      .catch(() => {});
+    api<{ categories: Category[] }>("/api/categories")
+      .then((r) => setCategories(r.categories))
+      .catch(() => {});
+  }, [epoch]);
 
   // session: who am I, my favourites; rerun after login/logout
   const loadAccount = useCallback(async () => {
@@ -144,7 +158,7 @@ export function Browse() {
   // one page of results; a filter change starts a new "key" so late responses for old filters are dropped
   const loadMore = useCallback(async () => {
     const p = paging.current;
-    if (p.busy || p.page >= p.total) return;
+    if (p.busy || p.failed || p.page >= p.total) return;
     p.busy = true;
     const key = p.key;
     try {
@@ -156,34 +170,56 @@ export function Browse() {
       p.total = r.totalPages;
       setItems((prev) => (p.page === 1 ? r.items : [...prev, ...r.items]));
       if (p.page === 1) setMeta(r);
-    } catch (e) {
-      if (key === paging.current.key)
-        toast.error(
-          e instanceof Error ? e.message : tRef.current("list.loadFailed"),
-        );
+    } catch {
+      // one status line instead of a toast per attempt; no automatic retry from here
+      if (key === paging.current.key) {
+        p.failed = true;
+        setApiState((await apiReady()) ? "error" : "starting");
+      }
     } finally {
       if (key === paging.current.key) {
         p.busy = false;
         setLoading(false);
         // IntersectionObserver only fires on changes: on tall screens the sentinel can stay in view after a
         // page renders, so keep filling until it is pushed below the fold
-        requestAnimationFrame(() => {
-          const el = sentinel.current;
-          if (el && el.getBoundingClientRect().top < window.innerHeight + 800)
-            loadMoreRef.current();
-        });
+        if (!p.failed)
+          requestAnimationFrame(() => {
+            const el = sentinel.current;
+            if (el && el.getBoundingClientRect().top < window.innerHeight + 800)
+              loadMoreRef.current();
+          });
       }
     }
   }, [filters]);
   const loadMoreRef = useRef(loadMore);
   loadMoreRef.current = loadMore;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: epoch only triggers a reload
   useEffect(() => {
-    paging.current = { page: 0, total: 1, busy: false, key: query };
+    paging.current = {
+      page: 0,
+      total: 1,
+      busy: false,
+      failed: false,
+      key: query,
+    };
     setLoading(true);
     setItems([]);
     loadMore();
-  }, [query, loadMore]);
+  }, [query, loadMore, epoch]);
+
+  // wait for the API to finish starting, then load everything again
+  useEffect(() => {
+    if (apiState !== "starting") return;
+    const timer = setInterval(async () => {
+      if (await apiReady()) {
+        setApiState("ready");
+        setEpoch((n) => n + 1);
+        loadAccount();
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [apiState, loadAccount]);
 
   useEffect(() => {
     const el = sentinel.current;
@@ -470,7 +506,27 @@ export function Browse() {
                 </div>
               ))}
           </div>
-          {!loading && items.length === 0 && (
+          {apiState === "starting" && (
+            <output className="flex items-center justify-center gap-2 py-20 text-center text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+              {t("list.starting")}
+            </output>
+          )}
+          {apiState === "error" && (
+            <div role="alert" className="space-y-3 py-20 text-center">
+              <p className="text-muted-foreground">{t("list.loadFailed")}</p>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setApiState("ready");
+                  setEpoch((n) => n + 1);
+                }}
+              >
+                {t("list.retry")}
+              </Button>
+            </div>
+          )}
+          {apiState === "ready" && !loading && items.length === 0 && (
             <p className="py-20 text-center text-muted-foreground">
               {t("list.empty")}
             </p>

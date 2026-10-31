@@ -69,6 +69,8 @@ const zh = {
   "detail.downloadAs": "下载为 {format}",
   "list.empty": "没有找到商品",
   "list.loadFailed": "加载失败",
+  "list.starting": "服务正在启动，通常需要半分钟。启动后会自动加载。",
+  "list.retry": "重试",
   "fav.add": "收藏",
   "fav.remove": "取消收藏",
   "fav.added": "已收藏",
@@ -222,6 +224,9 @@ const en: Dict = {
   "detail.downloadAs": "Download as {format}",
   "list.empty": "No items found",
   "list.loadFailed": "Couldn't load items",
+  "list.starting":
+    "The service is starting. This usually takes about half a minute; items load automatically when it's ready.",
+  "list.retry": "Try again",
   "fav.add": "Favourite",
   "fav.remove": "Remove favourite",
   "fav.added": "Favourited",
@@ -373,6 +378,9 @@ const ja: Dict = {
   "detail.downloadAs": "{format} でダウンロード",
   "list.empty": "商品が見つかりません",
   "list.loadFailed": "読み込みに失敗しました",
+  "list.starting":
+    "サービスを起動しています。通常 30 秒ほどかかります。起動すると自動的に読み込みます。",
+  "list.retry": "再試行",
   "fav.add": "お気に入り",
   "fav.remove": "お気に入りから外す",
   "fav.added": "お気に入り済み",
@@ -525,6 +533,9 @@ const ko: Dict = {
   "detail.downloadAs": "{format}(으)로 다운로드",
   "list.empty": "상품을 찾을 수 없습니다",
   "list.loadFailed": "불러오지 못했습니다",
+  "list.starting":
+    "서비스를 시작하는 중입니다. 보통 30초 정도 걸리며, 시작되면 자동으로 불러옵니다.",
+  "list.retry": "다시 시도",
   "fav.add": "즐겨찾기",
   "fav.remove": "즐겨찾기 해제",
   "fav.added": "즐겨찾기됨",

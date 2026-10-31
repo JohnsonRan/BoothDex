@@ -9,6 +9,13 @@ export class ApiError extends Error {
   }
 }
 
+/** False while the API is still loading the catalogue (it answers 503) or not reachable at all. */
+export const apiReady = () =>
+  fetch("/api/health", { cache: "no-store" }).then(
+    (r) => r.ok,
+    () => false,
+  );
+
 export async function api<T>(
   path: string,
   init?: RequestInit & { json?: unknown },
