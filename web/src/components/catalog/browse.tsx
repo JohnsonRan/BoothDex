@@ -466,7 +466,12 @@ export function Browse() {
               <SelectContent align="end">
                 {SORTS.map(([v, label]) => (
                   <SelectItem key={v} value={v}>
-                    {t(label as MessageKey)}
+                    {/* the default sort ranks a text search by relevance (see searchQuery) */}
+                    {t(
+                      (v === "trending" && filters.q
+                        ? "sort.relevant"
+                        : label) as MessageKey,
+                    )}
                   </SelectItem>
                 ))}
               </SelectContent>
