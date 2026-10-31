@@ -452,7 +452,7 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
              where status = 'ok' and embedding is null and id < $1 order by id desc limit $2",
         )
         .bind(below)
-        .bind((batch * concurrency) as i64)
+        .bind(((batch * concurrency) as i64).min(limit - done))
         .fetch_all(ctx.pool)
         .await?;
         let Some(last) = rows.last() else { break };
