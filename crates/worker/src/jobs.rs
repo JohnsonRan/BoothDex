@@ -12,12 +12,15 @@ pub struct Ctx<'a> {
     pub pool: &'a PgPool,
     pub booth: &'a Booth,
     pub id: i64,
+    /// set by a job with work left over: the daemon queues the same kind again once this run has succeeded
+    /// (not from inside the job, where the one-live-job-per-kind index would refuse it)
+    pub again: bool,
     last_write: Option<Instant>,
 }
 
 impl<'a> Ctx<'a> {
     pub fn new(pool: &'a PgPool, booth: &'a Booth, id: i64) -> Self {
-        Self { pool, booth, id, last_write: None }
+        Self { pool, booth, id, again: false, last_write: None }
     }
 
     /// Records progress (throttled to one write per 2 s unless `force`); returns false once cancel was requested.
@@ -380,6 +383,11 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         if cfg.embed_model.is_some() {
             sqlx::query("insert into jobs (kind, params, created_by) values ('embed', '{}', 'enrich') on conflict do nothing").execute(ctx.pool).await?;
         }
+        // work through a backlog batch by batch; other queued jobs (crawls, embed) still run in between.
+        // a batch with no success stops the chain, and items failing 3 times drop out of the query
+        ctx.again = sqlx::query_scalar("select exists (select 1 from items where needs_enrichment and status = 'ok' and enrich_failures < 3)")
+            .fetch_one(ctx.pool)
+            .await?;
     }
     Ok(format!("{ok} enriched, {failed} failed of {total}"))
 }

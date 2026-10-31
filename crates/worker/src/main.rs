@@ -68,6 +68,14 @@ async fn execute(pool: &PgPool, booth: &Booth, id: i64, kind: &str, params: &Val
         .await?;
     ctx.log(&format!("{status}: {}", summary.or(error).unwrap_or_default())).await?;
     println!("job {id} {kind} {status}");
+    if ctx.again && status == "succeeded" {
+        sqlx::query("insert into jobs (kind, params, created_by) values ($1, $2, $3) on conflict do nothing")
+            .bind(kind)
+            .bind(params)
+            .bind(format!("job {id}"))
+            .execute(pool)
+            .await?;
+    }
     Ok(())
 }
 
