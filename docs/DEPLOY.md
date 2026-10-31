@@ -68,6 +68,7 @@ $EDITOR .env    # SITE_DOMAIN, SITE_URL, POSTGRES_PASSWORD, ADMIN_USERNAMES, ARC
 | `ADMIN_USERNAMES` | api | comma-separated; applied at every api start (anyone not listed loses admin) |
 | `ARCHIVE_IMAGES_DIR` | imgproxy | host path of the extracted images; without a bundle, any empty directory |
 | `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | imgproxy | transcoded-image cache |
+| `BOOTHDEX_TAG` | api, worker, imgproxy, web | image version on ghcr.io: `latest` (default, follows master), a release such as `0.1.0`, or `sha-<commit>` |
 | `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` | api, worker | optional; override the admin console AI settings and lock them there, so the key stays out of the database |
 
 Set in compose and not needed in `.env`: `DATABASE_URL`, `IMGPROXY_URL`, `COOKIE_SECURE=1` (session cookie only over HTTPS), `BIND`.
@@ -76,7 +77,7 @@ Set in compose and not needed in `.env`: `DATABASE_URL`, `IMGPROXY_URL`, `COOKIE
 
 ```sh
 cd /srv/boothdex/app/deploy
-docker compose build                      # first build takes a while; rebuild if lindera-ipadic fails to download
+docker compose pull                       # prebuilt images from ghcr.io (or `docker compose build` to build from source)
 docker compose up -d postgres
 # with a data bundle only:
 docker compose exec postgres pg_restore -U catalogue -d catalogue --no-owner --role=catalogue /restore/catalogue.dump
@@ -117,7 +118,7 @@ schedule in the admin console; at ~200k items, check your provider's price per c
 
 | Task | Command |
 |---|---|
-| Update | `git pull && docker compose up -d --build` |
+| Update | `git pull && docker compose pull && docker compose up -d` (from source: `docker compose up -d --build`) |
 | Logs | `docker compose logs -f api worker` |
 | Restart one service | `docker compose restart worker` |
 | Backup database | `docker compose exec postgres pg_dump -U catalogue -Fc catalogue > backup-$(date +%F).dump` (daily, keep off-server) |

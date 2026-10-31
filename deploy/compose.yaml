@@ -1,5 +1,7 @@
 # Production stack. Copy deploy/.env.example to deploy/.env and fill it in first.
-#   cd deploy && docker compose up -d --build        (or: podman compose ...)
+#   cd deploy && docker compose pull && docker compose up -d     (prebuilt images from ghcr.io)
+#   cd deploy && docker compose up -d --build                    (build from this checkout instead)
+# podman compose works the same way.
 # Start order is handled by depends_on: postgres -> api/worker/imgproxy -> web -> caddy.
 name: boothdex
 
@@ -21,6 +23,7 @@ services:
     shm_size: 256mb
 
   api:
+    image: ghcr.io/johnsonran/boothdex-api:${BOOTHDEX_TAG:-latest}
     build: { context: .., dockerfile: deploy/Dockerfile, target: api }
     restart: unless-stopped
     depends_on: { postgres: { condition: service_healthy } }
@@ -41,6 +44,7 @@ services:
     mem_limit: 3g
 
   worker:
+    image: ghcr.io/johnsonran/boothdex-worker:${BOOTHDEX_TAG:-latest}
     build: { context: .., dockerfile: deploy/Dockerfile, target: worker }
     restart: unless-stopped
     depends_on: { postgres: { condition: service_healthy } }
@@ -53,6 +57,7 @@ services:
     mem_limit: 512m
 
   imgproxy:
+    image: ghcr.io/johnsonran/boothdex-imgproxy:${BOOTHDEX_TAG:-latest}
     build: { context: .., dockerfile: deploy/Dockerfile, target: imgproxy }
     restart: unless-stopped
     environment:
@@ -65,6 +70,7 @@ services:
     mem_limit: 1g
 
   web:
+    image: ghcr.io/johnsonran/boothdex-web:${BOOTHDEX_TAG:-latest}
     build: { context: .., dockerfile: deploy/web.Dockerfile }
     restart: unless-stopped
     depends_on: [api]
