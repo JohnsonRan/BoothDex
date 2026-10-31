@@ -378,16 +378,15 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     }
     if ok > 0 {
         bump_catalog(ctx.pool).await?;
-        // enriched items lost their embedding (new English title): re-embed now instead of at the next hourly tick;
-        // a live embed job already covers them, hence do nothing on conflict
-        if cfg.embed_model.is_some() {
-            sqlx::query("insert into jobs (kind, params, created_by) values ('embed', '{}', 'enrich') on conflict do nothing").execute(ctx.pool).await?;
-        }
         // work through a backlog batch by batch; other queued jobs (crawls, embed) still run in between.
         // a batch with no success stops the chain, and items failing 3 times drop out of the query
         ctx.again = sqlx::query_scalar("select exists (select 1 from items where needs_enrichment and status = 'ok' and enrich_failures < 3)")
             .fetch_one(ctx.pool)
             .await?;
+        // once the backlog is worked through, embed all items missing vectors (including these) in one run
+        if !ctx.again && cfg.embed_model.is_some() {
+            sqlx::query("insert into jobs (kind, params, created_by) values ('embed', '{}', 'enrich') on conflict do nothing").execute(ctx.pool).await?;
+        }
     }
     Ok(format!("{ok} enriched, {failed} failed of {total}"))
 }

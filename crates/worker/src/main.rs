@@ -48,27 +48,32 @@ async fn heartbeat(pool: PgPool, booth: Arc<Booth>) {
     }
 }
 
-async fn execute(pool: &PgPool, booth: &Booth, id: i64, kind: &str, params: &Value) -> Result<()> {
+async fn execute(pool: &PgPool, booth: &Booth, id: i64, kind: &str, params: &Value, chain: bool) -> Result<()> {
     println!("job {id} {kind} started");
     let mut ctx = jobs::Ctx::new(pool, booth, id);
     let result = jobs::run(&mut ctx, kind, params).await;
-    let (status, summary, error) = match &result {
-        Ok(s) => {
-            let cancelled: bool = sqlx::query_scalar("select status = 'cancelling' from jobs where id = $1").bind(id).fetch_one(pool).await?;
-            (if cancelled { "cancelled" } else { "succeeded" }, Some(s.clone()), None)
-        }
-        Err(e) => ("failed", None, Some(format!("{e:#}"))),
+    let (ok, summary, error) = match &result {
+        Ok(s) => (true, Some(s.clone()), None),
+        Err(e) => (false, None, Some(format!("{e:#}"))),
     };
-    sqlx::query("update jobs set status = $2, finished_at = now(), message = coalesce($3, message), error = $4 where id = $1")
-        .bind(id)
-        .bind(status)
-        .bind(&summary)
-        .bind(&error)
-        .execute(pool)
-        .await?;
+    let status: String = sqlx::query_scalar(
+        "update jobs set
+            status = case when not $2 then 'failed' when status = 'cancelling' then 'cancelled' else 'succeeded' end,
+            finished_at = now(),
+            message = coalesce($3, message),
+            error = $4
+         where id = $1
+         returning status",
+    )
+    .bind(id)
+    .bind(ok)
+    .bind(&summary)
+    .bind(&error)
+    .fetch_one(pool)
+    .await?;
     ctx.log(&format!("{status}: {}", summary.or(error).unwrap_or_default())).await?;
     println!("job {id} {kind} {status}");
-    if ctx.again && status == "succeeded" {
+    if chain && ctx.again && status == "succeeded" {
         sqlx::query("insert into jobs (kind, params, created_by) values ($1, $2, $3) on conflict do nothing")
             .bind(kind)
             .bind(params)
@@ -103,7 +108,7 @@ async fn daemon(pool: PgPool, booth: Arc<Booth>) -> Result<()> {
         .await?;
         match claimed {
             Some((id, kind, params)) => {
-                if let Err(e) = execute(&pool, &booth, id, &kind, &params).await {
+                if let Err(e) = execute(&pool, &booth, id, &kind, &params, true).await {
                     eprintln!("job {id}: {e:#}");
                 }
             }
@@ -129,7 +134,7 @@ async fn main() -> Result<()> {
                 .fetch_one(&pool)
                 .await
                 .context("could not create job (is one of this kind already running?)")?;
-            execute(&pool, &booth, id, kind, &params).await
+            execute(&pool, &booth, id, kind, &params, false).await
         }
         Some(other) => anyhow::bail!("unknown command {other}; use `run` or `once <kind>`"),
     }
