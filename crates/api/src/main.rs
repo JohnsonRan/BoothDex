@@ -332,8 +332,25 @@ async fn build_state(pool: PgPool) -> Result<AppState> {
     })
 }
 
+/// Answers every request with 503 while the catalogue loads (~20 s), so the site can say "starting" instead of
+/// failing to connect. Stops when `ready` fires; the real server then binds the same address.
+async fn serve_starting(bind: &str, ready: tokio::sync::oneshot::Receiver<()>) -> Result<tokio::task::JoinHandle<()>> {
+    let listener = tokio::net::TcpListener::bind(bind).await?;
+    let app = Router::new().fallback(|| async {
+        (StatusCode::SERVICE_UNAVAILABLE, [(axum::http::header::RETRY_AFTER, "5")], Json(json!({ "ok": false, "starting": true, "error": "Starting up" })))
+    });
+    Ok(tokio::spawn(async move {
+        let _ = axum::serve(listener, app).with_graceful_shutdown(async { ready.await.ok(); }).await;
+    }))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    let bind = std::env::var("BIND").unwrap_or_else(|_| "127.0.0.1:3000".into());
+    let (ready, ready_rx) = tokio::sync::oneshot::channel();
+    let starting = serve_starting(&bind, ready_rx).await?;
+    println!("starting on http://{bind}");
+
     let pool = PgPool::connect(&std::env::var("DATABASE_URL")?).await?;
     catalogue_core::MIGRATOR.run(&pool).await?;
     admin::apply_admin_env(&pool).await?;
@@ -343,6 +360,7 @@ async fn main() -> Result<()> {
     tokio::spawn(reloader(state.clone()));
 
     let app = Router::new()
+        .route("/api/health", get(|| async { Json(json!({ "ok": true })) }))
         .route("/api/search", get(search))
         .route("/api/rss", get(rss_feed))
         .route("/api/palette", get(palette))
@@ -364,8 +382,11 @@ async fn main() -> Result<()> {
         .layer(tower_http::cors::CorsLayer::new().allow_origin(tower_http::cors::Any).allow_methods([axum::http::Method::GET]))
         .with_state(state);
 
-    let bind = std::env::var("BIND").unwrap_or_else(|_| "127.0.0.1:3000".into());
+    // hand the address over: the placeholder finishes its open requests and releases the port
+    let _ = ready.send(());
+    starting.await?;
+    let listener = tokio::net::TcpListener::bind(&bind).await?;
     println!("listening on http://{bind}");
-    axum::serve(tokio::net::TcpListener::bind(&bind).await?, app).await?;
+    axum::serve(listener, app).await?;
     Ok(())
 }
