@@ -49,11 +49,20 @@ pub fn item_fields(v: &Value) -> Option<ItemFields> {
     Some(ItemFields { id, row, images })
 }
 
+/// Title or description changed beyond whitespace. The imported archive kept descriptions with some whitespace
+/// dropped, so on their first recrawl about half the items differed only there and were re-enriched for nothing.
+macro_rules! text_changed {
+    () => {
+        "(regexp_replace(items.title, '\\s', '', 'g') is distinct from regexp_replace(excluded.title, '\\s', '', 'g')
+          or regexp_replace(items.bio, '\\s', '', 'g') is distinct from regexp_replace(excluded.bio, '\\s', '', 'g'))"
+    };
+}
+
 /// Upserts crawler-owned columns and the full gallery. New items are flagged for AI enrichment, and so are
 /// existing ones whose title or description changed (their translations are stale). Returns true if inserted.
 pub async fn store_item(pool: &PgPool, v: &Value) -> Result<bool, sqlx::Error> {
     let Some(f) = item_fields(v) else { return Err(sqlx::Error::Protocol("Booth item JSON without id".into())) };
-    let inserted: bool = sqlx::query_scalar(
+    let inserted: bool = sqlx::query_scalar(concat!(
         "insert into items (id, title, bio, author_name, author_uri, author_icon, booth_category, price_jpy, likes, is_adult,
                             published_at, booth_tags, variations, status, scraped_at, needs_enrichment)
          select id, title, bio, author_name, author_uri, author_icon, booth_category, price_jpy, likes, is_adult,
@@ -62,15 +71,21 @@ pub async fn store_item(pool: &PgPool, v: &Value) -> Result<bool, sqlx::Error> {
                                        booth_category text, price_jpy integer, likes integer, is_adult boolean,
                                        published_at timestamptz, booth_tags text[], variations jsonb)
          on conflict (id) do update set
-           needs_enrichment = items.needs_enrichment or items.title is distinct from excluded.title or items.bio is distinct from excluded.bio,
-           enrich_failures = case when items.title is distinct from excluded.title or items.bio is distinct from excluded.bio then 0 else items.enrich_failures end,
-           embedding = case when items.title is distinct from excluded.title or items.bio is distinct from excluded.bio then null else items.embedding end,
+           needs_enrichment = items.needs_enrichment or ",
+        text_changed!(),
+        ",
+           enrich_failures = case when ",
+        text_changed!(),
+        " then 0 else items.enrich_failures end,
+           embedding = case when ",
+        text_changed!(),
+        " then null else items.embedding end,
            title = excluded.title, bio = excluded.bio, author_name = excluded.author_name, author_uri = excluded.author_uri,
            author_icon = excluded.author_icon, booth_category = excluded.booth_category, price_jpy = excluded.price_jpy,
            likes = excluded.likes, is_adult = excluded.is_adult, published_at = coalesce(excluded.published_at, items.published_at),
            booth_tags = excluded.booth_tags, variations = excluded.variations, status = 'ok', scraped_at = now()
          returning (xmax = 0)",
-    )
+    ))
     .bind(&f.row)
     .fetch_one(pool)
     .await?;
