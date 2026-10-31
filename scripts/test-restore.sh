@@ -8,11 +8,11 @@ export MSYS_NO_PATHCONV=1
 name=catalogue-restore-test
 "$podman" rm -f "$name" >/dev/null 2>&1 || true
 "$podman" run -d --name "$name" -e POSTGRES_DB=catalogue -e POSTGRES_USER=catalogue -e POSTGRES_PASSWORD=x \
-  -v "$(cygpath -w "$bundle"):/restore:ro" docker.io/pgvector/pgvector:pg17 >/dev/null
+  docker.io/pgvector/pgvector:pg17 >/dev/null
 for _ in $(seq 1 60); do "$podman" exec "$name" pg_isready -U catalogue -d catalogue >/dev/null 2>&1 && break; sleep 1; done
 sleep 2
 echo "[$(date +%T)] restoring"
-"$podman" exec "$name" pg_restore -U catalogue -d catalogue --no-owner --role=catalogue /restore/catalogue.dump
+"$podman" exec -i "$name" pg_restore -U catalogue -d catalogue --no-owner --role=catalogue < "$bundle/catalogue.dump"
 echo "[$(date +%T)] restored"
 "$podman" exec "$name" psql -U catalogue -d catalogue -tAc "
   select 'items', count(*) from items union all

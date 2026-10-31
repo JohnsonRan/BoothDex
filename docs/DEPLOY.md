@@ -1,150 +1,196 @@
 # Deploying to a Linux server
 
-Everything runs in containers: Postgres (pgvector), the three Rust services and the Next.js site. The site
-(`web`) is the only service meant to be reached from outside; it serves one origin and forwards `/api` and `/img`
-to the Rust services. TLS is up to you: put your own reverse proxy, Cloudflare Tunnel or similar in front of it.
+Everything runs in containers: PostgreSQL 17 (`pgvector`), the three Rust services (`api`, `worker`, `imgproxy`) and the Next.js site (`web`). Only `web` publishes a host port (`WEB_LISTEN`, default `3100`) and forwards `/api/*` and `/img/*` over the internal Compose network. Put your own TLS reverse proxy or tunnel (Caddy, nginx, Cloudflare Tunnel) in front of it.
 
+```mermaid
+flowchart LR
+  visitor["Browser / RSS Reader"] -- "HTTPS" --> proxy["Reverse Proxy / Tunnel<br/>(TLS, gzip/zstd)"]
+
+  subgraph host["Linux Host"]
+    proxy -- "WEB_LISTEN<br/>(127.0.0.1:3100)" --> web
+
+    subgraph compose["Compose Network (boothdex)"]
+      web["web<br/>Next.js :3100"] -- "/api/*" --> api["api (Rust)<br/>:3000 · mem_limit 4g"]
+      web -- "/img/*" --> imgproxy["imgproxy (Rust)<br/>:3001 · mem_limit 1g"]
+      worker["worker (Rust)<br/>daemon · mem_limit 512m"]
+
+      api --> pg[("postgres<br/>pgvector:pg17")]
+      worker --> pg
+
+      pg --- pgdata[("pgdata volume")]
+      api --- textindex[("textindex volume<br/>(Tantivy mmap)")]
+      imgproxy --- imgcache[("imgcache volume<br/>(foyer WebP)")]
+      imgproxy --- archive[("/archive:ro<br/>(delisted images)")]
+    end
+  end
+
+  imgproxy -- "fetch & transcode" --> pximg["booth.pximg.net"]
+  worker -- "crawl" --> booth["booth.pm"]
+  worker -. "enrich / embed" .-> ai["OpenAI-compatible API"]
+  api -. "query embed" .-> ai
 ```
-browser ─► your proxy (TLS) ─► web :3100 (Next.js) ─┬─ /api/*  ─► api :3000 ──► postgres
-                                                    └─ /img/*  ─► imgproxy :3001 ──► booth.pximg.net, archived images
-                                worker (no port) ──► booth.pm, postgres
+
+`postgres`, `api`, `worker` and `imgproxy` publish no host ports; run maintenance commands through `docker compose exec` (for example `docker compose exec postgres psql -U catalogue catalogue`). `podman compose` works with the same commands.
+
+## Deployment overview
+
+```mermaid
+flowchart TD
+  prep["1. Place compose.yaml + .env on server<br/>Set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN"] --> choice{"Use published<br/>data bundle?"}
+
+  choice -- "Yes (~5 min, ~216k items)" --> dl["2a. Download & verify data-2026-10-31<br/>Extract images.tar → set ARCHIVE_IMAGES_DIR"]
+  dl --> pgup["docker compose pull<br/>docker compose up -d postgres"]
+  pgup --> restore["Stream catalogue.dump into pg_restore"]
+  restore --> up["docker compose up -d"]
+
+  choice -- "No (crawl from BOOTH, ~2–3 days)" --> nobundle["2b. Leave ARCHIVE_IMAGES_DIR empty<br/>docker compose pull && docker compose up -d"]
+  nobundle --> crawl["Run initial full crawl:<br/>worker once incremental '{max_pages: 5000, full: true}'"]
+  crawl --> up
+
+  up --> admin["3. Register account on site<br/>Add username to ADMIN_USERNAMES → up -d api"]
+  admin --> live["4. Configure AI in /admin (or .env)<br/>Enable TLS proxy & daily pg_dump backup"]
 ```
 
-Only `web` publishes a port, on `WEB_LISTEN` (default `3100`, all interfaces). `postgres`, `api` and `imgproxy` are
-reachable only on the compose network; for maintenance use `docker compose exec`, e.g.
-`docker compose exec postgres psql -U catalogue catalogue`.
+## 1. Server requirements
 
-## 1. Server
+| Resource | Minimum | Recommended | Why |
+|---|---|---|---|
+| RAM | **6 GB** (or 4 GB + 4 GB swap) | **8 GB** | On Linux, `api` uses ~1.3–2.4 GB steady (including the memory-mapped Tantivy index) and peaks at ~2.5–3 GB while hot-reloading a new catalogue (`mem_limit: 4g`); `postgres` ~1 GB; `imgproxy` up to 1 GB; `worker` <512 MB; `web` ~200 MB |
+| CPU | 2 vCPU | 4 vCPU | WebP transcoding and Tantivy index rebuilds are CPU-bound |
+| Disk | 40 GB SSD | 60 GB+ SSD | Database ~3 GB (~4 GB with embeddings), archived images ~1 GB, `imgcache` 10 GB (configurable), container images and backups |
+| OS | Linux with Docker or Podman (+ Compose) | — | Prebuilt `linux/amd64` images are published to `ghcr.io` |
 
-| | Minimum | Why |
-|---|---|---|
-| RAM | **4 GB** (8 GB comfortable) | api ≈0.5 GB steady, ≈1.6 GB peak while it rebuilds the catalogue after crawls (the search index is memory-mapped from disk); Postgres ≈1 GB; the rest is small |
-| CPU | 2 vCPU (4 better) | image transcoding and index rebuilds are CPU-bound |
-| Disk | 40 GB SSD | database ≈3 GB (≈4 GB with semantic search), archived images ≈1 GB, image cache 10 GB (configurable), container images, backups |
-| OS | Any Linux with Docker or Podman (+ compose) | |
+## 2. Get the stack files (and optional data bundle)
 
-## 2. Get the code and data onto the server
+### Prebuilt images (recommended)
+
+No Git checkout or compiler is required when pulling images from `ghcr.io` — only `compose.yaml` and `.env`:
 
 ```sh
-git clone <repo> /srv/boothdex/app
+mkdir -p /srv/boothdex && cd /srv/boothdex
+curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
+curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
 ```
 
-Without a data bundle, skip to step 3 and follow "Starting without a data bundle" in step 4.
-
-A data bundle is a snapshot of an existing instance, made with `scripts/make-bundle.sh <out-dir>` (any instance can make one).
-
-A ready-made bundle is published as the GitHub release [data-2026-10-31](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-10-31): a snapshot from 2026-10-31
-with 215,911 items, taken from the VRCatalogue archive and the BOOTH crawl that day (mirror: [Filen](https://app.filen.io/#/f/f910e157-1651-42f4-8516-116b7af17c83%236d4a646241516c595a43473546664533504c5a664d4e4c4f7a4d4b48636a745f),
-browser download only). The services apply newer migrations at start, and the hourly crawl adds what is newer.
-
-Bundle contents:
-
-| File | What | Size |
-|---|---|---|
-| `catalogue.dump` | Postgres dump: all items, crawled Booth images, schema. **No user accounts, sessions, favourites, viewed history, job history or AI settings** — those were test data | ~0.5–1 GB |
-| `images.tar` | Archived images of delisted items (`images/<sha1>.webp`). Booth no longer serves these and the original CDN is gone | ~1 GB |
-| `SHA256SUMS` | Checksums | |
+To build from source instead (for example on `arm64` or with local changes):
 
 ```sh
-# on the server
+git clone https://github.com/JohnsonRan/BoothDex.git /srv/boothdex/app
+cd /srv/boothdex/app/deploy
+cp .env.example .env
+```
+
+### Optional: download the data bundle
+
+Without a data bundle, skip to [3. Configure](#3-configure) and follow [Starting without a data bundle](#starting-without-a-data-bundle) in step 4.
+
+A data bundle is a snapshot of an existing instance created with `scripts/make-bundle.sh <out-dir>`. A ready-made bundle is published as the GitHub release [data-2026-10-31](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-10-31): 215,911 items from the VRCatalogue archive plus that day's BOOTH crawl (browser mirror: [Filen](https://app.filen.io/#/f/f910e157-1651-42f4-8516-116b7af17c83%236d4a646241516c595a43473546664533504c5a664d4e4c4f7a4d4b48636a745f)). Services apply newer migrations automatically at startup, and the hourly crawl catches up from there.
+
+| File | Contents | Size |
+|---|---|---|
+| `catalogue.dump` | PostgreSQL custom-format dump: all items, crawled BOOTH image links, taxonomy and schema. **No user accounts, sessions, favourites, viewed history, job history or AI settings.** | ~0.5–1 GB |
+| `images.tar` | Archived WebP images of delisted items (`images/<sha1>.webp`) no longer served by BOOTH | ~1 GB |
+| `SHA256SUMS` | SHA-256 checksums | — |
+
+```sh
 mkdir -p /srv/boothdex/bundle && cd /srv/boothdex/bundle
-# download the published bundle (or copy your own three files here):
 for f in catalogue.dump images.tar SHA256SUMS; do
   curl -fLO https://github.com/JohnsonRan/BoothDex/releases/download/data-2026-10-31/$f
 done
 sha256sum -c SHA256SUMS
-tar -xf images.tar -C /srv/boothdex          # -> /srv/boothdex/images/*.webp
-mkdir -p /srv/boothdex/app/deploy/restore && mv catalogue.dump /srv/boothdex/app/deploy/restore/
+tar -xf images.tar -C /srv/boothdex    # extracts to /srv/boothdex/images/*.webp
 ```
 
-The importer (`crates/importer`) is only for a raw VRCatalogue archive; you don't need it here.
+> `crates/importer` is only for raw VRCatalogue JSON archives (`items/`, `avatars/`, `dict/`, `labels/`); it is not used with `catalogue.dump`.
 
 ## 3. Configure
 
+Edit `.env` in the directory holding `compose.yaml` (`/srv/boothdex/.env` or `/srv/boothdex/app/deploy/.env`):
+
 ```sh
-cd /srv/boothdex/app/deploy
-cp .env.example .env
-$EDITOR .env    # WEB_LISTEN, SITE_URL, POSTGRES_PASSWORD, ADMIN_USERNAMES, ARCHIVE_IMAGES_DIR
+$EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, and (with a bundle) ARCHIVE_IMAGES_DIR
 ```
 
 | Variable | Used by | Notes |
 |---|---|---|
-| `WEB_LISTEN` | web | host `[address:]port` for the site; `127.0.0.1:3100` when the reverse proxy runs on the same host |
-| `SITE_URL` | api | the public URL, e.g. `https://<domain>`; appears in RSS links |
-| `COOKIE_SECURE` | api | `1` (default): session cookies over HTTPS only. `0` only for testing over plain `http://` |
-| `POSTGRES_PASSWORD` | postgres, api, worker | long random string |
-| `ADMIN_USERNAMES` | api | comma-separated; applied at every api start (anyone not listed loses admin) |
-| `ARCHIVE_IMAGES_DIR` | imgproxy | host path of the extracted images; without a bundle, any empty directory |
-| `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | imgproxy | transcoded-image cache |
-| `BOOTHDEX_TAG` | api, worker, imgproxy, web | image version on ghcr.io: `latest` (default, follows master), a release such as `0.1.0`, or `sha-<commit>` |
-| `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` / `AI_EMBED_MODEL` | api, worker | optional; override the admin console AI settings and lock them there, so the key stays out of the database |
+| `WEB_LISTEN` | `web` | Host `[address:]port` for the site; set `127.0.0.1:3100` when the reverse proxy runs on the same host |
+| `SITE_URL` | `api` | Public origin, e.g. `https://boothdex.example.com` (used in RSS feed links) |
+| `COOKIE_SECURE` | `api` | `1` (default): session cookies over HTTPS only. Set `0` only while testing over plain `http://` |
+| `POSTGRES_PASSWORD` | `postgres`, `api`, `worker` | Long random secret, e.g. `openssl rand -base64 32` |
+| `ADMIN_USERNAMES` | `api` | Comma-separated usernames synced at every `api` start (unlisted accounts lose admin) |
+| `ARCHIVE_IMAGES_DIR` | `imgproxy` | `/srv/boothdex/images` when using a data bundle; leave empty without a bundle (uses an empty volume) |
+| `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | `imgproxy` | Transcoded WebP cache budget (`10240` MB disk / `256` MB RAM by default) |
+| `BOOTHDEX_TAG` | `api`, `worker`, `imgproxy`, `web` | Image tag on `ghcr.io`: `latest` (default, tracks `master`), `0.1.0`, or `sha-<commit>` |
+| `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` / `AI_EMBED_MODEL` | `api`, `worker` | Optional; override and lock the `/admin` AI settings so API keys stay out of PostgreSQL |
 
-Set in compose and not needed in `.env`: `DATABASE_URL` and `PGPASSWORD` (from `POSTGRES_PASSWORD`; any characters work), `IMGPROXY_URL`, `BIND`.
+Set automatically by `compose.yaml` (not needed in `.env`): `DATABASE_URL`, `PGPASSWORD` (passed separately so `/` `+` `=` in base64 passwords never break URL parsing), `IMGPROXY_URL` and `BIND`.
 
 ## 4. First start
 
+Run from the directory containing `compose.yaml` and `.env`:
+
 ```sh
-cd /srv/boothdex/app/deploy
-docker compose pull                       # prebuilt images from ghcr.io (or `docker compose build` to build from source)
+docker compose pull                       # or `docker compose build` from a source checkout
 docker compose up -d postgres
-# with a data bundle only:
-docker compose exec postgres pg_restore -U catalogue -d catalogue --no-owner --role=catalogue /restore/catalogue.dump
-docker compose up -d                       # api runs pending migrations itself, then loads the catalogue (~20 s)
-docker compose logs -f api                 # wait for "listening on"
+
+# With a data bundle only — stream the dump straight into Postgres:
+docker compose exec -T postgres pg_restore -U catalogue -d catalogue --no-owner --role=catalogue \
+  < /srv/boothdex/bundle/catalogue.dump
+
+docker compose up -d                      # api runs pending migrations, then loads the catalogue (~20 s)
+docker compose logs -f api                # wait for "listening on"
 ```
 
-Then:
-1. Open the site (through your proxy, or `http://<server>:3100` with `COOKIE_SECURE=0` for a quick test) and register your account.
-2. Put that username in `ADMIN_USERNAMES`, `docker compose up -d api` to apply.
-3. Open `/admin`: the worker should show as running; the hourly incremental crawl is on by default.
-4. In the admin console: set the AI provider (and test it). The daily full sweep is enabled by default (runs daily at 03:00 JST); you can change its schedule or disable it in the admin console.
+Then complete onboarding:
+
+1. Open the site (via your reverse proxy, or `http://<server>:3100` with `COOKIE_SECURE=0` for a quick check) and register your account.
+2. Add that username to `ADMIN_USERNAMES` in `.env`, then run `docker compose up -d api`.
+3. Open `/admin`: verify `worker` shows as running. Both the hourly incremental crawl and the daily full sweep (03:00 JST) are enabled by default.
+4. Configure the AI provider in `/admin` (and click **Test**) or via `AI_*` in `.env`.
+
+### Worker job lanes & catalogue reload
+
+The worker groups jobs into three independent lanes so polite serial BOOTH crawling never blocks AI enrichment or embedding:
+
+```mermaid
+flowchart LR
+  subgraph worker["worker daemon (1 active job per lane)"]
+    inc["booth lane (serial):<br/>incremental · sweep · details · refresh"]
+    enr["ai lane:<br/>enrich (200/batch chain) · localize"]
+    emb["embed lane (waits while enrich is live):<br/>embed (1024-d halfvec)"]
+    enr -. "queues on chain end" .-> emb
+  end
+
+  inc --> pg[("PostgreSQL<br/>catalog_meta.version++")]
+  enr --> pg
+  emb --> pg
+  pg -- "polls version &<br/>swaps ArcSwap snapshot" --> api["api<br/>(Roaring + Tantivy)"]
+```
 
 ### Starting without a data bundle
 
-The migrations create the category tree, smart tags and avatar bodies. Items come from one full crawl of the
-Booth `VRChat` tag listing (about 3,400 pages, one item page per new item at ~0.7 s each: expect two to three
-days for ~200k items; it is polite to Booth on purpose):
+Database migrations seed the category tree, smart tags and ~380 avatar bodies automatically. Populate items with one full crawl of BOOTH's `VRChat` tag listing (~3,400 pages, one item request per unknown item at ~0.7 s pacing — expect 2–3 days for ~200k items so BOOTH is not overloaded):
 
 ```sh
 docker compose exec worker worker once incremental '{"max_pages": 5000, "full": true}'
-# interrupted? continue from the page shown in the admin console (a few pages back is fine):
+# If interrupted, resume from the page shown in /admin (backing up a few pages is safe):
 docker compose exec worker worker once incremental '{"max_pages": 5000, "full": true, "start_page": 1200}'
 ```
 
-The site is usable while it runs (the api reloads as items arrive). Crawled items have no AI categories, avatar
-links or translations until the `enrich` job has handled them. It runs hourly once the AI provider is configured,
-200 items per run, and queues itself again while items are left, so a backlog is worked through in one go. The
-worker runs one job at a time per lane: crawls (Booth), AI (`enrich`, `localize`) and `embed` run side by side,
-and `embed` waits while an `enrich` job is queued or running. At ~200k items, check your provider's price per call first: pausing the schedule
-does not stop a chain that has started; cancel the running or queued `enrich` job in the admin console for that.
+The site is usable while the crawl runs (`api` reloads automatically as items arrive). Newly crawled items receive AI categories, avatar-fit links and 4-language title translations once `enrich` processes them (200 items per batch, chaining itself until the backlog is empty). Before enabling AI on a 200k-item backlog, check your provider's token pricing: pausing the schedule does not stop an already-running chain — cancel the active or queued `enrich` job in `/admin` to halt immediately.
 
 ### Semantic search (optional)
 
-Set an embeddings model in the admin console (or `AI_EMBED_MODEL`), served by the same provider. It must be able
-to return 1024-dimension vectors through the `dimensions` parameter, as Qwen3-Embedding does; the console's
-connection test checks this. The hourly `embed` job then embeds every item without a vector: the first run
-covers the whole catalogue (about 70 items per second during development, so roughly an hour for ~200k items;
-at the $0.02 per million tokens Qwen3-Embedding-4B cost there, a few dollars in total). After that it only
-handles new and edited items. When an `enrich` chain ends (backlog worked through, or a batch without success), it queues
-an `embed` run for the enriched items still missing a vector, so their vectors pick up the English title without waiting for the hourly tick.
+Set an embeddings model in `/admin` (or `AI_EMBED_MODEL`), served by the same OpenAI-compatible provider. The model must return 1024-dimension vectors via the `dimensions` parameter (for example `Qwen3-Embedding-4B`; `/admin`'s connection test verifies this).
 
-While items are missing vectors, search finds fewer of them by meaning; nothing else changes.
-
-Each new search text waits for one embeddings request before results appear (on the development provider: median
-0.7 s, 95th percentile 1.2 s). The result is kept in the `query_embeddings` table, so a text searched before, by
-anyone and across restarts, takes milliseconds. The table stores search texts only (no user or session); the
-`embed` job drops entries unused for 90 days and keeps at most 50,000. The chip next to the result count shows
-how each search was answered and where the time went. If the provider takes longer than
-2.5 s or fails, that search uses words alone and the site says so above the results. Queries that only match by
-meaning (Chinese queries for Japanese items, for example) then show nothing until the user searches again. Vectors take about 0.5 GB in the database plus a similar
-amount for the index.
+- **Indexing**: The hourly `embed` job embeds items missing a vector (~70 items/s during development, ~1 hour and a few dollars for ~200k items on `Qwen3-Embedding-4B` at $0.02/M tokens), then only processes new or edited items. Whenever an `enrich` chain finishes, it immediately queues `embed` so enriched items pick up translated English titles without waiting for the hourly tick.
+- **Query caching & fallback**: Each unseen query string makes one provider call (median 0.7 s, p95 1.2 s in development) and caches the vector in memory and in `query_embeddings` (text only, no user/session data; pruned after 90 days unused, capped at 50,000 entries). Repeat searches take milliseconds. If the provider exceeds 2.5 s or errors, `/api/search` falls back to keyword search alone and surfaces a notice above results. Vectors add ~0.5 GB in PostgreSQL plus ~0.5 GB for the HNSW index.
 
 ## 5. Putting a proxy in front
 
-Forward everything for your domain to the `web` port; it needs no special paths. For example with Caddy on the
-host (`WEB_LISTEN=127.0.0.1:3100`):
+Forward all traffic for your domain to `WEB_LISTEN`. Example with Caddy on the same host (`WEB_LISTEN=127.0.0.1:3100`):
 
-```
+```caddyfile
 boothdex.example.com {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:3100 {
@@ -153,56 +199,44 @@ boothdex.example.com {
 }
 ```
 
-- Turn off response buffering for `/api/admin/stream` (server-sent events for the admin console's live view);
-  `flush_interval -1` does that in Caddy, `proxy_buffering off` in nginx. Without it the live view only updates
-  on reload.
-- The site itself doesn't compress responses; let the proxy do it (`encode` above, `gzip on` in nginx).
-- Docker publishes ports past host firewalls such as ufw. If `WEB_LISTEN` is a bare port, the site is reachable
-  from anywhere on it; use `127.0.0.1:3100` when only a local proxy or tunnel should reach it.
-- Cloudflare: `/img/*` responses are `Cache-Control: public, max-age=31536000, immutable`, so Cloudflare keeps them;
-  nothing else needs a cache rule. Don't enable Rocket Loader or HTML minification (they can break Next.js
-  hydration). Server-sent events pass through.
+- **Server-sent events (`/api/admin/stream`)**: Disable response buffering so `/admin` updates live (`flush_interval -1` in Caddy, `proxy_buffering off;` in nginx).
+- **Compression**: `web` and `api` leave HTTP compression to the proxy (`encode zstd gzip` in Caddy, `gzip on;` in nginx).
+- **Host firewall**: Docker bypasses `ufw` when publishing `0.0.0.0:3100`. Bind `WEB_LISTEN=127.0.0.1:3100` whenever the proxy or tunnel runs on the same machine.
+- **Cloudflare**: `/img/*` responses carry `Cache-Control: public, max-age=31536000, immutable` and are cached automatically. Keep **Rocket Loader** and HTML minification off so Next.js hydration is not broken.
 
 ## 6. Operations
 
 | Task | Command |
 |---|---|
-| Update | `git pull && docker compose pull && docker compose up -d` (from source: `docker compose up -d --build`) |
-| Logs | `docker compose logs -f api worker` |
+| Update (prebuilt) | `docker compose pull && docker compose up -d` |
+| Update (from source) | `git pull && docker compose up -d --build` |
+| Tail logs | `docker compose logs -f api worker` |
 | Restart one service | `docker compose restart worker` |
-| Backup database | `docker compose exec postgres pg_dump -U catalogue -Fc catalogue > backup-$(date +%F).dump` (daily, keep off-server) |
-| Backup images | the `images` directory never changes except when new delistings are archived; copy it once |
-| Restore | stop api/worker, `pg_restore --clean -d catalogue backup.dump`, start them |
+| Backup database | `docker compose exec -T postgres pg_dump -U catalogue -Fc catalogue > backup-$(date +%F).dump` (schedule daily, keep off-server) |
+| Backup archived images | Copy `/srv/boothdex/images` once (changes only if you archive newly delisted items) |
+| Restore database | `docker compose stop api worker && docker compose exec -T postgres pg_restore -U catalogue -d catalogue --clean --if-exists --no-owner --role=catalogue < backup.dump && docker compose start api worker` |
 
-Not backed up and fine to lose: the `imgcache` volume (re-fills from Booth), `textindex` (rebuilt at start, ~10 s).
+Safe to lose (rebuilt automatically): `imgcache` (re-fetched from BOOTH on demand) and `textindex` (rebuilt by `api` at startup in ~10 s).
 
-## 7. Before going live — checklist
+## 7. Go-live checklist
 
-- [ ] `.env` filled; `POSTGRES_PASSWORD` is not `dev`
-- [ ] `ADMIN_USERNAMES` contains only your account
-- [ ] `https://<domain>/api/categories` returns JSON; `/img/v/<any sha1>.webp` returns an image
-- [ ] admin console shows the worker as running and a successful incremental job within an hour
-- [ ] a database backup job is scheduled
-- [ ] the AI provider is configured (otherwise newly crawled items stay out of the avatar-fit view and category filters)
+- [ ] `.env` configured; `POSTGRES_PASSWORD` is a random secret (not `dev`)
+- [ ] `WEB_LISTEN` bound to `127.0.0.1:3100` behind your TLS proxy, with `COOKIE_SECURE=1`
+- [ ] `ADMIN_USERNAMES` lists only your account
+- [ ] `https://<domain>/api/categories` returns JSON; `/img/v/<sha1>.webp` serves an archived image (if using a bundle)
+- [ ] `/admin` shows `worker` online and a succeeded `incremental` job within an hour
+- [ ] Off-server daily `pg_dump` backup is scheduled
+- [ ] AI provider is configured (otherwise newly crawled items lack smart categories, avatar-fit links and translated titles)
 
-## Tested so far
+## 8. Tested so far
 
-- api, worker and imgproxy images: `/index` and `/cache` exist inside the image, owned by the non-root `app`
-  user and writable.
-- All four container images build on Linux (Podman): api 156 MB, worker 100 MB, imgproxy 99 MB, web 272 MB;
-  the web container serves pages.
-  The lindera dictionary download succeeded inside the build.
-- The Linux api binary starts (and stops cleanly when the database is unreachable).
-- `catalogue.dump` restores into a fresh `pgvector:pg17` with exactly the command in step 4
-  (`scripts/test-restore.sh`): 215,911 items, 207,962 image rows, 379 avatars, 0 users, 8 migrations.
-- `podman compose config` accepts `compose.yaml`; the Next.js production build passes.
+- Container images build cleanly on Linux (Podman / Buildx): `api` 156 MB, `worker` 100 MB, `imgproxy` 99 MB, `web` 272 MB; `/index` and `/cache` are owned and writable by non-root `app` (`uid 10001`).
+- Linux container memory profile verified under reload load: `MALLOC_ARENA_MAX=2` and title-only translation keep `api` reload peaks around 2.5–3 GB inside `mem_limit: 4g`.
+- `catalogue.dump` restores cleanly into `pgvector:pg17` via stdin (`scripts/test-restore.sh`): 215,911 items, 207,962 image rows, 379 avatars, 0 users.
+- `compose.yaml` validates cleanly both with `ARCHIVE_IMAGES_DIR` set and empty; Next.js standalone server forwards `/api` (with cookies), `/img` (with immutable cache headers) and `/api/admin/stream` (SSE).
 
-- The Next.js server forwards `/api` and `/img`: JSON with cookies, binary images with their cache headers, and
-  server-sent events delivered as they are sent.
+Not yet battle-tested long-term as a public multi-user site, or from a multi-day empty-database crawl end-to-end.
 
-Not yet tested: the full stack running together on one server, and a full crawl from an empty database.
+## 9. Local development
 
-## Local development
-
-See `README.md` (`scripts/dev-up.sh` etc.). The dev scripts hard-code the dev database password;
-they are not used by the deployment.
+See [`README.md`](../README.md#development) (`scripts/dev-up.sh`, `scripts/dev-down.sh`, `scripts/dev-restart.sh`). The dev scripts use a local `dev` password and are never used in production deployments.
