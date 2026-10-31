@@ -136,10 +136,16 @@ export function Browse() {
       .catch(() => {});
   }, [epoch]);
 
+  // latest account load; answers to older ones are dropped
+  const accountLoad = useRef(0);
+
   // session: who am I, my favourites, what I viewed; rerun after login/logout
   const loadAccount = useCallback(async () => {
+    const gen = ++accountLoad.current;
     setViewed(null);
     const user = await api<Me>("/api/account").catch(() => null);
+    // a newer sign-in/out supersedes this load; don't publish another account's data
+    if (gen !== accountLoad.current) return user;
     setMe(user);
     if (user) {
       // what this browser viewed while signed out moves into the account
@@ -151,11 +157,13 @@ export function Browse() {
         })
           .then(() => saveViewed([]))
           .catch(() => {});
+      if (gen !== accountLoad.current) return user;
       const res = await api<{ ids: number[] }>("/api/account/views").catch(
         () => ({
           ids: [],
         }),
       );
+      if (gen !== accountLoad.current) return user;
       setViewed((cur) => [
         ...(cur ?? []),
         ...res.ids.filter((id) => !cur?.includes(id)),
@@ -164,11 +172,13 @@ export function Browse() {
       setViewed(loadViewed().map(([id]) => id));
     }
     setViewedGen((g) => g + 1);
-    setFavs(
-      user
-        ? new Set((await api<{ ids: number[] }>("/api/account/favourites")).ids)
-        : null,
-    );
+    const favRes = user
+      ? await api<{ ids: number[] }>("/api/account/favourites").catch(() => ({
+          ids: [],
+        }))
+      : null;
+    if (gen !== accountLoad.current) return user;
+    setFavs(favRes ? new Set(favRes.ids) : null);
     return user;
   }, []);
 
