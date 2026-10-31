@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Restores the data bundle into a throwaway Postgres container the way DEPLOY.md says, and checks row counts.
-#   scripts/test-restore.sh [bundle-dir=../vrcat-bundle]
+#   scripts/test-restore.sh <bundle-dir>
 set -euo pipefail
-bundle="${1:-../vrcat-bundle}"
+bundle="${1:?usage: scripts/test-restore.sh <bundle-dir>}"
 podman="${PODMAN:-podman}"
 export MSYS_NO_PATHCONV=1
 name=catalogue-restore-test

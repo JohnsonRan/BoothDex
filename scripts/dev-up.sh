@@ -2,6 +2,7 @@
 # Starts the local dev stack fully detached and returns at once. Logs: <repo>/<service>.log
 #   scripts/dev-up.sh                 # api :3000, imgproxy :3001, worker, web :3100
 #   scripts/dev-up.sh api imgproxy    # only these
+# Windows + git-bash only. Env: ADMIN_USERNAMES (default admin), ARCHIVE_IMAGES (optional, archived images dir).
 # Processes are created via WMI (Win32_Process.Create) so they aren't children of this shell; tools and
 # terminals that kill their process tree on exit would otherwise take the servers down. That one call is
 # the only PowerShell use: git-bash has no way to escape the caller's job object.
@@ -10,7 +11,7 @@ root="$(cd "$(dirname "$0")/.." && pwd -W)"
 services=("${@:-api imgproxy worker web}")
 read -r -a services <<< "${services[*]}"
 
-envs="set DATABASE_URL=postgres://postgres:dev@localhost:5432/catalogue&& set COOKIE_SECURE=0&& set ADMIN_USERNAMES=${ADMIN_USERNAMES:-admin}&& set ARCHIVE_IMAGES=../vrcat-research/data/images&& set CACHE_DISK_MB=1024&& "
+envs="set DATABASE_URL=postgres://postgres:dev@localhost:5432/catalogue&& set COOKIE_SECURE=0&& set ADMIN_USERNAMES=${ADMIN_USERNAMES:-admin}&& ${ARCHIVE_IMAGES:+set ARCHIVE_IMAGES=$ARCHIVE_IMAGES&& }set CACHE_DISK_MB=1024&& "
 
 for name in "${services[@]}"; do
   cwd="$root"

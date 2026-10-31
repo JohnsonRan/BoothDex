@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "web",
+      "name": "boothdex-web",
       "dependencies": {
         "class-variance-authority": "^0.7.1",
         "cmdk": "^1.1.1",

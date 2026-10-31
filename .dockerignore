@@ -6,4 +6,3 @@ imgcache
 .env
 deploy/.env
 deploy/restore
-design

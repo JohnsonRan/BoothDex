@@ -11,7 +11,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Catalogue",
+  title: "BoothDex",
   description: "Search and filter VRChat assets on Booth",
 };
 

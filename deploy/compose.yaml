@@ -1,7 +1,7 @@
 # Production stack. Copy deploy/.env.example to deploy/.env and fill it in first.
 #   cd deploy && docker compose up -d --build        (or: podman compose ...)
 # Start order is handled by depends_on: postgres -> api/worker/imgproxy -> web -> caddy.
-name: catalogue
+name: boothdex
 
 services:
   postgres:

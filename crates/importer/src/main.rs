@@ -1,4 +1,4 @@
-//! Seeds Postgres from the VRCatalogue archive (vrcat-research/data).
+//! Seeds Postgres from a VRCatalogue archive directory (items/, avatars/, dict/, labels/).
 //! Usage: DATABASE_URL=postgres://... cargo run -p importer -- <archive data dir>
 //! Idempotent: rows are upserted, so it can be rerun over the same archive.
 

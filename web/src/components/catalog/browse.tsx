@@ -302,7 +302,7 @@ export function Browse() {
           className="flex shrink-0 items-center gap-2 font-extrabold tracking-tight"
         >
           <span className="size-[18px] rounded-[5px] bg-brand" />
-          <span className="hidden sm:inline">Catalogue</span>
+          <span className="hidden sm:inline">BoothDex</span>
         </a>
         <button
           type="button"

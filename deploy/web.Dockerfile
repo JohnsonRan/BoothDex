@@ -1,5 +1,5 @@
 # Next.js frontend as a standalone server.
-#   podman build -f deploy/web.Dockerfile -t catalogue-web .
+#   podman build -f deploy/web.Dockerfile -t boothdex-web .
 FROM docker.io/oven/bun:1 AS build
 WORKDIR /web
 COPY web/package.json web/bun.lock ./

@@ -1,61 +1,143 @@
-# vrcat-successor
+<div align="center">
 
-Successor to VRCatalogue (closed 2026-11-01). Research, archive and the locked plan live in `../vrcat-research/REPORT.md`.
+# BoothDex
 
-## Layout
-- `crates/core`: shared code; Postgres schema in `migrations/`
-- `crates/importer`: seeds Postgres from the VRCatalogue archive
-- `crates/api`: search API (Axum). Loads everything into memory at startup: roaring bitmaps per filter value,
-  numeric columns for ranges/sorting; Tantivy (Lindera IPADIC words + bigram substring) lives on disk in
-  `INDEX_DIR` (default `./textindex`, memory-mapped, reused when the catalogue is unchanged). Page payloads come from Postgres.
+**A self-hosted search engine for VRChat assets on BOOTH, written in Rust and Next.js.**
 
-- `crates/worker`: background job runner (replaces the old one-off crawler). `worker` runs as a daemon: enqueues
-  due `job_schedules`, claims `jobs` one at a time, heartbeats into `worker_status`. `worker once <kind> [params]`
-  runs one job now. Kinds: `incremental` (newest listing pages -> image links + ingest unknown items from
-  `/en/items/<id>.json`, stops when caught up; hourly by default), `details` (items missing images), `refresh`
-  (re-check stalest items), `enrich` (AI, not configured yet). Writes bump `catalog_meta.version`.
-  Items ingested by the worker have `needs_enrichment = true` (no AI categories/avatars/translations yet).
-- `crates/imgproxy`: image proxy for behind Cloudflare. `/b/{size}/{uuid}/i/{item}/{file}[?format=png|jpeg]`
-  re-encodes booth.pximg.net images to WebP (sizes `48x48 72x72_a2_g5 300x300_a2_g5 620x620 orig`),
-  `/v/{sha1}.webp` serves archived images of delisted items. foyer memory+disk cache, immutable responses.
+**[Deployment guide](docs/DEPLOY.md)** / **[API](#api)** / **[License](#license)**
 
-Never start a server in the same step as the `cargo build` that replaces its exe (Windows locks it).
+English / [简体中文](README.zh-CN.md)
 
-## Deployment
-See [docs/DEPLOY.md](docs/DEPLOY.md): containers (`deploy/`), data bundle (`scripts/make-bundle.sh`), env checklist.
+[Capabilities](#capabilities) / [Getting started](#getting-started) / [Architecture](#architecture) / [Development](#development)
 
-## Local dev stack
-```sh
-scripts/dev-up.sh               # api :3000, imgproxy :3001, worker, web :3100 — detached, returns at once
-scripts/dev-up.sh api           # just one
-scripts/dev-down.sh
+</div>
+
+> **Early, not yet run as a public site.** Every part works on a development machine, but the full container
+> stack has not been run on a real server yet. Expect rough edges.
+
+BoothDex indexes the VRChat items sold on [BOOTH](https://booth.pm) and lets you filter them by the model they
+fit, category, tags, price and more. It started as a successor to VRCatalogue, which closed on 2026-11-01, and
+keeps its search syntax. It is an independent project, not affiliated with pixiv, BOOTH or VRCatalogue. Item
+data and images belong to their creators; every item links back to its BOOTH page.
+
+## Capabilities
+
+- Search: faceted filtering over ~200k items in a few milliseconds by model fit, smart category, BOOTH
+  category, tags (include and exclude), features (MA, lilToon, Poiyomi, VRCFury), price, release date, free
+  items and adult-content mode. Japanese text search uses Lindera (IPADIC).
+- Browsing: a model view grouped by gender, an item panel with the full BOOTH gallery, variations,
+  translations and image download, and a Ctrl+K palette across items, models, authors and tags.
+- Accounts: favourites, saved searches, a remembered model, and RSS feeds for any search.
+- Interface: Chinese, English, Japanese and Korean; item text in the original language or translated;
+  currency display; light and dark themes; mobile-first layout.
+- Crawling: a worker checks BOOTH hourly for new items, sweeps the full listing daily, re-checks popular
+  items and marks delisted ones.
+- AI enrichment (optional, any OpenAI-compatible API, configurable reasoning effort): categories, content
+  rating, features and translations for new items, model links by name matching, and Chinese names for
+  categories and tags.
+- Images: a proxy re-encodes BOOTH images to WebP and caches them; archived copies cover delisted items.
+- Administration: live job progress, schedules, resource usage, AI settings and password resets.
+
+There are no standalone item pages, price history, social logins or password-reset emails (administrators
+reset passwords). Item titles and descriptions are not translated into Chinese; only the taxonomy is.
+
+## Getting started
+
+Follow the [deployment guide](docs/DEPLOY.md). It runs PostgreSQL, the three Rust services, the website and
+Caddy with Docker or Podman compose, and needs a Linux server with 4 GB of RAM.
+
+A fresh database already contains the category tree, smart tags and about 380 model bodies. Items come from
+BOOTH: run one full crawl ([Starting without a data bundle](docs/DEPLOY.md#starting-without-a-data-bundle)),
+then the hourly crawl keeps up. To skip the crawl, restore the [published data bundle](https://app.filen.io/#/f/f910e157-1651-42f4-8516-116b7af17c83%236d4a646241516c595a43473546664533504c5a664d4e4c4f7a4d4b48636a745f)
+(a 2026-10-31 snapshot with ~216k items and the archived images; about 1.4 GB).
+
+## Architecture
+
 ```
-Logs go to `<service>.log`. Startup: api ~20 s (loads and indexes the catalogue), others ~1 s.
-Admin console: http://localhost:3100/admin (admins come from `ADMIN_USERNAMES`).
-
-## Dev database (Podman)
-```sh
-podman run -d --name vrcat-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalogue \
-  -p 5432:5432 -v vrcat-pgdata:/var/lib/postgresql/data docker.io/pgvector/pgvector:pg17
+browser ─► Caddy ─┬─ /api/*  ─► api (Rust, Axum) ──► PostgreSQL
+                  ├─ /img/*  ─► imgproxy (Rust) ──► booth.pximg.net, archived images
+                  └─ /*      ─► web (Next.js)
+       worker (Rust) ──► booth.pm, AI provider, PostgreSQL
 ```
 
-## Seed from the archive
+| Path | Contents |
+|---|---|
+| `crates/core` | Shared code; the PostgreSQL schema in `migrations/`, applied by the services at start |
+| `crates/api` | Search API. Filters are roaring bitmaps in memory; the Tantivy text index lives on disk (`INDEX_DIR`) and is reused while the catalogue is unchanged; page payloads come from PostgreSQL |
+| `crates/worker` | Job runner: `incremental` (new items), `sweep` (full listing), `details`, `refresh`, `enrich` and `localize` (AI). `worker run` is the daemon; `worker once <kind> [params-json]` runs one job |
+| `crates/imgproxy` | `/b/{size}/...` serves BOOTH images as WebP; `/v/{sha1}.webp` serves archived images |
+| `crates/importer` | One-off import of a VRCatalogue archive directory |
+| `web` | Next.js website and the `/admin` console |
+| `deploy` | Container images, compose stack and Caddyfile |
+| `scripts` | Dev stack launcher (Windows and Git Bash), data bundle tools and a mock AI provider |
+
+On a 32-thread development machine with 216k items, searches take 1–6 ms inside the API and 5–40 ms per
+request, and 32 concurrent clients get about 550 requests per second. The API uses about 400 MB at rest and
+peaks at about 1.2 GB while loading.
+
+## Development
+
+Requirements: Rust (stable), [Bun](https://bun.sh), and PostgreSQL 17 with pgvector (for example in Podman
+or Docker).
+
 ```sh
-DATABASE_URL=postgres://postgres:dev@localhost:5432/catalogue \
-  cargo run --release -p importer -- ../vrcat-research/data
-```
-Runs migrations, then upserts everything (safe to rerun). About 90 s for 215k items.
+podman run -d --name boothdex-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalogue \
+  -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql/data docker.io/pgvector/pgvector:pg17
 
-## Run the API
+cargo build --release            # the first build downloads the IPADIC dictionary; rerun if that fails
+(cd web && bun install)
+
+export DATABASE_URL=postgres://postgres:dev@localhost:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
+target/release/api &             # :3000
+target/release/imgproxy &        # :3001
+target/release/worker run &
+(cd web && bun run dev)          # :3100, forwards /api and /img to the services above
+```
+
+Register the account `admin`, open http://localhost:3100/admin, and crawl a few pages to get items:
+`target/release/worker once incremental '{"max_pages": 3, "full": true}'`.
+
+On Windows with Git Bash, `scripts/dev-up.sh`, `scripts/dev-down.sh` and `scripts/dev-restart.sh` start and
+stop all four services in the background, with logs in `<service>.log`.
+
+To try the AI jobs without a key, run `bun scripts/mock-ai.ts` and set the provider to
+`http://127.0.0.1:3555/v1` in the admin console.
+
+With an archive in VRCatalogue's API format (`items/`, `avatars/`, `dict/`, `labels/`), import it with
+`DATABASE_URL=... cargo run --release -p importer -- <archive dir>`. Rerunning it is safe; it takes about
+90 seconds for 215k items.
+
+Tests:
+
 ```sh
-DATABASE_URL=postgres://postgres:dev@localhost:5432/catalogue cargo run --release -p api   # BIND defaults to 127.0.0.1:3000
+cargo test
+cd web && bun test src/lib && bunx tsc --noEmit && bunx biome check src
 ```
-Endpoints: `/api/search` (VRCatalogue-compatible query string: `v q sort dir page pageSize adult avatars authors tags extags
-btags exbtags sc scp bc if free pmin pmax range from to asup gender`), `/api/avatars|authors|tags|booth-tags?q=&offset=&limit=`,
-`/api/categories`.
 
-The first build downloads the IPADIC dictionary in `lindera-ipadic`'s build script; if it fails, rerun the build.
+## API
 
-Parity with the live site is checked by `bun parity.ts` in `vrcat-research` (fixture captured before closure).
-Deliberate deviations: feature facet counts respect the selected category (live kept them global); Trending is
-likes decayed by age (live formula unknown); `range` also accepts `7d`, `30d`, `90d`.
+`/api/search` takes a VRCatalogue-compatible query string: `v q sort dir page pageSize adult avatars authors
+tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender`. Other endpoints:
+`/api/avatars`, `/api/authors`, `/api/tags` and `/api/booth-tags` (`?q=&offset=&limit=`), `/api/categories`,
+`/api/items?ids=`, `/api/palette?q=` and `/api/rss?<search query>`.
+
+Differences from VRCatalogue: feature facet counts respect the selected category; Trending is likes decayed
+by age; `range` also accepts `7d`, `30d` and `90d`.
+
+## Acknowledgments
+
+- VRCatalogue: the original site, its search model and the taxonomy this project starts from
+- [BOOTH](https://booth.pm): item data and images
+- [Tantivy](https://github.com/quickwit-oss/tantivy) and [Lindera](https://github.com/lindera/lindera): text search
+- [roaring-rs](https://github.com/RoaringBitmap/roaring-rs): filter bitmaps
+- [foyer](https://github.com/foyer-rs/foyer): image cache
+- [shadcn/ui](https://ui.shadcn.com): interface components
+
+## License
+
+[AGPL-3.0-or-later](LICENSE). If you run a modified version as a public service, you must publish your changes.
+
+```text
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (c) 2026, BoothDex contributors
+```
