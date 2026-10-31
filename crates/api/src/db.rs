@@ -45,7 +45,7 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
         "select i.id, i.title, i.bio, i.author_name, i.booth_category, coalesce(i.smart_price, i.price_jpy) as price, i.likes,
                 extract(epoch from i.published_at)::bigint as published, i.is_adult, i.content_rating, i.quest, i.features,
                 i.booth_tags, i.supported, i.gender, i.translations->'en'->>'bio' as bio_en,
-                array_remove(array[i.translations->'en'->>'title', i.translations->'ja'->>'title', i.translations->'ko'->>'title'], null) as titles_translated,
+                array_remove(array[i.translations->'en'->>'title', i.translations->'ja'->>'title', i.translations->'ko'->>'title', i.translations->'zh'->>'title'], null) as titles_translated,
                 coalesce(ia.avatars, '{}') as avatars, coalesce(ic.cats, '{}') as cats, coalesce(ic.cats_primary, '{}') as cats_primary
          from items i
          left join (select item_id, array_agg(avatar_slug) as avatars from item_avatars group by item_id) ia on ia.item_id = i.id

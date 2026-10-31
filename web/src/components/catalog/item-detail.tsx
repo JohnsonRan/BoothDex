@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 type Lang = ContentLang;
 const LANGS: [Lang, string][] = [
   ["original", ""], // label comes from t("detail.original")
+  ["zh", "中文"],
   ["en", "EN"],
   ["ja", "日本語"],
   ["ko", "한국어"],

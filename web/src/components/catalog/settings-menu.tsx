@@ -22,7 +22,7 @@ import {
   useSettings,
 } from "@/lib/settings";
 
-const CONTENT_LANGS: ContentLang[] = ["original", "en", "ja", "ko"];
+const CONTENT_LANGS: ContentLang[] = ["original", "zh", "en", "ja", "ko"];
 
 /** Interface language, item-text language, currency and theme. Saved per browser and, when signed in, per account. */
 export function SettingsMenu() {

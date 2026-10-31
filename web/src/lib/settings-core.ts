@@ -2,7 +2,7 @@
 // components can import it.
 import { UI_LANGS, type UiLang } from "./messages";
 
-export type ContentLang = "original" | "en" | "ja" | "ko";
+export type ContentLang = "original" | "zh" | "en" | "ja" | "ko";
 export type Theme = "dark" | "light";
 export const CURRENCIES = [
   "JPY",
@@ -87,7 +87,7 @@ export function parseSettings(
       uiFromAcceptLanguage(acceptLanguage) ??
       DEFAULT_SETTINGS.ui,
     content:
-      pick(v.content, ["original", "en", "ja", "ko"] as const) ??
+      pick(v.content, ["original", "zh", "en", "ja", "ko"] as const) ??
       DEFAULT_SETTINGS.content,
     currency: pick(v.currency, CURRENCIES) ?? DEFAULT_SETTINGS.currency,
     theme: pick(v.theme, ["dark", "light"] as const) ?? DEFAULT_SETTINGS.theme,

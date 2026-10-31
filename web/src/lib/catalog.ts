@@ -65,7 +65,7 @@ export type Item = {
   variations: Variation[];
   translations: Partial<
     Record<
-      "en" | "ja" | "ko",
+      "zh" | "en" | "ja" | "ko",
       { title?: string; bio?: string; variations?: Record<string, string> }
     >
   > & { original_language?: string };

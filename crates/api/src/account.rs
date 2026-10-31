@@ -199,7 +199,7 @@ pub fn validate_preferences(v: &Value) -> Result<(), &'static str> {
             // interface language
             "ui" => ["zh", "en", "ja", "ko"].contains(&s),
             // item text language
-            "language" => ["original", "en", "ja", "ko"].contains(&s),
+            "language" => ["original", "zh", "en", "ja", "ko"].contains(&s),
             "currency" => s.len() == 3 && s.chars().all(|c| c.is_ascii_uppercase()),
             "theme" => (1..=20).contains(&s.len()) && s.chars().all(|c| c.is_ascii_lowercase()),
             // "my avatar" for the avatar-fit view; empty clears it
@@ -539,6 +539,7 @@ mod tests {
         assert!(validate_preferences(&json!({"avatar": "", "language": ""})).is_ok());
         assert!(validate_preferences(&json!({"evil": ""})).is_err());
         assert!(validate_preferences(&json!({"language": "fr"})).is_err());
+        assert!(validate_preferences(&json!({"language": "zh"})).is_ok());
         assert!(validate_preferences(&json!({"ui": "ko"})).is_ok());
         assert!(validate_preferences(&json!({"ui": "original"})).is_err());
         assert!(validate_preferences(&json!({"evil": "x"})).is_err());

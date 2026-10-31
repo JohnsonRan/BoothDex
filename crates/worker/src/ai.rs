@@ -97,7 +97,7 @@ description: sellers often pick the Booth category carelessly or too broadly, so
 \"quest_compatible\": \"Yes\", \"No\", or \"Non-Applicable\" (not an avatar or avatar asset);\n\
 \"smart_price\": integer yen a typical buyer pays for the main product (ignore support/donation tiers, pick the full set if that is the obvious main item), or null if unclear;\n\
 \"smart_price_reason\": one short English sentence;\n\
-\"translations\": {\"en\": {...}, \"ja\": {...}, \"ko\": {...}} where each has \"title\", \"bio\" (the description, translated faithfully, keep URLs), \
+\"translations\": {\"en\": {...}, \"ja\": {...}, \"ko\": {...}, \"zh\": {...}} (zh is Simplified Chinese, in the terms Chinese VRChat users use) where each has \"title\", \"bio\" (the description, translated faithfully, keep URLs), \
 and \"variations\" (object mapping each original variation name to its translation). For the item's own language, copy the original text.\n\
 \"original_language\": ISO 639-1 code of the listing's main language;\n\
 \"features\": array with any of \"ma\" (Modular Avatar setup), \"liltoon\", \"poiyomi\" (shaders it supports), \"vrcfury\" that the listing states it supports; empty if none.";
@@ -190,13 +190,20 @@ pub fn validate_enrichment(v: &Value, known_categories: &[String], bio_truncated
     };
 
     let mut translations = json!({});
-    for lang in ["en", "ja", "ko"] {
+    for lang in ["en", "ja", "ko", "zh"] {
         let t = &v["translations"][lang];
+        let old = &existing[lang];
+        if lang == "zh" && !t["title"].as_str().is_some_and(|s| !s.is_empty() && s.chars().count() <= 300) {
+            // zh came after en/ja/ko: optional, so a reply without it doesn't fail the rest (an earlier zh is kept)
+            if old.is_object() {
+                translations[lang] = old.clone();
+            }
+            continue;
+        }
         let title_str = t["title"].as_str().ok_or_else(|| anyhow::anyhow!("missing translations.{lang}.title string in AI reply"))?;
         if title_str.is_empty() || title_str.chars().count() > 300 {
             bail!("translations.{lang}.title must be between 1 and 300 characters");
         }
-        let old = &existing[lang];
         let bio = if bio_truncated {
             // the model only saw the first 2500 chars; "" makes the UI show the full original instead
             Value::String(String::new())
@@ -433,6 +440,25 @@ mod tests {
         // a truncated source still blanks the bio on purpose, even with an old one present
         let e3 = validate_enrichment(&reply, &known, true, &existing).unwrap();
         assert_eq!(e3.translations["en"]["bio"], "");
+    }
+
+    #[test]
+    fn chinese_translation_is_optional() {
+        let known = vec!["clothing--dresses".to_owned()];
+        let reply = |zh: Value| {
+            json!({
+                "categories": ["clothing--dresses"], "content_rating": "SFW", "features": [], "smart_price": null,
+                "translations": {"en": {"title": "Dress"}, "ja": {"title": "ドレス"}, "ko": {"title": "드레스"}, "zh": zh}
+            })
+        };
+        let e = validate_enrichment(&reply(json!({"title": "连衣裙", "bio": "说明"})), &known, false, &json!({})).unwrap();
+        assert_eq!(e.translations["zh"], json!({"title": "连衣裙", "bio": "说明", "variations": {}}));
+        // missing or invalid zh: no error, no zh entry, or the earlier one kept
+        let e = validate_enrichment(&reply(Value::Null), &known, false, &json!({})).unwrap();
+        assert!(e.translations.get("zh").is_none());
+        let old = json!({"zh": {"title": "旧", "bio": "", "variations": {}}});
+        let e = validate_enrichment(&reply(json!({"title": ""})), &known, false, &old).unwrap();
+        assert_eq!(e.translations["zh"], old["zh"]);
     }
 
     #[test]

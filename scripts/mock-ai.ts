@@ -32,7 +32,7 @@ Bun.serve({
         quest_compatible: "No",
         smart_price: 500,
         smart_price_reason: "mock",
-        translations: { en: t("[en] "), ja: t(""), ko: t("[ko] ") },
+        translations: { en: t("[en] "), ja: t(""), ko: t("[ko] "), zh: t("[zh] ") },
         ...(partial ? {} : { original_language: "ja" }),
         features: ["liltoon"],
       };
