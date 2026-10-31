@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type Avatar, avatarName } from "@/lib/catalog";
+import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
 import { useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -105,7 +105,7 @@ export function AvatarStrip({
           >
             {a.image_url && (
               <img
-                src={a.image_url}
+                src={imageSrc(a.image_url, "300x300_a2_g5")}
                 alt=""
                 loading="lazy"
                 className="size-full object-cover"

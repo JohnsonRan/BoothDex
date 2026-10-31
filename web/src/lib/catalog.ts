@@ -106,8 +106,24 @@ export function imgUrl(
   const b = it.booth_images?.[i];
   if (b) return b.replace("https://booth.pximg.net/", `/img/b/${size}/`);
   const m = it.media?.[i];
-  const sha = m?.match(/\/booth\/([0-9a-f]{40})\.webp$/)?.[1];
-  return sha ? `/img/v/${sha}.webp` : "";
+  return m && ARCHIVED.test(m) ? imageSrc(m) : "";
+}
+const ARCHIVED = /\/booth\/([0-9a-f]{40})\.webp$/;
+/** Avatar thumbnails and shop icons: Booth images through our proxy, VRCatalogue CDN links (gone) from our archive. */
+export function imageSrc(
+  u: string | null | undefined,
+  size: Size = "72x72_a2_g5",
+): string {
+  if (!u) return "";
+  const sha = u.match(ARCHIVED)?.[1];
+  if (sha) return `/img/v/${sha}.webp`;
+  // already-sized links (shop icons under /c/48x48/) load from Booth as they are
+  if (
+    u.startsWith("https://booth.pximg.net/") &&
+    !u.startsWith("https://booth.pximg.net/c/")
+  )
+    return u.replace("https://booth.pximg.net/", `/img/b/${size}/`);
+  return u;
 }
 export const imageCount = (it: Pick<Item, "booth_images" | "media">) =>
   Math.max(it.booth_images?.length ?? 0, it.media?.length ?? 0);

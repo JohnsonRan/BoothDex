@@ -6,6 +6,7 @@ import {
   FEATURES,
   type Feature,
   type Item,
+  imageSrc,
   imgUrl,
   isNew,
   priceOf,
@@ -79,7 +80,7 @@ export const ItemCard = memo(function ItemCard({
             <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
               {item.author_icon && (
                 <img
-                  src={item.author_icon}
+                  src={imageSrc(item.author_icon)}
                   alt=""
                   loading="lazy"
                   className="size-4 shrink-0 rounded-full bg-muted"

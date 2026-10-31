@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   DEFAULT_FILTERS,
   filtersToQuery,
+  imageSrc,
   imgUrl,
   parseFilters,
   priceText,
@@ -104,4 +105,20 @@ test("prices prefer the inferred price", () => {
   expect(priceText({ smart_price: 0, price_jpy: 500 })).toBe("免费");
   expect(priceText({ smart_price: null, price_jpy: 1200 })).toBe("¥1,200");
   expect(priceText({ smart_price: null, price_jpy: null })).toBe("—");
+});
+
+test("imageSrc avoids the closed VRCatalogue CDN", () => {
+  const sha = "b".repeat(40);
+  expect(imageSrc(`https://cdn.vrcatalogue.com/booth/${sha}.webp`)).toBe(
+    `/img/v/${sha}.webp`,
+  );
+  expect(imageSrc("https://booth.pximg.net/u/i/1/a.jpg")).toBe(
+    "/img/b/72x72_a2_g5/u/i/1/a.jpg",
+  );
+  expect(imageSrc("https://booth.pximg.net/u/i/1/a.jpg", "300x300_a2_g5")).toBe(
+    "/img/b/300x300_a2_g5/u/i/1/a.jpg",
+  );
+  const icon = "https://booth.pximg.net/c/48x48/users/1/icon_image/x.jpg";
+  expect(imageSrc(icon)).toBe(icon);
+  expect(imageSrc(null)).toBe("");
 });

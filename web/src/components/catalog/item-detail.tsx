@@ -32,6 +32,7 @@ import {
   type Feature,
   type Item,
   imageCount,
+  imageSrc,
   imgUrl,
   priceOf,
   type SearchResult,
@@ -245,7 +246,7 @@ function Body({
             <div className="flex items-center gap-2.5 pr-10">
               {item.author_icon && (
                 <img
-                  src={item.author_icon}
+                  src={imageSrc(item.author_icon)}
                   alt=""
                   className="size-8 rounded-full bg-muted"
                 />
@@ -357,7 +358,7 @@ function Body({
               >
                 {myAvatar.image_url && (
                   <img
-                    src={myAvatar.image_url}
+                    src={imageSrc(myAvatar.image_url)}
                     alt=""
                     className="size-8 rounded-lg object-cover"
                   />
@@ -430,7 +431,7 @@ function Body({
                     >
                       {a.image_url && (
                         <img
-                          src={a.image_url}
+                          src={imageSrc(a.image_url)}
                           alt=""
                           loading="lazy"
                           className="size-6 rounded-full object-cover"

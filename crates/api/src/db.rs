@@ -110,7 +110,7 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
 pub async fn load_items(pool: &PgPool, ids: &[i64]) -> Result<Vec<Value>> {
     let rows: Vec<(i64, Value)> = sqlx::query_as(
         "select i.id, to_jsonb(i) || jsonb_build_object(
-            'linked_avatars', coalesce((select jsonb_agg(jsonb_build_object('slug', a.slug, 'en', a.name_en, 'ja', a.name_ja, 'ko', a.name_ko, 'image_url', a.image_url) order by a.slug)
+            'linked_avatars', coalesce((select jsonb_agg(jsonb_build_object('slug', a.slug, 'en', a.name_en, 'ja', a.name_ja, 'ko', a.name_ko, 'image_url', coalesce((select b.images[1] from booth_images b where b.item_id = a.avatar_item_id), a.image_url)) order by a.slug)
                                from item_avatars ia join avatars a on a.slug = ia.avatar_slug where ia.item_id = i.id), '[]'),
             'categories', coalesce((select jsonb_agg(jsonb_build_object('slug', ic.category_slug, 'is_primary', ic.is_primary))
                                from item_categories ic where ic.item_id = i.id), '[]'),

@@ -12,7 +12,13 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { api } from "@/lib/api";
-import { type Avatar, avatarName, imgUrl, tagName } from "@/lib/catalog";
+import {
+  type Avatar,
+  avatarName,
+  imageSrc,
+  imgUrl,
+  tagName,
+} from "@/lib/catalog";
 import { useSettings } from "@/lib/settings";
 
 type PaletteResult = {
@@ -145,7 +151,7 @@ export function CommandPalette({
                     >
                       {a.image_url && (
                         <img
-                          src={a.image_url}
+                          src={imageSrc(a.image_url)}
                           alt=""
                           className="size-8 rounded-md object-cover"
                         />
@@ -197,7 +203,7 @@ export function CommandPalette({
                     >
                       {a.image_url ? (
                         <img
-                          src={a.image_url}
+                          src={imageSrc(a.image_url)}
                           alt=""
                           className="size-8 rounded-full object-cover"
                         />
