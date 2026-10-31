@@ -4,6 +4,7 @@ import { Coins, Languages, Moon, Settings2, Sun, Type } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -39,7 +40,7 @@ export function SettingsMenu() {
           <Settings2 className="size-4" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-60">
+      <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel>{t("settings.title")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuSub>
@@ -124,6 +125,38 @@ export function SettingsMenu() {
             {t("settings.light")}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <div className="space-y-1 p-1 text-[11px] text-muted-foreground">
+          <div className="px-1.5 pt-0.5">
+            © 2026 BoothDex contributors · AGPL-3.0-or-later
+          </div>
+          <div className="flex items-center justify-between gap-1">
+            <DropdownMenuItem
+              asChild
+              className="h-6 px-1.5 text-[11px] text-muted-foreground"
+            >
+              <a
+                href="https://github.com/JohnsonRan/BoothDex"
+                target="_blank"
+                rel="noopener"
+              >
+                {t("settings.source")}
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              asChild
+              className="h-6 px-1.5 text-[11px] text-muted-foreground"
+            >
+              <a
+                href="https://hyperos.mi.com/font/"
+                target="_blank"
+                rel="noopener"
+              >
+                {t("settings.fontCredit")}
+              </a>
+            </DropdownMenuItem>
+          </div>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

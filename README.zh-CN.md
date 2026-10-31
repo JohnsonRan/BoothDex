@@ -123,6 +123,7 @@ btags exbtags sc scp bc if free pmin pmax range from to asup gender`。其他接
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs):筛选位图
 - [foyer](https://github.com/foyer-rs/foyer):图片缓存
 - [shadcn/ui](https://ui.shadcn.com):界面组件
+- [MiSans](https://hyperos.mi.com/font/):小米系统界面字体
 
 ## 许可证
 

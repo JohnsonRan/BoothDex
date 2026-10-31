@@ -187,6 +187,8 @@ const zh = {
   "settings.theme": "主题",
   "settings.dark": "深色",
   "settings.light": "浅色",
+  "settings.fontCredit": "字体：MiSans（小米）",
+  "settings.source": "源代码",
 };
 
 export type MessageKey = keyof typeof zh;
@@ -373,6 +375,8 @@ const en: Dict = {
   "settings.theme": "Theme",
   "settings.dark": "Dark",
   "settings.light": "Light",
+  "settings.fontCredit": "Font: MiSans (Xiaomi)",
+  "settings.source": "Source code",
 };
 
 const ja: Dict = {
@@ -557,6 +561,8 @@ const ja: Dict = {
   "settings.theme": "テーマ",
   "settings.dark": "ダーク",
   "settings.light": "ライト",
+  "settings.fontCredit": "フォント：MiSans（Xiaomi）",
+  "settings.source": "ソースコード",
 };
 
 const ko: Dict = {
@@ -740,6 +746,8 @@ const ko: Dict = {
   "settings.theme": "테마",
   "settings.dark": "다크",
   "settings.light": "라이트",
+  "settings.fontCredit": "글꼴: MiSans (Xiaomi)",
+  "settings.source": "소스 코드",
 };
 
 export const MESSAGES: Record<UiLang, Dict> = { zh, en, ja, ko };

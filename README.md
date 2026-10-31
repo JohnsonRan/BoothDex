@@ -134,6 +134,7 @@ by age; `range` also accepts `7d`, `30d` and `90d`.
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs): filter bitmaps
 - [foyer](https://github.com/foyer-rs/foyer): image cache
 - [shadcn/ui](https://ui.shadcn.com): interface components
+- [MiSans](https://hyperos.mi.com/font/): interface font by Xiaomi
 
 ## License
 
