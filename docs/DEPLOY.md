@@ -113,8 +113,9 @@ docker compose exec worker worker once incremental '{"max_pages": 5000, "full": 
 
 The site is usable while it runs (the api reloads as items arrive). Crawled items have no AI categories, avatar
 links or translations until the `enrich` job has handled them. It runs hourly once the AI provider is configured,
-200 items per run, and queues itself again while items are left, so a backlog is worked through in one go (other
-jobs still run between batches). At ~200k items, check your provider's price per call first: pausing the schedule
+200 items per run, and queues itself again while items are left, so a backlog is worked through in one go. The
+worker runs one job at a time per lane: crawls (Booth), AI (`enrich`, `localize`) and `embed` run side by side,
+and `embed` waits while an `enrich` job is queued or running. At ~200k items, check your provider's price per call first: pausing the schedule
 does not stop a chain that has started; cancel the running or queued `enrich` job in the admin console for that.
 
 ### Semantic search (optional)

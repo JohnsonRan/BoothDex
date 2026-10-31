@@ -1,4 +1,5 @@
-//! Background worker: runs crawl jobs one at a time (polite to Booth), from the `jobs` queue and `job_schedules`.
+//! Background worker: runs jobs from the `jobs` queue and `job_schedules`, one at a time per lane (see `lane`):
+//! crawls stay serial (polite to Booth) while AI and embedding jobs run alongside them.
 //!   worker            daemon: enqueue due schedules, claim queued jobs, heartbeat into worker_status
 //!   worker once <kind> [params-json]   run a single job now (still recorded in `jobs`)
 //! Job kinds: incremental (new items + image links), details (items missing images), refresh (re-check stalest),
@@ -56,6 +57,9 @@ async fn execute(pool: &PgPool, booth: &Booth, id: i64, kind: &str, params: &Val
         Ok(s) => (true, Some(s.clone()), None),
         Err(e) => (false, None, Some(format!("{e:#}"))),
     };
+    // one transaction: a continuation shows up the moment its parent ends, so the embed lane never sees a gap
+    // without a live enrich job (and the unique index checks per statement, so the insert doesn't collide)
+    let mut tx = pool.begin().await?;
     let status: String = sqlx::query_scalar(
         "update jobs set
             status = case when not $2 then 'failed' when status = 'cancelling' then 'cancelled' else 'succeeded' end,
@@ -69,19 +73,29 @@ async fn execute(pool: &PgPool, booth: &Booth, id: i64, kind: &str, params: &Val
     .bind(ok)
     .bind(&summary)
     .bind(&error)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
-    ctx.log(&format!("{status}: {}", summary.or(error).unwrap_or_default())).await?;
-    println!("job {id} {kind} {status}");
     if chain && ctx.again && status == "succeeded" {
         sqlx::query("insert into jobs (kind, params, created_by) values ($1, $2, $3) on conflict do nothing")
             .bind(kind)
             .bind(params)
             .bind(format!("job {id}"))
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
     }
+    tx.commit().await?;
+    ctx.log(&format!("{status}: {}", summary.or(error).unwrap_or_default())).await?;
+    println!("job {id} {kind} {status}");
     Ok(())
+}
+
+/// Jobs in one lane run one at a time; lanes run side by side. Grouped by the outside service they load.
+fn lane(kind: &str) -> &str {
+    match kind {
+        "incremental" | "details" | "refresh" | "sweep" => "booth",
+        "enrich" | "localize" => "ai",
+        other => other,
+    }
 }
 
 async fn daemon(pool: PgPool, booth: Arc<Booth>) -> Result<()> {
@@ -90,6 +104,8 @@ async fn daemon(pool: PgPool, booth: Arc<Booth>) -> Result<()> {
     sqlx::query("update worker_status set started_at = now(), version = $1").bind(env!("CARGO_PKG_VERSION")).execute(&pool).await?;
     tokio::spawn(heartbeat(pool.clone(), booth.clone()));
     println!("worker running");
+    let mut running = tokio::task::JoinSet::new();
+    let mut busy: Vec<String> = Vec::new(); // lanes with a job running
     loop {
         // the partial unique index keeps one live job per kind, so a busy kind just skips its tick
         sqlx::query(
@@ -99,20 +115,43 @@ async fn daemon(pool: PgPool, booth: Arc<Booth>) -> Result<()> {
         )
         .execute(&pool)
         .await?;
+        // oldest queued job whose lane is free; embed waits until no enrich job is live, because enrichment
+        // clears the vectors of the items it touches and they would be embedded twice
+        let busy_kinds: Vec<&str> = ["incremental", "details", "refresh", "sweep", "enrich", "localize", "embed"]
+            .into_iter()
+            .filter(|k| busy.iter().any(|l| l == lane(k)))
+            .collect();
         let claimed: Option<(i64, String, Value)> = sqlx::query_as(
             "update jobs set status = 'running', started_at = now()
-             where id = (select id from jobs where status = 'queued' order by created_at limit 1 for update skip locked)
+             where id = (select id from jobs where status = 'queued' and kind <> all($1)
+                           and not (kind = 'embed' and exists (select 1 from jobs e where e.kind = 'enrich' and e.status in ('queued', 'running', 'cancelling')))
+                         order by created_at limit 1 for update skip locked)
              returning id, kind, params",
         )
+        .bind(&busy_kinds)
         .fetch_optional(&pool)
         .await?;
-        match claimed {
-            Some((id, kind, params)) => {
+        if let Some((id, kind, params)) = claimed {
+            busy.push(lane(&kind).to_owned());
+            let (pool, booth) = (pool.clone(), booth.clone());
+            running.spawn(async move {
                 if let Err(e) = execute(&pool, &booth, id, &kind, &params, true).await {
                     eprintln!("job {id}: {e:#}");
                 }
+                kind
+            });
+            continue; // another lane may have work too
+        }
+        tokio::select! {
+            done = running.join_next(), if !running.is_empty() => {
+                match done {
+                    Some(Ok(kind)) => busy.retain(|l| l != lane(&kind)),
+                    // a panicked job leaves its lane marked busy, so stop and let the container restart us
+                    Some(Err(e)) => anyhow::bail!("job task failed: {e}"),
+                    None => {}
+                }
             }
-            None => tokio::time::sleep(Duration::from_secs(5)).await,
+            _ = tokio::time::sleep(Duration::from_secs(5)) => {}
         }
     }
 }

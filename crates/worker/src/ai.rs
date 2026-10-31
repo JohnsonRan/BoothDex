@@ -463,6 +463,8 @@ mod tests {
 
     #[test]
     fn request_sends_reasoning_effort_as_configured() {
+        // the binary installs it in Booth::new; alone, this test must do it itself
+        rustls::crypto::ring::default_provider().install_default().ok();
         let mut c = catalogue_core::settings::resolve(&json!({ "base_url": "http://x/v1", "model": "m", "api_key": "k" }), |_| None);
         let ai = Ai::from_config(&c).unwrap().unwrap();
         assert_eq!(ai.body("s", "u")["reasoning_effort"], "none");

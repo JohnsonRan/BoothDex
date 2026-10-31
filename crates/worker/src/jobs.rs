@@ -378,7 +378,7 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     }
     if ok > 0 {
         bump_catalog(ctx.pool).await?;
-        // work through a backlog batch by batch; other queued jobs (crawls, embed) still run in between.
+        // work through a backlog batch by batch; a localize queued meanwhile runs between batches.
         // a batch with no success stops the chain, and items failing 3 times drop out of the query
         ctx.again = sqlx::query_scalar("select exists (select 1 from items where needs_enrichment and status = 'ok' and enrich_failures < 3)")
             .fetch_one(ctx.pool)
