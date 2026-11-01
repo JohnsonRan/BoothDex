@@ -212,7 +212,7 @@ function Body({
                     ),
                   )
                 }
-                className="flex aspect-square snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] lg:mx-auto lg:max-h-[calc(92dvh-14rem)] [&::-webkit-scrollbar]:hidden"
+                className="flex aspect-square max-h-[56dvh] snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] mx-auto lg:max-h-[calc(92dvh-14rem)] [&::-webkit-scrollbar]:hidden"
               >
                 {Array.from({ length: count }, (_, i) => (
                   // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users page with arrow keys
