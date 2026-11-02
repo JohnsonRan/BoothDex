@@ -114,7 +114,7 @@ $EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, and (with a bundl
 | Variable | Used by | Notes |
 |---|---|---|
 | `WEB_LISTEN` | `web` | Host `[address:]port` for the site; set `127.0.0.1:3100` when the reverse proxy runs on the same host |
-| `SITE_URL` | `api` | Public origin, e.g. `https://boothdex.example.com` (used in RSS feed links) |
+| `SITE_URL` | `api`, `web` | Public HTTP(S) origin without a path, e.g. `https://boothdex.example.com`; used in RSS links, canonical/share URLs, `robots.txt` and `sitemap.xml`. Read at runtime, so changing domains needs no image rebuild |
 | `COOKIE_SECURE` | `api` | `1` (default): session cookies over HTTPS only. Set `0` only while testing over plain `http://` |
 | `POSTGRES_PASSWORD` | `postgres`, `api`, `worker` | Long random secret, e.g. `openssl rand -base64 32` |
 | `ADMIN_USERNAMES` | `api` | Comma-separated usernames synced at every `api` start (unlisted accounts lose admin) |
@@ -224,6 +224,7 @@ Safe to lose (rebuilt automatically): `imgcache` (re-fetched from BOOTH on deman
 - [ ] `WEB_LISTEN` bound to `127.0.0.1:3100` behind your TLS proxy, with `COOKIE_SECURE=1`
 - [ ] `ADMIN_USERNAMES` lists only your account
 - [ ] `https://<domain>/api/categories` returns JSON; `/img/v/<sha1>.webp` serves an archived image (if using a bundle)
+- [ ] `/robots.txt` points to `/sitemap.xml` on your public domain; the sitemap lists only the homepage. Submit it to your search engine's webmaster tools. Search/filter/item-modal URLs use `noindex`; `/admin` and `/api/` are excluded from crawling (not an access-control mechanism)
 - [ ] `/admin` shows `worker` online and a succeeded `incremental` job within an hour
 - [ ] Off-server daily `pg_dump` backup is scheduled
 - [ ] AI provider is configured (otherwise newly crawled items lack smart categories, avatar-fit links and translated titles)

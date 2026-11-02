@@ -3,7 +3,7 @@ import { AdminConsole } from "./admin-console";
 
 export const metadata: Metadata = {
   title: "管理后台 · BoothDex",
-  robots: { index: false },
+  robots: { index: false, follow: false },
 };
 
 export default function AdminPage() {
