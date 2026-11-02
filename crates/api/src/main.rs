@@ -485,20 +485,12 @@ async fn nearest(s: &AppState, vector: &[f32], models: &[String]) -> Option<Vec<
     let mut tx = s.pool.begin().await.ok()?;
     // HNSW returns at most ef_search rows; the default 40 is too few to fill a few pages
     sqlx::query("set local hnsw.ef_search = 200").execute(&mut *tx).await.ok()?;
-    let sql = if models.is_empty() {
-        "select id, 1 - (embedding <=> $1::halfvec) from items where embedding is not null and status = 'ok'
-         order by embedding <=> $1::halfvec limit 200"
-    } else {
+    if !models.is_empty() {
         // iterative scan: the index keeps going until enough fitting items turn up instead of filtering its
         // first 200 candidates (Shinano: ~50 ms, vs ~300 ms for an exact scan of its 17k items)
         sqlx::query("set local hnsw.iterative_scan = relaxed_order").execute(&mut *tx).await.ok()?;
-        "select id, 1 - (embedding <=> $1::halfvec) from items where embedding is not null and status = 'ok'
-           and id in (select item_id from item_avatars where avatar_slug = any($2))
-         order by embedding <=> $1::halfvec limit 400"
-    };
-    let mut rows: Vec<(i64, f64)> = sqlx::query_as(sql)
-        .bind(catalogue_core::embed::to_pg(vector))
-        .bind(models)
+    }
+    let mut rows: Vec<(i64, f64)> = nearest_query(vector, models)
         .fetch_all(&mut *tx)
         .await
         .map_err(|e| eprintln!("semantic search: {e}"))
@@ -507,6 +499,19 @@ async fn nearest(s: &AppState, vector: &[f32], models: &[String]) -> Option<Vec<
     rows.sort_by(|a, b| b.1.total_cmp(&a.1));
     let cutoff = semantic_cutoff(rows.first()?.1, !models.is_empty());
     Some(rows.into_iter().take_while(|r| r.1 >= cutoff).map(|r| r.0).collect())
+}
+
+fn nearest_query<'a>(vector: &[f32], models: &'a [String]) -> sqlx::query::QueryAs<'a, sqlx::Postgres, (i64, f64), sqlx::postgres::PgArguments> {
+    let sql = if models.is_empty() {
+        "select id, 1 - (embedding <=> $1::halfvec) from items where embedding is not null and status = 'ok'
+         order by embedding <=> $1::halfvec limit 200"
+    } else {
+        "select id, 1 - (embedding <=> $1::halfvec) from items where embedding is not null and status = 'ok'
+           and id in (select item_id from item_avatars where avatar_slug = any($2))
+         order by embedding <=> $1::halfvec limit 400"
+    };
+    let query = sqlx::query_as(sql).bind(catalogue_core::embed::to_pg(vector));
+    if models.is_empty() { query } else { query.bind(models) }
 }
 
 /// Similarities from Qwen3-Embedding-4B sit in a narrow band (about 0.65-0.82 for the 200 nearest, even for
@@ -828,6 +833,17 @@ mod tests {
         assert_eq!(super::item_ids("ids=1,2+3%2C4%2B5%206&x=7"), [1, 2, 3, 4, 5, 6]);
         assert_eq!(super::item_ids(&format!("ids={}", (1..=150).map(|i| i.to_string()).collect::<Vec<_>>().join(","))).len(), 100);
         assert!(super::item_ids("q=1").is_empty());
+    }
+
+    #[test]
+    fn nearest_binds_only_parameters_used_by_each_query() {
+        use sqlx::{Arguments, Execute};
+
+        for models in [vec![], vec!["shinano".to_owned()]] {
+            let mut query = super::nearest_query(&[0.5; catalogue_core::embed::DIMS], &models);
+            assert_eq!(query.take_arguments().unwrap().unwrap().len(), if models.is_empty() { 1 } else { 2 });
+            assert_eq!(query.sql().as_str().contains("$2"), !models.is_empty());
+        }
     }
 
     #[test]
