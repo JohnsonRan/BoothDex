@@ -10,11 +10,11 @@ use anyhow::Result;
 use lindera::{dictionary::load_dictionary, mode::Mode, segmenter::Segmenter};
 use lindera_tantivy::tokenizer::LinderaTokenizer;
 use roaring::RoaringBitmap;
-use tantivy::collector::TopDocs;
+use tantivy::collector::{Collector, DocSetCollector, SegmentCollector};
 use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
 use tantivy::schema::{FAST, Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions};
 use tantivy::tokenizer::{LowerCaser, NgramTokenizer, SimpleTokenizer, TextAnalyzer};
-use tantivy::{Index, IndexReader, TantivyDocument, Term};
+use tantivy::{DocAddress, DocId, Index, IndexReader, Score, SegmentOrdinal, SegmentReader, TantivyDocument, Term};
 
 pub struct TextDoc {
     pub title: String,
@@ -31,7 +31,42 @@ pub struct TextIndex {
     seg_docs: Vec<Vec<u32>>,
     /// title + tags, compacted (see `compact`), for substring verification
     haystack: Vec<String>,
-    doc_count: usize,
+}
+
+struct ScoredDocs;
+
+struct ScoredSegment {
+    segment_ord: SegmentOrdinal,
+    hits: Vec<(Score, DocAddress)>,
+}
+
+impl Collector for ScoredDocs {
+    type Fruit = Vec<(Score, DocAddress)>;
+    type Child = ScoredSegment;
+
+    fn for_segment(&self, segment_ord: SegmentOrdinal, _reader: &SegmentReader) -> tantivy::Result<Self::Child> {
+        Ok(ScoredSegment { segment_ord, hits: Vec::new() })
+    }
+
+    fn requires_scoring(&self) -> bool {
+        true
+    }
+
+    fn merge_fruits(&self, fruits: Vec<Self::Fruit>) -> tantivy::Result<Self::Fruit> {
+        Ok(fruits.into_iter().flatten().collect())
+    }
+}
+
+impl SegmentCollector for ScoredSegment {
+    type Fruit = Vec<(Score, DocAddress)>;
+
+    fn collect(&mut self, doc_id: DocId, score: Score) {
+        self.hits.push((score, DocAddress { segment_ord: self.segment_ord, doc_id }));
+    }
+
+    fn harvest(self) -> Self::Fruit {
+        self.hits
+    }
 }
 
 fn text_field(tokenizer: &str, positions: bool) -> TextOptions {
@@ -160,7 +195,7 @@ impl TextIndex {
         parser.set_field_boost(title, 3.0);
         parser.set_field_boost(tags, 2.0);
         parser.set_field_boost(author, 2.0);
-        Ok(Self { reader, parser, gram, seg_docs, haystack, doc_count })
+        Ok(Self { reader, parser, gram, seg_docs, haystack })
     }
 
     /// Matching catalog docs with a relevance score (substring-only hits get a small floor score).
@@ -170,7 +205,7 @@ impl TextIndex {
         let mut scores = HashMap::new();
 
         let (query, _errors) = self.parser.parse_query_lenient(&query_words(q));
-        for (score, addr) in searcher.search(&query, &TopDocs::with_limit(self.doc_count.max(1)).order_by_score())? {
+        for (score, addr) in searcher.search(&query, &ScoredDocs)? {
             let d = self.seg_docs[addr.segment_ord as usize][addr.doc_id as usize];
             hits.insert(d);
             scores.insert(d, score);
@@ -200,7 +235,7 @@ impl TextIndex {
                     })
                     .collect(),
             );
-            for (_, addr) in searcher.search(&gram_query, &TopDocs::with_limit(self.doc_count.max(1)).order_by_score())? {
+            for addr in searcher.search(&gram_query, &DocSetCollector)? {
                 let d = self.seg_docs[addr.segment_ord as usize][addr.doc_id as usize];
                 let hay = &self.haystack[d as usize];
                 if !hits.contains(d) && needles.iter().all(|w| hay.contains(w.as_str())) {
