@@ -71,6 +71,11 @@ export type Item = {
   > & { original_language?: string };
   linked_avatars: Avatar[];
   needs_enrichment?: boolean;
+  avatar_slug?: string | null;
+  supported?: boolean;
+  gender?: "female" | "male" | null;
+  last_listed_at?: string | null;
+  enrich_failures?: number;
 };
 export type SearchResult = {
   count: number;

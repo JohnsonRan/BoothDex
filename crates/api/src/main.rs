@@ -575,10 +575,12 @@ async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cli
         .await?
         .into_iter()
         .map(|it| {
+            let image = it.booth_images.as_ref().and_then(|imgs| imgs.first().cloned())
+                .or_else(|| it.media.first().cloned());
             json!({
-                "id": it["id"], "title": it["title"], "author_name": it["author_name"],
-                "price_jpy": it["price_jpy"], "smart_price": it["smart_price"],
-                "image": it["booth_images"].get(0).or(it["media"].get(0)),
+                "id": it.id, "title": it.title, "author_name": it.author_name,
+                "price_jpy": it.price_jpy, "smart_price": it.smart_price,
+                "image": image,
             })
         })
         .collect();
