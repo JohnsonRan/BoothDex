@@ -9,8 +9,7 @@ const IMG_ORIGIN = process.env.IMG_ORIGIN ?? "http://127.0.0.1:3001";
 const nextConfig: NextConfig = {
   // self-contained server for the container image (deploy/web.Dockerfile)
   output: "standalone",
-  // no gzip here: it would hold back the admin console's server-sent events; the front proxy can compress
-  compress: false,
+  // Keep default gzip for HTML/JS/CSS; the API's SSE uses Cache-Control: no-transform to bypass it.
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

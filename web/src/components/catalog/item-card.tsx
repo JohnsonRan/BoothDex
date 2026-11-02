@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, Heart } from "lucide-react";
-import { memo } from "react";
+import { memo, useState } from "react";
 import {
   FEATURES,
   type Feature,
@@ -31,6 +31,7 @@ export const ItemCard = memo(function ItemCard({
   onFavourite,
 }: Props) {
   const { t, price, text } = useSettings();
+  const [preview, setPreview] = useState(false);
   const second = imgUrl(item, 1);
   const free = priceOf(item) === 0;
   return (
@@ -43,7 +44,12 @@ export const ItemCard = memo(function ItemCard({
           viewed ? `${item.title} (${t("viewed.badge")})` : item.title
         }
       >
-        <div className="relative aspect-square overflow-hidden rounded-md bg-muted ring-1 ring-foreground/5">
+        <div
+          onPointerEnter={(e) => {
+            if (e.pointerType !== "touch") setPreview(true);
+          }}
+          className="relative aspect-square overflow-hidden rounded-md bg-muted ring-1 ring-foreground/5"
+        >
           <img
             src={imgUrl(item, 0)}
             alt=""
@@ -51,8 +57,8 @@ export const ItemCard = memo(function ItemCard({
             decoding="async"
             className="absolute inset-0 size-full object-cover transition-transform duration-500 [@media(hover:hover)]:group-hover:scale-[1.04]"
           />
-          {/* second image only on devices that can hover */}
-          {second && (
+          {/* Opacity alone still downloads the image; mount it only after hover. */}
+          {preview && second && (
             <img
               src={second}
               alt=""
@@ -89,7 +95,7 @@ export const ItemCard = memo(function ItemCard({
           </div>
         </div>
         <div className="space-y-1.5 px-0.5 pt-2 pb-1">
-          <h3 className="line-clamp-2 min-h-[2.8em] text-[13px] leading-[1.4] transition-colors [@media(hover:hover)]:group-hover:text-primary">
+          <h3 className="line-clamp-2 min-h-[2.8em] text-[13px] leading-[1.4] transition-colors [content-visibility:auto] [@media(hover:hover)]:group-hover:text-primary">
             {text(item, "title")}
           </h3>
           <div className="flex items-center justify-between gap-2">

@@ -170,7 +170,7 @@ function Tile({
       </div>
       <span
         className={cn(
-          "block truncate text-[11px] sm:text-xs",
+          "block min-h-[1.5em] truncate text-[11px] [content-visibility:auto] sm:text-xs",
           active ? "font-semibold text-foreground" : "text-muted-foreground",
         )}
       >

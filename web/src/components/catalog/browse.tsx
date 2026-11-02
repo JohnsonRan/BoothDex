@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -47,14 +48,19 @@ import {
 } from "@/lib/viewed";
 import { AccountMenu, type Me } from "./account-menu";
 import { AvatarStrip } from "./avatar-strip";
-import { CommandPalette } from "./command-palette";
 import { activeFilterCount, FilterPanel } from "./filter-panel";
 import { ItemCard } from "./item-card";
-import { ItemDetail } from "./item-detail";
 import { Logo } from "./logo";
 import { Pagination } from "./pagination";
 import { SearchTrace, type TraceMeta } from "./search-trace";
 import { SettingsMenu } from "./settings-menu";
+
+const ItemDetail = dynamic(() =>
+  import("./item-detail").then((mod) => mod.ItemDetail),
+);
+const CommandPalette = dynamic(() =>
+  import("./command-palette").then((mod) => mod.CommandPalette),
+);
 
 const PAGE_SIZE = 100;
 
@@ -111,9 +117,20 @@ export function Browse() {
   const shownItems = recent
     ? items.filter((it) => viewedSet.has(it.id))
     : items;
-  const [open, setOpen] = useState<Item | null>(null);
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  // undefined: never opened, so no dialog code is loaded. Once closed, keep it mounted for exit animation and focus return.
+  const [open, setOpen] = useState<Item | null>();
+  const [paletteOpen, setPaletteOpen] = useState<boolean>();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, []);
   // the page the API answered (it clamps one past the end) and how many there are
   const [shown, setShown] = useState({ page: 1, total: 1 });
   // the first page fetched for a search went without meaning-based matches: its other pages must too, or the
@@ -373,7 +390,7 @@ export function Browse() {
   useEffect(() => {
     if (!itemParam) {
       openedHere.current = false;
-      setOpen(null);
+      if (openRef.current) setOpen(null);
       return;
     }
     if (openRef.current?.id === itemParam || starting) return;
@@ -797,34 +814,38 @@ export function Browse() {
         </DrawerContent>
       </Drawer>
 
-      <ItemDetail
-        item={open}
-        myAvatar={myAvatar}
-        favourite={!!open && !!favs?.has(open.id)}
-        adult={filters.adult}
-        onClose={closeItem}
-        onFavourite={toggleFav}
-        onPickAvatar={(slug) => {
-          setOpen(null);
-          openedHere.current = false;
-          update({ avatar: slug });
-        }}
-        onSearch={(patch) => {
-          setOpen(null);
-          openedHere.current = false;
-          update({ q: "", author: "", sc: "", avatar: "", ...patch });
-        }}
-        onOpenItem={openItem}
-      />
-      <CommandPalette
-        open={paletteOpen}
-        onOpenChange={setPaletteOpen}
-        adult={filters.adult}
-        onQuery={(q) => update({ q })}
-        onAvatar={(slug) => update({ avatar: slug })}
-        onAuthor={(author) => update({ author, q: "", avatar: "" })}
-        onItem={openById}
-      />
+      {open !== undefined && (
+        <ItemDetail
+          item={open}
+          myAvatar={myAvatar}
+          favourite={!!open && !!favs?.has(open.id)}
+          adult={filters.adult}
+          onClose={closeItem}
+          onFavourite={toggleFav}
+          onPickAvatar={(slug) => {
+            setOpen(null);
+            openedHere.current = false;
+            update({ avatar: slug });
+          }}
+          onSearch={(patch) => {
+            setOpen(null);
+            openedHere.current = false;
+            update({ q: "", author: "", sc: "", avatar: "", ...patch });
+          }}
+          onOpenItem={openItem}
+        />
+      )}
+      {paletteOpen !== undefined && (
+        <CommandPalette
+          open={paletteOpen}
+          onOpenChange={setPaletteOpen}
+          adult={filters.adult}
+          onQuery={(q) => update({ q })}
+          onAvatar={(slug) => update({ avatar: slug })}
+          onAuthor={(author) => update({ author, q: "", avatar: "" })}
+          onItem={openById}
+        />
+      )}
     </div>
   );
 }

@@ -77,17 +77,6 @@ export function CommandPalette({
   };
 
   useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        onOpenChange(!open);
-      }
-    };
-    addEventListener("keydown", key);
-    return () => removeEventListener("keydown", key);
-  }, [open, onOpenChange]);
-
-  useEffect(() => {
     if (!q.trim()) return setRes(null);
     const ctl = new AbortController();
     const t = setTimeout(() => {
