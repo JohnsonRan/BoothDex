@@ -117,7 +117,7 @@ fn bigrams(s: &str) -> Vec<String> {
 
 impl TextIndex {
     /// Builds the index, or reuses one already on disk for exactly these docs.
-    /// `dir`: a directory specific to this catalogue version; `None` keeps the index in RAM (tests).
+    /// `dir`: index root; text content and format select a reusable subdirectory. `None` keeps it in RAM.
     /// An on-disk index is memory-mapped, so its pages live in the OS page cache instead of the heap,
     /// and a restart with an unchanged catalogue skips re-indexing.
     pub fn build(docs: impl ExactSizeIterator<Item = TextDoc>, dir: Option<&Path>, fingerprint: u64) -> Result<Self> {
@@ -131,11 +131,12 @@ impl TextIndex {
         let pairs = sb.add_text_field("pairs", text_field("simple", false));
         let schema = sb.build();
         let doc_count = docs.len();
+        let index_dir = dir.map(|d| d.join(format!("text-v{FORMAT}-{fingerprint:016x}")));
         // the marker records doc count and content fingerprint, so a half-written or stale index is never reused
-        let marker = dir.map(|d| d.join("READY"));
+        let marker = index_dir.as_ref().map(|d| d.join("READY"));
         let expected_marker = format!("v{FORMAT}:{doc_count}:{fingerprint:016x}");
         let reuse = marker.as_ref().is_some_and(|m| std::fs::read_to_string(m).ok().as_deref() == Some(&expected_marker));
-        let index = match dir {
+        let index = match index_dir.as_deref() {
             Some(d) if reuse => Index::open_in_dir(d)?,
             Some(d) => {
                 let _ = std::fs::remove_dir_all(d);
@@ -195,6 +196,20 @@ impl TextIndex {
         parser.set_field_boost(title, 3.0);
         parser.set_field_boost(tags, 2.0);
         parser.set_field_boost(author, 2.0);
+        // Only remove our own obsolete indexes, after the replacement is ready. Mapped files on Windows
+        // may remain until the old snapshot drops; cleanup retries on the next reload.
+        if let (Some(root), Some(current)) = (dir, &index_dir)
+            && let Ok(entries) = std::fs::read_dir(root)
+        {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                let owned = name.starts_with("text-v") || name.strip_prefix('v').is_some_and(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()));
+                if owned && entry.path() != *current {
+                    let _ = std::fs::remove_dir_all(entry.path());
+                }
+            }
+        }
         Ok(Self { reader, parser, gram, seg_docs, haystack })
     }
 
@@ -252,6 +267,71 @@ impl TextIndex {
 mod tests {
     use super::*;
 
+    #[test]
+    #[ignore = "manual release-mode performance comparison"]
+    fn benchmark_hot_text_search() {
+        use std::time::Instant;
+
+        let docs = || (0..20_000).map(|i| TextDoc {
+            title: format!("{} {}", ["Shinano Short Hair", "ShortHair for しなの", "ミルティナ用 ゴシックドレス", "Long Hair"][i % 4], i),
+            tags: "VRChat hair 衣装".into(),
+            author: format!("Author {}", i % 100),
+            bio: "Works on Shinano, makes short hair. VRChat avatar asset.".repeat(i % 3 + 1),
+        });
+        let root = std::env::temp_dir().join(format!("text-bench-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let start = Instant::now();
+        let idx = TextIndex::build(docs(), Some(&root), 0).unwrap();
+        let build_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let start = Instant::now();
+        let reused = TextIndex::build(docs(), Some(&root), 0).unwrap();
+        println!("index: docs=20000 build_ms={build_ms:.1} reuse_ms={:.1}", start.elapsed().as_secs_f64() * 1000.0);
+        let queries = ["hair", "short hair", "ミルティ", "VRChat"];
+        for q in queries {
+            let expected = top_docs_search(&idx, q);
+            assert_eq!(idx.search(q).unwrap(), expected);
+            assert_eq!(reused.search(q).unwrap(), expected);
+        }
+        let run = |legacy: bool, workers: usize| {
+            let start = Instant::now();
+            let mut samples = std::thread::scope(|scope| {
+                let handles: Vec<_> = (0..workers).map(|worker| {
+                    let idx = &idx;
+                    scope.spawn(move || {
+                        (0..24).map(|i| {
+                            let q = queries[(i + worker) % queries.len()];
+                            let start = Instant::now();
+                            if legacy {
+                                std::hint::black_box(top_docs_search(idx, q));
+                            } else {
+                                std::hint::black_box(idx.search(q).unwrap());
+                            }
+                            start.elapsed().as_secs_f64() * 1000.0
+                        }).collect::<Vec<_>>()
+                    })
+                }).collect();
+                handles.into_iter().flat_map(|h| h.join().unwrap()).collect::<Vec<_>>()
+            });
+            let qps = samples.len() as f64 / start.elapsed().as_secs_f64();
+            samples.sort_by(f64::total_cmp);
+            (samples[samples.len() / 2], samples[(samples.len() * 95).div_ceil(100) - 1], qps)
+        };
+        for workers in [1, 4] {
+            for optimized_first in [false, true] {
+                let (old, new) = if optimized_first {
+                    let new = run(false, workers);
+                    (run(true, workers), new)
+                } else {
+                    let old = run(true, workers);
+                    (old, run(false, workers))
+                };
+                println!("text: workers={workers} optimized_first={optimized_first} old_p50_ms={:.2} old_p95_ms={:.2} old_qps={:.1} new_p50_ms={:.2} new_p95_ms={:.2} new_qps={:.1} failures=0", old.0, old.1, old.2, new.0, new.1, new.2);
+            }
+        }
+        drop((idx, reused));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     fn doc(title: &str, tags: &str) -> TextDoc {
         TextDoc { title: title.into(), tags: tags.into(), author: String::new(), bio: String::new() }
     }
@@ -280,12 +360,15 @@ mod tests {
         let s1 = sample().collect::<Vec<_>>();
         let fp1 = fingerprint(&s1);
         drop(TextIndex::build(s1.into_iter(), Some(&dir), fp1).unwrap());
-        assert_eq!(std::fs::read_to_string(dir.join("READY")).unwrap(), format!("v{FORMAT}:3:{fp1:016x}"));
+        let index_dir = dir.join(format!("text-v{FORMAT}-{fp1:016x}"));
+        assert_eq!(std::fs::read_to_string(index_dir.join("READY")).unwrap(), format!("v{FORMAT}:3:{fp1:016x}"));
+        std::fs::write(index_dir.join("reused"), "keep").unwrap();
+        std::fs::create_dir(dir.join("unrelated")).unwrap();
         // reopened from disk: same results
         let reopened = TextIndex::build(sample(), Some(&dir), fp1).unwrap();
+        assert!(index_dir.join("reused").exists());
         assert_eq!(reopened.search("dress").unwrap().0.iter().collect::<Vec<_>>(), [1]);
         assert_eq!(reopened.search("ミルティ").unwrap().0.iter().collect::<Vec<_>>(), [0]);
-        drop(reopened);
         // same doc count (3), but changed content and fingerprint forces a rebuild
         let s_changed = vec![
             doc("ミルティナ用 ゴシックドレス", "衣装"),
@@ -296,6 +379,9 @@ mod tests {
         let changed = TextIndex::build(s_changed.into_iter(), Some(&dir), fp_changed).unwrap();
         assert_eq!(changed.search("beach").unwrap().0.iter().collect::<Vec<_>>(), [1]);
         assert_eq!(changed.search("bone").unwrap().0.iter().collect::<Vec<_>>(), Vec::<u32>::new());
+        assert_eq!(reopened.search("bone").unwrap().0.iter().collect::<Vec<_>>(), [1]);
+        assert!(dir.join("unrelated").exists());
+        drop(reopened);
         drop(changed);
         // a different doc count forces a rebuild instead of reusing a mismatched index
         let s_two = vec![doc("Gothic Bone Dress", "VRChat"), doc("x", "y")];

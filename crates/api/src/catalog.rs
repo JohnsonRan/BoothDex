@@ -98,7 +98,7 @@ enum Group {
     Gender,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, Debug, PartialEq)]
 pub struct Facets {
     #[serde(rename = "boothCounts")]
     pub booth: BTreeMap<String, u64>,
@@ -108,6 +108,7 @@ pub struct Facets {
     pub features: BTreeMap<String, u64>,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct SearchResult {
     pub count: u64,
     pub page: usize,
@@ -126,6 +127,7 @@ impl Catalog {
         let mut hasher = DefaultHasher::new();
         docs.len().hash(&mut hasher);
         for d in &docs {
+            d.id.hash(&mut hasher);
             d.title.hash(&mut hasher);
             d.titles_translated.hash(&mut hasher);
             d.booth_tags.hash(&mut hasher);
@@ -514,6 +516,68 @@ mod tests {
         d[5].supported = true;
         d[5].gender = Some("female".into());
         Catalog::build(d, 0, None).unwrap()
+    }
+
+    #[test]
+    fn metadata_reload_reuses_text_index_and_preserves_complete_results() {
+        let root = std::env::temp_dir().join(format!("catalog-reuse-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let inputs = |changed: bool| {
+            (1..=32).map(|id| {
+                let mut d = doc(id);
+                d.title = if id % 2 == 0 { "Short Hair".into() } else { "ゴシックドレス".into() };
+                d.titles_translated = vec!["衣装 ヘア".into()];
+                d.avatars = vec!["shinano".into()];
+                d.categories = vec![("clothing".into(), true)];
+                d.likes = if changed { 100 - id as i32 } else { id as i32 };
+                d.price = Some(if changed && id % 3 == 0 { 0 } else { 1000 });
+                d.is_adult = changed && id % 5 == 0;
+                d.features = if changed && id % 4 == 0 { vec!["ma".into()] } else { vec![] };
+                d
+            }).collect()
+        };
+        let original = Catalog::build(inputs(false), 0, Some(&root)).unwrap();
+        let index_dir = std::fs::read_dir(&root).unwrap().next().unwrap().unwrap().path();
+        let sentinel = index_dir.join("reused");
+        std::fs::write(&sentinel, "keep").unwrap();
+        let cached = Catalog::build(inputs(true), 0, Some(&root)).unwrap();
+        let rebuilt = Catalog::build(inputs(true), 0, None).unwrap();
+        assert!(sentinel.exists(), "metadata changes must not rebuild the text index");
+        let models = vec!["shinano".to_owned()];
+        let categories = vec!["clothing".to_owned()];
+        let semantic = Semantic { ids: &[32, 8, 2], categories: &categories, models: &models, rest: "hair" };
+        let favourites = cached.docs_for(&[2, 3, 4, 5, 6, 8, 32]);
+        for query in [
+            "", "q=hair", "q=ヘア", "q=ゴシック", "q=hair&pageSize=3&page=2",
+            "q=hair&sort=likes", "q=hair&sort=price&dir=asc", "q=hair&sort=title",
+            "q=hair&adult=include&if=ma", "q=hair&free=1", "q=hair&sc=clothing", "q=hair&v=favourites",
+        ] {
+            let p = Params::parse(query);
+            for sem in [None, Some(semantic)] {
+                assert_eq!(cached.search(&p, 0, Some(&favourites), sem).unwrap(), rebuilt.search(&p, 0, Some(&favourites), sem).unwrap(), "query {query:?}");
+            }
+        }
+        // Reusing disk files must not mutate an old snapshot still serving requests.
+        assert_ne!(original.search_plain(&Params::parse("free=1"), 0, None).unwrap().count, cached.search_plain(&Params::parse("free=1"), 0, None).unwrap().count);
+        drop((original, cached, rebuilt));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn text_index_identity_includes_item_ids_and_text_changes() {
+        let root = std::env::temp_dir().join(format!("catalog-identity-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut last = None;
+        for (id, title) in [(1, "Hair"), (2, "Hair"), (2, "Dress")] {
+            let mut d = doc(id);
+            d.title = title.into();
+            let c = Catalog::build(vec![d], 0, Some(&root)).unwrap();
+            let current = std::fs::read_dir(&root).unwrap().map(|e| e.unwrap().path()).find(|p| p.join("READY").exists()).unwrap();
+            assert_ne!(last.as_ref(), Some(&current));
+            assert_eq!(c.search_plain(&Params::parse(&format!("q={title}")), 0, None).unwrap().ids, [id]);
+            last = Some(current);
+        }
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
