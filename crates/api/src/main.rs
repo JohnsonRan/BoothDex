@@ -599,7 +599,9 @@ fn item_ids(query: &str) -> Vec<i64> {
 }
 
 fn urlencode(s: &str) -> String {
-    s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+    const ENCODE: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+        .remove(b'-').remove(b'_').remove(b'.').remove(b'~');
+    percent_encoding::utf8_percent_encode(s, ENCODE).to_string()
 }
 
 fn lookup(f: fn(&Snapshot) -> &Lookup) -> impl Fn(State<Arc<AppState>>, RawQuery) -> std::future::Ready<Json<Value>> + Clone {
@@ -792,6 +794,16 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn url_encoding_preserves_query_values() {
+        assert_eq!(super::urlencode(""), "");
+        assert_eq!(super::urlencode("AZaz09-_.~"), "AZaz09-_.~");
+        let value = "衣装 x+y&z=1/#?%";
+        let encoded = super::urlencode(value);
+        assert_eq!(encoded, "%E8%A1%A3%E8%A3%85%20x%2By%26z%3D1%2F%23%3F%25");
+        assert_eq!(super::Params::parse(&format!("q={encoded}")).get("q").as_deref(), Some(value));
+    }
+
     #[test]
     fn item_ids_accept_any_separator_encoding() {
         assert_eq!(super::item_ids("ids=1,2+3%2C4%2B5%206&x=7"), [1, 2, 3, 4, 5, 6]);
