@@ -37,15 +37,20 @@ pub struct LoginThrottle(Mutex<HashMap<String, (u32, Instant)>>);
 
 impl LoginThrottle {
     fn blocked(&self, key: &str) -> bool {
+        self.blocked_at(key, Instant::now())
+    }
+    fn blocked_at(&self, key: &str, now: Instant) -> bool {
         let map = self.0.lock().unwrap();
-        map.get(key).is_some_and(|(n, t)| *n >= MAX_FAILURES && t.elapsed() < LOCKOUT)
+        map.get(key).is_some_and(|(n, t)| *n >= MAX_FAILURES && now.duration_since(*t) < LOCKOUT)
     }
     fn fail(&self, key: &str) {
+        self.fail_at(key, Instant::now());
+    }
+    fn fail_at(&self, key: &str, now: Instant) {
         let mut map = self.0.lock().unwrap();
-        let e = map.entry(key.to_owned()).or_insert((0, Instant::now()));
-        if e.1.elapsed() >= LOCKOUT {
-            *e = (0, Instant::now());
-        }
+        // Keep every active window: evicting one would reset its login lockout.
+        map.retain(|_, (_, start)| now.duration_since(*start) < LOCKOUT);
+        let e = map.entry(key.to_owned()).or_insert((0, now));
         e.0 += 1;
     }
     fn clear(&self, key: &str) {
@@ -661,6 +666,44 @@ mod tests {
         assert!(t.blocked("x"));
         t.clear("x");
         assert!(!t.blocked("x"));
+    }
+
+    #[test]
+    fn throttle_prunes_expired_names_without_resetting_active_windows() {
+        let t = LoginThrottle::default();
+        let expired = Instant::now();
+        let start = expired + LOCKOUT / 2;
+        let now = expired + LOCKOUT;
+        {
+            let mut map = t.0.lock().unwrap();
+            map.insert("expired".into(), (MAX_FAILURES, expired));
+            map.insert("locked".into(), (MAX_FAILURES, start));
+            map.insert("active".into(), (MAX_FAILURES - 1, start));
+        }
+        t.fail_at("active", now);
+        t.fail_at("new", now);
+        let map = t.0.lock().unwrap();
+        assert_eq!(map.len(), 3);
+        assert!(!map.contains_key("expired"));
+        assert_eq!(map["locked"], (MAX_FAILURES, start));
+        assert_eq!(map["active"], (MAX_FAILURES, start));
+        assert_eq!(map["new"].0, 1);
+        drop(map);
+        assert!(t.blocked_at("locked", now));
+        assert!(t.blocked_at("active", now));
+    }
+
+    #[test]
+    fn throttle_restarts_an_expired_names_window() {
+        let t = LoginThrottle::default();
+        let start = Instant::now();
+        let now = start + LOCKOUT;
+        t.0.lock().unwrap().insert("expired".into(), (MAX_FAILURES, start));
+        assert!(t.blocked_at("expired", now - Duration::from_nanos(1)));
+        assert!(!t.blocked_at("expired", now));
+        t.fail_at("expired", now);
+        assert_eq!(t.0.lock().unwrap()["expired"], (1, now));
+        assert!(!t.blocked_at("expired", now));
     }
 
     #[test]
