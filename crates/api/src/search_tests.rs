@@ -58,7 +58,7 @@ async fn check_semantic_search(pool: PgPool) {
         imgproxy_url: None,
         limits: Default::default(),
         search_permits: tokio::sync::Semaphore::new(16),
-        embed_cache: Default::default(),
+        embed_cache: moka::sync::Cache::new(EMBED_CACHE_CAP),
         embed_inflight: Default::default(),
         embed_permits: Arc::new(tokio::sync::Semaphore::new(4)),
     });

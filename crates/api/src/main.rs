@@ -135,32 +135,8 @@ struct Snapshot {
     build_secs: f64,
 }
 
-const EMBED_CACHE_CAP: usize = 2000;
+const EMBED_CACHE_CAP: u64 = 2000;
 type EmbedWatch = tokio::sync::watch::Receiver<Option<Option<Vec<f32>>>>;
-
-#[derive(Default)]
-struct EmbedCache {
-    values: HashMap<String, Vec<f32>>,
-    order: std::collections::VecDeque<String>,
-}
-
-impl EmbedCache {
-    fn get(&self, key: &str) -> Option<Vec<f32>> {
-        self.values.get(key).cloned()
-    }
-
-    fn insert(&mut self, key: String, val: Vec<f32>) {
-        if !self.values.contains_key(&key) {
-            if self.values.len() >= EMBED_CACHE_CAP
-                && let Some(old) = self.order.pop_front()
-            {
-                self.values.remove(&old);
-            }
-            self.order.push_back(key.clone());
-        }
-        self.values.insert(key, val);
-    }
-}
 
 struct AppState {
     pool: PgPool,
@@ -179,7 +155,7 @@ struct AppState {
     /// caps concurrent in-flight catalogue search / item-load CPU + DB work so floods cannot starve other routes
     search_permits: tokio::sync::Semaphore,
     /// query text -> embedding, so paging through results doesn't call the provider again
-    embed_cache: std::sync::Mutex<EmbedCache>,
+    embed_cache: moka::sync::Cache<String, Vec<f32>>,
     /// deduplicates concurrent identical uncached queries
     embed_inflight: std::sync::Mutex<HashMap<String, EmbedWatch>>,
     /// caps concurrent upstream /embeddings HTTP calls
@@ -376,7 +352,7 @@ async fn query_embedding(
     use catalogue_core::embed;
     let text = normalize_query(q);
     let cache_key = format!("{model}\n{text}");
-    if let Some(v) = s.embed_cache.lock().unwrap().get(&cache_key) {
+    if let Some(v) = s.embed_cache.get(&cache_key) {
         trace.step("embed_memory");
         return Some(v);
     }
@@ -390,7 +366,7 @@ async fn query_embedding(
         .flatten();
     if let Some(v) = stored {
         trace.step("embed_db");
-        remember(&s, cache_key, v.clone());
+        s.embed_cache.insert(cache_key, v.clone());
         // usage bookkeeping for pruning; the search doesn't wait for it
         let pool = s.pool.clone();
         tokio::spawn(async move {
@@ -406,7 +382,7 @@ async fn query_embedding(
         let mut inflight = s.embed_inflight.lock().unwrap();
         if let Some(existing) = inflight.get(&cache_key) {
             existing.clone()
-        } else if let Some(v) = s.embed_cache.lock().unwrap().get(&cache_key) {
+        } else if let Some(v) = s.embed_cache.get(&cache_key) {
             trace.step("embed_memory");
             return Some(v);
         } else if s.limits.embed_ip.take(ip).is_err() || s.limits.embed_global.take_global().is_err() {
@@ -432,7 +408,7 @@ async fn query_embedding(
                     .and_then(|mut v| v.pop().ok_or_else(|| anyhow::anyhow!("no embedding")))
                 {
                     Ok(v) => {
-                        remember(&state, key_owned, v.clone());
+                        state.embed_cache.insert(key_owned, v.clone());
                         let _ = tx.send(Some(Some(v.clone())));
                         if let Err(e) = sqlx::query(
                             "insert into query_embeddings (model, query, embedding) values ($1, $2, $3::halfvec) on conflict (model, query) do nothing",
@@ -475,10 +451,6 @@ async fn query_embedding(
             None
         }
     }
-}
-
-fn remember(s: &AppState, key: String, v: Vec<f32>) {
-    s.embed_cache.lock().unwrap().insert(key, v);
 }
 
 /// Listed items nearest to the vector, cut where they stop resembling the best match. With models named,
@@ -745,7 +717,7 @@ async fn build_state(pool: PgPool) -> Result<AppState> {
         imgproxy_url: std::env::var("IMGPROXY_URL").ok().or_else(|| Some("http://127.0.0.1:3001".into())),
         limits: Default::default(),
         search_permits: tokio::sync::Semaphore::new(16),
-        embed_cache: Default::default(),
+        embed_cache: moka::sync::Cache::new(EMBED_CACHE_CAP),
         embed_inflight: Default::default(),
         embed_permits: Arc::new(tokio::sync::Semaphore::new(4)),
     })
@@ -844,18 +816,37 @@ mod tests {
     }
 
     #[test]
-    fn embed_cache_evicts_oldest_instead_of_clearing_all() {
-        let mut c = super::EmbedCache::default();
+    fn embed_cache_bounds_entries_and_updates_existing_vectors() {
+        let c = moka::sync::Cache::new(super::EMBED_CACHE_CAP);
         for i in 0..super::EMBED_CACHE_CAP {
             c.insert(format!("k{i}"), vec![i as f32]);
         }
-        c.insert("k0".into(), vec![99.0]); // updating an existing key does not grow or evict
-        assert_eq!(c.values.len(), super::EMBED_CACHE_CAP);
+        c.insert("k0".into(), vec![99.0]);
+        assert_eq!(c.get("k0").as_deref(), Some(&[99.0][..]));
+        c.run_pending_tasks();
+        assert_eq!(c.entry_count(), super::EMBED_CACHE_CAP);
         c.insert("extra".into(), vec![1.0]);
-        assert!(c.get("k0").is_none()); // oldest inserted key evicted
-        assert_eq!(c.get("k1").as_deref(), Some(&[1.0][..]));
-        assert_eq!(c.get("extra").as_deref(), Some(&[1.0][..]));
-        assert_eq!(c.values.len(), super::EMBED_CACHE_CAP);
+        c.run_pending_tasks();
+        assert_eq!(c.entry_count(), super::EMBED_CACHE_CAP);
+    }
+
+    #[test]
+    fn embed_cache_is_shared_across_threads() {
+        let c = moka::sync::Cache::new(super::EMBED_CACHE_CAP);
+        std::thread::scope(|scope| {
+            for worker in 0..8 {
+                let c = c.clone();
+                scope.spawn(move || {
+                    for i in 0..32 {
+                        let key = format!("{worker}\n{i}");
+                        c.insert(key.clone(), vec![i as f32]);
+                        assert_eq!(c.get(&key), Some(vec![i as f32]));
+                    }
+                });
+            }
+        });
+        c.run_pending_tasks();
+        assert_eq!(c.entry_count(), 256);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -898,7 +889,7 @@ mod tests {
                 embed_global: super::limit::RateLimiter::new(2.0, 20.0, 1),
             },
             search_permits: tokio::sync::Semaphore::new(16),
-            embed_cache: Default::default(),
+            embed_cache: moka::sync::Cache::new(super::EMBED_CACHE_CAP),
             embed_inflight: Default::default(),
             embed_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         });
