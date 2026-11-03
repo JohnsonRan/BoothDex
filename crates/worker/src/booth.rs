@@ -48,6 +48,9 @@ impl Booth {
                     } else {
                         self.counters.errors.fetch_add(1, Ordering::Relaxed);
                     }
+                    if attempt == 5 {
+                        break;
+                    }
                     let wait = r.headers().get("retry-after").and_then(|v| v.to_str().ok()?.parse().ok()).unwrap_or(2u64.pow(attempt + 1));
                     tokio::time::sleep(Duration::from_secs(wait.min(300))).await;
                 }
@@ -133,6 +136,22 @@ pub fn urlencode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn exhausted_retries_do_not_sleep_and_keep_retry_after() {
+        for (status, retry_after, seconds) in [(429, Some("3"), 15), (503, None, 62)] {
+            let (url, requests) = crate::retry_test_server(status.try_into().unwrap(), retry_after).await;
+            let mut booth = Booth::new().unwrap();
+            booth.client = reqwest::Client::builder().no_proxy().pool_max_idle_per_host(0).build().unwrap();
+            let start = tokio::time::Instant::now();
+            assert!(booth.get(&url).await.unwrap_err().to_string().contains("giving up"));
+            assert_eq!(requests.load(Ordering::Relaxed), 6);
+            assert_eq!(booth.counters.requests.load(Ordering::Relaxed), 6);
+            assert_eq!(booth.counters.rate_limited.load(Ordering::Relaxed), if status == 429 { 6 } else { 0 });
+            assert_eq!(booth.counters.errors.load(Ordering::Relaxed), if status == 503 { 6 } else { 0 });
+            assert_eq!(start.elapsed(), Duration::from_secs(seconds));
+        }
+    }
 
     #[test]
     fn groups_images_by_item_and_strips_size() {

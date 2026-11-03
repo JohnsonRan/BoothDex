@@ -56,6 +56,9 @@ impl Ai {
                     return parse_json_reply(text);
                 }
                 Ok(r) if r.status() == 429 || r.status().is_server_error() => {
+                    if attempt == 4 {
+                        break;
+                    }
                     tokio::time::sleep(Duration::from_secs(2u64.pow(attempt + 1))).await;
                 }
                 Ok(r) => {
@@ -230,6 +233,27 @@ pub fn validate_enrichment(v: &Value, known_categories: &[String], existing: &Va
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn exhausted_retries_return_provider_error_without_extra_sleep() {
+        // the binary installs it in Booth::new; alone, this test must do it itself
+        rustls::crypto::ring::default_provider().install_default().ok();
+        for status in [429, 503] {
+            let (base_url, requests) = crate::retry_test_server(status.try_into().unwrap(), None).await;
+            let ai = Ai {
+                http: reqwest::Client::builder().no_proxy().pool_max_idle_per_host(0).build().unwrap(),
+                base_url,
+                model: "test".into(),
+                api_key: "test".into(),
+                reasoning_effort: "none",
+            };
+            let start = tokio::time::Instant::now();
+            let error = ai.json("system", "user").await.unwrap_err();
+            assert!(error.downcast_ref::<ProviderError>().is_some());
+            assert_eq!(requests.load(std::sync::atomic::Ordering::Relaxed), 5);
+            assert_eq!(start.elapsed(), Duration::from_secs(30));
+        }
+    }
 
     #[test]
     fn parses_fenced_json() {

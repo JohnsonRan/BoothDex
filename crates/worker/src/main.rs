@@ -20,6 +20,27 @@ use sqlx::PgPool;
 
 use booth::Booth;
 
+#[cfg(test)]
+async fn retry_test_server(status: axum::http::StatusCode, retry_after: Option<&'static str>) -> (String, Arc<std::sync::atomic::AtomicU64>) {
+    use axum::response::IntoResponse;
+    let requests = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let count = requests.clone();
+    let app = axum::Router::new().fallback(move || {
+        count.fetch_add(1, Ordering::Relaxed);
+        async move {
+            let mut response = (status, "busy").into_response();
+            if let Some(wait) = retry_after {
+                response.headers_mut().insert("retry-after", wait.parse().unwrap());
+            }
+            response
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (url, requests)
+}
+
 async fn heartbeat(pool: PgPool, booth: Arc<Booth>) {
     let pid = sysinfo::get_current_pid().ok();
     let mut sys = sysinfo::System::new().ok();
