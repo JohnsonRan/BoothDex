@@ -448,6 +448,10 @@ async fn write_enrichment(pool: &PgPool, id: i64, title: &str, bio: &str, e: &cr
 /// (id, title, booth_tags, translations.en.title, bio, input_fingerprint)
 type EmbedRow = (i64, String, Vec<String>, Option<String>, String, String);
 
+const EMBEDDING_UPDATE: &str = "update items i set embedding = v.e
+    from unnest($1::bigint[], $2::halfvec[], $3::text[]) as v(id, e, fp)
+    where i.id = v.id and md5(concat_ws(E'\\x1f', i.title, i.bio, i.translations->'en'->>'title', array_to_string(i.booth_tags, E'\\x1e'))) = v.fp";
+
 /// Embeddings for semantic search: every listed item without one (new, edited, or after a model change).
 /// Runs until done; requests go out `batch` items at a time, `concurrency` at once.
 pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
@@ -512,21 +516,17 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         for (chunk, vectors) in chunks.iter().zip(results) {
             for ((id, _, fp), v) in chunk.iter().zip(vectors) {
                 ids.push(*id);
-                vecs.push(embed::to_pg(&v));
+                vecs.push(embed::HalfVector::from_f32_slice(&v));
                 fps.push(fp.clone());
             }
         }
-        let written = sqlx::query(
-            "update items i set embedding = v.e::halfvec
-             from unnest($1::bigint[], $2::text[], $3::text[]) as v(id, e, fp)
-             where i.id = v.id and md5(concat_ws(E'\\x1f', i.title, i.bio, i.translations->'en'->>'title', array_to_string(i.booth_tags, E'\\x1e'))) = v.fp",
-        )
-        .bind(&ids)
-        .bind(&vecs)
-        .bind(&fps)
-        .execute(ctx.pool)
-        .await?
-        .rows_affected();
+        let written = sqlx::query(EMBEDDING_UPDATE)
+            .bind(&ids)
+            .bind(&vecs)
+            .bind(&fps)
+            .execute(ctx.pool)
+            .await?
+            .rows_affected();
         done += written as i64;
         if !ctx.progress(done, Some(total.min(limit)), &format!("embed: {done} of {}", total.min(limit)), false).await? {
             ctx.log("cancelled").await?;
@@ -561,5 +561,37 @@ pub async fn run(ctx: &mut Ctx<'_>, kind: &str, params: &Value) -> Result<String
         "refresh" => refresh(ctx, params).await,
         "enrich" => enrich(ctx, params).await,
         other => bail!("unknown job kind {other}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use catalogue_core::embed::{DIMS, HalfVector};
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn binary_embedding_batch_skips_changed_items(pool: PgPool) {
+        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+                     select id, 'original', 'creator', 'https://example.test', false, 'ok', now() from generate_series(1, 3) as id")
+            .execute(&pool).await.unwrap();
+        let rows: Vec<(i64, String)> = sqlx::query_as(
+            "select id, md5(concat_ws(E'\\x1f', title, bio, translations->'en'->>'title', array_to_string(booth_tags, E'\\x1e'))) from items order by id",
+        ).fetch_all(&pool).await.unwrap();
+        let (ids, fingerprints): (Vec<_>, Vec<_>) = rows.into_iter().unzip();
+        sqlx::query("update items set title = 'edited during embedding' where id = 3").execute(&pool).await.unwrap();
+        let values = vec![0.125; DIMS];
+        let vectors = vec![HalfVector::from_f32_slice(&values); ids.len()];
+        let written = sqlx::query(EMBEDDING_UPDATE).bind(&ids).bind(&vectors).bind(&fingerprints)
+            .execute(&pool).await.unwrap().rows_affected();
+        assert_eq!(written, 2);
+        let stored: Vec<(i64, bool)> = sqlx::query_as("select id, embedding is not null from items order by id").fetch_all(&pool).await.unwrap();
+        assert_eq!(stored, [(1, true), (2, true), (3, false)]);
+        let same: bool = sqlx::query_scalar("select bool_and(halfvec_send(embedding) = halfvec_send($1::halfvec)) from items where embedding is not null")
+            .bind(&vectors[0]).fetch_one(&pool).await.unwrap();
+        assert!(same);
+        let empty = sqlx::query(EMBEDDING_UPDATE).bind(Vec::<i64>::new()).bind(Vec::<HalfVector>::new()).bind(Vec::<String>::new())
+            .execute(&pool).await.unwrap().rows_affected();
+        assert_eq!(empty, 0);
     }
 }

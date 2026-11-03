@@ -24,14 +24,14 @@ async fn check_semantic_search(pool: PgPool) {
         (v[0], v[1]) = (x, y);
         sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_category, embedding)
                      values ($1, $2, 'creator', 'https://example.test', false, 'ok', now(), '3D Clothing', $3::halfvec)")
-            .bind(id).bind(title).bind(catalogue_core::embed::to_pg(&v)).execute(&pool).await.unwrap();
+            .bind(id).bind(title).bind(catalogue_core::embed::HalfVector::from_f32_slice(&v)).execute(&pool).await.unwrap();
     }
     sqlx::raw_sql("insert into avatars (slug, name_en) values ('shinano', 'Shinano'), ('manuka', 'Manuka') on conflict (slug) do nothing;
                    insert into item_avatars (item_id, avatar_slug) values (1, 'shinano'), (2, 'shinano'), (3, 'manuka');
                    insert into app_settings (key, value) values ('ai', '{\"base_url\":\"http://127.0.0.1:9\",\"api_key\":\"test\",\"embed_model\":\"test-model\"}');")
         .execute(&pool).await.unwrap();
     sqlx::query("insert into query_embeddings (model, query, embedding) values ('test-model', 'silky strands', $1::halfvec)")
-        .bind(catalogue_core::embed::to_pg(&vector)).execute(&pool).await.unwrap();
+        .bind(catalogue_core::embed::HalfVector::from_f32_slice(&vector)).execute(&pool).await.unwrap();
 
     let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
     let state = Arc::new(AppState {

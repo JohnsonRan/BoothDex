@@ -415,7 +415,7 @@ async fn query_embedding(
                         )
                         .bind(&model)
                         .bind(&text)
-                        .bind(embed::to_pg(&v))
+                        .bind(embed::HalfVector::from_f32_slice(&v))
                         .execute(&state.pool)
                         .await
                         {
@@ -485,7 +485,7 @@ fn nearest_query<'a>(vector: &[f32], models: &'a [String]) -> sqlx::query::Query
            and id in (select item_id from item_avatars where avatar_slug = any($2))
          order by embedding <=> $1::halfvec limit 400"
     };
-    let query = sqlx::query_as(sql).bind(catalogue_core::embed::to_pg(vector));
+    let query = sqlx::query_as(sql).bind(catalogue_core::embed::HalfVector::from_f32_slice(vector));
     if models.is_empty() { query } else { query.bind(models) }
 }
 
