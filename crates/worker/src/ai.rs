@@ -90,18 +90,23 @@ Keep brand and tool names (VRChat, Quest, lilToon, Poiyomi, Modular Avatar, VRCF
 Reply with a JSON object mapping each given key to its translation, nothing else.";
 
 pub const ENRICH_SYSTEM: &str = "You classify listings and translate their titles from BOOTH, a Japanese marketplace, for a catalogue of VRChat avatar assets. \
-Reply with one JSON object with exactly these keys:\n\
-\"categories\": array of 1-3 category slugs from the given list, best match first. Judge from the title, tags, variations and \
-description: sellers often pick the Booth category carelessly or too broadly, so treat it only as a weak hint;\n\
+Reply with one valid JSON object only, without Markdown fences, comments or extra text. \
+Escape double quotes, backslashes and control characters inside every JSON string, including copied original titles. \
+Use commas between fields and array elements, with no trailing commas. Include exactly these keys:\n\
+\"categories\": non-empty array of 1-3 exact category slugs from the given list, best match first. Judge from the title, tags, variations and \
+description: sellers often pick the Booth category carelessly or too broadly, so treat it only as a weak hint. \
+If the listing lacks an explicit category or no category fits exactly, infer the closest available category from the product's \
+purpose and description. Always choose at least one listed slug; never return an empty array, invent a slug, or use a parent name instead;\n\
 \"content_rating\": \"SFW\", \"Suggestive\" (revealing swimwear/lingerie, suggestive poses) or \"NSFW\" (nudity, sexual content);\n\
 \"quest_compatible\": \"Yes\", \"No\", or \"Non-Applicable\" (not an avatar or avatar asset);\n\
 \"smart_price\": integer yen a typical buyer pays for the main product (ignore support/donation tiers, pick the full set if that is the obvious main item), or null if unclear;\n\
 \"smart_price_reason\": one short English sentence;\n\
 \"translations\": {\"en\": {\"title\": ...}, \"ja\": {\"title\": ...}, \"ko\": {\"title\": ...}, \"zh\": {\"title\": ...}}: the title only \
-(zh is Simplified Chinese, in the terms Chinese VRChat users use); for the item's own language, copy the original title. \
-Do not translate the description or variations.\n\
+(zh is Simplified Chinese, in the terms Chinese VRChat users use); for the item's own language, copy the original title with proper JSON escaping. \
+Each title must be non-empty and at most 300 characters. Do not translate the description or variations.\n\
 \"original_language\": ISO 639-1 code of the listing's main language;\n\
-\"features\": array with any of \"ma\" (Modular Avatar setup), \"liltoon\", \"poiyomi\" (shaders it supports), \"vrcfury\" that the listing states it supports; empty if none.";
+\"features\": array with any of \"ma\" (Modular Avatar setup), \"liltoon\", \"poiyomi\" (shaders it supports), \"vrcfury\" that the listing states it supports; empty if none.\n\
+Before replying, check that the JSON is syntactically valid, every required key is present, and categories contains at least one exact listed slug.";
 
 /// User message for one item. Long descriptions are cut to keep cost bounded.
 pub fn enrich_prompt(item: &Value, category_list: &str) -> String {
@@ -230,6 +235,41 @@ mod tests {
     fn parses_fenced_json() {
         assert_eq!(parse_json_reply("```json\n{\"a\": 1}\n```").unwrap(), json!({"a": 1}));
         assert!(parse_json_reply("sorry").is_err());
+    }
+
+    #[test]
+    fn parses_escaped_title_quotes_and_backslashes() {
+        let reply = r#"{"translations":{"ja":{"title":"SPS対応『最強快感巧具\"轟\" HM-25V Pecker』 \\ VRChat"}}}"#;
+        assert_eq!(
+            parse_json_reply(reply).unwrap()["translations"]["ja"]["title"],
+            "SPS対応『最強快感巧具\"轟\" HM-25V Pecker』 \\ VRChat"
+        );
+        assert!(parse_json_reply(r#"{"title":"最強快感巧具"轟""}"#).is_err());
+    }
+
+    #[test]
+    fn enrichment_prompt_includes_classification_evidence() {
+        let categories = "accessories--rings: Accessories / Rings\nprops--other: Props / Other";
+        let item = json!({
+            "title": "【VRChat想定】No Signal Ring【MA対応】",
+            "booth_category": "3D小道具",
+            "price_jpy": 500,
+            "booth_tags": ["VRChat", "Modular Avatar"],
+            "variations": [{"name": "Full set", "price_jpy": 500}],
+            "bio": "An animated ring accessory for avatar fingers."
+        });
+        let prompt = enrich_prompt(&item, categories);
+        for evidence in [
+            categories,
+            "Title: 【VRChat想定】No Signal Ring【MA対応】",
+            "Booth category: 3D小道具",
+            "Listed price: ¥500",
+            "Tags: VRChat, Modular Avatar",
+            "- Full set (¥500)",
+            "Description:\nAn animated ring accessory for avatar fingers.",
+        ] {
+            assert!(prompt.contains(evidence), "missing evidence: {evidence}");
+        }
     }
 
     #[test]
