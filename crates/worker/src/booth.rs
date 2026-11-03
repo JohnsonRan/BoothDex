@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use regex::Regex;
+use scraper::{Html, Selector};
 use serde_json::Value;
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
@@ -95,12 +96,12 @@ impl Booth {
 
 /// (item id, listed price) from the item cards on a listing page.
 pub fn parse_cards(html: &str) -> Vec<(i64, Option<i32>)> {
-    html.split("<li class=\"item-card")
-        .skip(1)
+    let document = Html::parse_document(html);
+    let selector = Selector::parse("li.item-card").expect("valid item-card selector");
+    document.select(&selector)
         .filter_map(|card| {
-            let tag = &card[..card.find('>')?];
-            let attr = |name: &str| tag.split(&format!("{name}=\"")).nth(1).and_then(|r| r.split('"').next());
-            Some((attr("data-product-id")?.parse().ok()?, attr("data-product-price").and_then(|p| p.parse().ok())))
+            let card = card.value();
+            Some((card.attr("data-product-id")?.parse().ok()?, card.attr("data-product-price").and_then(|p| p.parse().ok())))
         })
         .collect()
 }
@@ -149,6 +150,31 @@ mod tests {
         let html = r#"<ul><li class="item-card l-card " data-product-brand="kitunesann" data-product-id="9070052" data-product-name="x" data-product-price="1300" data-tracking="impression_item"><div>
             <li class="item-card l-card " data-product-id="9070053" data-product-price=""><div></ul>"#;
         assert_eq!(parse_cards(html), [(9070052, Some(1300)), (9070053, None)]);
+    }
+
+    #[test]
+    fn parses_cards_with_html_attribute_variants() {
+        let html = r#"<ul>
+            <li data-product-name='x > y' data-product-price='1300' data-product-id='9070052' class='l-card item-card featured'>
+            <li data-product-id=9070053 class=item-card data-product-price=0>
+            <li class="item-card" data-product-price="&#49;200" data-product-id="9070054">
+            </ul>"#;
+        assert_eq!(parse_cards(html), [(9070052, Some(1300)), (9070053, Some(0)), (9070054, Some(1200))]);
+    }
+
+    #[test]
+    fn parses_cards_with_missing_or_invalid_attributes() {
+        let html = r#"<ul>
+            <li class="item-card" data-product-id="1">
+            <li class="item-card" data-product-id="2" data-product-price="">
+            <li class="item-card" data-product-id="3" data-product-price="invalid">
+            <li class="item-card" data-product-id="invalid" data-product-price="100">
+            <li class="item-card" data-product-price="100">
+            <li class="item-card-other" data-product-id="4" data-product-price="100">
+            </ul>
+            <div class="item-card" data-product-id="5" data-product-price="100"></div>"#;
+        assert_eq!(parse_cards(html), [(1, None), (2, None), (3, None)]);
+        assert!(parse_cards("").is_empty());
     }
 
     #[test]
