@@ -12,6 +12,7 @@ use crate::catalog::DocInput;
 ///
 /// Internal columns like `embedding` (vectors) are deliberately omitted.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)] // a misspelt key in load_items' SQL fails loudly instead of leaving an Option as None
 pub struct ItemResponse {
     pub id: i64,
     pub title: String,

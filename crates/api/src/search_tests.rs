@@ -75,6 +75,35 @@ async fn check_semantic_search(pool: PgPool) {
 
 #[sqlx::test(migrations = "../core/migrations")]
 #[ignore = "requires PostgreSQL with pgvector"]
+async fn load_items_fills_every_field(pool: PgPool) {
+    // every column set: a key missing from load_items' jsonb_build_object would come back as null (Option = None)
+    sqlx::raw_sql(
+        "insert into avatars (slug, name_en) values ('shinano', 'Shinano') on conflict (slug) do nothing;
+         insert into items (id, title, bio, author_name, author_uri, author_icon, booth_category, price_jpy, smart_price,
+                            smart_price_reason, likes, is_adult, content_rating, quest, features, status, published_at,
+                            scraped_at, original_language, media, booth_tags, variations, translations, avatar_slug,
+                            supported, gender, needs_enrichment, last_listed_at, enrich_failures, relisted_as)
+         values (1, 'Title', 'Bio', 'creator', 'https://example.test', 'https://example.test/i.png', '3D Clothing', 500, 400,
+                 'reason', 3, false, 'SFW', 'Yes', '{PhysBones}', 'delisted', now(), now(), 'ja', '{https://example.test/m.png}',
+                 '{tag}', '[]', '{}', 'shinano', true, 'female', false, now(), 1, 2);
+         insert into item_avatars (item_id, avatar_slug) values (1, 'shinano');
+         insert into item_categories (item_id, category_slug, is_primary) select 1, slug, true from smart_categories limit 1;
+         insert into booth_images (item_id, images, complete, fetched_at) values (1, '{https://example.test/b.png}', true, now());",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let items = db::load_items(&pool, &[1]).await.unwrap();
+    let item = serde_json::to_value(&items[0]).unwrap();
+    let nulls: Vec<&String> = item.as_object().unwrap().iter().filter(|(_, v)| v.is_null()).map(|(k, _)| k).collect();
+    assert!(nulls.is_empty(), "load_items left these fields null: {nulls:?}");
+    assert_eq!(item["linked_avatars"][0]["slug"], "shinano");
+    assert_eq!(item["categories"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
 async fn load_docs_translated_titles(pool: PgPool) {
     sqlx::raw_sql(
         "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, translations) values
