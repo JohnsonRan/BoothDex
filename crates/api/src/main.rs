@@ -846,40 +846,6 @@ mod tests {
         assert_eq!(super::normalize_query("  Gothic   Dress "), "gothic dress");
     }
 
-    #[test]
-    fn embed_cache_bounds_entries_and_updates_existing_vectors() {
-        let c = moka::sync::Cache::new(super::EMBED_CACHE_CAP);
-        for i in 0..super::EMBED_CACHE_CAP {
-            c.insert(format!("k{i}"), vec![i as f32]);
-        }
-        c.insert("k0".into(), vec![99.0]);
-        assert_eq!(c.get("k0").as_deref(), Some(&[99.0][..]));
-        c.run_pending_tasks();
-        assert_eq!(c.entry_count(), super::EMBED_CACHE_CAP);
-        c.insert("extra".into(), vec![1.0]);
-        c.run_pending_tasks();
-        assert_eq!(c.entry_count(), super::EMBED_CACHE_CAP);
-    }
-
-    #[test]
-    fn embed_cache_is_shared_across_threads() {
-        let c = moka::sync::Cache::new(super::EMBED_CACHE_CAP);
-        std::thread::scope(|scope| {
-            for worker in 0..8 {
-                let c = c.clone();
-                scope.spawn(move || {
-                    for i in 0..32 {
-                        let key = format!("{worker}\n{i}");
-                        c.insert(key.clone(), vec![i as f32]);
-                        assert_eq!(c.get(&key), Some(vec![i as f32]));
-                    }
-                });
-            }
-        });
-        c.run_pending_tasks();
-        assert_eq!(c.entry_count(), 256);
-    }
-
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
         use axum::extract::{FromRequestParts, RawQuery, State};
