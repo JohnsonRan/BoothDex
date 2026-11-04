@@ -35,6 +35,8 @@ pub struct DocInput {
     pub smart_tags: Vec<String>,
     pub supported: bool,
     pub gender: Option<String>,
+    /// delisted and re-uploaded by the shop: left out of search, still reachable by id and in favourites
+    pub relisted: bool,
 }
 
 #[derive(Default)]
@@ -69,6 +71,7 @@ pub struct Catalog {
     supported: RoaringBitmap,
     adult_only: RoaringBitmap,
     suggestive: RoaringBitmap,
+    relisted: RoaringBitmap,
     pub avatars: Index,
     pub authors: Index,
     pub smart_tags: Index,
@@ -149,6 +152,7 @@ impl Catalog {
             supported: RoaringBitmap::new(),
             adult_only: RoaringBitmap::new(),
             suggestive: RoaringBitmap::new(),
+            relisted: RoaringBitmap::new(),
             avatars: Index::default(),
             authors: Index::default(),
             smart_tags: Index::default(),
@@ -190,6 +194,9 @@ impl Catalog {
             }
             if d.supported {
                 c.supported.insert(i);
+            }
+            if d.relisted {
+                c.relisted.insert(i);
             }
             let rating = d.rating.as_deref();
             if d.is_adult || rating == Some("NSFW") {
@@ -252,13 +259,13 @@ impl Catalog {
             if let Some(f) = favourites.filter(|_| p.get("v").as_deref() == Some("favourites")) {
                 f.clone() // favourites span both items and avatar bodies
             } else if avatars_view {
-                match p.get("asup").as_deref() {
+                &match p.get("asup").as_deref() {
                     Some("all") => self.avatar_items.clone(),
                     Some("unsupported") => &self.avatar_items - &self.supported,
                     _ => &self.avatar_items & &self.supported,
-                }
+                } - &self.relisted
             } else {
-                &self.all - &self.avatar_items
+                &(&self.all - &self.avatar_items) - &self.relisted
             },
         ));
         let gender = p.get("gender").filter(|g| g == "female" || g == "male");
@@ -491,6 +498,7 @@ mod tests {
             smart_tags: vec![],
             supported: false,
             gender: None,
+            relisted: false,
         }
     }
 
@@ -623,6 +631,24 @@ mod tests {
         let g = fuse(&text, &[7], &[2, 8].into_iter().collect());
         assert!(g[&8] > g[&7] && g[&8] < g[&1]);
         assert!(g[&2] > g[&1]);
+    }
+
+    #[test]
+    fn re_uploaded_items_stay_out_of_search_but_not_favourites() {
+        let mut d = (1..=3).map(doc).collect::<Vec<_>>();
+        d[0].relisted = true;
+        d[2].booth_category = Some(AVATAR_CATEGORY.into());
+        d[2].supported = true;
+        d[2].relisted = true;
+        let c = Catalog::build(d, 0, None).unwrap();
+        assert_eq!(ids(&c, ""), [2]);
+        assert_eq!(ids(&c, "q=item"), [2]);
+        assert!(ids(&c, "v=avatars").is_empty());
+        let favs = c.docs_for(&[1, 3]);
+        let mut f = c.search_plain(&Params::parse("v=favourites&pageSize=10"), 0, Some(&favs)).unwrap().ids;
+        f.sort();
+        assert_eq!(f, [1, 3]);
+        assert_eq!(c.docs_for(&[1]).len(), 1); // still known, so its page and gallery load
     }
 
     #[test]

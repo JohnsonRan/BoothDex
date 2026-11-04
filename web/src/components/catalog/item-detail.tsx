@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowRight,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -368,6 +369,24 @@ function Body({
                 <span className="rounded-full border bg-muted px-2.5 py-0.5 text-destructive">
                   {t("detail.delisted")}
                 </span>
+              )}
+              {item.status === "delisted" && item.relisted_as && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    api<{ items: Item[] }>(`/api/items?ids=${item.relisted_as}`)
+                      .then((r) =>
+                        r.items[0]
+                          ? onOpenItem(r.items[0])
+                          : toast.error(t("list.loadFailed")),
+                      )
+                      .catch(() => toast.error(t("list.loadFailed")))
+                  }
+                  className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-primary hover:bg-primary/15"
+                >
+                  {t("detail.relisted")}
+                  <ArrowRight className="size-3.5" aria-hidden />
+                </button>
               )}
             </div>
 

@@ -30,6 +30,7 @@ const item: Item = {
     "https://booth.pximg.net/u/i/1/preview.jpg",
   ],
   booth_images_complete: true,
+  relisted_as: null,
   variations: [],
   translations: {},
   linked_avatars: [],

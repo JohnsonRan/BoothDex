@@ -57,6 +57,7 @@ fn param<T: serde::de::DeserializeOwned>(p: &Value, key: &str, default: T) -> T 
 }
 
 pub async fn bump_catalog(pool: &PgPool) -> Result<()> {
+    link_relisted(pool).await?;
     sqlx::query("update catalog_meta set version = version + 1, changed_at = now()").execute(pool).await?;
     Ok(())
 }
@@ -551,6 +552,31 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     Ok(format!("{done} items embedded with {model}"))
 }
 
+/// Points delisted items at the shop's re-upload (same shop, same title ignoring case and whitespace, newer id,
+/// still listed) and clears links that no longer hold. Returns how many items changed.
+async fn link_relisted(pool: &PgPool) -> Result<u64> {
+    let cleared = sqlx::query(
+        "update items i set relisted_as = null
+         where i.relisted_as is not null
+           and (i.status = 'ok' or not exists (select 1 from items o where o.id = i.relisted_as and o.status = 'ok'))",
+    )
+    .execute(pool)
+    .await?
+    .rows_affected();
+    let linked = sqlx::query(
+        "with norm as (select id, author_uri, status, lower(regexp_replace(title, '\\s', '', 'g')) as t from items),
+              succ as (select distinct on (d.id) d.id, o.id as new_id
+                       from norm d join norm o on o.author_uri = d.author_uri and o.t = d.t and o.status = 'ok' and o.id > d.id
+                       where d.status = 'delisted'
+                       order by d.id, o.id desc)
+         update items i set relisted_as = s.new_id from succ s where i.id = s.id and i.relisted_as is distinct from s.new_id",
+    )
+    .execute(pool)
+    .await?
+    .rows_affected();
+    Ok(cleared + linked)
+}
+
 pub async fn run(ctx: &mut Ctx<'_>, kind: &str, params: &Value) -> Result<String> {
     match kind {
         "embed" => embed(ctx, params).await,
@@ -593,5 +619,34 @@ mod tests {
         let empty = sqlx::query(EMBEDDING_UPDATE).bind(Vec::<i64>::new()).bind(Vec::<HalfVector>::new()).bind(Vec::<String>::new())
             .execute(&pool).await.unwrap().rows_affected();
         assert_eq!(empty, 0);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn delisted_items_point_at_their_re_upload(pool: PgPool) {
+        // 10 delisted; 9 an older copy; 11 and 12 re-uploads (12 newest); 13 another shop; 14 another title
+        for (id, shop, title, status) in [
+            (9, "a", "Foo Bar", "ok"),
+            (10, "a", "Foo Bar", "delisted"),
+            (11, "a", "foo  bar", "ok"),
+            (12, "a", "FOO BAR", "ok"),
+            (13, "b", "Foo Bar", "ok"),
+            (14, "a", "Foo Baz", "ok"),
+        ] {
+            sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at) values ($1, $3, 's', $2, false, $4, now())")
+                .bind(id as i64).bind(shop).bind(title).bind(status).execute(&pool).await.unwrap();
+        }
+        let link = || async { sqlx::query_scalar::<_, Option<i64>>("select relisted_as from items where id = 10").fetch_one(&pool).await.unwrap() };
+        assert_eq!(link_relisted(&pool).await.unwrap(), 1);
+        assert_eq!(link().await, Some(12));
+        assert_eq!(link_relisted(&pool).await.unwrap(), 0); // nothing changed
+        sqlx::query("update items set status = 'delisted' where id = 12").execute(&pool).await.unwrap();
+        link_relisted(&pool).await.unwrap();
+        assert_eq!(link().await, Some(11)); // the newest copy still on sale
+        sqlx::query("update items set status = 'ok' where id = 10").execute(&pool).await.unwrap();
+        link_relisted(&pool).await.unwrap();
+        assert_eq!(link().await, None); // listed again itself
+        let stray: i64 = sqlx::query_scalar("select count(*) from items where relisted_as is not null").fetch_one(&pool).await.unwrap();
+        assert_eq!(stray, 0); // delisted 12 has no newer copy: older listings are not re-uploads
     }
 }

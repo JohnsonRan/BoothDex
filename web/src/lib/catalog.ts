@@ -62,6 +62,8 @@ export type Item = {
   booth_tags: string[];
   booth_images: string[] | null;
   booth_images_complete: boolean | null;
+  /** delisted, but re-uploaded by the shop under this id */
+  relisted_as: number | null;
   variations: Variation[];
   translations: Partial<
     Record<

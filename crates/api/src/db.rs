@@ -46,6 +46,8 @@ pub struct ItemResponse {
     pub categories: Value,
     pub booth_images: Option<Vec<String>>,
     pub booth_images_complete: Option<bool>,
+    /// delisted, but re-uploaded by the shop under this id
+    pub relisted_as: Option<i64>,
 }
 
 #[cfg(test)]
@@ -85,6 +87,7 @@ impl Default for ItemResponse {
             categories: serde_json::json!([]),
             booth_images: None,
             booth_images_complete: None,
+            relisted_as: None,
         }
     }
 }
@@ -114,6 +117,7 @@ struct Row {
     avatars: Vec<String>,
     cats: Vec<String>,
     cats_primary: Vec<String>,
+    relisted: bool,
 }
 
 pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
@@ -133,7 +137,8 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
                 extract(epoch from i.published_at)::bigint as published, i.is_adult, i.content_rating, i.quest, i.features,
                 i.booth_tags, i.supported, i.gender,
                 array_remove(array[i.translations->'en'->>'title', i.translations->'ja'->>'title', i.translations->'ko'->>'title', i.translations->'zh'->>'title'], null) as titles_translated,
-                coalesce(ia.avatars, '{}') as avatars, coalesce(ic.cats, '{}') as cats, coalesce(ic.cats_primary, '{}') as cats_primary
+                coalesce(ia.avatars, '{}') as avatars, coalesce(ic.cats, '{}') as cats, coalesce(ic.cats_primary, '{}') as cats_primary,
+                i.status = 'delisted' and i.relisted_as is not null as relisted
          from items i
          left join (select item_id, array_agg(avatar_slug) as avatars from item_avatars group by item_id) ia on ia.item_id = i.id
          left join (select item_id, array_agg(category_slug) as cats, array_agg(category_slug) filter (where is_primary) as cats_primary
@@ -185,6 +190,7 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
                 smart_tags,
                 supported: r.supported,
                 gender: r.gender,
+                relisted: r.relisted,
             }
         })
         .collect())
@@ -232,7 +238,8 @@ pub async fn load_items(pool: &PgPool, ids: &[i64]) -> Result<Vec<ItemResponse>>
                                from item_categories ic where ic.item_id = i.id), '[]'::jsonb),
             -- Booth image URLs (canonical); `media` keeps the archived VRCatalogue CDN URLs for delisted items
             'booth_images', (select to_jsonb(b.images) from booth_images b where b.item_id = i.id),
-            'booth_images_complete', (select b.complete from booth_images b where b.item_id = i.id))
+            'booth_images_complete', (select b.complete from booth_images b where b.item_id = i.id),
+            'relisted_as', i.relisted_as)
          from items i where i.id = any($1)",
     )
     .bind(ids)
