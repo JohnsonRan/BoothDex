@@ -9,7 +9,6 @@ publish.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 catalogue-core.workspace = true
-percent-encoding = "2"
 regex = "1"
 scraper = { version = "0.29", default-features = false }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "gzip", "json", "http2", "charset"] }

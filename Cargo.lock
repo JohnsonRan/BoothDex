@@ -341,6 +341,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "percent-encoding",
  "pgvector",
  "reqwest",
  "serde",
@@ -4436,7 +4437,6 @@ dependencies = [
  "catalogue-core",
  "chrono",
  "futures-util",
- "percent-encoding",
  "regex",
  "reqwest",
  "rustls",

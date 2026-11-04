@@ -12,5 +12,6 @@ serde_json.workspace = true
 pgvector.workspace = true
 sqlx.workspace = true
 anyhow.workspace = true
+percent-encoding = "2"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
 tokio = { workspace = true, features = ["time"] }

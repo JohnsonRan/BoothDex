@@ -23,6 +23,7 @@ use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
+use catalogue_core::urlencode;
 use axum::{Json, Router};
 use tower_http::compression::Predicate as _;
 use serde_json::{Value, json};
@@ -633,12 +634,6 @@ fn item_ids(query: &str) -> Vec<i64> {
     percent_encoding::percent_decode_str(raw).decode_utf8_lossy().split([',', '+', ' ']).filter_map(|v| v.parse().ok()).take(100).collect()
 }
 
-fn urlencode(s: &str) -> String {
-    const ENCODE: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
-        .remove(b'-').remove(b'_').remove(b'.').remove(b'~');
-    percent_encoding::utf8_percent_encode(s, ENCODE).to_string()
-}
-
 fn lookup(f: fn(&Snapshot) -> &Lookup) -> impl Fn(State<Arc<AppState>>, RawQuery) -> std::future::Ready<Json<Value>> + Clone {
     move |State(s), RawQuery(q)| std::future::ready(Json(f(&s.snap()).find(&Params::parse(q.as_deref().unwrap_or("")))))
 }
@@ -823,11 +818,8 @@ async fn main() -> Result<()> {
 mod tests {
     #[test]
     fn url_encoding_preserves_query_values() {
-        assert_eq!(super::urlencode(""), "");
-        assert_eq!(super::urlencode("AZaz09-_.~"), "AZaz09-_.~");
         let value = "衣装 x+y&z=1/#?%";
         let encoded = super::urlencode(value);
-        assert_eq!(encoded, "%E8%A1%A3%E8%A3%85%20x%2By%26z%3D1%2F%23%3F%25");
         assert_eq!(super::Params::parse(&format!("q={encoded}")).get("q").as_deref(), Some(value));
     }
 

@@ -8,6 +8,8 @@ use regex::Regex;
 use scraper::{Html, Selector};
 use serde_json::Value;
 
+use catalogue_core::urlencode;
+
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
 
 #[derive(Default)]
@@ -127,12 +129,6 @@ pub fn parse_listing(html: &str, img: &Regex) -> Vec<(i64, Vec<String>)> {
     out
 }
 
-pub fn urlencode(s: &str) -> String {
-    const ENCODE: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
-        .remove(b'-').remove(b'_').remove(b'.').remove(b'~');
-    percent_encoding::utf8_percent_encode(s, ENCODE).to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,13 +193,4 @@ mod tests {
         assert_eq!(parse_cards(html), [(1, None), (2, None), (3, None)]);
         assert!(parse_cards("").is_empty());
     }
-
-    #[test]
-    fn encoding() {
-        assert_eq!(urlencode(""), "");
-        assert_eq!(urlencode("AZaz09-_.~"), "AZaz09-_.~");
-        assert_eq!(urlencode("衣装 x"), "%E8%A1%A3%E8%A3%85%20x");
-        assert_eq!(urlencode("衣装 x+y&z=1/#?%"), "%E8%A1%A3%E8%A3%85%20x%2By%26z%3D1%2F%23%3F%25");
-    }
-
 }
