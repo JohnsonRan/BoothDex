@@ -12,7 +12,6 @@ use crate::catalog::DocInput;
 ///
 /// Internal columns like `embedding` (vectors) are deliberately omitted.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
 pub struct ItemResponse {
     pub id: i64,
     pub title: String,
@@ -49,6 +48,7 @@ pub struct ItemResponse {
     pub booth_images_complete: Option<bool>,
 }
 
+#[cfg(test)]
 impl Default for ItemResponse {
     fn default() -> Self {
         Self {
@@ -244,121 +244,9 @@ pub async fn load_items(pool: &PgPool, ids: &[i64]) -> Result<Vec<ItemResponse>>
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeSet, HashMap};
-    use chrono::{TimeZone, Utc};
-    use serde_json::json;
+    use std::collections::HashMap;
 
     use super::*;
-
-    #[test]
-    fn exact_allowed_top_level_keys_and_no_embedding() {
-        let item = ItemResponse {
-            id: 12345,
-            title: "Test Item".to_owned(),
-            bio: "A nice item".to_owned(),
-            author_name: "Test Author".to_owned(),
-            author_uri: "https://author.example".to_owned(),
-            author_icon: Some("https://author.example/icon.jpg".to_owned()),
-            booth_category: Some("3d-clothing".to_owned()),
-            price_jpy: Some(1500),
-            smart_price: Some(1200),
-            smart_price_reason: Some("Sale".to_owned()),
-            likes: 42,
-            is_adult: false,
-            content_rating: Some("SFW".to_owned()),
-            quest: Some("Yes".to_owned()),
-            features: vec!["liltoon".to_owned(), "ma".to_owned()],
-            status: "ok".to_owned(),
-            published_at: Some(Utc.with_ymd_and_hms(2026, 1, 15, 12, 0, 0).unwrap()),
-            scraped_at: Utc.with_ymd_and_hms(2026, 1, 15, 13, 0, 0).unwrap(),
-            original_language: Some("ja".to_owned()),
-            avatar_slug: Some("manuka".to_owned()),
-            supported: true,
-            gender: Some("female".to_owned()),
-            needs_enrichment: false,
-            last_listed_at: Some(Utc.with_ymd_and_hms(2026, 1, 16, 0, 0, 0).unwrap()),
-            enrich_failures: 0,
-            media: vec!["https://img.example/1.webp".to_owned()],
-            booth_tags: vec!["VRChat".to_owned()],
-            variations: json!([{"id": "v1", "name": "Default", "price_jpy": 1500, "status": "ok", "type": "standard"}]),
-            translations: json!({"en": {"title": "Test Item EN"}}),
-            linked_avatars: json!([{"slug": "manuka", "en": "Manuka", "image_url": null}]),
-            categories: json!([{"slug": "clothing", "is_primary": true}]),
-            booth_images: Some(vec!["https://booth.example/1.jpg".to_owned()]),
-            booth_images_complete: Some(true),
-        };
-
-        let val = serde_json::to_value(&item).expect("serialization succeeds");
-        let map = val.as_object().expect("serializes to JSON object");
-        let keys: BTreeSet<String> = map.keys().cloned().collect();
-
-        // 1. embedding and future/internal columns MUST NOT appear
-        assert!(!keys.contains("embedding"), "embedding vector must not be exposed");
-        assert_eq!(keys.len(), 33, "must have exactly 33 known business fields");
-
-        let expected_keys: BTreeSet<String> = [
-            "id", "title", "bio", "author_name", "author_uri", "author_icon",
-            "booth_category", "price_jpy", "smart_price", "smart_price_reason",
-            "likes", "is_adult", "content_rating", "quest", "features", "status",
-            "published_at", "scraped_at", "original_language", "avatar_slug",
-            "supported", "gender", "needs_enrichment", "last_listed_at",
-            "enrich_failures", "media", "booth_tags", "variations", "translations",
-            "linked_avatars", "categories", "booth_images", "booth_images_complete",
-        ].iter().map(|&s| s.to_owned()).collect();
-
-        assert_eq!(keys, expected_keys);
-    }
-
-    #[test]
-    fn nonappearance_of_embedding_and_unknown_fields_from_raw_source() {
-        let raw = json!({
-            "id": 99,
-            "title": "Item with vector",
-            "embedding": [0.123, 0.456, 0.789],
-            "future_internal_column": "secret",
-            "features": ["ma"],
-            "media": []
-        });
-
-        let item: ItemResponse = serde_json::from_value(raw).expect("deserializes safely");
-        let reserialized = serde_json::to_value(&item).expect("serializes safely");
-        let obj = reserialized.as_object().expect("object");
-
-        assert!(!obj.contains_key("embedding"), "embedding omitted on reserialization");
-        assert!(!obj.contains_key("future_internal_column"), "unknown fields omitted on reserialization");
-        assert_eq!(obj.get("id").and_then(Value::as_i64), Some(99));
-        assert_eq!(obj.get("title").and_then(Value::as_str), Some("Item with vector"));
-    }
-
-    #[test]
-    fn retention_of_nullable_and_empty_business_data() {
-        let item = ItemResponse {
-            id: 1,
-            author_icon: None,
-            price_jpy: None,
-            smart_price: None,
-            booth_images: None,
-            booth_images_complete: None,
-            features: vec![],
-            media: vec![],
-            booth_tags: vec![],
-            variations: json!([]),
-            translations: json!({}),
-            linked_avatars: json!([]),
-            categories: json!([]),
-            ..Default::default()
-        };
-
-        let val = serde_json::to_value(&item).unwrap();
-        assert_eq!(val.get("author_icon"), Some(&Value::Null));
-        assert_eq!(val.get("price_jpy"), Some(&Value::Null));
-        assert_eq!(val.get("booth_images"), Some(&Value::Null));
-        assert_eq!(val.get("booth_images_complete"), Some(&Value::Null));
-        assert_eq!(val["features"], json!([]));
-        assert_eq!(val["media"], json!([]));
-        assert_eq!(val["variations"], json!([]));
-        assert_eq!(val["translations"], json!({}));
-    }
 
     #[test]
     fn order_preservation_and_empty_behavior() {

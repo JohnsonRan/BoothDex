@@ -45,19 +45,19 @@ pub fn render(channel_link: &str, query: &str, items: &[crate::db::ItemResponse]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn renders_escaped_items() {
-        let item: crate::db::ItemResponse = serde_json::from_value(json!({
-            "id": 7,
-            "title": "Dress <&> \u{1}",
-            "author_name": "A&B",
-            "price_jpy": 800,
-            "smart_price": null,
-            "media": ["https://img/x.webp"],
-            "published_at": "2026-09-24T08:00:01+00:00"
-        })).unwrap();
+        let item = crate::db::ItemResponse {
+            id: 7,
+            title: "Dress <&> \u{1}".to_owned(),
+            author_name: "A&B".to_owned(),
+            price_jpy: Some(800),
+            smart_price: None,
+            media: vec!["https://img/x.webp".to_owned()],
+            published_at: Some(chrono::DateTime::parse_from_rfc3339("2026-09-24T08:00:01+00:00").unwrap().with_timezone(&chrono::Utc)),
+            ..Default::default()
+        };
         let xml = render(
             "https://example.com/?q=a&b",
             "avatars=manuka",
