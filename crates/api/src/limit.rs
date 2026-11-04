@@ -198,6 +198,8 @@ pub struct Limits {
     /// uncached AI query embeddings: 15/min per IP (burst 8), 120/min global (burst 20)
     pub embed_ip: RateLimiter,
     pub embed_global: RateLimiter,
+    /// /api/account/{login,register}: 0.2 req/s, burst 5
+    pub auth: RateLimiter,
 }
 
 impl Default for Limits {
@@ -211,6 +213,7 @@ impl Default for Limits {
             lookup: RateLimiter::new(5.0, 40.0, 8192),
             embed_ip: RateLimiter::new(0.25, 8.0, 8192),
             embed_global: RateLimiter::new(2.0, 20.0, 1),
+            auth: RateLimiter::new(0.2, 5.0, 8192),
         }
     }
 }

@@ -899,6 +899,7 @@ mod tests {
                 lookup: super::limit::RateLimiter::new(5.0, 2.0, 64),
                 embed_ip: super::limit::RateLimiter::new(0.25, 8.0, 64),
                 embed_global: super::limit::RateLimiter::new(2.0, 20.0, 1),
+                auth: super::limit::RateLimiter::new(0.2, 5.0, 64),
             },
             search_permits: tokio::sync::Semaphore::new(16),
             embed_cache: moka::sync::Cache::new(super::EMBED_CACHE_CAP),

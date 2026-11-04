@@ -96,14 +96,25 @@ async fn require_user(s: &AppState, headers: &HeaderMap) -> Result<Result<User, 
     Ok(current_user(&s.pool, headers).await?.ok_or_else(|| err(StatusCode::UNAUTHORIZED, "Sign in required")))
 }
 
+static ARGON2_SEMAPHORE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
+async fn argon2<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, ApiError> {
+    let permit = ARGON2_SEMAPHORE.acquire().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        f()
+    })
+    .await?)
+}
+
 pub async fn hash_password(password: String) -> Result<String, ApiError> {
-    Ok(tokio::task::spawn_blocking(move || Argon2::default().hash_password(password.as_bytes()).map(|h| h.to_string()))
+    argon2(move || Argon2::default().hash_password(password.as_bytes()).map(|h| h.to_string()))
         .await?
-        .map_err(|e| anyhow::anyhow!("hash: {e}"))?)
+        .map_err(|e| anyhow::anyhow!("hash: {e}").into())
 }
 
 async fn verify_password(password: String, hash: String) -> Result<bool, ApiError> {
-    Ok(tokio::task::spawn_blocking(move || Argon2::default().verify_password(password.as_bytes(), hash.as_str()).is_ok()).await?)
+    argon2(move || Argon2::default().verify_password(password.as_bytes(), hash.as_str()).is_ok()).await
 }
 
 /// Creates a session row and returns the Set-Cookie value.
@@ -183,6 +194,10 @@ fn valid_email(e: &str) -> bool {
     e.len() <= 254 && e.split_once('@').is_some_and(|(a, d)| !a.is_empty() && d.contains('.') && !e.contains(char::is_whitespace))
 }
 
+fn valid_login(l: &str) -> bool {
+    l.len() <= 254
+}
+
 fn valid_password(p: &str) -> bool {
     (10..=256).contains(&p.chars().count())
 }
@@ -231,7 +246,15 @@ struct Register {
     keep: bool,
 }
 
-async fn register(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<Register>) -> Result<Response, ApiError> {
+async fn register(
+    State(s): State<Arc<AppState>>,
+    crate::limit::ClientIp(ip): crate::limit::ClientIp,
+    headers: HeaderMap,
+    Json(b): Json<Register>,
+) -> Result<Response, ApiError> {
+    if let Err(r) = s.limits.auth.check(ip) {
+        return Ok(r);
+    }
     if !valid_display_name(&b.display_name) {
         return Ok(err(StatusCode::BAD_REQUEST, "Display name is required."));
     }
@@ -272,7 +295,18 @@ struct Login {
     keep: bool,
 }
 
-async fn login(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<Login>) -> Result<Response, ApiError> {
+async fn login(
+    State(s): State<Arc<AppState>>,
+    crate::limit::ClientIp(ip): crate::limit::ClientIp,
+    headers: HeaderMap,
+    Json(b): Json<Login>,
+) -> Result<Response, ApiError> {
+    if let Err(r) = s.limits.auth.check(ip) {
+        return Ok(r);
+    }
+    if !valid_login(&b.login) {
+        return Ok(err(StatusCode::UNAUTHORIZED, "Incorrect username or password."));
+    }
     let key = b.login.trim().to_lowercase();
     if s.throttle.blocked(&key) {
         return Ok(err(StatusCode::TOO_MANY_REQUESTS, "Too many attempts. Try again later."));
@@ -632,6 +666,7 @@ mod tests {
     fn validators() {
         assert!(valid_username("abc_123") && !valid_username("ab") && !valid_username("has space") && !valid_username(&"a".repeat(25)));
         assert!(valid_email("a@b.co") && !valid_email("nope") && !valid_email("a @b.co") && !valid_email("@b.co"));
+        assert!(valid_login("user@example.com") && valid_login(&"a".repeat(254)) && !valid_login(&"a".repeat(255)));
         assert!(valid_password("0123456789") && !valid_password("short"));
     }
 
@@ -713,5 +748,55 @@ mod tests {
         let (ids, ats) = dedupe_views(b.views);
         assert_eq!(ids, vec![1, 2]);
         assert_eq!(ats, vec![Some(2.0), None]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn argon2_permit_stays_held_when_awaiting_future_is_dropped() {
+        static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+        let _guard = TEST_MUTEX.lock().await;
+
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::sync_channel(1);
+
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while ARGON2_SEMAPHORE.available_permits() < 4 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("baseline permits available");
+
+        assert_eq!(ARGON2_SEMAPHORE.available_permits(), 4);
+
+        let task = tokio::spawn(async move {
+            argon2(move || {
+                let _ = entered_tx.send(());
+                let _ = release_rx.recv();
+            })
+            .await
+        });
+
+        entered_rx.await.expect("closure entered");
+        assert_eq!(ARGON2_SEMAPHORE.available_permits(), 3);
+
+        task.abort();
+        let _ = task.await;
+
+        assert_eq!(
+            ARGON2_SEMAPHORE.available_permits(),
+            3,
+            "permit must not be released on future drop while closure is running"
+        );
+
+        release_tx.send(()).expect("release closure");
+
+        let returned = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while ARGON2_SEMAPHORE.available_permits() < 4 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await;
+        assert!(returned.is_ok(), "permit must return after closure finishes");
+        assert_eq!(ARGON2_SEMAPHORE.available_permits(), 4);
     }
 }
