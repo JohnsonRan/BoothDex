@@ -23,7 +23,7 @@ use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use catalogue_core::urlencode;
+use boothdex_core::urlencode;
 use axum::{Json, Router};
 use tower_http::compression::Predicate as _;
 use serde_json::{Value, json};
@@ -350,7 +350,7 @@ async fn search(
 
 /// Resolves the query embedding (or why there isn't one) before acquiring a search execution permit.
 async fn semantic_vector(s: Arc<AppState>, ip: std::net::IpAddr, q: &str, trace: &mut Trace) -> EmbedPlan {
-    let Ok(c) = catalogue_core::settings::ai(&s.pool).await else { return EmbedPlan::Unavailable };
+    let Ok(c) = boothdex_core::settings::ai(&s.pool).await else { return EmbedPlan::Unavailable };
     let (Some(base), Some(key), Some(model)) = (c.base_url, c.api_key, c.embed_model) else { return EmbedPlan::Off };
     trace.step("settings");
     match query_embedding(s, ip, q, base, key, model, trace).await {
@@ -385,7 +385,7 @@ async fn query_embedding(
     model: String,
     trace: &mut Trace,
 ) -> Option<Vec<f32>> {
-    use catalogue_core::embed;
+    use boothdex_core::embed;
     let text = normalize_query(q);
     let cache_key = format!("{model}\n{text}");
     if let Some(v) = s.embed_cache.get(&cache_key) {
@@ -521,7 +521,7 @@ fn nearest_query<'a>(vector: &[f32], models: &'a [String]) -> sqlx::query::Query
            and id in (select item_id from item_avatars where avatar_slug = any($2))
          order by embedding <=> $1::halfvec limit 400"
     };
-    let query = sqlx::query_as(sql).bind(catalogue_core::embed::HalfVector::from_f32_slice(vector));
+    let query = sqlx::query_as(sql).bind(boothdex_core::embed::HalfVector::from_f32_slice(vector));
     if models.is_empty() { query } else { query.bind(models) }
 }
 
@@ -771,10 +771,10 @@ async fn main() -> Result<()> {
         .acquire_timeout(std::time::Duration::from_secs(5))
         .connect(&std::env::var("DATABASE_URL")?)
         .await?;
-    catalogue_core::MIGRATOR.run(&pool).await?;
+    boothdex_core::MIGRATOR.run(&pool).await?;
     admin::apply_admin_env(&pool).await?;
     // AI configured through environment variables: translate the taxonomy on first start
-    admin::queue_localize_if_needed(&pool, &catalogue_core::settings::ai(&pool).await?).await?;
+    admin::queue_localize_if_needed(&pool, &boothdex_core::settings::ai(&pool).await?).await?;
     let state = Arc::new(build_state(pool).await?);
     tokio::spawn(reloader(state.clone()));
 
@@ -835,7 +835,7 @@ mod tests {
         use sqlx::{Arguments, Execute};
 
         for models in [vec![], vec!["shinano".to_owned()]] {
-            let mut query = super::nearest_query(&[0.5; catalogue_core::embed::DIMS], &models);
+            let mut query = super::nearest_query(&[0.5; boothdex_core::embed::DIMS], &models);
             assert_eq!(query.take_arguments().unwrap().unwrap().len(), if models.is_empty() { 1 } else { 2 });
             assert_eq!(query.sql().as_str().contains("$2"), !models.is_empty());
         }

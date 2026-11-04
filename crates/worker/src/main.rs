@@ -180,7 +180,7 @@ async fn daemon(pool: PgPool, booth: Arc<Booth>) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let pool = PgPool::connect(&std::env::var("DATABASE_URL").context("DATABASE_URL not set")?).await?;
-    catalogue_core::MIGRATOR.run(&pool).await?;
+    boothdex_core::MIGRATOR.run(&pool).await?;
     let booth = Arc::new(Booth::new()?);
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {

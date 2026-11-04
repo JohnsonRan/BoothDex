@@ -61,7 +61,7 @@ pub async fn bump_catalog(pool: &PgPool) -> Result<()> {
     Ok(())
 }
 
-use catalogue_core::booth::{mark_delisted, store_item};
+use boothdex_core::booth::{mark_delisted, store_item};
 
 /// Newest-first listing walk: stores image links for every item seen, ingests unknown items, stops once caught up.
 /// Bootstrapping an empty catalogue: `{"max_pages": 5000, "full": true}`; resume an interrupted one with `start_page`.
@@ -240,7 +240,7 @@ pub async fn sweep(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
 }
 
 async fn ai_client(pool: &PgPool) -> Result<crate::ai::Ai> {
-    match crate::ai::Ai::from_config(&catalogue_core::settings::ai(pool).await?)? {
+    match crate::ai::Ai::from_config(&boothdex_core::settings::ai(pool).await?)? {
         Some(ai) => Ok(ai),
         None => bail!("AI provider not configured (set API address, model and key in the admin console)"),
     }
@@ -299,7 +299,7 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
 /// translations and features via the model; avatar links by name matching (see avatars.rs).
 pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     // scheduled hourly by default; without a provider there is nothing to do, which isn't a failure
-    let cfg = catalogue_core::settings::ai(ctx.pool).await?;
+    let cfg = boothdex_core::settings::ai(ctx.pool).await?;
     let Some(ai) = crate::ai::Ai::from_config(&cfg)? else {
         return Ok("skipped: AI provider not configured".into());
     };
@@ -455,8 +455,8 @@ const EMBEDDING_UPDATE: &str = "update items i set embedding = v.e
 /// Embeddings for semantic search: every listed item without one (new, edited, or after a model change).
 /// Runs until done; requests go out `batch` items at a time, `concurrency` at once.
 pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
-    use catalogue_core::embed;
-    let c = catalogue_core::settings::ai(ctx.pool).await?;
+    use boothdex_core::embed;
+    let c = boothdex_core::settings::ai(ctx.pool).await?;
     let (Some(base), Some(key), Some(model)) = (c.base_url, c.api_key, c.embed_model) else {
         return Ok("skipped: embeddings model not configured".into());
     };
@@ -567,7 +567,7 @@ pub async fn run(ctx: &mut Ctx<'_>, kind: &str, params: &Value) -> Result<String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use catalogue_core::embed::{DIMS, HalfVector};
+    use boothdex_core::embed::{DIMS, HalfVector};
 
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]

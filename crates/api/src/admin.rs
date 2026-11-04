@@ -291,7 +291,7 @@ fn key_hint(k: &str) -> String {
     if n <= 8 { "••••".into() } else { format!("{}…{}", k.chars().take(3).collect::<String>(), k.chars().skip(n - 4).collect::<String>()) }
 }
 
-use catalogue_core::settings::{self, AiConfig};
+use boothdex_core::settings::{self, AiConfig};
 
 fn public_ai(c: &AiConfig) -> Value {
     json!({
@@ -380,7 +380,7 @@ async fn test_ai(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<R
             let models: Vec<&str> = body["data"].as_array().into_iter().flatten().filter_map(|m| m["id"].as_str()).take(50).collect();
             let model = c.model.as_deref().unwrap_or_default();
             let embed_error = match c.embed_model.as_deref() {
-                Some(m) => catalogue_core::embed::embed(&s.http, base, key, m, &["test".into()], 1).await.err().map(|e| format!("{e:#}")),
+                Some(m) => boothdex_core::embed::embed(&s.http, base, key, m, &["test".into()], 1).await.err().map(|e| format!("{e:#}")),
                 None => None,
             };
             Json(json!({ "ok": true, "models": models, "model_found": model.is_empty() || models.is_empty() || models.contains(&model), "embed_error": embed_error }))

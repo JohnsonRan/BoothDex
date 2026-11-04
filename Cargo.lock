@@ -46,7 +46,7 @@ dependencies = [
  "arc-swap",
  "argon2",
  "axum",
- "catalogue-core",
+ "boothdex-core",
  "chrono",
  "futures-util",
  "getrandom 0.4.3",
@@ -283,6 +283,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "boothdex-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "percent-encoding",
+ "pgvector",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -334,21 +349,6 @@ name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
-
-[[package]]
-name = "catalogue-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "percent-encoding",
- "pgvector",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
-]
 
 [[package]]
 name = "cc"
@@ -1648,7 +1648,7 @@ name = "importer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "catalogue-core",
+ "boothdex-core",
  "chrono",
  "flate2",
  "serde",
@@ -4434,7 +4434,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "catalogue-core",
+ "boothdex-core",
  "chrono",
  "futures-util",
  "regex",

@@ -9,7 +9,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use catalogue_core::booth::{mark_delisted, store_item};
+use boothdex_core::booth::{mark_delisted, store_item};
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 

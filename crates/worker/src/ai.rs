@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use catalogue_core::settings::AiConfig;
+use boothdex_core::settings::AiConfig;
 use serde_json::{Value, json};
 
 pub struct Ai {
@@ -480,7 +480,7 @@ mod tests {
     fn request_sends_reasoning_effort_as_configured() {
         // the binary installs it in Booth::new; alone, this test must do it itself
         rustls::crypto::ring::default_provider().install_default().ok();
-        let mut c = catalogue_core::settings::resolve(&json!({ "base_url": "http://x/v1", "model": "m", "api_key": "k" }), |_| None);
+        let mut c = boothdex_core::settings::resolve(&json!({ "base_url": "http://x/v1", "model": "m", "api_key": "k" }), |_| None);
         let ai = Ai::from_config(&c).unwrap().unwrap();
         assert_eq!(ai.body("s", "u")["reasoning_effort"], "none");
         c.reasoning_effort = "high";

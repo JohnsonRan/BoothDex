@@ -8,7 +8,7 @@ use regex::Regex;
 use scraper::{Html, Selector};
 use serde_json::Value;
 
-use catalogue_core::urlencode;
+use boothdex_core::urlencode;
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
 

@@ -250,7 +250,7 @@ async fn main() -> Result<()> {
     let data = std::env::args().nth(1).context("usage: importer <archive data dir>")?;
     let data = Path::new(&data);
     let pool = PgPool::connect(&std::env::var("DATABASE_URL").context("DATABASE_URL not set")?).await?;
-    catalogue_core::MIGRATOR.run(&pool).await?;
+    boothdex_core::MIGRATOR.run(&pool).await?;
 
     let mut items = HashMap::new();
     read_items(data, &mut items)?;
