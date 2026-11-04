@@ -215,7 +215,8 @@ async fn main() -> Result<()> {
                 .context("could not create job (is one of this kind already running?)")?;
             execute(&pool, &booth, id, kind, &params, false).await
         }
-        Some(other) => anyhow::bail!("unknown command {other}; use `run` or `once <kind>`"),
+        Some("migrate") => Ok(()), // migrations already ran above
+        Some(other) => anyhow::bail!("unknown command {other}; use `run`, `once <kind>` or `migrate`"),
     }
 }
 
