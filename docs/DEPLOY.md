@@ -216,7 +216,7 @@ boothdex.example.com {
 | Backup archived images | Copy `/srv/boothdex/images` once (changes only if you archive newly delisted items) |
 | Restore database | `docker compose stop api worker && docker compose exec -T postgres pg_restore -U catalogue -d catalogue --clean --if-exists --no-owner --role=catalogue < backup.dump && docker compose start api worker` |
 
-Automatic cleanup: the `worker` deletes expired login sessions and job history older than 90 days every hour; `query_embeddings` is pruned by the `embed` job (see above). No manual `VACUUM` is needed (autovacuum handles it).
+Automatic cleanup: the `worker` deletes expired login sessions and job history (including job errors and logs) older than 90 days every hour; container logs are capped by `x-logging` in `compose.yaml` (Docker keeps 3 × 10 MB per service, Podman truncates each log at 10 MB); `query_embeddings` is pruned by the `embed` job (see above). No manual `VACUUM` is needed (autovacuum handles it).
 
 Safe to lose (rebuilt automatically): `imgcache` (re-fetched from BOOTH on demand) and `textindex` (rebuilt by `api` at startup in ~10 s).
 

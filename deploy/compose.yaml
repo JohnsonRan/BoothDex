@@ -8,6 +8,11 @@
 # reachable only on the compose network (use `docker compose exec` for maintenance).
 name: boothdex
 
+# Docker keeps 3 × 10 MB per service; Podman caps each log at 10 MB (older lines are dropped)
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 10m, max-file: "3" }
+
 services:
   postgres:
     image: docker.io/pgvector/pgvector:pg17
@@ -23,6 +28,7 @@ services:
       interval: 5s
       retries: 20
     shm_size: 256mb
+    logging: *logging
 
   api:
     image: ghcr.io/johnsonran/boothdex-api:${BOOTHDEX_TAG:-latest}
@@ -45,6 +51,7 @@ services:
       AI_EMBED_MODEL: ${AI_EMBED_MODEL:-}
     volumes:
       - textindex:/index # on-disk search index, reused across restarts
+    logging: *logging
     # ~0.4-1 GB steady on Linux with mimalloc, ~1.8 GB peak while reloading (old and new catalogue held at once);
     # with glibc malloc 3g was OOM-killed, so the limit keeps that headroom
     mem_limit: 4g
@@ -63,6 +70,7 @@ services:
       AI_REASONING_EFFORT: ${AI_REASONING_EFFORT:-}
       AI_EMBED_MODEL: ${AI_EMBED_MODEL:-}
     mem_limit: 512m
+    logging: *logging
 
   imgproxy:
     image: ghcr.io/johnsonran/boothdex-imgproxy:${BOOTHDEX_TAG:-latest}
@@ -76,6 +84,7 @@ services:
       - ${ARCHIVE_IMAGES_DIR:-archive}:/archive:ro
       - imgcache:/cache
     mem_limit: 1g
+    logging: *logging
 
   web:
     image: ghcr.io/johnsonran/boothdex-web:${BOOTHDEX_TAG:-latest}
@@ -86,6 +95,7 @@ services:
       SITE_URL: ${SITE_URL:?set SITE_URL in .env}
     # "[address:]port" on the host; e.g. 127.0.0.1:3100 when a reverse proxy on the same host is the only client
     ports: ["${WEB_LISTEN:-3100}:3100"]
+    logging: *logging
 
 volumes:
   pgdata:
