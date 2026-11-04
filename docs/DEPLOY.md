@@ -147,7 +147,7 @@ Then complete onboarding:
 
 1. Open the site (via your reverse proxy, or `http://<server>:3100` with `COOKIE_SECURE=0` for a quick check) and register your account.
 2. Add that username to `ADMIN_USERNAMES` in `.env`, then run `docker compose up -d api`.
-3. Open `/admin`: verify `worker` shows as running. Both the hourly incremental crawl and the daily full sweep (03:00 JST) are enabled by default.
+3. Open `/admin`: verify `worker` shows as running. The hourly incremental crawl, the daily full sweep (03:00 JST) and the daily `details` pass (fetches missing galleries) are enabled by default.
 4. Configure the AI provider in `/admin` (and click **Test**) or via `AI_*` in `.env`.
 
 ### Worker job lanes & catalogue reload
