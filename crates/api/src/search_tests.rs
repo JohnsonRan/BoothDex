@@ -72,3 +72,26 @@ async fn check_semantic_search(pool: PgPool) {
         assert_eq!(body["count"], expected.len());
     }
 }
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn load_docs_translated_titles(pool: PgPool) {
+    sqlx::raw_sql(
+        "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, translations) values
+         (1, 'Original 1', 'creator', 'https://example.test', false, 'ok', now(), '{\"original_language\":\"ja\",\"en\":{\"title\":\"Title EN\"},\"ja\":{\"title\":\"Title JA\"},\"ko\":{\"title\":\"Title KO\"},\"zh\":{\"title\":\"Title ZH\"}}'),
+         (2, 'Original 2', 'creator', 'https://example.test', false, 'ok', now(), '{\"en\":{\"title\":\"Title EN 2\"},\"ja\":{\"title\":null},\"ko\":{},\"zh\":{\"title\":\"Title ZH 2\"}}'),
+         (3, 'Original 3', 'creator', 'https://example.test', false, 'ok', now(), '{\"fr\":{\"title\":\"Titre FR\"}}'),
+         (4, 'Original 4', 'creator', 'https://example.test', false, 'ok', now(), '42');",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let docs = db::load_docs(&pool).await.unwrap();
+    let by_id: HashMap<i64, Vec<String>> = docs.into_iter().map(|d| (d.id, d.titles_translated)).collect();
+
+    assert_eq!(*by_id.get(&1).unwrap(), vec!["Title EN", "Title JA", "Title KO", "Title ZH"]);
+    assert_eq!(*by_id.get(&2).unwrap(), vec!["Title EN 2", "Title ZH 2"]);
+    assert!(by_id.get(&3).unwrap().is_empty());
+    assert!(by_id.get(&4).unwrap().is_empty());
+}
