@@ -50,7 +50,7 @@ flowchart LR
   up --> admin["4. 注册账号并写入 ADMIN_USERNAMES<br/>在 /admin 配置可选 AI 服务"]
 ```
 
-新建数据库会自动初始化分类树、智能标签和约 380 个模型本体。若想跳过耗时数天的首次全量抓取（参见[无数据包首次启动](docs/DEPLOY.md#starting-without-a-data-bundle)），可直接恢复[已发布的数据包](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-10-31)（2026-10-31 快照，含约 21.6 万件商品及下架存档图片，约 1.4 GB）：
+新建数据库会自动初始化分类树、智能标签和约 380 个模型本体。若想跳过耗时数天的首次全量抓取（参见[无数据包首次启动](docs/DEPLOY.md#starting-without-a-data-bundle)），可直接恢复[已发布的数据包](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04)（2026-11-04 快照，含约 21.7 万件商品及下架存档图片，约 2.1 GB）：
 
 ```sh
 mkdir -p /srv/boothdex && cd /srv/boothdex

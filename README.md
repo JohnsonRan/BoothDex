@@ -66,8 +66,8 @@ flowchart LR
 
 A fresh database already includes the category tree, smart tags and ~380 avatar bodies. To skip the initial
 multi-day BOOTH crawl ([Starting without a data bundle](docs/DEPLOY.md#starting-without-a-data-bundle)), restore
-the [published data bundle](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-10-31) (a 2026-10-31
-snapshot with ~216k items and archived delisted images; ~1.4 GB):
+the [published data bundle](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04) (a 2026-11-04
+snapshot with ~217k items and archived delisted images; ~2.1 GB):
 
 ```sh
 mkdir -p /srv/boothdex && cd /srv/boothdex

@@ -45,7 +45,7 @@ flowchart LR
   up --> admin["4. アカウント登録 → ADMIN_USERNAMES 設定<br/>/admin で AI プロバイダーを設定 (任意)"]
 ```
 
-新規データベースには、起動時のマイグレーションによってカテゴリツリー、スマートタグ、および約 380 体のアバター本体が自動的に登録されます。数日かかる初回フルクロール ([データバンドルを使わない起動手順](docs/DEPLOY.md#starting-without-a-data-bundle)) を省略したい場合は、[公開済みデータバンドル](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-10-31) (2026-10-31 時点のスナップショット、約 21.6 万件の商品と販売終了商品のアーカイブ画像を収録、約 1.4 GB) を復元してください。
+新規データベースには、起動時のマイグレーションによってカテゴリツリー、スマートタグ、および約 380 体のアバター本体が自動的に登録されます。数日かかる初回フルクロール ([データバンドルを使わない起動手順](docs/DEPLOY.md#starting-without-a-data-bundle)) を省略したい場合は、[公開済みデータバンドル](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04) (2026-11-04 時点のスナップショット、約 21.7 万件の商品と販売終了商品のアーカイブ画像を収録、約 2.1 GB) を復元してください。
 
 ```sh
 mkdir -p /srv/boothdex && cd /srv/boothdex

@@ -38,7 +38,7 @@ flowchart LR
 flowchart TD
   prep["1. Place compose.yaml + .env on server<br/>Set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN"] --> choice{"Use published<br/>data bundle?"}
 
-  choice -- "Yes (~5 min, ~216k items)" --> dl["2a. Download & verify data-2026-10-31<br/>Extract images.tar → set ARCHIVE_IMAGES_DIR"]
+  choice -- "Yes (~5 min, ~217k items)" --> dl["2a. Download & verify data-2026-11-04<br/>Extract images.tar → set ARCHIVE_IMAGES_DIR"]
   dl --> pgup["docker compose pull<br/>docker compose up -d postgres"]
   pgup --> restore["Stream catalogue.dump into pg_restore"]
   restore --> up["docker compose up -d"]
@@ -84,18 +84,20 @@ cp .env.example .env
 
 Without a data bundle, skip to [3. Configure](#3-configure) and follow [Starting without a data bundle](#starting-without-a-data-bundle) in step 4.
 
-A data bundle is a snapshot of an existing instance created with `scripts/make-bundle.sh <out-dir>`. A ready-made bundle is published as the GitHub release [data-2026-10-31](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-10-31): 215,911 items from the VRCatalogue archive plus that day's BOOTH crawl (browser mirror: [Filen](https://app.filen.io/#/f/f910e157-1651-42f4-8516-116b7af17c83%236d4a646241516c595a43473546664533504c5a664d4e4c4f7a4d4b48636a745f)). Services apply newer migrations automatically at startup, and the hourly crawl catches up from there.
+A data bundle is a snapshot of an existing instance created with `scripts/make-bundle.sh <out-dir>`. A ready-made bundle is published as the GitHub release [data-2026-11-04](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04): 217,494 items (VRCatalogue archive plus BOOTH crawls up to that day), with semantic-search vectors from `Qwen/Qwen3-Embedding-4B`. Services apply newer migrations automatically at startup, and the hourly crawl catches up from there.
+
+If you configure a different embeddings model, clear the bundled vectors once so the `embed` job rebuilds them with yours: `docker compose exec postgres psql -U catalogue catalogue -c 'update items set embedding = null'`.
 
 | File | Contents | Size |
 |---|---|---|
-| `catalogue.dump` | PostgreSQL custom-format dump: all items, crawled BOOTH image links, taxonomy and schema. **No user accounts, sessions, favourites, viewed history, job history or AI settings.** | ~0.5–1 GB |
+| `catalogue.dump` | PostgreSQL custom-format dump: all items, crawled BOOTH image links, taxonomy and schema. **No user accounts, sessions, favourites, viewed history, job history or AI settings.** | ~1.1 GB |
 | `images.tar` | Archived WebP images of delisted items (`images/<sha1>.webp`) no longer served by BOOTH | ~1 GB |
 | `SHA256SUMS` | SHA-256 checksums | — |
 
 ```sh
 mkdir -p /srv/boothdex/bundle && cd /srv/boothdex/bundle
 for f in catalogue.dump images.tar SHA256SUMS; do
-  curl -fLO https://github.com/JohnsonRan/BoothDex/releases/download/data-2026-10-31/$f
+  curl -fLO https://github.com/JohnsonRan/BoothDex/releases/download/data-2026-11-04/$f
 done
 sha256sum -c SHA256SUMS
 tar -xf images.tar -C /srv/boothdex    # extracts to /srv/boothdex/images/*.webp
