@@ -846,11 +846,7 @@ mod tests {
         assert_eq!(super::normalize_query("  Gothic   Dress "), "gothic dress");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
-        use axum::extract::{FromRequestParts, RawQuery, State};
-        use axum::http::{HeaderMap, Request, StatusCode, header};
-
+    fn test_state() -> std::sync::Arc<super::AppState> {
         let catalog = super::Catalog::build(Vec::new(), 0, None).unwrap();
         let snap = super::Snapshot {
             catalog,
@@ -864,7 +860,7 @@ mod tests {
             loaded_at: chrono::Utc::now(),
             build_secs: 0.0,
         };
-        let state = std::sync::Arc::new(
+        std::sync::Arc::new(
             super::AppState::new(
                 sqlx::postgres::PgPoolOptions::new().connect_lazy("postgres://localhost/unused").unwrap(),
                 snap,
@@ -885,7 +881,15 @@ mod tests {
                 None,
             )
             .unwrap(),
-        );
+        )
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
+        use axum::extract::{FromRequestParts, RawQuery, State};
+        use axum::http::{HeaderMap, Request, StatusCode, header};
+
+        let state = test_state();
 
         let ip_of = |xff: &'static str| {
             let state = state.clone();
@@ -946,6 +950,60 @@ mod tests {
             assert_eq!(call(ip).await.status(), StatusCode::OK);
         }
         assert_eq!(call(ip).await.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn auth_limiter_exhaustion_throttles_both_login_and_register() {
+        use axum::extract::{Json, State};
+        use axum::http::{HeaderMap, StatusCode};
+
+        let state = test_state();
+        let ip = super::limit::ClientIp("203.0.113.50".parse().unwrap());
+
+        // Exhaust the auth limiter burst for this IP
+        while state.limits.auth.check(ip.0).is_ok() {}
+
+        enum AuthCall {
+            Login(super::account::Login),
+            Register(super::account::Register),
+        }
+
+        let cases = [
+            (
+                "login",
+                AuthCall::Login(super::account::Login {
+                    login: "testuser".into(),
+                    password: "password12345".into(),
+                    keep: false,
+                }),
+            ),
+            (
+                "register",
+                AuthCall::Register(super::account::Register {
+                    username: "testuser".into(),
+                    email: "testuser@example.com".into(),
+                    display_name: "Test User".into(),
+                    password: "password12345".into(),
+                    keep: false,
+                }),
+            ),
+        ];
+
+        for (name, call) in cases {
+            let res = match call {
+                AuthCall::Login(body) => {
+                    super::account::login(State(state.clone()), ip, HeaderMap::new(), Json(body)).await.ok().unwrap()
+                }
+                AuthCall::Register(body) => {
+                    super::account::register(State(state.clone()), ip, HeaderMap::new(), Json(body)).await.ok().unwrap()
+                }
+            };
+            assert_eq!(
+                res.status(),
+                StatusCode::TOO_MANY_REQUESTS,
+                "handler {name} must return 429 when auth limiter is exhausted"
+            );
+        }
     }
 
     #[test]

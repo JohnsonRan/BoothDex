@@ -237,16 +237,16 @@ pub fn validate_preferences(v: &Value) -> Result<(), &'static str> {
 }
 
 #[derive(Deserialize)]
-struct Register {
-    display_name: String,
-    username: String,
-    email: String,
-    password: String,
+pub(crate) struct Register {
+    pub(crate) display_name: String,
+    pub(crate) username: String,
+    pub(crate) email: String,
+    pub(crate) password: String,
     #[serde(default)]
-    keep: bool,
+    pub(crate) keep: bool,
 }
 
-async fn register(
+pub(crate) async fn register(
     State(s): State<Arc<AppState>>,
     crate::limit::ClientIp(ip): crate::limit::ClientIp,
     headers: HeaderMap,
@@ -288,14 +288,14 @@ async fn register(
 }
 
 #[derive(Deserialize)]
-struct Login {
-    login: String,
-    password: String,
+pub(crate) struct Login {
+    pub(crate) login: String,
+    pub(crate) password: String,
     #[serde(default)]
-    keep: bool,
+    pub(crate) keep: bool,
 }
 
-async fn login(
+pub(crate) async fn login(
     State(s): State<Arc<AppState>>,
     crate::limit::ClientIp(ip): crate::limit::ClientIp,
     headers: HeaderMap,

@@ -113,6 +113,7 @@ fn bucket_key(ip: IpAddr) -> IpAddr {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct ClientIp(pub IpAddr);
 
 impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
