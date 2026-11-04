@@ -163,6 +163,41 @@ struct AppState {
 }
 
 impl AppState {
+    fn new(
+        pool: PgPool,
+        snap: Snapshot,
+        limits: limit::Limits,
+        site_url: String,
+        imgproxy_url: Option<String>,
+        dummy_hash: String,
+        http_timeout: Option<std::time::Duration>,
+    ) -> Result<Self> {
+        // Fetcher::new installs the rustls crypto provider required by reqwest before building the HTTP client.
+        let gallery = gallery::Fetcher::new()?;
+        let mut builder = reqwest::Client::builder();
+        if let Some(t) = http_timeout {
+            builder = builder.timeout(t);
+        }
+        let http = builder.build()?;
+        Ok(Self {
+            pool,
+            snap: arc_swap::ArcSwap::from_pointee(snap),
+            reload: tokio::sync::Notify::new(),
+            site_url,
+            throttle: Default::default(),
+            dummy_hash,
+            gallery,
+            sys: admin::SysMetrics::new(),
+            http,
+            imgproxy_url,
+            limits,
+            search_permits: tokio::sync::Semaphore::new(16),
+            embed_cache: moka::sync::Cache::new(EMBED_CACHE_CAP),
+            embed_inflight: Default::default(),
+            embed_permits: Arc::new(tokio::sync::Semaphore::new(4)),
+        })
+    }
+
     fn snap(&self) -> arc_swap::Guard<Arc<Snapshot>> {
         self.snap.load()
     }
@@ -706,23 +741,15 @@ async fn build_snapshot(pool: &PgPool, version: i64) -> Result<Snapshot> {
 async fn build_state(pool: PgPool) -> Result<AppState> {
     let version = catalog_version(&pool).await?;
     let snap = build_snapshot(&pool, version).await?;
-    Ok(AppState {
+    AppState::new(
         pool,
-        snap: arc_swap::ArcSwap::from_pointee(snap),
-        reload: tokio::sync::Notify::new(),
-        site_url: std::env::var("SITE_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".into()),
-        throttle: Default::default(),
-        dummy_hash: account::dummy_hash(),
-        gallery: gallery::Fetcher::new()?,
-        sys: admin::SysMetrics::new(),
-        http: reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build()?,
-        imgproxy_url: std::env::var("IMGPROXY_URL").ok().or_else(|| Some("http://127.0.0.1:3001".into())),
-        limits: Default::default(),
-        search_permits: tokio::sync::Semaphore::new(16),
-        embed_cache: moka::sync::Cache::new(EMBED_CACHE_CAP),
-        embed_inflight: Default::default(),
-        embed_permits: Arc::new(tokio::sync::Semaphore::new(4)),
-    })
+        snap,
+        Default::default(),
+        std::env::var("SITE_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".into()),
+        std::env::var("IMGPROXY_URL").ok().or_else(|| Some("http://127.0.0.1:3001".into())),
+        account::dummy_hash(),
+        Some(std::time::Duration::from_secs(10)),
+    )
 }
 
 /// Answers every request with 503 while the catalogue loads (~20 s), so the site can say "starting" instead of
@@ -879,33 +906,28 @@ mod tests {
             loaded_at: chrono::Utc::now(),
             build_secs: 0.0,
         };
-        let state = std::sync::Arc::new(super::AppState {
-            pool: sqlx::postgres::PgPoolOptions::new().connect_lazy("postgres://localhost/unused").unwrap(),
-            snap: arc_swap::ArcSwap::from_pointee(snap),
-            reload: tokio::sync::Notify::new(),
-            site_url: "http://127.0.0.1:3000".into(),
-            throttle: Default::default(),
-            dummy_hash: String::new(),
-            gallery: super::gallery::Fetcher::new().unwrap(),
-            sys: super::admin::SysMetrics::new(),
-            http: reqwest::Client::new(),
-            imgproxy_url: None,
-            limits: super::limit::Limits {
-                search: super::limit::RateLimiter::new(2.0, 3.0, 64),
-                palette: super::limit::RateLimiter::new(5.0, 2.0, 64),
-                rss: super::limit::RateLimiter::new(0.5, 2.0, 64),
-                items: super::limit::RateLimiter::new(1.0, 2.0, 64),
-                gallery: super::limit::RateLimiter::new(1.0, 2.0, 64),
-                lookup: super::limit::RateLimiter::new(5.0, 2.0, 64),
-                embed_ip: super::limit::RateLimiter::new(0.25, 8.0, 64),
-                embed_global: super::limit::RateLimiter::new(2.0, 20.0, 1),
-                auth: super::limit::RateLimiter::new(0.2, 5.0, 64),
-            },
-            search_permits: tokio::sync::Semaphore::new(16),
-            embed_cache: moka::sync::Cache::new(super::EMBED_CACHE_CAP),
-            embed_inflight: Default::default(),
-            embed_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
-        });
+        let state = std::sync::Arc::new(
+            super::AppState::new(
+                sqlx::postgres::PgPoolOptions::new().connect_lazy("postgres://localhost/unused").unwrap(),
+                snap,
+                super::limit::Limits {
+                    search: super::limit::RateLimiter::new(2.0, 3.0, 64),
+                    palette: super::limit::RateLimiter::new(5.0, 2.0, 64),
+                    rss: super::limit::RateLimiter::new(0.5, 2.0, 64),
+                    items: super::limit::RateLimiter::new(1.0, 2.0, 64),
+                    gallery: super::limit::RateLimiter::new(1.0, 2.0, 64),
+                    lookup: super::limit::RateLimiter::new(5.0, 2.0, 64),
+                    embed_ip: super::limit::RateLimiter::new(0.25, 8.0, 64),
+                    embed_global: super::limit::RateLimiter::new(2.0, 20.0, 1),
+                    auth: super::limit::RateLimiter::new(0.2, 5.0, 64),
+                },
+                "http://127.0.0.1:3000".into(),
+                None,
+                String::new(),
+                None,
+            )
+            .unwrap(),
+        );
 
         let ip_of = |xff: &'static str| {
             let state = state.clone();

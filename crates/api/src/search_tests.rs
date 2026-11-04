@@ -34,34 +34,29 @@ async fn check_semantic_search(pool: PgPool) {
         .bind(catalogue_core::embed::HalfVector::from_f32_slice(&vector)).execute(&pool).await.unwrap();
 
     let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
-    let state = Arc::new(AppState {
-        pool,
-        snap: arc_swap::ArcSwap::from_pointee(Snapshot {
-            catalog,
-            category_phrases: Default::default(),
-            avatars: Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 2)]),
-            authors: Lookup::new(Vec::new()),
-            tags: Lookup::new(Vec::new()),
-            booth_tags: Lookup::new(Vec::new()),
-            categories: json!({ "categories": [] }),
-            version: 1,
-            loaded_at: chrono::Utc::now(),
-            build_secs: 0.0,
-        }),
-        reload: tokio::sync::Notify::new(),
-        site_url: "http://127.0.0.1:3000".into(),
-        throttle: Default::default(),
-        dummy_hash: String::new(),
-        gallery: gallery::Fetcher::new().unwrap(),
-        sys: admin::SysMetrics::new(),
-        http: reqwest::Client::builder().timeout(std::time::Duration::from_secs(2)).build().unwrap(),
-        imgproxy_url: None,
-        limits: Default::default(),
-        search_permits: tokio::sync::Semaphore::new(16),
-        embed_cache: moka::sync::Cache::new(EMBED_CACHE_CAP),
-        embed_inflight: Default::default(),
-        embed_permits: Arc::new(tokio::sync::Semaphore::new(4)),
-    });
+    let state = Arc::new(
+        AppState::new(
+            pool,
+            Snapshot {
+                catalog,
+                category_phrases: Default::default(),
+                avatars: Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 2)]),
+                authors: Lookup::new(Vec::new()),
+                tags: Lookup::new(Vec::new()),
+                booth_tags: Lookup::new(Vec::new()),
+                categories: json!({ "categories": [] }),
+                version: 1,
+                loaded_at: chrono::Utc::now(),
+                build_secs: 0.0,
+            },
+            Default::default(),
+            "http://127.0.0.1:3000".into(),
+            None,
+            String::new(),
+            Some(std::time::Duration::from_secs(2)),
+        )
+        .unwrap(),
+    );
     for (query, expected, semantic) in [
         ("q=silky%20strands", vec![1, 3], "used"),
         ("q=shinano%20silky%20strands", vec![1], "used"),
