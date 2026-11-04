@@ -140,8 +140,8 @@ flowchart TD
 | `scripts` | Local dev launcher (Windows / Git Bash), data bundle scripts and mock AI server |
 
 On a 32-thread machine with 216k items, searches take 1–6 ms inside the API and 5–40 ms per request (~550 req/s
-across 32 concurrent clients). On Linux containers, `api` uses ~1.3–2.4 GB RSS steady (including the
-memory-mapped Tantivy index) and peaks at ~2.5–3 GB while atomically reloading a new catalogue (`mem_limit: 4g`).
+across 32 concurrent clients). On Linux containers, `api` uses ~0.4–1 GB RSS steady (plus the
+memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while atomically reloading a new catalogue (`mem_limit: 4g`).
 
 ## Development
 

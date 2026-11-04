@@ -17,6 +17,7 @@ axum = { version = "0.8", features = ["tokio", "http1", "json", "query"] }
 boothdex-core.workspace = true
 chrono.workspace = true
 lindera = { version = "5.0.1", features = ["embed-ipadic"] }
+mimalloc = "0.1.52"
 moka = { version = "0.12", features = ["sync"] }
 percent-encoding = "2"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "http2"] }

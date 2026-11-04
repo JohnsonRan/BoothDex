@@ -31,9 +31,8 @@ USER app
 
 FROM runtime AS api
 COPY --from=build /out/api /usr/local/bin/api
-# few malloc arenas: catalogue reloads allocate on several threads, and glibc's default per-thread arenas kept
-# that memory, putting reload peaks near the container's memory limit
-ENV BIND=0.0.0.0:3000 INDEX_DIR=/index MALLOC_ARENA_MAX=2
+# the api uses mimalloc (see main.rs), so glibc malloc tuning such as MALLOC_ARENA_MAX does not apply
+ENV BIND=0.0.0.0:3000 INDEX_DIR=/index
 EXPOSE 3000
 CMD ["api"]
 

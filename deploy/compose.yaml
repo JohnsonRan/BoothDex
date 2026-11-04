@@ -45,7 +45,8 @@ services:
       AI_EMBED_MODEL: ${AI_EMBED_MODEL:-}
     volumes:
       - textindex:/index # on-disk search index, reused across restarts
-    # ~1.3-2.4 GB steady on Linux, ~2.5-3 GB peak while reloading (old and new catalogue held at once); 3g was OOM-killed
+    # ~0.4-1 GB steady on Linux with mimalloc, ~1.8 GB peak while reloading (old and new catalogue held at once);
+    # with glibc malloc 3g was OOM-killed, so the limit keeps that headroom
     mem_limit: 4g
 
   worker:

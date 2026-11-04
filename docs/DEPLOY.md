@@ -55,7 +55,7 @@ flowchart TD
 
 | Resource | Minimum | Recommended | Why |
 |---|---|---|---|
-| RAM | **6 GB** (or 4 GB + 4 GB swap) | **8 GB** | On Linux, `api` uses ~1.3–2.4 GB steady (including the memory-mapped Tantivy index) and peaks at ~2.5–3 GB while hot-reloading a new catalogue (`mem_limit: 4g`); `postgres` ~1 GB; `imgproxy` up to 1 GB; `worker` <512 MB; `web` ~200 MB |
+| RAM | **6 GB** (or 4 GB + 4 GB swap) | **8 GB** | On Linux, `api` uses ~0.4–1 GB steady (plus the memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while hot-reloading a new catalogue (`mem_limit: 4g`); `postgres` ~1 GB; `imgproxy` up to 1 GB; `worker` <512 MB; `web` ~200 MB |
 | CPU | 2 vCPU | 4 vCPU | WebP transcoding and Tantivy index rebuilds are CPU-bound |
 | Disk | 40 GB SSD | 60 GB+ SSD | Database ~3 GB (~4 GB with embeddings), archived images ~1 GB, `imgcache` 10 GB (configurable), container images and backups |
 | OS | Linux with Docker or Podman (+ Compose) | — | Prebuilt `linux/amd64` images are published to `ghcr.io` |
