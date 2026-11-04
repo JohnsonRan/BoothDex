@@ -70,6 +70,24 @@ async fn heartbeat(pool: PgPool, booth: Arc<Booth>) {
     }
 }
 
+/// Deletes rows nothing reads any more: expired login sessions, and job history (with its logs) older than 90 days.
+async fn cleanup(pool: &PgPool) -> Result<(u64, u64)> {
+    let sessions = sqlx::query("delete from sessions where expires_at < now()").execute(pool).await?.rows_affected();
+    let jobs = sqlx::query("delete from jobs where finished_at < now() - interval '90 days'").execute(pool).await?.rows_affected();
+    Ok((sessions, jobs))
+}
+
+async fn housekeeping(pool: PgPool) {
+    loop {
+        match cleanup(&pool).await {
+            Ok((0, 0)) => {}
+            Ok((s, j)) => println!("cleanup: {s} expired sessions, {j} old jobs deleted"),
+            Err(e) => eprintln!("cleanup: {e:#}"),
+        }
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+    }
+}
+
 async fn execute(pool: &PgPool, booth: &Booth, id: i64, kind: &str, params: &Value, chain: bool) -> Result<()> {
     println!("job {id} {kind} started");
     let mut ctx = jobs::Ctx::new(pool, booth, id);
@@ -124,6 +142,7 @@ async fn daemon(pool: PgPool, booth: Arc<Booth>) -> Result<()> {
     sqlx::query("update jobs set status = 'failed', finished_at = now(), error = 'worker restarted' where status in ('running', 'cancelling')").execute(&pool).await?;
     sqlx::query("update worker_status set started_at = now(), version = $1").bind(env!("CARGO_PKG_VERSION")).execute(&pool).await?;
     tokio::spawn(heartbeat(pool.clone(), booth.clone()));
+    tokio::spawn(housekeeping(pool.clone()));
     println!("worker running");
     let mut running = tokio::task::JoinSet::new();
     let mut busy: Vec<String> = Vec::new(); // lanes with a job running
@@ -197,5 +216,27 @@ async fn main() -> Result<()> {
             execute(&pool, &booth, id, kind, &params, false).await
         }
         Some(other) => anyhow::bail!("unknown command {other}; use `run` or `once <kind>`"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn cleanup_drops_only_expired_sessions_and_old_jobs(pool: sqlx::PgPool) {
+        sqlx::query("insert into users (id, username, email, display_name, password_hash) values (1, 'u', 'u@x', 'u', 'h')").execute(&pool).await.unwrap();
+        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ('\x01', 1, now() - interval '1 minute'), ('\x02', 1, now() + interval '1 day')")
+            .execute(&pool).await.unwrap();
+        // old finished, recent finished, old but still queued (no finished_at)
+        sqlx::query("insert into jobs (id, kind, status, created_at, finished_at) values
+                     (1, 'refresh', 'succeeded', now() - interval '100 days', now() - interval '100 days'),
+                     (2, 'refresh', 'failed', now() - interval '10 days', now() - interval '10 days'),
+                     (3, 'sweep', 'queued', now() - interval '100 days', null)")
+            .execute(&pool).await.unwrap();
+        assert_eq!(super::cleanup(&pool).await.unwrap(), (1, 1));
+        let sessions: Vec<Vec<u8>> = sqlx::query_scalar("select token_hash from sessions").fetch_all(&pool).await.unwrap();
+        assert_eq!(sessions, [vec![2u8]]);
+        let jobs: Vec<i64> = sqlx::query_scalar("select id from jobs order by id").fetch_all(&pool).await.unwrap();
+        assert_eq!(jobs, [2, 3]);
     }
 }
