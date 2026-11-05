@@ -10,7 +10,6 @@ import {
   CommandPaletteInput,
 } from "@astryxdesign/core/CommandPalette";
 import { Icon } from "@astryxdesign/core/Icon";
-import { HStack, StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { Hash, Trash2 } from "lucide-react";
 import { use, useEffect, useMemo, useRef } from "react";
@@ -113,8 +112,9 @@ export default function Palette({
       onValueChange={choose}
       renderItem={(row) => {
         const d = row.auxiliaryData;
+        // a row as in block CommandPaletteRichItems: leading visual, label taking the width, trailing note
         return (
-          <HStack gap={3} vAlign="center">
+          <>
             {d?.image !== undefined ? (
               <Avatar
                 src={d.image || undefined}
@@ -128,20 +128,23 @@ export default function Palette({
                 <Icon icon={ICONS[d.icon]} size="sm" color="secondary" />
               )
             )}
-            <StackItem size="fill">
-              <Text type="body" maxLines={1} hasTruncateTooltip={false}>
-                {row.label}
-                {d?.note && (
-                  <Text type="body" color="secondary">{` ${d.note}`}</Text>
-                )}
-              </Text>
-            </StackItem>
+            <Text
+              type="body"
+              maxLines={1}
+              hasTruncateTooltip={false}
+              style={{ flex: 1 }}
+            >
+              {row.label}
+              {d?.note && (
+                <Text type="body" color="secondary">{` ${d.note}`}</Text>
+              )}
+            </Text>
             {d?.meta && (
               <Text type="supporting" color="secondary" hasTabularNumbers>
                 {d.meta}
               </Text>
             )}
-          </HStack>
+          </>
         );
       }}
     />

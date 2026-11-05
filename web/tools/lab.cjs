@@ -66,6 +66,8 @@ const GEOMETRY = () => {
   const h1 = main.querySelector("h1");
   const grid = main.querySelector(".astryx-grid");
   const out = {
+    // the top bar (logo and end actions), then the page header
+    topBar: box(document.querySelector("nav")),
     header: box(h1?.parentElement?.parentElement),
     titleRow: box(h1?.parentElement),
     title: box(h1),
@@ -95,6 +97,7 @@ const GEOMETRY = () => {
     out[`tile${i}`] = box(t);
     out[`tile${i}.cover`] = box(t.children[0]);
     const text = t.children[1]?.children ?? [];
+    // title, shop row (icon and name), price row (price and favourite button), badge row
     ["title", "shop", "price", "badges"].forEach((part, n) => {
       out[`tile${i}.${part}`] = box(text[n]);
     });
