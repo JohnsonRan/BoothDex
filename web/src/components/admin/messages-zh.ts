@@ -48,6 +48,8 @@ export const adminZh = {
   "meter.cacheSub":
     "{requests} 次请求 · 输出 {out} · 错误 {errors} · 缓存 磁盘 {disk} MB / 内存 {mem} MB",
   "meter.cacheDown": "图片服务不可达",
+  "meter.workerOn": "运行中",
+  "meter.workerOff": "离线",
   "meter.worker": "Worker",
   "meter.workerSub": "内存 {rss} · 启动于",
   "meter.heartbeat": "心跳",

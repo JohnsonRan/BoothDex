@@ -2,7 +2,7 @@
 // One crawler job kind as a row of the Astryx template incident-console's list
 // (templates/pages/incident-console/page.tsx:347-380): name and status Token on the first line, then the kind's
 // description, its progress or next run, and its controls (schedule Switch, interval Selector, Run or Log and
-// Stop, and a MoreMenu with the run options), which wrap under the text on a phone.
+// Stop, and a MoreMenu with the run options); the schedule and the actions wrap as two groups on a phone.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
@@ -119,7 +119,7 @@ export function TaskRow({
           )}
           <HStack gap={2} vAlign="center" wrap="wrap">
             {schedule && (
-              <>
+              <HStack gap={2} vAlign="center">
                 <Switch
                   label={t("jobs.schedule")}
                   size="sm"
@@ -147,45 +147,47 @@ export function TaskRow({
                     ).then(() => {})
                   }
                 />
-              </>
+              </HStack>
             )}
             <StackItem size="fill" />
-            {job ? (
-              <>
+            <HStack gap={2} vAlign="center">
+              {job ? (
+                <>
+                  <Button
+                    label={t("jobs.log")}
+                    variant="secondary"
+                    size="sm"
+                    icon={<Icon icon="admin:log" size="sm" />}
+                    onClick={() => onLog(job.id)}
+                  />
+                  <Button
+                    label={t("jobs.stop")}
+                    variant="destructive"
+                    size="sm"
+                    icon={<Icon icon="admin:stop" size="sm" />}
+                    isDisabled={job.status === "cancelling"}
+                    onClick={() => onStop(job)}
+                  />
+                </>
+              ) : (
                 <Button
-                  label={t("jobs.log")}
-                  variant="secondary"
+                  label={t("jobs.run")}
+                  variant="primary"
                   size="sm"
-                  icon={<Icon icon="admin:log" size="sm" />}
-                  onClick={() => onLog(job.id)}
+                  icon={<Icon icon="admin:run" size="sm" />}
+                  onClick={() =>
+                    act(
+                      "/api/admin/jobs",
+                      { method: "POST", json: { kind, params: {} } },
+                      t("toast.queued", { kind: name }),
+                    )
+                  }
                 />
-                <Button
-                  label={t("jobs.stop")}
-                  variant="destructive"
-                  size="sm"
-                  icon={<Icon icon="admin:stop" size="sm" />}
-                  isDisabled={job.status === "cancelling"}
-                  onClick={() => onStop(job)}
-                />
-              </>
-            ) : (
-              <Button
-                label={t("jobs.run")}
-                variant="primary"
-                size="sm"
-                icon={<Icon icon="admin:run" size="sm" />}
-                onClick={() =>
-                  act(
-                    "/api/admin/jobs",
-                    { method: "POST", json: { kind, params: {} } },
-                    t("toast.queued", { kind: name }),
-                  )
-                }
-              />
-            )}
-            {!job && more.length > 0 && (
-              <MoreMenu size="sm" label={t("jobs.more")} items={more} />
-            )}
+              )}
+              {!job && more.length > 0 && (
+                <MoreMenu size="sm" label={t("jobs.more")} items={more} />
+              )}
+            </HStack>
           </HStack>
         </VStack>
       }

@@ -52,7 +52,7 @@ export function History() {
 
   return (
     <JobsFrame tab="history">
-      <HStack gap={2} vAlign="center" wrap="wrap">
+      <HStack gap={2} vAlign="end" wrap="wrap">
         <Selector
           label={t("history.kind")}
           size="sm"

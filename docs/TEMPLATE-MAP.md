@@ -66,10 +66,12 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Language, item text, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio groups; currency as a ghost DropdownMenu button | checkpoint 1 |
 | Settings (appearance, language, currency, item text) | TopNav end | page `settings-dialog` | planned |
 | Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid) | planned |
-| Admin login | `/admin` signed out | page `login-card` | planned |
-| Admin console | `/admin` | page `shell-side-nav` + page `table-page` (Searchable Table) | planned |
-| AI settings | admin console | page `settings` (Settings Form) | planned |
-| Reset password | admin console | page `form-two-column` in a `Dialog` | planned |
+| Admin frame | `/admin/*` | page `shell-side-nav` (collapsible, resizable `SideNav`, two titled groups, footer: back to site, language, colour mode; phone drawer from `AppShell`) | track F |
+| Admin sign-in, not an admin, unreachable | `/admin/*` before the probe succeeds | `EmptyState` inside the frame; sign-in opens the site's `login-card` dialog | track F |
+| Admin overview | `/admin` | page `dashboard` (`MetricCard` grid, `Divider`, titled section of meters with `ProgressBar`); header `StatusDot` + text as page `incident-console` | track F |
+| Crawler tasks | `/admin/jobs` | page `incident-console` list rows (`List` compact with dividers, status `Token`); stop and run options through blocks `AlertDialogAsyncAction` and `DialogFormDialog` | track F |
+| Crawler history | `/admin/jobs/history` | page `incident-console` rows and `EmptyState`; kind and status `Selector`s in the URL; details in a `Dialog` with the inspector's `MetadataList` | track F |
+| Admin settings (AI provider, reset password) | `/admin/settings` | page `settings` (two-column sections with `Divider`); key overwrite and reset behind `AlertDialog` | track F |
 
 ## Deviations from the templates in phase 1
 

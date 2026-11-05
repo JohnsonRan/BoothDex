@@ -93,7 +93,7 @@ export function SystemMeters() {
       )}
       <MetricCard
         label={t("meter.worker")}
-        value={w.alive ? t("worker.on") : t("worker.off")}
+        value={w.alive ? t("meter.workerOn") : t("meter.workerOff")}
         isWarning={!w.alive}
         sub={
           <>

@@ -51,6 +51,8 @@ export const adminEn: AdminDict = {
   "meter.cacheSub":
     "{requests} requests · {out} sent · {errors} errors · cache disk {disk} MB / memory {mem} MB",
   "meter.cacheDown": "Image service unreachable",
+  "meter.workerOn": "Running",
+  "meter.workerOff": "Offline",
   "meter.worker": "Worker",
   "meter.workerSub": "Memory {rss} · started",
   "meter.heartbeat": "Heartbeat",
