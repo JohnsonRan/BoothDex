@@ -179,6 +179,10 @@ export const zh = {
   "account.username": "用户名(3–24 位字母、数字、下划线)",
   "account.email": "邮箱",
   "account.newPassword": "密码(至少 10 位)",
+  "account.required": "请填写此项",
+  "account.usernameRule": "用户名需为 3–24 位字母、数字或下划线",
+  "account.emailInvalid": "邮箱格式不正确",
+  "account.passwordShort": "密码至少 10 位",
   "saved.desc":
     "把当前筛选条件保存下来，用 RSS 阅读器订阅，符合条件的新商品会自动推送。",
   "saved.name": "订阅名称",

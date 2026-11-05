@@ -3,20 +3,19 @@
 // (templates/pages/shell-top-nav/page.tsx): AppShell + TopNav with the logo heading on the left and the end
 // actions on the right. BoothDex has no section navigation, so the template's centre mega menus are not used.
 // End actions: the magnifier opens the quick-search palette (Ctrl/Cmd+K too, as in template shell-nav), then
-// the language and currency menus, the colour mode and Sign in. Pages put their own Layout inside, so titles
+// the language and currency menus, the colour mode and the account (Sign in). Pages put their own Layout inside, so titles
 // and content share the same left edge on every route.
 
 import { AppShell } from "@astryxdesign/core/AppShell";
-import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
 import type { Rates } from "@/lib/settings-core";
+import { Account } from "./account";
 import { ColorModeToggle, CurrencyMenu, LanguageMenu } from "./header-controls";
 import { Logo } from "./logo";
 import type { Pick } from "./palette-source";
@@ -56,8 +55,7 @@ export function SiteFrame({
               <LanguageMenu />
               <CurrencyMenu />
               <ColorModeToggle />
-              {/* the sign-in dialog is the next step of the rewrite; the button is shown but opens nothing yet */}
-              <Button label={t("nav.signIn")} variant="ghost" />
+              <Account />
             </>
           }
         />
@@ -70,7 +68,6 @@ export function SiteFrame({
 
 function QuickSearch({ rates }: { rates: Promise<Rates> }) {
   const { t } = useUi();
-  const router = useRouter();
   const { filters, apply } = useFilterUrl();
   // undefined: never opened, so the palette's code is not loaded
   const [open, setOpen] = useState<boolean>();
@@ -88,12 +85,9 @@ function QuickSearch({ rates }: { rates: Promise<Rates> }) {
     if (p.kind === "query") apply({ q: p.value });
     else if (p.kind === "avatar") apply({ avatar: p.value });
     else if (p.kind === "shop") apply({ author: p.value, q: "", avatar: "" });
-    else if (p.kind === "item") {
-      // the item dialog reads ?item= (next step of the rewrite)
-      const q = new URLSearchParams(location.search);
-      q.set("item", String(p.value));
-      router.push(`?${q}`, { scroll: false });
-    }
+    // the item dialog is the next step of the rewrite; until then the item opens on Booth
+    else if (p.kind === "item")
+      window.open(`https://booth.pm/ja/items/${p.value}`, "_blank", "noopener");
   };
   return (
     <>

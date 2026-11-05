@@ -184,6 +184,10 @@ export const ja: Dict = {
   "account.username": "ユーザー名(英数字と _ で 3～24 文字)",
   "account.email": "メールアドレス",
   "account.newPassword": "パスワード(10 文字以上)",
+  "account.required": "入力してください",
+  "account.usernameRule": "3〜24 文字の英数字またはアンダースコア",
+  "account.emailInvalid": "メールアドレスの形式が正しくありません",
+  "account.passwordShort": "10 文字以上にしてください",
   "saved.desc":
     "今の絞り込み条件を保存し、RSS リーダーで購読すると新着商品が届きます。",
   "saved.name": "名前",

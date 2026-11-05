@@ -183,6 +183,10 @@ export const ko: Dict = {
   "account.username": "사용자 이름(영문, 숫자, _ 3–24자)",
   "account.email": "이메일",
   "account.newPassword": "비밀번호(10자 이상)",
+  "account.required": "필수 항목입니다",
+  "account.usernameRule": "영문, 숫자, 밑줄 3–24자",
+  "account.emailInvalid": "올바른 이메일 주소를 입력하세요",
+  "account.passwordShort": "10자 이상 입력하세요",
   "saved.desc":
     "현재 필터를 저장하고 RSS 리더로 구독하면 새 상품을 받아볼 수 있습니다.",
   "saved.name": "이름",

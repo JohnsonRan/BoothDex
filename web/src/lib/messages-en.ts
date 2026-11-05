@@ -183,6 +183,10 @@ export const en: Dict = {
   "account.username": "Username (3–24 letters, digits, underscores)",
   "account.email": "Email",
   "account.newPassword": "Password (at least 10 characters)",
+  "account.required": "Required",
+  "account.usernameRule": "3–24 letters, digits or underscores",
+  "account.emailInvalid": "Enter a valid email address",
+  "account.passwordShort": "At least 10 characters",
   "saved.desc":
     "Save the current filters and subscribe in any RSS reader to get new matching items.",
   "saved.name": "Name",
