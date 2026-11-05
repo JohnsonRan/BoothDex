@@ -128,7 +128,7 @@ function SettingsContentPane({
             <SettingsPanelHeading panel={panel} />
           </StackItem>
           {/* the column the pinned close button floats over */}
-          <VStack aria-hidden="true" width={32} />
+          <VStack aria-hidden="true" width="var(--size-element-md)" />
         </HStack>
         <SettingsPanelBody panel={panel} />
       </VStack>
@@ -214,12 +214,12 @@ export default function SettingsDialog({
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       purpose="form"
-      width={1120}
-      maxHeight="min(800px, calc(100dvh - 2rem))"
+      width="70rem"
+      maxHeight="min(50rem, calc(100dvh - 2rem))"
       padding={0}
       aria-labelledby={titleId}
     >
-      <VStack style={{ height: "min(800px, calc(100dvh - 2rem))" }}>
+      <VStack style={{ height: "min(50rem, calc(100dvh - 2rem))" }}>
         {isNarrow ? (
           <SettingsNarrowShell
             titleId={titleId}

@@ -23,6 +23,7 @@ import {
   isNew,
   priceOf,
 } from "@/lib/catalog";
+import { remColumns } from "@/lib/grid";
 import {
   formatPrice,
   itemText,
@@ -30,6 +31,7 @@ import {
   type Settings,
   type Translate,
 } from "@/lib/settings-core";
+import { SkeletonImage } from "./silhouette";
 import { ViewedMark } from "./viewed-mark";
 
 /** What a tile shows, already in the visitor's language and currency (small enough to send to the browser). */
@@ -62,18 +64,19 @@ export const tileOf = (
   ],
 });
 
-// Reflows to two columns on a phone; the floor is the narrowest tile whose title still reads.
-export const GRID_COLUMNS = { minWidth: 160 } as const;
-// Tiles in the server HTML: more than a first screen at 390x844 (2 columns) and 1440x900 (8 columns), and a
-// whole number of rows at 2, 3, 4, 6 and 8 columns.
-export const FIRST_TILES = 24;
+// Template product-gallery (page.tsx:148-149): `<Grid columns={{minWidth: 300}} gap={6}>`, "reflows 3 -> 2 -> 1",
+// with the floor in rem (300 px at a 16 px root).
+export const GRID = { gap: 6, ...remColumns("18.75rem") } as const;
+// Tiles in the server HTML: a whole number of rows at 1 to 5 columns (390 to 1920 px wide at the 115 % root),
+// and more than a first screen at each.
+export const FIRST_TILES = 60;
 
-// Roughly the first screen (two columns on phones, five or six on a desktop): those covers load at once,
-// the first few with high priority since one of them is the likely LCP image.
-const EAGER = 12;
-const HIGH = 4;
+// The first screen: two rows at five columns load at once, the first row at three columns (1280-1440 px) with
+// high priority, since one of them is the likely LCP image.
+const EAGER = 10;
+const HIGH = 3;
 
-/** The shop's icon at Avatar's xsm size: a round crop, a muted disc when the shop has none. */
+/** The shop's icon at Avatar's xsm size (20 px at a 16 px root): a round crop, a muted disc when the shop has none. */
 function ShopIcon({ src }: { src: string }) {
   return (
     <span
@@ -81,8 +84,8 @@ function ShopIcon({ src }: { src: string }) {
       style={{
         display: "inline-flex",
         flex: "none",
-        inlineSize: 20,
-        blockSize: 20,
+        inlineSize: "var(--spacing-5)",
+        blockSize: "var(--spacing-5)",
         borderRadius: "var(--radius-full)",
         overflow: "hidden",
         background: "var(--color-background-muted)",
@@ -92,11 +95,9 @@ function ShopIcon({ src }: { src: string }) {
         <img
           src={src}
           alt=""
-          width={20}
-          height={20}
           loading="lazy"
           decoding="async"
-          style={{ objectFit: "cover" }}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       )}
     </span>
@@ -118,10 +119,9 @@ export function ItemTile({
 }) {
   const cover = (
     <Card padding={0}>
-      <AspectRatio ratio={1} fit="cover">
-        <img
+      <AspectRatio ratio={1}>
+        <SkeletonImage
           src={tile.cover}
-          alt=""
           loading={index < EAGER ? "eager" : "lazy"}
           fetchPriority={index < HIGH ? "high" : undefined}
           decoding="async"

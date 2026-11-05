@@ -12,7 +12,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { Children, type ReactNode } from "react";
 
 /** The one width every selector in a row takes, so the controls form one column (page.tsx:207). */
-export const CONTROL_WIDTH = 192;
+export const CONTROL_WIDTH = "12rem";
 
 /** The one inset for this surface: spacing step 4 === 16px (page.tsx:193). */
 const ROW_PADDING = 4;

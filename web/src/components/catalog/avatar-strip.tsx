@@ -2,7 +2,7 @@
 // Avatar picker (Carousel Snap template block): a snapping row of selectable cards with prev/next buttons and
 // the Carousel's own edge fade. Each card is Product Detail's selectable image thumbnail as is (a transparent
 // SelectableCard filling a square AspectRatio; its corner radius and selection ring are the card's own, the
-// image only fills and covers, inset by padding 1 so the ring shows); the name sits under it as the caption of the Top Nav template's
+// image only fills and covers, inset by the ring's width so the ring shows); the name sits under it as the caption of the Top Nav template's
 // category tiles.
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
 // focus or scroll in the strip, before any of them can come into view.
@@ -13,26 +13,22 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
 import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
 import { useFilterUrl } from "./filter-url";
+import { SkeletonImage } from "./silhouette";
 
-// structural width of one card; Booth's avatar thumbnails are square
-const CARD_WIDTH = 104;
+// structural width of one card (104 px at a 16 px root); Booth's avatar thumbnails are square
+const CARD_WIDTH = "6.5rem";
 // cards rendered before the strip is used: more than fit across 1440 px (with the "all" card)
 const FIRST_CARDS = 14;
 const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
 // Product Detail's thumbImage, inset by the card's padding: the card draws its selection ring as an inset
-// shadow, which an edge-to-edge image covers, so the image leaves the ring a frame
-const THUMB: CSSProperties = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-  display: "block",
-  // concentric with the card: its radius minus its padding (spacing 1)
-  borderRadius: "calc(var(--radius-container) - var(--spacing-1))",
-};
+// shadow, which an edge-to-edge image covers, so the image leaves the ring a frame. The padding is the ring's
+// width (2 px), so the ring meets the image with no band of card between them; the corner stays concentric
+// with the card: its radius minus that padding.
+const THUMB_RADIUS = "calc(var(--radius-container) - var(--spacing-0-5))";
 
 const AllGlyph = () => (
   <VStack height="100%" hAlign="center" vAlign="center">
@@ -90,10 +86,9 @@ export function AvatarStrip({ avatars }: { avatars: Avatar[] }) {
           onSelect={() => pick(a.slug === value ? "" : a.slug)}
         >
           {a.image_url ? (
-            <img
-              style={THUMB}
+            <SkeletonImage
+              radius={THUMB_RADIUS}
               src={imageSrc(a.image_url, "300x300_a2_g5")}
-              alt=""
               loading="lazy"
               decoding="async"
             />
@@ -125,7 +120,7 @@ function Tile({
           isSelected={selected}
           onChange={onSelect}
           variant="transparent"
-          padding={1}
+          padding={0.5}
           width="100%"
           height="100%"
         >

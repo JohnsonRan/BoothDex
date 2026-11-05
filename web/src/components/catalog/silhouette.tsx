@@ -1,4 +1,4 @@
-// Loading silhouettes of text and of a result tile. Each line box is the real text's line box (its size times
+// Loading silhouettes of text, of a result tile and under an image. Each line box is the real text's line box (its size times
 // its leading), and the tile silhouette has the tile's parts in the tile's order (item-tile.tsx), so nothing
 // moves when the real content replaces it (`tools/loading-layout.cjs` checks this). Shared by the server's
 // loading states (loading.tsx) and LaterTiles.
@@ -7,7 +7,7 @@ import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Card } from "@astryxdesign/core/Card";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
-import type { Ref } from "react";
+import type { ComponentProps, Ref } from "react";
 
 type TextType = "heading-1" | "heading-4" | "supporting" | "body" | "large";
 
@@ -52,7 +52,11 @@ export function TileSilhouette({ ref }: { ref?: Ref<HTMLDivElement> }) {
           <TextSilhouette type="heading-4" lines={2} width="60%" />
         </VStack>
         <HStack gap={1.5} vAlign="center">
-          <Skeleton height={20} width={20} radius="rounded" />
+          <Skeleton
+            height="var(--spacing-5)"
+            width="var(--spacing-5)"
+            radius="rounded"
+          />
           <StackItem size="fill">
             <TextSilhouette type="body" width="50%" />
           </StackItem>
@@ -70,5 +74,40 @@ export function TileSilhouette({ ref }: { ref?: Ref<HTMLDivElement> }) {
         </HStack>
       </VStack>
     </VStack>
+  );
+}
+
+/** An image filling and covering its box over a Skeleton, which shows until the image paints over it: no
+ *  handler and no state, so server markup needs no script. `radius` rounds both. */
+export function SkeletonImage({
+  radius,
+  style,
+  alt = "",
+  ...img
+}: ComponentProps<"img"> & { radius?: string }) {
+  return (
+    <span
+      style={{
+        display: "grid",
+        width: "100%",
+        height: "100%",
+        borderRadius: radius,
+        overflow: "hidden",
+      }}
+    >
+      <Skeleton radius="none" style={{ gridArea: "1 / 1" }} />
+      <img
+        alt={alt}
+        {...img}
+        style={{
+          gridArea: "1 / 1",
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          display: "block",
+          ...style,
+        }}
+      />
+    </span>
   );
 }

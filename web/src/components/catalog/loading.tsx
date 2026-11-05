@@ -7,7 +7,7 @@
 import { Grid } from "@astryxdesign/core/Grid";
 import { VStack } from "@astryxdesign/core/Stack";
 import { PLACEHOLDER } from "@/lib/motion";
-import { FIRST_TILES, GRID_COLUMNS } from "./item-tile";
+import { FIRST_TILES, GRID } from "./item-tile";
 import { TextSilhouette, TileSilhouette } from "./silhouette";
 
 /** The result count beside the title. */
@@ -25,7 +25,7 @@ const TILES = Array.from({ length: FIRST_TILES }, (_, i) => i);
 export function ResultsSilhouette({ label }: { label: string }) {
   return (
     <VStack {...PLACEHOLDER} gap={6} role="status" aria-label={label}>
-      <Grid columns={GRID_COLUMNS} gap={4}>
+      <Grid {...GRID}>
         {TILES.map((i) => (
           <TileSilhouette key={i} />
         ))}

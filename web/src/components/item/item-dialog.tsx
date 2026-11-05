@@ -21,6 +21,7 @@ import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { ItemResponse } from "@/lib/api-types";
 import { imageSrc } from "@/lib/catalog";
+import { remColumns } from "@/lib/grid";
 import type { Rates } from "@/lib/settings-core";
 import { useDelayed } from "@/lib/use-delayed";
 import { PhoneBar } from "./item-actions";
@@ -39,10 +40,10 @@ import "./item-icons";
 
 /** Below lg the dialog is full screen (master's breakpoint). */
 const PHONE = "(max-width: 1023px)";
-// template: Layout contentWidth={1200}
-const WIDTH = 1200;
-// template: Grid columns={{minWidth: 320, repeat: 'fit'}} gap={5}
-const COLUMNS = { minWidth: 320, repeat: "fit" } as const;
+// template: Layout contentWidth={1200}, in rem so it scales with the root (globals.css)
+const WIDTH = "75rem";
+// template: Grid columns={{minWidth: 320, repeat: 'fit'}} gap={5}, the floor in rem
+const COLUMNS = remColumns("20rem", "fit");
 
 type Gallery = { images: string[]; complete: boolean };
 
@@ -146,7 +147,7 @@ export default function ItemDialog({
           <LayoutContent padding={6}>
             {item ? (
               <VStack gap={6}>
-                <Grid columns={COLUMNS} gap={5}>
+                <Grid {...COLUMNS} gap={5}>
                   <ItemGallery
                     key={item.id}
                     item={item}

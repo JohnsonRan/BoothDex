@@ -19,9 +19,11 @@ import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { SkeletonImage } from "@/components/catalog/silhouette";
 import { useUi } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
 import { imageCount, imgUrl } from "@/lib/catalog";
+import { remColumns } from "@/lib/grid";
 import { STICKY } from "./item-data";
 import { Download } from "./item-download";
 
@@ -33,15 +35,8 @@ const HERO: CSSProperties = {
   objectFit: "contain",
   display: "block",
 };
-// template thumbImage
-const THUMB: CSSProperties = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-  display: "block",
-};
-// the thumbnails' floor width: master's 64 px grid cells
-const THUMBS = { minWidth: 64, repeat: "fill" } as const;
+// the thumbnails' floor width: master's 64 px grid cells, in rem
+const THUMBS = remColumns("4rem");
 // about three rows of thumbnails at the dialog's width
 const THUMBS_HEIGHT = "15rem";
 // a slide is the current one once most of it is in view
@@ -190,7 +185,7 @@ export function ItemGallery({
             margin: "calc(-1 * var(--spacing-1))",
           }}
         >
-          <Grid columns={THUMBS} gap={2}>
+          <Grid {...THUMBS} gap={2}>
             {images.map((i) => (
               <AspectRatio key={i} ratio={1}>
                 <SelectableCard
@@ -202,10 +197,9 @@ export function ItemGallery({
                   width="100%"
                   height="100%"
                 >
-                  <img
-                    style={THUMB}
+                  {/* template thumbImage, over its loading Skeleton */}
+                  <SkeletonImage
                     src={imgUrl(item, i, "300x300_a2_g5")}
-                    alt=""
                     loading="lazy"
                     decoding="async"
                   />
