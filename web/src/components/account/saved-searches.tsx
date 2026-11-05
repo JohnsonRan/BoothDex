@@ -9,11 +9,12 @@ import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Center } from "@astryxdesign/core/Center";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { Spinner } from "@astryxdesign/core/Spinner";
-import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
+import { HStack, Stack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useToast } from "@astryxdesign/core/Toast";
@@ -44,6 +45,8 @@ export default function SavedSearches({
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const spinning = useDelayed(items === null);
+  // the name and its button stack on a phone, where the button would lose its label
+  const narrow = useMediaQuery("(max-width: 640px)");
 
   const load = useCallback(() => {
     api<{ items: Saved[] }>("/api/account/searches").then(
@@ -119,7 +122,12 @@ export default function SavedSearches({
         content={
           <LayoutContent>
             <VStack gap={4}>
-              <HStack gap={2} vAlign="end">
+              <Stack
+                direction={narrow ? "vertical" : "horizontal"}
+                gap={2}
+                hAlign={narrow ? "stretch" : undefined}
+                vAlign={narrow ? undefined : "end"}
+              >
                 <StackItem size="fill">
                   <TextInput
                     label={t("saved.name")}
@@ -141,7 +149,7 @@ export default function SavedSearches({
                   isLoading={busy}
                   onClick={subscribe}
                 />
-              </HStack>
+              </Stack>
               {items === false ? (
                 <Banner status="error" title={t("saved.loadFailed")} />
               ) : items === null ? (
@@ -157,7 +165,11 @@ export default function SavedSearches({
                       key={s.id}
                       label={s.name}
                       href={`/?${s.query}`}
-                      onClick={() => onOpenChange(false)}
+                      // the row's link takes its own clicks, which `onClick` does not see
+                      onClickCapture={(e) => {
+                        if ((e.target as Element).closest("a"))
+                          onOpenChange(false);
+                      }}
                       endContent={
                         <HStack gap={1}>
                           <Button

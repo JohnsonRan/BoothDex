@@ -174,6 +174,8 @@ function SettingsNarrowShell({
             icon={<Icon icon={panel.icon} size="sm" />}
             variant={panel.id === activePanel ? "secondary" : "ghost"}
             size="sm"
+            // the strip scrolls; its tabs keep their whole names
+            style={{ flexShrink: 0 }}
             onClick={() => onSelectPanel(panel.id)}
           />
         ))}
