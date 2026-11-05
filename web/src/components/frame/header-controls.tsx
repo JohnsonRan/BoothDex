@@ -13,7 +13,7 @@ import {
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
-import { Coins, Languages, Moon, Sun } from "lucide-react";
+import { Languages, Moon, Sun } from "lucide-react";
 import { useUi } from "@/components/providers";
 import { MESSAGES, UI_LANGS, type UiLang } from "@/lib/messages";
 import {
@@ -21,7 +21,24 @@ import {
   type ContentLang,
   CURRENCIES,
   type Currency,
+  LOCALES,
 } from "@/lib/settings-core";
+
+// the sign each currency is known by locally (Intl's narrow symbols repeat "$" and "¥" across currencies)
+const SYMBOLS: Record<Currency, string> = {
+  JPY: "¥",
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+  CNY: "¥",
+  TWD: "NT$",
+  HKD: "HK$",
+  KRW: "₩",
+  AUD: "A$",
+  CAD: "C$",
+  SGD: "S$",
+  THB: "฿",
+};
 
 /** Interface language and item-text language, two radio groups in one menu. */
 export function LanguageMenu() {
@@ -79,31 +96,34 @@ export function LanguageMenu() {
   );
 }
 
-/** Display currency; prices other than yen are converted (≈) on the server. */
+/** Display currency: the trigger names the current one (symbol and code); prices other than yen are converted
+ *  (≈) on the server. */
 export function CurrencyMenu() {
-  const { t, settings, update } = useUi();
-  const label = t("nav.currency", { c: settings.currency });
+  const { t, ui, settings, update } = useUi();
+  const names = new Intl.DisplayNames(LOCALES[ui], { type: "currency" });
+  const code = settings.currency;
   return (
     <DropdownMenu
       placement="below"
       alignment="end"
-      renderTrigger={(props) => (
-        <IconButton
-          {...props}
-          label={label}
-          tooltip={label}
-          variant="ghost"
-          icon={<Icon icon={Coins} size="sm" />}
-        />
-      )}
+      button={{
+        label: t("nav.currency", { c: code }),
+        tooltip: t("settings.currency"),
+        variant: "ghost",
+        children: `${SYMBOLS[code]} ${code}`,
+      }}
     >
       <DropdownMenuRadioGroup
         label={t("settings.currency")}
-        value={settings.currency}
+        value={code}
         onChange={(v) => update({ currency: v as Currency })}
       >
         {CURRENCIES.map((c) => (
-          <DropdownMenuRadioItem key={c} value={c} label={c} />
+          <DropdownMenuRadioItem
+            key={c}
+            value={c}
+            label={`${SYMBOLS[c]} ${c} · ${names.of(c)}`}
+          />
         ))}
       </DropdownMenuRadioGroup>
     </DropdownMenu>
