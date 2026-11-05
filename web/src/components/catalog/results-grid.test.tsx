@@ -4,6 +4,7 @@ import {
   type AppRouterInstance,
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AccountProvider } from "@/components/account/session";
 import { Providers } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
@@ -47,16 +48,18 @@ const item: ItemResponse = {
   enrich_failures: 0,
 };
 
-// the tiles' favourite buttons read the settings, which need a router to apply changes
+// the viewed marks read the session, and the settings need a router to apply changes
 const render = (items: ItemResponse[], content = DEFAULT_SETTINGS.content) =>
   renderToStaticMarkup(
     <AppRouterContext value={{} as AppRouterInstance}>
       <Providers settings={DEFAULT_SETTINGS}>
-        <ResultsGrid
-          items={items}
-          settings={{ ...DEFAULT_SETTINGS, content }}
-          rates={{}}
-        />
+        <AccountProvider>
+          <ResultsGrid
+            items={items}
+            settings={{ ...DEFAULT_SETTINGS, content }}
+            rates={{}}
+          />
+        </AccountProvider>
       </Providers>
     </AppRouterContext>,
   );
@@ -110,4 +113,11 @@ test("new items and feature tags are marked; plain items get no badges", () => {
   expect(html).toContain("MA");
   expect(html).not.toContain("lilToon");
   expect(html.match(/class="astryx-badge /g)).toHaveLength(3);
+});
+
+test("before the session is read, favourite buttons are unpressed and no cover is dimmed", () => {
+  const html = render([item, { ...item, id: 2 }]);
+  expect(html.match(/aria-pressed="false"/g)).toHaveLength(2);
+  expect(html).toContain(`data-fav="2"`);
+  expect(html).not.toContain("astryx-overlay");
 });

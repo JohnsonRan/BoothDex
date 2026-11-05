@@ -24,7 +24,7 @@ import {
 } from "@/lib/settings-core";
 
 // the sign each currency is known by locally (Intl's narrow symbols repeat "$" and "¥" across currencies)
-const SYMBOLS: Record<Currency, string> = {
+export const CURRENCY_SYMBOLS: Record<Currency, string> = {
   JPY: "¥",
   USD: "$",
   EUR: "€",
@@ -109,7 +109,7 @@ export function CurrencyMenu() {
         label: t("nav.currency", { c: code }),
         tooltip: t("settings.currency"),
         variant: "ghost",
-        children: `${SYMBOLS[code]} ${code}`,
+        children: `${CURRENCY_SYMBOLS[code]} ${code}`,
       }}
     >
       <DropdownMenuRadioGroup
@@ -121,7 +121,7 @@ export function CurrencyMenu() {
           <DropdownMenuRadioItem
             key={c}
             value={c}
-            label={`${SYMBOLS[c]} ${c} · ${names.of(c)}`}
+            label={`${CURRENCY_SYMBOLS[c]} ${c} · ${names.of(c)}`}
           />
         ))}
       </DropdownMenuRadioGroup>

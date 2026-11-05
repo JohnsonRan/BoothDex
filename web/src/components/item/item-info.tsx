@@ -133,8 +133,9 @@ export function ItemInfo({
                 label={t("fav.add")}
                 size="lg"
                 width="100%"
-                // answered by fav-toast.tsx, as the tiles' buttons are
-                data-fav=""
+                // answered by account/favourites.tsx, as the tiles' buttons are
+                data-fav={String(item.id)}
+                aria-pressed={false}
                 icon={<Icon icon="site:favourite" />}
               />
             </StackItem>

@@ -3,7 +3,7 @@
 // (templates/pages/shell-top-nav/page.tsx): AppShell + TopNav with the logo heading on the left and the end
 // actions on the right. BoothDex has no section navigation, so the template's centre mega menus are not used.
 // End actions: the magnifier opens the quick-search palette (Ctrl/Cmd+K too, as in template shell-nav), then
-// the language and currency menus, the colour mode and the account (Sign in). Pages put their own Layout inside, so titles
+// the language and currency menus, the colour mode and the account (Settings and Sign in, or the account menu). Pages put their own Layout inside, so titles
 // and content share the same left edge on every route.
 
 import { AppShell } from "@astryxdesign/core/AppShell";
@@ -12,12 +12,13 @@ import { IconButton } from "@astryxdesign/core/IconButton";
 import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { FavToast } from "@/components/catalog/fav-toast";
+import { Account } from "@/components/account/account-button";
+import { Favourites } from "@/components/account/favourites";
+import { AccountProvider } from "@/components/account/session";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { ItemHost, useItemOpener } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
 import type { Rates } from "@/lib/settings-core";
-import { Account } from "./account";
 import { ColorModeToggle, CurrencyMenu, LanguageMenu } from "./header-controls";
 import { Logo } from "./logo";
 import type { Pick } from "./palette-source";
@@ -35,43 +36,45 @@ export function SiteFrame({
 }) {
   const { t } = useUi();
   return (
-    // the item dialog (`?item=`) opens from tiles, the palette and the dialog itself
-    <ItemHost rates={rates}>
-      {/* auto height: the window scrolls (and a phone's address bar collapses); the nav stays sticky */}
-      <AppShell
-        variant="surface"
-        height="auto"
-        topNav={
-          <TopNav
-            label={t("nav.main")}
-            // one frame inset (TEMPLATE-MAP rule 5): the bar's own 8 px plus this put the logo and the last
-            // (borderless) action's label on the content's 24 px edges
-            style={{ paddingInline: "var(--spacing-4)" }}
-            heading={
-              <TopNavHeading
-                // the wordmark is visually hidden on phones (globals.css), as on master; the link keeps its name
-                className="site-heading"
-                heading="BoothDex"
-                headingHref="/"
-                logo={<Logo />}
-              />
-            }
-            endContent={
-              <>
-                <QuickSearch rates={rates} />
-                <LanguageMenu />
-                <CurrencyMenu />
-                <ColorModeToggle />
-                <Account />
-              </>
-            }
-          />
-        }
-      >
-        {children}
-        <FavToast />
-      </AppShell>
-    </ItemHost>
+    <AccountProvider>
+      {/* the item dialog (`?item=`) opens from tiles, the palette and the dialog itself */}
+      <ItemHost rates={rates}>
+        {/* auto height: the window scrolls (and a phone's address bar collapses); the nav stays sticky */}
+        <AppShell
+          variant="surface"
+          height="auto"
+          topNav={
+            <TopNav
+              label={t("nav.main")}
+              // one frame inset (TEMPLATE-MAP rule 5): the bar's own 8 px plus this put the logo on the content's
+              // 24 px edge and the last (borderless) action's label within its padding of the right edge
+              style={{ paddingInline: "var(--spacing-4)" }}
+              heading={
+                <TopNavHeading
+                  // the wordmark is visually hidden on phones (globals.css), as on master; the link keeps its name
+                  className="site-heading"
+                  heading="BoothDex"
+                  headingHref="/"
+                  logo={<Logo />}
+                />
+              }
+              endContent={
+                <>
+                  <QuickSearch rates={rates} />
+                  <LanguageMenu />
+                  <CurrencyMenu />
+                  <ColorModeToggle />
+                  <Account />
+                </>
+              }
+            />
+          }
+        >
+          {children}
+        </AppShell>
+      </ItemHost>
+      <Favourites />
+    </AccountProvider>
   );
 }
 

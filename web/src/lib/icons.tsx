@@ -6,13 +6,25 @@
 
 import { registerIcons } from "@astryxdesign/core/Icon";
 import {
+  Bookmark,
+  Code,
+  Coins,
+  Eye,
   Hash,
   Heart,
+  History,
   Languages,
+  LayoutDashboard,
   LayoutGrid,
+  LogOut,
+  Monitor,
   Moon,
+  Palette,
+  Rss,
+  Settings,
   Sun,
   Trash2,
+  Type,
 } from "lucide-react";
 
 // as the theme's own entries: Icon sets the size through the font size
@@ -20,6 +32,18 @@ const glyph = { size: "1em", "aria-hidden": true } as const;
 
 const SITE_ICONS = {
   "site:favourite": <Heart {...glyph} />,
+  "site:viewed": <Eye {...glyph} />,
+  "site:recent": <History {...glyph} />,
+  "site:savedSearch": <Rss {...glyph} />,
+  "site:subscribe": <Bookmark {...glyph} />,
+  "site:admin": <LayoutDashboard {...glyph} />,
+  "site:settings": <Settings {...glyph} />,
+  "site:signOut": <LogOut {...glyph} />,
+  "site:appearance": <Palette {...glyph} />,
+  "site:system": <Monitor {...glyph} />,
+  "site:itemText": <Type {...glyph} />,
+  "site:currency": <Coins {...glyph} />,
+  "site:code": <Code {...glyph} />,
   "site:language": <Languages {...glyph} />,
   "site:allAvatars": <LayoutGrid {...glyph} />,
   "site:dark": <Moon {...glyph} />,

@@ -1,10 +1,11 @@
 // One result tile, adapted from the Product Gallery template's ProductCard (templates/pages/product-gallery):
 // square media, then title, a secondary line (the shop, with its icon) and the price in large bold; the price
 // row ends with the favourite button, and NEW and feature tags follow as Badges (Badge Category Tags block). Not over the cover: Overlay is a client component,
-// and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration. No directive: the server renders the first screen
-// of tiles and LaterTiles renders the rest in the browser, both from this module. For the same reason a tile
-// carries no handler of its own: one listener answers every favourite button (fav-toast.tsx), and the shop
-// icon is server markup rather than a client Avatar.
+// and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration; only a viewed tile mounts one (viewed-mark.tsx).
+// No directive: the server renders the first screen of tiles and LaterTiles renders the rest in the browser,
+// both from this module. For the same reason the favourite button carries no handler of its own: one listener
+// answers every one (account/favourites.tsx). The viewed mark is the tile's only client part; the shop icon is
+// server markup rather than a client Avatar.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Badge } from "@astryxdesign/core/Badge";
@@ -28,6 +29,7 @@ import {
   type Rates,
   type Settings,
 } from "@/lib/settings-core";
+import { ViewedMark } from "./viewed-mark";
 
 /** What a tile shows, already in the visitor's language and currency (small enough to send to the browser). */
 export type Tile = {
@@ -102,27 +104,33 @@ function ShopIcon({ src }: { src: string }) {
 export function ItemTile({
   tile,
   index,
+  markViewed,
   favLabel,
 }: {
   tile: Tile;
   index: number;
+  /** dims the cover of an item the visitor opened (not in the recent view, where every item was) */
+  markViewed: boolean;
   /** the favourite button's name, in the visitor's language */
   favLabel: string;
 }) {
+  const cover = (
+    <Card padding={0}>
+      <AspectRatio ratio={1} fit="cover">
+        <img
+          src={tile.cover}
+          alt=""
+          loading={index < EAGER ? "eager" : "lazy"}
+          fetchPriority={index < HIGH ? "high" : undefined}
+          decoding="async"
+        />
+      </AspectRatio>
+    </Card>
+  );
   return (
     // opened by item-host.tsx's one listener: a click anywhere on the tile but the favourite button
     <VStack gap={3} data-item={String(tile.id)} style={{ cursor: "pointer" }}>
-      <Card padding={0}>
-        <AspectRatio ratio={1} fit="cover">
-          <img
-            src={tile.cover}
-            alt=""
-            loading={index < EAGER ? "eager" : "lazy"}
-            fetchPriority={index < HIGH ? "high" : undefined}
-            decoding="async"
-          />
-        </AspectRatio>
-      </Card>
+      {markViewed ? <ViewedMark id={tile.id}>{cover}</ViewedMark> : cover}
       <VStack gap={1}>
         {/* level 4 is the body-sized heading; tiles still sit at outline level 2, under the page title */}
         <Heading
@@ -169,8 +177,9 @@ export function ItemTile({
             </Text>
           </StackItem>
           <IconButton
-            // answered by fav-toast.tsx
-            data-fav=""
+            // answered, and marked pressed while saved, by account/favourites.tsx
+            data-fav={String(tile.id)}
+            aria-pressed={false}
             label={favLabel}
             variant="ghost"
             size="sm"

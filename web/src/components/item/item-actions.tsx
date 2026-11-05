@@ -108,7 +108,9 @@ export function PhoneBar({
         </Text>
       </StackItem>
       <IconButton
-        data-fav=""
+        // answered by account/favourites.tsx, as the tiles' buttons are
+        data-fav={String(item.id)}
+        aria-pressed={false}
         label={t("fav.add")}
         size="lg"
         icon={<Icon icon="site:favourite" />}

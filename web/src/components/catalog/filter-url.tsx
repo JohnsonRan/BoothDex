@@ -85,7 +85,10 @@ export function FilterUrlProvider({
     return {
       filters,
       apply: (patch) => {
-        go(filtersToQuery({ ...filters, ...patch }), false);
+        // a search, shop or avatar picked in the recent view leaves it, as on master
+        const view = filters.view === "recent" &&
+          !patch.view && { view: "items" as const };
+        go(filtersToQuery({ ...filters, ...view, ...patch }), false);
         if (patch.q) saveHistory(addQuery(loadHistory(), patch.q));
         if (patch.avatar !== undefined) remember(patch.avatar);
       },

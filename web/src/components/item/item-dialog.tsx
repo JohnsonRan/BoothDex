@@ -14,16 +14,15 @@ import { Grid } from "@astryxdesign/core/Grid";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
 import { VStack } from "@astryxdesign/core/Stack";
-import { useToast } from "@astryxdesign/core/Toast";
 import { use, useEffect, useRef, useState } from "react";
+import { useAccount } from "@/components/account/session";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
 import type { ItemResponse } from "@/lib/api-types";
 import { imageSrc } from "@/lib/catalog";
 import type { Rates } from "@/lib/settings-core";
 import { useDelayed } from "@/lib/use-delayed";
-import { recordLocalView } from "@/lib/viewed";
 import { PhoneBar } from "./item-actions";
 import { shopHost } from "./item-data";
 import { ItemGallery } from "./item-gallery";
@@ -45,30 +44,22 @@ const WIDTH = 1200;
 // template: Grid columns={{minWidth: 320, repeat: 'fit'}} gap={5}
 const COLUMNS = { minWidth: 320, repeat: "fit" } as const;
 
-/** Remembers an opened item: in the account when signed in, else in this browser (master's recordView). */
-function recordView(id: number) {
-  api("/api/account/views", {
-    method: "POST",
-    json: { views: [{ id }] },
-  }).catch((e) => {
-    if (e instanceof ApiError && e.status === 401) recordLocalView(id);
-  });
-}
-
 type Gallery = { images: string[]; complete: boolean };
 
 /** The full record (cards carry no bio, variations or avatars) and, once the API has it, Booth's whole gallery. */
 function useItem(id: number): ItemResponse | null {
-  const { t } = useUi();
-  const toast = useToast();
+  const { notify, recordView } = useAccount();
   const { close } = useItemOpener();
   const [item, setItem] = useState<ItemResponse | null>(null);
   // an unknown or failed item: error toast, parameter removed (master browse.tsx:347-366)
   const failed = useRef(() => {});
   failed.current = () => {
-    toast({ body: t("list.loadFailed"), type: "error", uniqueID: "item" });
+    notify("list.loadFailed", "error");
     close();
   };
+  // remembers the opened item (in the account when signed in, else in this browser), read when it arrives
+  const viewed = useRef(recordView);
+  viewed.current = recordView;
   useEffect(() => {
     if (!id) return;
     let live = true;
@@ -82,7 +73,7 @@ function useItem(id: number): ItemResponse | null {
         if (!it) return fail();
         if (!live) return;
         setItem(withGallery(it));
-        recordView(id);
+        viewed.current(id);
       })
       .catch(fail);
     api<Gallery>(`/api/items/${id}/gallery`)
