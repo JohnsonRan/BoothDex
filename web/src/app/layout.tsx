@@ -14,6 +14,8 @@ const figtree = Figtree({
 export const metadata: Metadata = {
   title: "BoothDex",
   description: "Search and filter VRChat assets on Booth",
+  // the site has its own dark mode (Astryx theme, color-scheme set): tell Dark Reader not to filter it again
+  other: { "darkreader-lock": "" },
 };
 
 export const viewport: Viewport = {
