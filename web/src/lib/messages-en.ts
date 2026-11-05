@@ -206,4 +206,31 @@ export const en: Dict = {
   "settings.light": "Light",
   "settings.fontCredit": "Font: MiSans (Xiaomi)",
   "settings.source": "Source code",
+  "common.close": "Close",
+  "common.delete": "Delete",
+  "common.cancel": "Cancel",
+  "saved.confirmDelete": "Delete “{name}”?",
+  "saved.saveFailed": "Couldn't subscribe to this search",
+  "saved.deleteFailed": "Couldn't delete the saved search",
+  "saved.copyFailed": "Couldn't copy the RSS link",
+  "saved.loadFailed": "Couldn't load saved searches",
+  "settings.sections": "Settings sections",
+  "settings.preferences": "Preferences",
+  "settings.site": "BoothDex",
+  "settings.appearance": "Appearance",
+  "settings.appearanceDesc": "The colour mode of the pages.",
+  "settings.syncNote":
+    "Saved in this browser, and in your account when you're signed in.",
+  "settings.system": "System",
+  "settings.language": "Language & region",
+  "settings.languageDesc":
+    "Interface language, item text and the currency of prices.",
+  "settings.uiDesc": "Used in menus, buttons and messages.",
+  "settings.contentDesc":
+    "Item titles and descriptions; the original shows where there is no translation.",
+  "settings.currencyDesc":
+    "Prices other than yen are converted at the exchange rate and marked ≈.",
+  "settings.about": "About",
+  "settings.aboutDesc": "Licence, source code and font.",
+  "settings.open": "Open",
 };

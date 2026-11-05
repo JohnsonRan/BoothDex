@@ -18,6 +18,7 @@ import {
 import { defaultThemeSlug, themes } from "@/astryx-themes";
 import "@/lib/icons";
 import type { UiLang } from "@/lib/messages";
+import { savePreferences } from "@/lib/preferences";
 import {
   LOCALES,
   SETTINGS_COOKIE,
@@ -60,6 +61,8 @@ export function Providers({
         const next = { ...settings, ...patch };
         // biome-ignore lint/suspicious/noDocumentCookie: the server reads this cookie; Cookie Store is not in every browser
         document.cookie = `${SETTINGS_COOKIE}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=31536000; samesite=lax`;
+        // signed in, the account keeps them too (lib/preferences.ts)
+        savePreferences(patch);
         if (patch.theme) setTheme(patch.theme);
         if (patch.ui) document.documentElement.lang = LOCALES[patch.ui];
         if (patch.ui || patch.content || patch.currency)

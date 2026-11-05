@@ -1,16 +1,14 @@
 // One result tile, adapted from the Product Gallery template's ProductCard (templates/pages/product-gallery):
 // square media, then title, a secondary line (the shop, with its icon) and the price in large bold; the price
 // row ends with the favourite button, and NEW and feature tags follow as Badges (Badge Category Tags block). Not over the cover: Overlay is a client component,
-// and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration. No directive: the server renders the first screen
-// of tiles and LaterTiles renders the rest in the browser, both from this module. For the same reason a tile
-// carries no handler of its own: one listener answers every favourite button (fav-toast.tsx), and the shop
+// and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration; only a viewed tile mounts one (viewed-mark.tsx).
+// No directive: the server renders the first screen of tiles and LaterTiles renders the rest in the browser,
+// both from this module. The favourite button and the viewed mark are the tile's only client parts; the shop
 // icon is server markup rather than a client Avatar.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Card } from "@astryxdesign/core/Card";
-import { Icon } from "@astryxdesign/core/Icon";
-import { IconButton } from "@astryxdesign/core/IconButton";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import type { ItemResponse } from "@/lib/api-types";
@@ -28,6 +26,8 @@ import {
   type Rates,
   type Settings,
 } from "@/lib/settings-core";
+import { FavButton } from "./fav-button";
+import { ViewedMark } from "./viewed-mark";
 
 /** What a tile shows, already in the visitor's language and currency (small enough to send to the browser). */
 export type Tile = {
@@ -102,26 +102,29 @@ function ShopIcon({ src }: { src: string }) {
 export function ItemTile({
   tile,
   index,
-  favLabel,
+  markViewed,
 }: {
   tile: Tile;
   index: number;
-  /** the favourite button's name, in the visitor's language */
-  favLabel: string;
+  /** dims the cover of an item the visitor opened (not in the recent view, where every item was) */
+  markViewed: boolean;
 }) {
+  const cover = (
+    <Card padding={0}>
+      <AspectRatio ratio={1} fit="cover">
+        <img
+          src={tile.cover}
+          alt=""
+          loading={index < EAGER ? "eager" : "lazy"}
+          fetchPriority={index < HIGH ? "high" : undefined}
+          decoding="async"
+        />
+      </AspectRatio>
+    </Card>
+  );
   return (
     <VStack gap={3}>
-      <Card padding={0}>
-        <AspectRatio ratio={1} fit="cover">
-          <img
-            src={tile.cover}
-            alt=""
-            loading={index < EAGER ? "eager" : "lazy"}
-            fetchPriority={index < HIGH ? "high" : undefined}
-            decoding="async"
-          />
-        </AspectRatio>
-      </Card>
+      {markViewed ? <ViewedMark id={tile.id}>{cover}</ViewedMark> : cover}
       <VStack gap={1}>
         {/* level 4 is the body-sized heading; tiles still sit at outline level 2, under the page title */}
         <Heading
@@ -161,14 +164,7 @@ export function ItemTile({
               {tile.price}
             </Text>
           </StackItem>
-          <IconButton
-            // answered by fav-toast.tsx
-            data-fav=""
-            label={favLabel}
-            variant="ghost"
-            size="sm"
-            icon={<Icon icon="site:favourite" size="sm" />}
-          />
+          <FavButton id={tile.id} />
         </HStack>
         {/* kept when empty: one badge tall, as in the silhouette */}
         <HStack

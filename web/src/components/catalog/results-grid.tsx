@@ -5,7 +5,7 @@
 import { Grid } from "@astryxdesign/core/Grid";
 import type { ItemResponse } from "@/lib/api-types";
 import { ROWS } from "@/lib/motion";
-import { type Rates, type Settings, translator } from "@/lib/settings-core";
+import type { Rates, Settings } from "@/lib/settings-core";
 import { FIRST_TILES, GRID_COLUMNS, ItemTile, tileOf } from "./item-tile";
 import { LaterTiles } from "./later-tiles";
 
@@ -13,21 +13,23 @@ export function ResultsGrid({
   items,
   settings,
   rates,
+  markViewed = true,
 }: {
   items: ItemResponse[];
   settings: Settings;
   rates: Rates;
+  /** off in the recent view, where every item was opened */
+  markViewed?: boolean;
 }) {
   const tiles = items.map((item) => tileOf(item, settings, rates));
   const later = tiles.slice(FIRST_TILES);
-  const favLabel = translator(settings.ui)("fav.add");
   return (
     <Grid {...ROWS} columns={GRID_COLUMNS} gap={4}>
       {tiles.slice(0, FIRST_TILES).map((tile, i) => (
-        <ItemTile key={tile.id} tile={tile} index={i} favLabel={favLabel} />
+        <ItemTile key={tile.id} tile={tile} index={i} markViewed={markViewed} />
       ))}
       {later.length > 0 && (
-        <LaterTiles tiles={later} from={FIRST_TILES} favLabel={favLabel} />
+        <LaterTiles tiles={later} from={FIRST_TILES} markViewed={markViewed} />
       )}
     </Grid>
   );

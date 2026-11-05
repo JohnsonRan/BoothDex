@@ -8,6 +8,8 @@ import { Layout, LayoutContent, LayoutHeader } from "@astryxdesign/core/Layout";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Heading } from "@astryxdesign/core/Text";
 import { Suspense } from "react";
+import { RecentCount, RecentResults } from "@/components/account/recent-view";
+import { ViewActions } from "@/components/account/view-actions";
 import { SiteFrame } from "@/components/frame/site-frame";
 import { Providers } from "@/components/providers";
 import {
@@ -22,6 +24,7 @@ import {
   listAvatars,
   listCategories,
   readSettings,
+  type SearchOutcome,
   searchItems,
 } from "@/lib/server-data";
 import { type Rates, type Settings, translator } from "@/lib/settings-core";
@@ -97,7 +100,11 @@ async function Catalog({
 }) {
   const t = translator(settings.ui);
   // started here, awaited by the count and the results: the frame does not wait for it
-  const outcome = searchItems(filters, page, noSemantic);
+  const recent = filters.view === "recent";
+  // nothing is searched for the recent view: the browser reads it (account/recent.tsx)
+  const outcome: Promise<SearchOutcome> = recent
+    ? Promise.resolve({ state: "error" })
+    : searchItems(filters, page, noSemantic);
   const featureCounts = outcome.then((o) =>
     o.state === "ok" ? o.result.featureCounts : {},
   );
@@ -113,17 +120,19 @@ async function Catalog({
   const category = categories
     .flatMap((c) => [c, ...c.children])
     .find((c) => c.slug === filters.sc);
-  const title = filters.q
-    ? t("title.search", { q: filters.q })
-    : filters.author
-      ? t("title.author", { name: filters.author })
-      : avatar
-        ? t("title.avatar", { name: avatarName(avatar, settings.ui) })
-        : filters.view === "avatars"
-          ? t("title.avatars")
-          : filters.view === "favourites"
-            ? t("title.favourites")
-            : t("title.all");
+  const title = recent
+    ? t("title.recent")
+    : filters.q
+      ? t("title.search", { q: filters.q })
+      : filters.author
+        ? t("title.author", { name: filters.author })
+        : avatar
+          ? t("title.avatar", { name: avatarName(avatar, settings.ui) })
+          : filters.view === "avatars"
+            ? t("title.avatars")
+            : filters.view === "favourites"
+              ? t("title.favourites")
+              : t("title.all");
 
   return (
     <Layout
@@ -133,10 +142,15 @@ async function Catalog({
         <LayoutHeader hasDivider>
           <HStack gap={3} vAlign="center" wrap="wrap">
             <Heading level={1}>{title}</Heading>
-            <Suspense fallback={<CountSilhouette />}>
-              <ResultCount outcome={outcome} settings={settings} />
-            </Suspense>
+            {recent ? (
+              <RecentCount />
+            ) : (
+              <Suspense fallback={<CountSilhouette />}>
+                <ResultCount outcome={outcome} settings={settings} />
+              </Suspense>
+            )}
             <RefreshIndicator />
+            {(recent || filters.view === "favourites") && <ViewActions />}
           </HStack>
         </LayoutHeader>
       }
@@ -148,25 +162,34 @@ async function Catalog({
               {filters.view === "items" && (
                 <AvatarStrip avatars={avatars} value={filters.avatar} />
               )}
-              <Toolbar
-                categoryTabs={categoryTabs}
-                featureCounts={featureCounts}
-              />
-              <ActiveFilters
-                categoryName={category && localName(category, settings.ui)}
-                avatar={avatar}
-              />
+              {/* filters and sort do not apply to the recent view */}
+              {!recent && (
+                <>
+                  <Toolbar
+                    categoryTabs={categoryTabs}
+                    featureCounts={featureCounts}
+                  />
+                  <ActiveFilters
+                    categoryName={category && localName(category, settings.ui)}
+                    avatar={avatar}
+                  />
+                </>
+              )}
             </VStack>
             <Divider />
             <Suspense
               fallback={<ResultsSilhouette label={t("list.loading")} />}
             >
-              <Results
-                outcome={outcome}
-                rates={rates}
-                settings={settings}
-                filters={filters}
-              />
+              {recent ? (
+                <RecentResults settings={settings} rates={rates} />
+              ) : (
+                <Results
+                  outcome={outcome}
+                  rates={rates}
+                  settings={settings}
+                  filters={filters}
+                />
+              )}
             </Suspense>
           </VStack>
         </LayoutContent>

@@ -11,11 +11,11 @@ import { TileSilhouette } from "./silhouette";
 export function LaterTiles({
   tiles,
   from,
-  favLabel,
+  markViewed,
 }: {
   tiles: Tile[];
   from: number;
-  favLabel: string;
+  markViewed: boolean;
 }) {
   const [shown, setShown] = useState(false);
   const marker = useRef<HTMLDivElement>(null);
@@ -38,7 +38,7 @@ export function LaterTiles({
         key={tile.id}
         tile={tile}
         index={from + i}
-        favLabel={favLabel}
+        markViewed={markViewed}
       />
     ));
   return <TileSilhouette ref={marker} />;
