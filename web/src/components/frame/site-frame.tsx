@@ -41,6 +41,9 @@ export function SiteFrame({
       topNav={
         <TopNav
           label={t("nav.main")}
+          // one frame inset (TEMPLATE-MAP rule 5): the bar's own 8 px plus this put the logo and the last
+          // (borderless) action's label on the content's 24 px edges
+          style={{ paddingInline: "var(--spacing-4)" }}
           heading={
             <TopNavHeading
               // the wordmark is visually hidden on phones (globals.css), as on master; the link keeps its name
