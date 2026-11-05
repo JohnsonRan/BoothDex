@@ -269,7 +269,7 @@ async fn update_schedule(State(s): State<Arc<AppState>>, headers: HeaderMap, Pat
 async fn reload(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
     admin!(s, headers);
     // bump so the reloader rebuilds even if nothing changed
-    sqlx::query("update catalog_meta set version = version + 1, changed_at = now()").execute(&s.pool).await?;
+    boothdex_core::bump_catalog_version(&s.pool).await?;
     s.reload.notify_one();
     Ok(Json(json!({ "ok": true })).into_response())
 }

@@ -647,13 +647,22 @@ async fn catalog_version(pool: &PgPool) -> Result<i64> {
     Ok(sqlx::query_scalar("select version from catalog_meta").fetch_one(pool).await?)
 }
 
-/// Rebuilds the snapshot when the worker bumps catalog_meta.version (checked every 30 s, or on demand).
+/// A rebuild reloads every item (~25 s, twice the memory), so worker bumps during a busy backlog are
+/// folded into at most one rebuild per gap. The admin "reload now" skips the wait.
+const MIN_RELOAD_GAP: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Rebuilds the snapshot when the worker bumps catalog_meta.version (checked every 30 s, rebuilt at most
+/// once per `MIN_RELOAD_GAP`, or on demand).
 /// The old snapshot keeps serving during the rebuild, so peak memory is roughly two catalogues.
 async fn reloader(state: Arc<AppState>) {
+    let mut last_build = Instant::now();
     loop {
-        tokio::select! {
-            _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {}
-            _ = state.reload.notified() => {}
+        let forced = tokio::select! {
+            _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => false,
+            _ = state.reload.notified() => true,
+        };
+        if !forced && last_build.elapsed() < MIN_RELOAD_GAP {
+            continue;
         }
         let version = match catalog_version(&state.pool).await {
             Ok(v) => v,
@@ -665,6 +674,7 @@ async fn reloader(state: Arc<AppState>) {
         if version == state.snap().version {
             continue;
         }
+        last_build = Instant::now();
         match build_snapshot(&state.pool, version).await {
             Ok(s) => {
                 println!("catalogue reloaded: version {version}, {} docs", s.catalog.len());

@@ -58,7 +58,7 @@ fn param<T: serde::de::DeserializeOwned>(p: &Value, key: &str, default: T) -> T 
 
 pub async fn bump_catalog(pool: &PgPool) -> Result<()> {
     link_relisted(pool).await?;
-    sqlx::query("update catalog_meta set version = version + 1, changed_at = now()").execute(pool).await?;
+    boothdex_core::bump_catalog_version(pool).await?;
     Ok(())
 }
 
