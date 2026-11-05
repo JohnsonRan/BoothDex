@@ -6,6 +6,9 @@ import {
   FONTS_CSS,
   FONTS_USED,
   FONTS_USED_MAX,
+  fontSlices,
+  isFontSheet,
+  isFontSlice,
 } from "@/lib/fonts";
 
 let started = false;
@@ -22,7 +25,9 @@ function loadFonts() {
           (r) => r instanceof CSSFontFaceRule && /MiSans/.test(r.cssText),
         ),
     );
-    if (sheet?.href) localStorage.setItem(FONTS_CSS, sheet.href);
+    try {
+      if (isFontSheet(sheet?.href)) localStorage.setItem(FONTS_CSS, sheet.href);
+    } catch {}
   });
   document.fonts.addEventListener("loadingdone", rememberSlices);
 }
@@ -30,11 +35,9 @@ function loadFonts() {
 /** Adds the slices drawn so far to the ones the next visit preloads (FONTS_EARLY). */
 function rememberSlices() {
   try {
-    const used = new Set<string>(
-      JSON.parse(localStorage.getItem(FONTS_USED) ?? "[]"),
-    );
+    const used = new Set(fontSlices(localStorage.getItem(FONTS_USED)));
     for (const e of performance.getEntriesByType("resource"))
-      if (/MiSans-VF\.\d+\.[^/]*woff2$/.test(e.name)) used.add(e.name);
+      if (isFontSlice(e.name)) used.add(e.name);
     localStorage.setItem(
       FONTS_USED,
       JSON.stringify([...used].slice(-FONTS_USED_MAX)),
