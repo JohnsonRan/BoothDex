@@ -2,15 +2,18 @@
 // The gallery column, from the product-detail template's ImageGallery (page.tsx:116-153): the hero image in an
 // AspectRatio above a Grid of thumbnails, each thumbnail a transparent SelectableCard with padding 0 filling a
 // square AspectRatio (page.tsx:131-150). Master's gallery features on top of it:
-// - the hero is a snapping Carousel (block CarouselSnap): swipe on touch, the Carousel's own prev/next buttons
-//   elsewhere, ←/→ keys while the dialog is open;
+// - the hero is a snapping Carousel (block CarouselSnap) without its own buttons, which float in the top layer
+//   over the page behind the dialog: swipe on touch, ←/→ keys while the dialog is open;
 // - a click on the image opens it full size in a Lightbox gallery (block LightboxGallery, with zoom);
-// - under it, download (DropdownMenu of formats) and the counter "n / N".
+// - under it, download (DropdownMenu of formats), then previous, the counter "n / N" and next, ghost
+//   IconButtons like download's.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Carousel, type CarouselHandle } from "@astryxdesign/core/Carousel";
 import { ClickableCard } from "@astryxdesign/core/ClickableCard";
 import { Grid } from "@astryxdesign/core/Grid";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
 import { Lightbox } from "@astryxdesign/core/Lightbox";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
@@ -65,7 +68,7 @@ export function ItemGallery({
     setIndex(n);
   };
 
-  // the current slide follows swipes and the Carousel's buttons; observed again when the whole gallery
+  // the current slide follows swipes; observed again when the whole gallery
   // arrives after the first images
   // biome-ignore lint/correctness/useExhaustiveDependencies: count changes the slides observed
   useEffect(() => {
@@ -111,7 +114,7 @@ export function ItemGallery({
       <Carousel
         gap={0}
         hasSnap
-        hasButtons={isWide}
+        hasButtons={false}
         hasEdgeFade={false}
         handleRef={carousel}
         ref={strip}
@@ -148,9 +151,29 @@ export function ItemGallery({
         <Download item={item} index={index} />
         <StackItem size="fill" />
         {count > 1 && (
-          <Text type="supporting" color="secondary" hasTabularNumbers>
-            {`${index + 1} / ${count}`}
-          </Text>
+          <>
+            {isWide && (
+              <IconButton
+                label={t("detail.prev")}
+                tooltip={t("detail.prev")}
+                variant="ghost"
+                icon={<Icon icon="chevronLeft" size="sm" />}
+                onClick={() => go(index - 1)}
+              />
+            )}
+            <Text type="supporting" color="secondary" hasTabularNumbers>
+              {`${index + 1} / ${count}`}
+            </Text>
+            {isWide && (
+              <IconButton
+                label={t("detail.next")}
+                tooltip={t("detail.next")}
+                variant="ghost"
+                icon={<Icon icon="chevronRight" size="sm" />}
+                onClick={() => go(index + 1)}
+              />
+            )}
+          </>
         )}
       </HStack>
       {isWide && count > 1 && (
