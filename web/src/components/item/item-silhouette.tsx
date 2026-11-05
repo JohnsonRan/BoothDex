@@ -11,8 +11,9 @@ import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { useUi } from "@/components/providers";
 
-// the dialog's height cap (master: 92 % of the viewport)
-export const MAX_HEIGHT = "92dvh";
+// the dialog's height cap: Astryx Dialog's default, which leaves the page visible above and below
+// (master used 92 %, which put the dialog against the top bar)
+export const MAX_HEIGHT = "75dvh";
 
 type TextType = "display-2" | "body" | "large" | "supporting";
 
