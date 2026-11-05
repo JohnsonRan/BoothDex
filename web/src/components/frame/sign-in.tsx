@@ -4,6 +4,7 @@
 // and the card are dropped, and BoothDex has no third-party providers, so neither the divider nor the provider
 // buttons are used. Tabs switch between the two forms. Requests and fields are master's
 // (account-menu.tsx): sign-in keeps the session (`keep: true`); errors from the server arrive as a toast.
+// The admin gate opens it sign-in only, under its own heading (`gate`).
 
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog } from "@astryxdesign/core/Dialog";
@@ -50,10 +51,13 @@ export function SignInDialog({
   isOpen,
   onOpenChange,
   onSignedIn,
+  gate,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onSignedIn: () => void;
+  /** sign-in only, under this heading (the admin gate); otherwise sign in or register under the site's */
+  gate?: { title: string; description: string };
 }) {
   const { t } = useUi();
   const toast = useToast();
@@ -105,23 +109,25 @@ export function SignInDialog({
     >
       <VStack gap={4} hAlign="stretch">
         <VStack gap={1} hAlign="center">
-          <Heading level={2}>{t("account.title")}</Heading>
+          <Heading level={2}>{gate?.title ?? t("account.title")}</Heading>
           <Text type="body" color="secondary" size="sm">
-            {t("account.desc")}
+            {gate?.description ?? t("account.desc")}
           </Text>
         </VStack>
-        <TabList
-          value={mode}
-          onChange={(v) => {
-            setMode(v as Mode);
-            setChecked(false);
-          }}
-          layout="fill"
-          role="tablist"
-        >
-          <Tab value="login" label={t("account.signIn")} />
-          <Tab value="register" label={t("account.register")} />
-        </TabList>
+        {!gate && (
+          <TabList
+            value={mode}
+            onChange={(v) => {
+              setMode(v as Mode);
+              setChecked(false);
+            }}
+            layout="fill"
+            role="tablist"
+          >
+            <Tab value="login" label={t("account.signIn")} />
+            <Tab value="register" label={t("account.register")} />
+          </TabList>
+        )}
         {/* a form, so Enter submits and password managers recognise it */}
         <form
           noValidate

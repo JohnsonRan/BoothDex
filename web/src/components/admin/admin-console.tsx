@@ -126,6 +126,10 @@ export function AdminConsole({ children }: { children: React.ReactNode }) {
         <SignInDialog
           isOpen={signIn}
           onOpenChange={setSignIn}
+          gate={{
+            title: t("gate.signInTitle"),
+            description: t("gate.signInDesc"),
+          }}
           onSignedIn={() => {
             setSignIn(false);
             setGate("checking");
