@@ -22,7 +22,7 @@ import {
   type Theme,
 } from "./settings-core";
 
-export { CURRENCIES, type ContentLang, type Currency, type Theme };
+export { type ContentLang, CURRENCIES, type Currency, type Theme };
 
 type Ctx = Settings & {
   set: (patch: Partial<Settings>) => void;
