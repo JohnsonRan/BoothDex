@@ -13,7 +13,7 @@ import {
   translator,
 } from "@/lib/settings-core";
 import { Pager } from "./pager";
-import { KeepResults } from "./refresh";
+import { KeepResults, Swap } from "./refresh";
 import { EmptyResults, SemanticNote } from "./result-states";
 import { ResultsGrid } from "./results-grid";
 
@@ -28,11 +28,13 @@ export async function ResultCount({
   if (o.state !== "ok") return null;
   const t = translator(settings.ui);
   return (
-    <Text type="supporting" hasTabularNumbers>
-      {t("title.count", {
-        n: o.result.count.toLocaleString(LOCALES[settings.ui]),
-      })}
-    </Text>
+    <Swap inline>
+      <Text type="supporting" hasTabularNumbers>
+        {t("title.count", {
+          n: o.result.count.toLocaleString(LOCALES[settings.ui]),
+        })}
+      </Text>
+    </Swap>
   );
 }
 
@@ -53,28 +55,32 @@ export async function Results({
   if (result.items.length === 0)
     return (
       <KeepResults>
-        <EmptyResults />
+        <Swap>
+          <EmptyResults />
+        </Swap>
       </KeepResults>
     );
   return (
     <KeepResults>
-      <VStack gap={6}>
-        <ResultsGrid
-          items={result.items}
-          settings={settings}
-          rates={await rates}
-        />
-        {result.semantic === "unavailable" && (
-          <SemanticNote
-            text={translator(settings.ui)("list.semanticUnavailable")}
+      <Swap>
+        <VStack gap={6}>
+          <ResultsGrid
+            items={result.items}
+            settings={settings}
+            rates={await rates}
           />
-        )}
-        <Pager
-          page={result.page}
-          total={result.totalPages}
-          noSemantic={!!filters.q && result.semantic !== "used"}
-        />
-      </VStack>
+          {result.semantic === "unavailable" && (
+            <SemanticNote
+              text={translator(settings.ui)("list.semanticUnavailable")}
+            />
+          )}
+          <Pager
+            page={result.page}
+            total={result.totalPages}
+            noSemantic={!!filters.q && result.semantic !== "used"}
+          />
+        </VStack>
+      </Swap>
     </KeepResults>
   );
 }

@@ -30,7 +30,7 @@ import { Arrival } from "./arrival";
 import { AvatarStrip } from "./avatar-strip";
 import { FilterUrlProvider } from "./filter-url";
 import { CountSilhouette, ResultsSilhouette } from "./loading";
-import { RefreshProgress } from "./refresh";
+import { RefreshIndicator } from "./refresh";
 import { ResultCount, Results } from "./results";
 import { SearchBox } from "./search-box";
 import { Toolbar } from "./toolbar";
@@ -136,8 +136,8 @@ async function Catalog({
             <Suspense fallback={<CountSilhouette />}>
               <ResultCount outcome={outcome} settings={settings} />
             </Suspense>
+            <RefreshIndicator />
           </HStack>
-          <RefreshProgress />
         </LayoutHeader>
       }
       content={

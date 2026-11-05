@@ -1,6 +1,8 @@
 // Motion check (modelled on doona apps/lite/scripts/motion.cjs): a first screen that comes with the first paint
 // never animates; with the search held back by the slow-API proxy the arriving results enter once; a filter
-// change, a page change and Back never replay it; under reduced motion nothing runs at all.
+// change, a page change and Back never replay it; under reduced motion nothing runs at all. Refresh timing
+// (lib/use-delayed): a refresh answered in under 150 ms shows no indicator and fades nothing in; a slow one shows
+// the indicator from 150 ms, keeps it at least 300 ms, and fades the new results in once.
 //   node tools/motion.cjs <page url> <proxy url> [delay ms=2500]
 const { launch, lab, RECORDER, nextPageButton } = require("./lab.cjs");
 
@@ -37,15 +39,53 @@ const ENTRANCE = ["page-enter", "row-enter"];
     );
   const refreshed = async (p) => {
     await p
-      .waitForSelector('[role="progressbar"]:visible', { timeout: 3000 })
+      .waitForSelector('[data-refresh="shown"]', { timeout: 3000 })
       .catch(() => {});
-    await p.waitForSelector('[role="progressbar"]', {
-      state: "hidden",
+    await p.waitForSelector('[data-refresh="idle"]', {
+      state: "attached",
       timeout: Number(delay) + 15000,
     });
     await p.waitForTimeout(800);
   };
-  await lab(proxy, { delay: 0, fail: 0 });
+  // clicks the next category tab and reports the indicator's intervals (ms after the click) and fades
+  const timedRefresh = async (p) => {
+    const at = await p.evaluate(() => {
+      window.__refresh = [];
+      window.__anims = window.__anims.filter((a) => a.id !== "swap-in");
+      return performance.now();
+    });
+    const before = p.url();
+    // the frame in which the URL changes: the new results commit with it
+    await p.evaluate(() => {
+      const from = location.href;
+      window.__navAt = 0;
+      const look = () => {
+        if (location.href !== from) window.__navAt = performance.now();
+        else requestAnimationFrame(look);
+      };
+      requestAnimationFrame(look);
+    });
+    await p.locator('button[aria-pressed="false"]:visible').first().click();
+    await p.waitForURL((u) => u.toString() !== before, { timeout: 20000 });
+    await p.waitForSelector('[data-refresh="idle"]', {
+      state: "attached",
+      timeout: 20000,
+    });
+    await p.waitForTimeout(600);
+    return p.evaluate((t0) => {
+      const shown = [];
+      for (const [t, v] of window.__refresh)
+        if (v === "shown") shown.push([Math.round(t - t0), null]);
+        else if (shown.length && shown.at(-1)[1] === null)
+          shown.at(-1)[1] = Math.round(t - t0);
+      return {
+        navMs: Math.round(window.__navAt - t0),
+        shown,
+        fades: window.__anims.filter((a) => a.id === "swap-in").length,
+      };
+    }, at);
+  };
+  await lab(proxy, { delay: 0, fail: 0, cache: 0 });
   await fetch(url);
 
   for (const reduced of [false, true]) {
@@ -98,8 +138,36 @@ const ENTRANCE = ["page-enter", "row-enter"];
       );
     await p.waitForTimeout(1200);
 
+    if (!reduced) {
+      // a quick refresh: the search for the next tab is asked once, then answered from the proxy's memory
+      await lab(proxy, { delay: 0, cache: 1 });
+      await timedRefresh(p); // to the next tab
+      await timedRefresh(p); // back to the first (tabs replace the URL, so not Back)
+      const quick = await timedRefresh(p); // to the next tab again, answered from memory
+      await lab(proxy, { cache: 0 });
+      // under 150 ms nothing may show; a slower answer may show the indicator, but only from 150 ms and only
+      // while it is still awaited (never first drawn as the results arrive)
+      const [[qFrom] = []] = quick.shown;
+      check(
+        quick.navMs < 150
+          ? quick.shown.length === 0 && quick.fades === 0
+          : quick.shown.length === 0 || (qFrom >= 150 && qFrom < quick.navMs),
+        `${tag}: quick refresh (${quick.navMs} ms): indicator ${JSON.stringify(quick.shown)}, ${quick.fades} fades`,
+      );
+      await lab(proxy, { delay: 1200 });
+      const slow = await timedRefresh(p);
+      const [[from, to] = []] = slow.shown;
+      check(
+        slow.shown.length === 1 &&
+          from >= 150 &&
+          to - from >= 300 &&
+          slow.fades >= 1,
+        `${tag}: slow refresh: indicator ${from}-${to} ms, ${slow.fades} fades`,
+      );
+    }
+
     await lab(proxy, { delay: 1200 });
-    // the second category tab (toggle buttons carry aria-pressed)
+    // the next category tab (toggle buttons carry aria-pressed)
     await p.locator('button[aria-pressed="false"]:visible').first().click();
     await refreshed(p);
     check(

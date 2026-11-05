@@ -75,16 +75,16 @@ const settle = (p) =>
       `; ${tiles} tiles, ${ready.perRow} per row (loading ${loading.perRow})`,
     );
 
-    // page change: the current results stay with the progress bar under the header
+    // page change: the current results stay, with the refresh indicator beside the count
     await lab(proxy, { delay });
     await (await nextPageButton(p)).click();
-    await p.waitForSelector('[role="progressbar"]:visible', { timeout: 3000 });
+    await p.waitForSelector('[data-refresh="shown"]', { timeout: 3000 });
     await p.waitForTimeout(300);
     const refreshing = await p.evaluate(GEOMETRY);
     report(`${width}x${height} refreshing`, compare(ready, refreshing));
     await p.waitForURL(/page=2/, { timeout: 5000 }).catch(() => {});
-    await p.waitForSelector('[role="progressbar"]', {
-      state: "hidden",
+    await p.waitForSelector('[data-refresh="idle"]', {
+      state: "attached",
       timeout: Number(delay) + 15000,
     });
     await settle(p);

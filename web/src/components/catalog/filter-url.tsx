@@ -1,6 +1,7 @@
 "use client";
 // Filter state lives in the URL. The server parses it and renders the results; changing a filter navigates,
-// and the new results arrive as a server render inside a transition, so the old ones stay until then.
+// and the new results arrive as a server render inside a transition, so the old ones stay until then. Whether
+// one is under way has its own context (useRefresh), so the controls do not render again when it starts or ends.
 
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -12,20 +13,27 @@ import {
 } from "react";
 import { DEFAULT_FILTERS, type Filters, filtersToQuery } from "@/lib/catalog";
 import { addQuery, loadHistory, saveHistory } from "@/lib/history";
+import { useDelayed } from "@/lib/use-delayed";
 
 const MY_AVATAR = "myAvatar";
 
 type FilterUrl = {
   filters: Filters;
-  /** a navigation is under way; the results on screen belong to the previous URL */
-  pending: boolean;
   /** applies a change from page 1 */
   apply: (patch: Partial<Filters>) => void;
   /** `noSemantic`: the first page went without meaning-based matches, so later pages must too */
   goPage: (page: number, noSemantic: boolean) => void;
 };
 
+type Refresh = {
+  /** a navigation is under way; the results on screen belong to the previous URL */
+  pending: boolean;
+  /** it has lasted long enough to show (lib/use-delayed): the indicator is up, and the new results fade in */
+  shown: boolean;
+};
+
 const Ctx = createContext<FilterUrl | null>(null);
+const RefreshCtx = createContext<Refresh>({ pending: false, shown: false });
 
 function remember(avatar: string) {
   try {
@@ -51,6 +59,8 @@ export function FilterUrlProvider({
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startTransition] = useTransition();
+  const shown = useDelayed(pending);
+  const refresh = useMemo(() => ({ pending, shown }), [pending, shown]);
 
   // a bare visit gets the avatar this browser picked last; a shared link shows exactly what it encodes
   useEffect(() => {
@@ -74,7 +84,6 @@ export function FilterUrlProvider({
     };
     return {
       filters,
-      pending,
       apply: (patch) => {
         go(filtersToQuery({ ...filters, ...patch }), false);
         if (patch.q) saveHistory(addQuery(loadHistory(), patch.q));
@@ -93,10 +102,16 @@ export function FilterUrlProvider({
           true,
         ),
     };
-  }, [filters, pending, pathname, router]);
+  }, [filters, pathname, router]);
 
-  return <Ctx value={value}>{children}</Ctx>;
+  return (
+    <Ctx value={value}>
+      <RefreshCtx value={refresh}>{children}</RefreshCtx>
+    </Ctx>
+  );
 }
+
+export const useRefresh = (): Refresh => useContext(RefreshCtx);
 
 export function useFilterUrl(): FilterUrl {
   const v = useContext(Ctx);

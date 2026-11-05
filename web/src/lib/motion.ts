@@ -19,11 +19,14 @@ const MOTION = {
   rowLead: 120,
   /** rows past this many appear at once (the server renders the first 24 tiles) */
   rowMax: 24,
+  /** content a slow refresh replaced fades in where the old content was */
+  swapDuration: 240,
 } as const;
 
 /** `Animation.id`s (tools/motion.cjs matches them), so checks can tell the entrance from a component's own motion. */
 const PAGE_ENTER_ID = "page-enter";
 const ROW_ENTER_ID = "row-enter";
+const SWAP_ID = "swap-in";
 
 /** Marks a container whose children (a carousel: its slides) enter as rows: the grid, the avatar strip. */
 export const ROWS = { "data-enter-rows": "" } as const;
@@ -102,3 +105,15 @@ export function enter(roots: Element[]): Animation[] {
   });
   return running;
 }
+
+/** The fade of content a slow refresh replaced (catalog/refresh.tsx Swap): opacity only, nothing moves. */
+export const swapIn = (el: Element): Animation[] =>
+  prefersReducedMotion()
+    ? []
+    : [
+        el.animate([{ opacity: 0 }, { opacity: 1 }], {
+          id: SWAP_ID,
+          duration: MOTION.swapDuration,
+          easing: EASE,
+        }),
+      ];

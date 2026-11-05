@@ -40,6 +40,20 @@ const RECORDER = () => {
         ),
       });
   }).observe({ type: "layout-shift", buffered: true });
+  // the refresh indicator's state changes (catalog/refresh.tsx data-refresh), with their times
+  window.__refresh = [];
+  addEventListener("DOMContentLoaded", () =>
+    new MutationObserver((list) => {
+      for (const m of list)
+        window.__refresh.push([
+          performance.now(),
+          m.target.getAttribute("data-refresh"),
+        ]);
+    }).observe(document.body, {
+      subtree: true,
+      attributeFilter: ["data-refresh"],
+    }),
+  );
   const animate = Element.prototype.animate;
   Element.prototype.animate = function (keyframes, options) {
     window.__anims.push({

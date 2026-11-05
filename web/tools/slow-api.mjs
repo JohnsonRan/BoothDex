@@ -5,13 +5,17 @@
 //   node tools/slow-api.mjs [port=3298] [upstream=https://boothdex.ihtw.moe]
 //   curl 127.0.0.1:3298/__lab?delay=2500        search answers 2.5 s late (0: no delay)
 //   curl 127.0.0.1:3298/__lab?fail=1            search answers 500 (the API is up, so the page shows "failed")
+//   curl 127.0.0.1:3298/__lab?cache=1           a search asked before answers at once from memory (a quick
+//                                               refresh: the page renders in well under 150 ms)
 import http from "node:http";
 import https from "node:https";
 
 const port = Number(process.argv[2] ?? 3298);
 const upstream = new URL(process.argv[3] ?? "https://boothdex.ihtw.moe");
 const agent = new https.Agent({ keepAlive: true, maxSockets: 32 });
-const lab = { delay: 0, fail: false };
+const lab = { delay: 0, fail: false, cache: false };
+/** search answers by path, kept while `cache` is on */
+const answers = new Map();
 
 http
   .createServer((req, res) => {
@@ -21,6 +25,10 @@ http
         lab.delay = Number(url.searchParams.get("delay")) || 0;
       if (url.searchParams.has("fail"))
         lab.fail = url.searchParams.get("fail") === "1";
+      if (url.searchParams.has("cache")) {
+        lab.cache = url.searchParams.get("cache") === "1";
+        if (!lab.cache) answers.clear();
+      }
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(JSON.stringify(lab));
     }
@@ -29,6 +37,11 @@ http
       return res.end();
     }
     const search = url.pathname === "/api/search";
+    const kept = search && lab.cache && answers.get(req.url);
+    if (kept && !lab.fail) {
+      res.writeHead(200, kept.headers);
+      return res.end(kept.body);
+    }
     setTimeout(
       () => {
         if (search && lab.fail) {
@@ -45,6 +58,16 @@ http
           },
           (r) => {
             res.writeHead(r.statusCode ?? 502, r.headers);
+            if (search && lab.cache && r.statusCode === 200) {
+              const parts = [];
+              r.on("data", (c) => parts.push(c));
+              r.on("end", () =>
+                answers.set(req.url, {
+                  headers: r.headers,
+                  body: Buffer.concat(parts),
+                }),
+              );
+            }
             r.pipe(res);
           },
         );
