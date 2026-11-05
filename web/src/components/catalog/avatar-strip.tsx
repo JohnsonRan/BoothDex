@@ -24,13 +24,14 @@ const CARD_WIDTH = 104;
 const FIRST_CARDS = 14;
 const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
 // Product Detail's thumbImage, inset by the card's padding: the card draws its selection ring as an inset
-// shadow, which an edge-to-edge image covers, so the image leaves the ring a frame and takes the inner radius
+// shadow, which an edge-to-edge image covers, so the image leaves the ring a frame
 const THUMB: CSSProperties = {
   width: "100%",
   height: "100%",
   objectFit: "cover",
   display: "block",
-  borderRadius: "var(--radius-inner)",
+  // concentric with the card: its radius minus its padding (spacing 1)
+  borderRadius: "calc(var(--radius-container) - var(--spacing-1))",
 };
 
 const AllGlyph = () => (
