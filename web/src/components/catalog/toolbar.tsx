@@ -49,7 +49,8 @@ export function Toolbar({
 }: {
   /** the items view's category tabs: slug and name in the interface language */
   categoryTabs: [string, string][];
-  featureCounts: Record<string, number>;
+  /** per feature tag, for the filter panel; resolves with the search */
+  featureCounts: Promise<Record<string, number>>;
 }) {
   const { t } = useUi();
   const { filters, apply } = useFilterUrl();
@@ -77,7 +78,9 @@ export function Toolbar({
 
   return (
     <HStack vAlign="center" gap={4}>
-      <StackItem size="fill">
+      {/* the tabs take what the buttons leave: their overflow is measured in the browser, and the buttons
+          must not move when it is (no layout shift on hydration) */}
+      <StackItem size="fill" style={{ minWidth: 0 }}>
         <VStack>
           <ToggleButtonGroup
             label={avatars ? t("filter.gender") : t("filter.categories")}
@@ -113,40 +116,46 @@ export function Toolbar({
           </ToggleButtonGroup>
         </VStack>
       </StackItem>
-      <Popover
-        presentation="adaptive"
-        placement="below"
-        alignment="end"
-        label={t("nav.filters")}
-        width={360}
-        isOpen={panelOpen}
-        onOpenChange={setPanelOpen}
-        content={
-          <FilterPanel
-            featureCounts={featureCounts}
-            onDone={() => setPanelOpen(false)}
-          />
-        }
-      >
-        <Button
-          label={
-            nActive ? t("nav.filtersActive", { n: nActive }) : t("nav.filters")
+      <StackItem size="static">
+        <Popover
+          presentation="adaptive"
+          placement="below"
+          alignment="end"
+          label={t("nav.filters")}
+          width={360}
+          isOpen={panelOpen}
+          onOpenChange={setPanelOpen}
+          content={
+            <FilterPanel
+              featureCounts={featureCounts}
+              onDone={() => setPanelOpen(false)}
+            />
           }
-          size="lg"
-          icon={<Icon icon="funnel" />}
-          endContent={nActive ? <Badge label={nActive} /> : undefined}
         >
-          {t("nav.filters")}
-        </Button>
-      </Popover>
-      <DropdownMenu
-        button={{ label: sortLabel(current[2]), size: "lg" }}
-        alignment="end"
-        items={SORTS.map(([sort, dir, key]) => ({
-          label: sortLabel(key),
-          onClick: () => apply({ sort, dir }),
-        }))}
-      />
+          <Button
+            label={
+              nActive
+                ? t("nav.filtersActive", { n: nActive })
+                : t("nav.filters")
+            }
+            size="lg"
+            icon={<Icon icon="funnel" />}
+            endContent={nActive ? <Badge label={nActive} /> : undefined}
+          >
+            {t("nav.filters")}
+          </Button>
+        </Popover>
+      </StackItem>
+      <StackItem size="static">
+        <DropdownMenu
+          button={{ label: sortLabel(current[2]), size: "lg" }}
+          alignment="end"
+          items={SORTS.map(([sort, dir, key]) => ({
+            label: sortLabel(key),
+            onClick: () => apply({ sort, dir }),
+          }))}
+        />
+      </StackItem>
     </HStack>
   );
 }

@@ -16,7 +16,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from "@astryxdesign/core/ToggleButton";
-import { useState } from "react";
+import { use, useState } from "react";
 import { useUi } from "@/components/providers";
 import {
   FEATURES,
@@ -44,11 +44,13 @@ export function FilterPanel({
   featureCounts,
   onDone,
 }: {
-  featureCounts: Record<string, number>;
+  /** per feature tag, for the filter panel; resolves with the search */
+  featureCounts: Promise<Record<string, number>>;
   onDone: () => void;
 }) {
   const { t, ui } = useUi();
   const { filters, apply } = useFilterUrl();
+  const counts = use(featureCounts);
   const [draft, setDraft] = useState(filters);
   const set = (patch: Partial<Filters>) =>
     setDraft((d) => ({ ...d, ...patch }));
@@ -169,7 +171,7 @@ export function FilterPanel({
       {(Object.keys(FEATURES) as Feature[]).map((f) => (
         <CheckboxInput
           key={f}
-          label={`${FEATURES[f]} (${n(featureCounts[f])})`}
+          label={`${FEATURES[f]} (${n(counts[f])})`}
           value={draft.features.includes(f)}
           onChange={(on) =>
             set({

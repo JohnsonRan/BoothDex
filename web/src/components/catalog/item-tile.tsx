@@ -44,6 +44,12 @@ export const tileOf = (
   ],
 });
 
+// Reflows to two columns on a phone; the floor is the narrowest tile whose title still reads.
+export const GRID_COLUMNS = { minWidth: 160 } as const;
+// Tiles in the server HTML: more than a first screen at 390x844 (2 columns) and 1440x900 (8 columns), and a
+// whole number of rows at 2, 3, 4, 6 and 8 columns.
+export const FIRST_TILES = 24;
+
 // Roughly the first screen (two columns on phones, five or six on a desktop): those covers load at once,
 // the first few with high priority since one of them is the likely LCP image.
 const EAGER = 12;
@@ -70,6 +76,8 @@ export function ItemTile({ tile, index }: { tile: Tile; index: number }) {
           accessibilityLevel={2}
           maxLines={2}
           hasTruncateTooltip={false}
+          // always two lines tall, like its loading silhouette (loading.tsx), so tiles never shift
+          style={{ minBlockSize: "2lh" }}
         >
           {tile.title}
         </Heading>
@@ -79,17 +87,20 @@ export function ItemTile({ tile, index }: { tile: Tile; index: number }) {
         <Text type="body" weight="bold" hasTabularNumbers>
           {tile.price}
         </Text>
-        {tile.marks.length > 0 && (
-          <HStack gap={1} wrap="wrap">
-            {tile.marks.map((m) => (
-              <Badge
-                key={m}
-                label={m}
-                variant={m === "NEW" ? "blue" : undefined}
-              />
-            ))}
-          </HStack>
-        )}
+        {/* kept when empty: one badge tall, as in the silhouette */}
+        <HStack
+          gap={1}
+          wrap="wrap"
+          style={{ minBlockSize: "var(--spacing-5)" }}
+        >
+          {tile.marks.map((m) => (
+            <Badge
+              key={m}
+              label={m}
+              variant={m === "NEW" ? "blue" : undefined}
+            />
+          ))}
+        </HStack>
       </VStack>
     </VStack>
   );

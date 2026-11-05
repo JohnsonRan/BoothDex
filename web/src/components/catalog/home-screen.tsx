@@ -1,5 +1,7 @@
 // Home page (Card Grid template): search, filter tabs and sort above a uniform card grid with a real empty
-// state. Everything here renders on the server; the controls it places are client components.
+// state. Everything here renders on the server; the controls it places are client components. The frame
+// (title, controls) streams first; the count and the results follow when the search answers, Skeleton
+// silhouettes holding their places (loading.tsx), and enter once if the visitor saw those (arrival.tsx).
 
 import { Divider } from "@astryxdesign/core/Divider";
 import { Layout, LayoutContent, LayoutHeader } from "@astryxdesign/core/Layout";
@@ -24,12 +26,12 @@ import {
 } from "@/lib/server-data";
 import { type Rates, type Settings, translator } from "@/lib/settings-core";
 import { ActiveFilters } from "./active-filters";
+import { Arrival } from "./arrival";
 import { AvatarStrip } from "./avatar-strip";
 import { FilterUrlProvider } from "./filter-url";
-import { Pager } from "./pager";
-import { ResultCount } from "./result-count";
-import { EmptyResults, FailedResults, SemanticNote } from "./result-states";
-import { ResultsGrid, ResultsSkeleton } from "./results-grid";
+import { CountSilhouette, ResultsSilhouette } from "./loading";
+import { RefreshProgress } from "./refresh";
+import { ResultCount, Results } from "./results";
 import { SearchBox } from "./search-box";
 import { Toolbar } from "./toolbar";
 
@@ -61,14 +63,15 @@ export async function HomeScreen({
     >
       <SiteFrame label={t("nav.main")}>
         <FilterUrlProvider filters={filters}>
-          <Suspense fallback={<ResultsSkeleton />}>
+          {/* no fallback: the frame waits only for the cached avatar and category lists */}
+          <Arrival>
             <Catalog
               settings={settings}
               filters={filters}
               page={page}
               noSemantic={params.sem === "0"}
             />
-          </Suspense>
+          </Arrival>
         </FilterUrlProvider>
       </SiteFrame>
     </Providers>
@@ -87,15 +90,19 @@ async function Catalog({
   noSemantic: boolean;
 }) {
   const t = translator(settings.ui);
-  const [outcome, avatars, categories, rates] = await Promise.all([
-    searchItems(filters, page, noSemantic),
+  // started here, awaited by the count and the results: the frame does not wait for it
+  const outcome = searchItems(filters, page, noSemantic);
+  const featureCounts = outcome.then((o) =>
+    o.state === "ok" ? o.result.featureCounts : {},
+  );
+  const rates =
+    settings.currency === "JPY"
+      ? Promise.resolve({} as Rates)
+      : exchangeRates().catch((): Rates => ({}));
+  const [avatars, categories] = await Promise.all([
     listAvatars().catch(() => []),
     listCategories().catch(() => []),
-    settings.currency === "JPY"
-      ? ({} as Rates)
-      : exchangeRates().catch((): Rates => ({})),
   ]);
-  const result = outcome.state === "ok" ? outcome.result : null;
   const avatar = avatars.find((a) => a.slug === filters.avatar);
   // only names cross to the browser, not the whole taxonomy in every language
   const categoryTabs = categories
@@ -124,8 +131,11 @@ async function Catalog({
         <LayoutHeader hasDivider>
           <HStack gap={3} vAlign="center" wrap="wrap">
             <Heading level={1}>{title}</Heading>
-            {result && <ResultCount count={result.count} />}
+            <Suspense fallback={<CountSilhouette />}>
+              <ResultCount outcome={outcome} settings={settings} />
+            </Suspense>
           </HStack>
+          <RefreshProgress />
         </LayoutHeader>
       }
       content={
@@ -138,7 +148,7 @@ async function Catalog({
               )}
               <Toolbar
                 categoryTabs={categoryTabs}
-                featureCounts={result?.featureCounts ?? {}}
+                featureCounts={featureCounts}
               />
               <ActiveFilters
                 categoryName={category && localName(category, settings.ui)}
@@ -146,27 +156,16 @@ async function Catalog({
               />
             </VStack>
             <Divider />
-            {outcome.state !== "ok" ? (
-              <FailedResults starting={outcome.state === "starting"} />
-            ) : outcome.result.items.length === 0 ? (
-              <EmptyResults />
-            ) : (
-              <VStack gap={6}>
-                <ResultsGrid
-                  items={outcome.result.items}
-                  settings={settings}
-                  rates={rates}
-                />
-                {outcome.result.semantic === "unavailable" && (
-                  <SemanticNote text={t("list.semanticUnavailable")} />
-                )}
-                <Pager
-                  page={outcome.result.page}
-                  total={outcome.result.totalPages}
-                  noSemantic={!!filters.q && outcome.result.semantic !== "used"}
-                />
-              </VStack>
-            )}
+            <Suspense
+              fallback={<ResultsSilhouette label={t("list.loading")} />}
+            >
+              <Results
+                outcome={outcome}
+                rates={rates}
+                settings={settings}
+                filters={filters}
+              />
+            </Suspense>
           </VStack>
         </LayoutContent>
       }

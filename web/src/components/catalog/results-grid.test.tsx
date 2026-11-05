@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ItemResponse } from "@/lib/api-types";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
-import { FIRST_TILES, ResultsGrid } from "./results-grid";
+import { FIRST_TILES } from "./item-tile";
+import { ResultsGrid } from "./results-grid";
 
 const item: ItemResponse = {
   id: 1,
@@ -66,8 +67,15 @@ test("a full page renders the first screen on the server and the rest in the bro
   const items = Array.from({ length: 100 }, (_, i) => ({ ...item, id: i + 1 }));
   const html = render(items);
   expect(html.match(/<img /g)).toHaveLength(FIRST_TILES);
-  // one placeholder cell after the last server tile; the other tiles are drawn near the viewport
-  expect(html.match(/class="astryx-skeleton/g)).toHaveLength(1);
+  // one tile silhouette after the last server tile (cover, two title lines, shop, price, badge row); the other
+  // tiles are drawn near the viewport
+  expect(html.match(/class="astryx-skeleton/g)).toHaveLength(6);
+});
+
+test("every tile reserves two title lines and a badge row, as its loading silhouette does", () => {
+  const html = render([item, { ...item, id: 2 }]);
+  expect(html.match(/min-block-size:2lh/g)).toHaveLength(2);
+  expect(html.match(/min-block-size:var\(--spacing-5\)/g)).toHaveLength(2);
 });
 
 test("tiles show the title in the chosen language, the shop and the price", () => {

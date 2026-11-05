@@ -15,7 +15,8 @@ export function Pager({
   noSemantic: boolean;
 }) {
   const { t } = useUi();
-  const { goPage, pending } = useFilterUrl();
+  // not disabled while a page loads: the refresh progress says so, and the pager keeps its layout
+  const { goPage } = useFilterUrl();
   if (total <= 1) return null;
   return (
     <Center>
@@ -23,7 +24,6 @@ export function Pager({
         label={t("page.nav")}
         page={page}
         totalPages={total}
-        isDisabled={pending}
         onChange={(n) => goPage(n, noSemantic)}
       />
     </Center>

@@ -1,12 +1,12 @@
 "use client";
 // The rest of a results page. The server renders only the first screen of tiles, so the HTML (and the RSC
 // payload that repeats it) stays small; these tiles arrive as plain data with it and are drawn once the
-// placeholder after the last server tile comes within a screen or two of the viewport.
+// placeholder after the last server tile comes within a screen or two of the viewport. They appear at once,
+// without the entrance: they are drawn below the first screen.
 
-import { AspectRatio } from "@astryxdesign/core/AspectRatio";
-import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { useEffect, useRef, useState } from "react";
 import { ItemTile, type Tile } from "./item-tile";
+import { TileSilhouette } from "./silhouette";
 
 export function LaterTiles({ tiles, from }: { tiles: Tile[]; from: number }) {
   const [shown, setShown] = useState(false);
@@ -28,9 +28,5 @@ export function LaterTiles({ tiles, from }: { tiles: Tile[]; from: number }) {
     return tiles.map((tile, i) => (
       <ItemTile key={tile.id} tile={tile} index={from + i} />
     ));
-  return (
-    <AspectRatio ratio={1}>
-      <Skeleton ref={marker} />
-    </AspectRatio>
-  );
+  return <TileSilhouette ref={marker} />;
 }
