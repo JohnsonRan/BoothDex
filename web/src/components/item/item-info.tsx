@@ -23,6 +23,7 @@ import type { ContentRating, ItemResponse } from "@/lib/api-types";
 import { FEATURES, type Feature, priceOf } from "@/lib/catalog";
 import {
   type ContentLang,
+  contentLang,
   formatPrice,
   itemText,
   LOCALES,
@@ -57,7 +58,7 @@ export function ItemInfo({
 }) {
   const { t, settings } = useUi();
   const [lang, setLang] = useState<ContentLang>(() =>
-    initialLang(item, settings.content),
+    initialLang(item, contentLang(settings)),
   );
   const tabs = langTabs(item);
   const money = (jpy: number | null) => formatPrice(jpy, settings, rates, t);

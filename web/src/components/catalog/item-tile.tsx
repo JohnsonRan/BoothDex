@@ -25,6 +25,7 @@ import {
 } from "@/lib/catalog";
 import { remColumns } from "@/lib/grid";
 import {
+  contentLang,
   formatPrice,
   itemText,
   type Rates,
@@ -54,7 +55,7 @@ export const tileOf = (
 ): Tile => ({
   id: item.id,
   cover: imgUrl(item, 0),
-  title: itemText(item, "title", settings.content),
+  title: itemText(item, "title", contentLang(settings)),
   shop: item.author_name,
   shopIcon: imageSrc(item.author_icon),
   price: formatPrice(priceOf(item), settings, rates, t),

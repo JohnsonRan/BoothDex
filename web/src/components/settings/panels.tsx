@@ -17,10 +17,10 @@ import {
   type UiLang,
 } from "@/lib/messages";
 import {
-  CONTENT_LANGS,
-  type ContentLang,
   CURRENCIES,
   type Currency,
+  ITEM_TEXT,
+  type ItemTextSetting,
   LOCALES,
 } from "@/lib/settings-core";
 import { CONTROL_WIDTH, SettingsCard, SettingsRow } from "./rows";
@@ -123,13 +123,17 @@ function LanguagePanel() {
         title={t("settings.content")}
         icon="site:itemText"
         description={t("settings.contentDesc")}
-        control={selector<ContentLang>(
+        control={selector<ItemTextSetting>(
           "settings.content",
           settings.content,
-          CONTENT_LANGS.map((l) => ({
+          ITEM_TEXT.map((l) => ({
             value: l,
             label:
-              l === "original" ? t("settings.contentOriginal") : LANG_NAMES[l],
+              l === "ui"
+                ? t("settings.contentUi")
+                : l === "original"
+                  ? t("settings.contentOriginal")
+                  : LANG_NAMES[l],
           })),
           (v) => update({ content: v }),
         )}

@@ -5,8 +5,6 @@
 
 import {
   DropdownMenu,
-  DropdownMenuDivider,
-  DropdownMenuGroup,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "@astryxdesign/core/DropdownMenu";
@@ -15,13 +13,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { useUi } from "@/components/providers";
 import { LANG_NAMES, UI_LANGS, type UiLang } from "@/lib/messages";
-import {
-  CONTENT_LANGS,
-  type ContentLang,
-  CURRENCIES,
-  type Currency,
-  LOCALES,
-} from "@/lib/settings-core";
+import { CURRENCIES, type Currency, LOCALES } from "@/lib/settings-core";
 
 // the sign each currency is known by locally (Intl's narrow symbols repeat "$" and "¥" across currencies)
 export const CURRENCY_SYMBOLS: Record<Currency, string> = {
@@ -39,7 +31,7 @@ export const CURRENCY_SYMBOLS: Record<Currency, string> = {
   THB: "฿",
 };
 
-/** Interface language and item-text language, two radio groups in one menu. */
+/** Interface language, a radio group (the item-text language is in Settings only). */
 export function LanguageMenu() {
   const { t, settings, update } = useUi();
   return (
@@ -56,54 +48,37 @@ export function LanguageMenu() {
         />
       )}
     >
-      <DropdownMenuGroup title={t("settings.ui")}>
-        <DropdownMenuRadioGroup
-          label={t("settings.ui")}
-          value={settings.ui}
-          onChange={(v) => update({ ui: v as UiLang })}
-        >
-          {UI_LANGS.map((l) => (
-            <DropdownMenuRadioItem key={l} value={l} label={LANG_NAMES[l]} />
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuGroup>
-      <DropdownMenuDivider />
-      <DropdownMenuGroup title={t("settings.content")}>
-        <DropdownMenuRadioGroup
-          label={t("settings.content")}
-          value={settings.content}
-          onChange={(v) => update({ content: v as ContentLang })}
-        >
-          {CONTENT_LANGS.map((l) => (
-            <DropdownMenuRadioItem
-              key={l}
-              value={l}
-              label={
-                l === "original" ? t("settings.contentOriginal") : LANG_NAMES[l]
-              }
-            />
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuGroup>
+      <DropdownMenuRadioGroup
+        label={t("settings.ui")}
+        value={settings.ui}
+        onChange={(v) => update({ ui: v as UiLang })}
+      >
+        {UI_LANGS.map((l) => (
+          <DropdownMenuRadioItem key={l} value={l} label={LANG_NAMES[l]} />
+        ))}
+      </DropdownMenuRadioGroup>
     </DropdownMenu>
   );
 }
 
-/** Display currency: the trigger names the current one (symbol and code); prices other than yen are converted
- *  (≈) on the server. */
+/** Display currency: the trigger is the current code alone, a ghost button of the icon buttons' size beside
+ *  them (template shell-top-nav, end actions); its name and the menu rows give symbol and full name. Prices other
+ *  than yen are converted (≈) on the server. */
 export function CurrencyMenu() {
   const { t, ui, settings, update } = useUi();
   const names = new Intl.DisplayNames(LOCALES[ui], { type: "currency" });
   const code = settings.currency;
+  const label = t("nav.currency", { name: names.of(code) ?? code, c: code });
   return (
     <DropdownMenu
       placement="below"
       alignment="end"
+      hasChevron={false}
       button={{
-        label: t("nav.currency", { c: code }),
-        tooltip: t("settings.currency"),
+        label,
+        tooltip: label,
         variant: "ghost",
-        children: `${CURRENCY_SYMBOLS[code]} ${code}`,
+        children: code,
       }}
     >
       <DropdownMenuRadioGroup

@@ -22,7 +22,12 @@ import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { ItemResponse, SearchResponse } from "@/lib/api-types";
 import { imgUrl, priceOf } from "@/lib/catalog";
-import { formatPrice, itemText, type Rates } from "@/lib/settings-core";
+import {
+  contentLang,
+  formatPrice,
+  itemText,
+  type Rates,
+} from "@/lib/settings-core";
 import { useDelayed } from "@/lib/use-delayed";
 import { useItemOpener } from "./item-host";
 
@@ -102,7 +107,7 @@ export function MoreFrom({
                 <VStack key={x.id} gap={2} width={CARD_WIDTH}>
                   <AspectRatio ratio={1}>
                     <ClickableCard
-                      label={itemText(x, "title", settings.content)}
+                      label={itemText(x, "title", contentLang(settings))}
                       variant="transparent"
                       padding={0}
                       width="100%"
@@ -117,7 +122,7 @@ export function MoreFrom({
                     </ClickableCard>
                   </AspectRatio>
                   <Caption
-                    title={itemText(x, "title", settings.content)}
+                    title={itemText(x, "title", contentLang(settings))}
                     price={formatPrice(priceOf(x), settings, rates, t)}
                   />
                 </VStack>

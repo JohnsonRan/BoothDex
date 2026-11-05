@@ -9,8 +9,11 @@ import {
   type UiLang,
 } from "./messages";
 
-export const CONTENT_LANGS = ["original", "zh", "en", "ja", "ko"] as const;
+const CONTENT_LANGS = ["original", "zh", "en", "ja", "ko"] as const;
 export type ContentLang = (typeof CONTENT_LANGS)[number];
+/** The item-text setting: a language, or "ui" to follow the interface language. */
+export const ITEM_TEXT = ["ui", ...CONTENT_LANGS] as const;
+export type ItemTextSetting = (typeof ITEM_TEXT)[number];
 /** "system" follows the operating system; the other two pin a mode. */
 const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
@@ -31,7 +34,7 @@ export const CURRENCIES = [
 export type Currency = (typeof CURRENCIES)[number];
 export type Settings = {
   ui: UiLang;
-  content: ContentLang;
+  content: ItemTextSetting;
   currency: Currency;
   theme: Theme;
 };
@@ -39,7 +42,7 @@ export type Settings = {
 export const SETTINGS_COOKIE = "settings";
 export const DEFAULT_SETTINGS: Settings = {
   ui: "zh",
-  content: "original",
+  content: "ui",
   currency: "JPY",
   theme: "system",
 };
@@ -96,7 +99,7 @@ export function parseSettings(
       pick(v.ui, UI_LANGS) ??
       uiFromAcceptLanguage(acceptLanguage) ??
       DEFAULT_SETTINGS.ui,
-    content: pick(v.content, CONTENT_LANGS) ?? DEFAULT_SETTINGS.content,
+    content: pick(v.content, ITEM_TEXT) ?? DEFAULT_SETTINGS.content,
     currency: pick(v.currency, CURRENCIES) ?? DEFAULT_SETTINGS.currency,
     theme: pick(v.theme, THEMES) ?? DEFAULT_SETTINGS.theme,
   };
@@ -144,6 +147,11 @@ export function formatPrice(
   }).format(jpy * rate);
   return `≈${v}`;
 }
+
+/** The item-text language the settings ask for. */
+export const contentLang = (
+  s: Pick<Settings, "ui" | "content">,
+): ContentLang => (s.content === "ui" ? s.ui : s.content);
 
 /** Title or bio in the chosen item-text language, falling back to the original. */
 export function itemText(
