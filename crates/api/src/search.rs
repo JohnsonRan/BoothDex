@@ -1,5 +1,6 @@
 //! `/api/search`: keyword and facet search over the snapshot, fused with semantic neighbours from pgvector.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -7,7 +8,7 @@ use axum::Json;
 use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::params::Params;
 use crate::{ApiError, AppState, account, catalog, db, limit};
@@ -15,10 +16,59 @@ use crate::{ApiError, AppState, account, catalog, db, limit};
 pub(crate) const EMBED_CACHE_CAP: u64 = 2000;
 pub(crate) type EmbedWatch = tokio::sync::watch::Receiver<Option<Option<Vec<f32>>>>;
 
+/// The `/api/search` response. The site's `SearchResult` type is generated from this (see `api_types`).
+#[derive(serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SearchResponse {
+    count: u64,
+    page: usize,
+    total_pages: usize,
+    page_size: usize,
+    sort: &'static str,
+    dir: &'static str,
+    booth_counts: BTreeMap<String, u64>,
+    smart_counts: BTreeMap<String, u64>,
+    feature_counts: BTreeMap<String, u64>,
+    items: Vec<db::ItemResponse>,
+    semantic: SemanticStatus,
+    trace: Vec<TraceStep>,
+    timing: Timing,
+}
+
+/// Whether meaning-based matches were used for this search.
+#[derive(serde::Serialize, Clone, Copy)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum SemanticStatus {
+    Used,
+    /// no embeddings model, or no text query
+    Off,
+    /// the provider is slow or failing
+    Unavailable,
+    /// not needed (sem=0 from a later page, or the query only names models)
+    Skipped,
+}
+
+#[derive(serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub(crate) struct TraceStep {
+    step: &'static str,
+    ms: f64,
+}
+
+#[derive(serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Timing {
+    search_ms: f64,
+    total_ms: f64,
+}
+
 /// Per-request timing, returned as `trace` so the site can show where the time went.
 #[derive(Default)]
 pub(crate) struct Trace {
-    steps: Vec<Value>,
+    steps: Vec<TraceStep>,
     last: Option<Instant>,
 }
 
@@ -30,7 +80,7 @@ impl Trace {
     fn step(&mut self, name: &'static str) {
         let now = Instant::now();
         let ms = self.last.map_or(0.0, |t| now.duration_since(t).as_secs_f64() * 1e3);
-        self.steps.push(json!({ "step": name, "ms": (ms * 10.0).round() / 10.0 }));
+        self.steps.push(TraceStep { step: name, ms: (ms * 10.0).round() / 10.0 });
         self.last = Some(now);
     }
 }
@@ -85,13 +135,13 @@ pub(crate) async fn search(
         EmbedPlan::Vector(vector) => match nearest(&s, &vector, &models).await {
             Some(ids) => {
                 trace.step("neighbours");
-                (Some(ids), "used")
+                (Some(ids), SemanticStatus::Used)
             }
-            None => (None, "unavailable"),
+            None => (None, SemanticStatus::Unavailable),
         },
-        EmbedPlan::Off => (None, "off"),
-        EmbedPlan::Skipped => (None, "skipped"),
-        EmbedPlan::Unavailable => (None, "unavailable"),
+        EmbedPlan::Off => (None, SemanticStatus::Off),
+        EmbedPlan::Skipped => (None, SemanticStatus::Skipped),
+        EmbedPlan::Unavailable => (None, SemanticStatus::Unavailable),
     };
     // a query that names a category ("short hair", "shorthair") also matches the items enriched into it, so
     // spellings of one meaning end up with the same results
@@ -109,22 +159,21 @@ pub(crate) async fn search(
         items = items.into_iter().map(db::ItemResponse::card).collect();
     }
     trace.step("items");
-    Ok(Json(json!({
-        "count": r.count,
-        "page": r.page,
-        "totalPages": r.total_pages,
-        "pageSize": r.page_size,
-        "sort": r.sort,
-        "dir": r.dir,
-        "boothCounts": r.facets.booth,
-        "smartCounts": r.facets.smart,
-        "featureCounts": r.facets.features,
-        "items": items,
-        // "used", "off" (no embeddings model or no query), "unavailable" (provider slow or failing), "skipped"
-        "semantic": semantic_status,
-        "trace": trace.steps,
-        "timing": { "searchMs": search_ms, "totalMs": t0.elapsed().as_secs_f64() * 1e3 },
-    }))
+    Ok(Json(SearchResponse {
+        count: r.count,
+        page: r.page,
+        total_pages: r.total_pages,
+        page_size: r.page_size,
+        sort: r.sort,
+        dir: r.dir,
+        booth_counts: r.facets.booth,
+        smart_counts: r.facets.smart,
+        feature_counts: r.facets.features,
+        items,
+        semantic: semantic_status,
+        trace: trace.steps,
+        timing: Timing { search_ms, total_ms: t0.elapsed().as_secs_f64() * 1e3 },
+    })
     .into_response())
 }
 

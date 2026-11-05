@@ -1,0 +1,43 @@
+// Generated from the Rust response types (crates/api/src/api_types.rs). Do not edit:
+// change the Rust types, then run `UPDATE_API_TYPES=1 cargo test -p api api_types`.
+
+export type ItemResponse = { id: number, title: string, bio: string, author_name: string, author_uri: string, author_icon: string | null, booth_category: string | null, price_jpy: number | null, smart_price: number | null, smart_price_reason: string | null, likes: number, is_adult: boolean, content_rating: ContentRating | null, quest: string | null, features: Array<string>, status: Status, published_at: string | null, scraped_at: string, original_language: string | null, avatar_slug: string | null, supported: boolean, gender: Gender | null, needs_enrichment: boolean, last_listed_at: string | null, enrich_failures: number, media: Array<string>, booth_tags: Array<string>, variations: Array<Variation>, 
+/**
+ * AI translations by language, plus `original_language`. Kept as raw JSON: a few rows carry stray keys, and
+ * the API passes them through untouched. The site sees the documented shape.
+ */
+translations: Translations, linked_avatars: Array<LinkedAvatar>, categories: Array<ItemCategory>, booth_images: Array<string> | null, booth_images_complete: boolean | null, 
+/**
+ * delisted, but re-uploaded by the shop under this id
+ */
+relisted_as: number | null, };
+
+export type ContentRating = "SFW" | "Suggestive" | "NSFW";
+
+export type Status = "ok" | "delisted";
+
+export type Gender = "female" | "male";
+
+export type Variation = { id: VariationId, name: string, price_jpy: number | null, status: string, type: string, };
+
+export type VariationId = number | string;
+
+export type LinkedAvatar = { slug: string, en: string, ja: string | null, ko: string | null, image_url: string | null, };
+
+export type ItemCategory = { slug: string, is_primary: boolean, };
+
+export type Translations = { zh?: Translation, en?: Translation, ja?: Translation, ko?: Translation, original_language?: string, };
+
+export type Translation = { title?: string, bio?: string, 
+/**
+ * variation name -> translated name (null when the model returned none)
+ */
+variations?: { [key in string]: string | null }, };
+
+export type SearchResponse = { count: number, page: number, totalPages: number, pageSize: number, sort: string, dir: string, boothCounts: { [key in string]: number }, smartCounts: { [key in string]: number }, featureCounts: { [key in string]: number }, items: Array<ItemResponse>, semantic: SemanticStatus, trace: Array<TraceStep>, timing: Timing, };
+
+export type SemanticStatus = "used" | "off" | "unavailable" | "skipped";
+
+export type TraceStep = { step: string, ms: number, };
+
+export type Timing = { searchMs: number, totalMs: number, };

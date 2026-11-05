@@ -1,6 +1,18 @@
 // Types and helpers for the public catalogue. Filter state lives in the URL and uses the API's own
 // query format (VRCatalogue-compatible): list values are joined with a literal "+".
 
+import type { ItemResponse, SearchResponse } from "./api-types";
+
+// Item and search types come from the Rust API (generated, see api-types.ts).
+export type { Variation } from "./api-types";
+export type Item = ItemResponse;
+/** A result page; the recently-viewed list builds one locally, without the search-only fields. */
+export type SearchResult = Pick<
+  SearchResponse,
+  "count" | "page" | "totalPages" | "smartCounts" | "featureCounts" | "items"
+> &
+  Partial<Pick<SearchResponse, "semantic" | "trace" | "timing">>;
+
 export type Avatar = {
   slug: string;
   en: string;
@@ -32,66 +44,6 @@ export const tagName = (
   t: { display: string; display_zh?: string | null },
   ui: string,
 ) => (ui === "zh" && t.display_zh) || t.display;
-export type Variation = {
-  id: string;
-  name: string;
-  price_jpy: number | null;
-  status: string;
-  type: string;
-};
-export type Item = {
-  id: number;
-  title: string;
-  bio: string;
-  author_name: string;
-  author_uri: string;
-  author_icon: string | null;
-  booth_category: string | null;
-  price_jpy: number | null;
-  smart_price: number | null;
-  smart_price_reason: string | null;
-  likes: number;
-  is_adult: boolean;
-  content_rating: "SFW" | "Suggestive" | "NSFW" | null;
-  quest: string | null;
-  features: string[];
-  status: "ok" | "delisted";
-  published_at: string | null;
-  scraped_at: string;
-  media: string[];
-  booth_tags: string[];
-  booth_images: string[] | null;
-  booth_images_complete: boolean | null;
-  /** delisted, but re-uploaded by the shop under this id */
-  relisted_as: number | null;
-  variations: Variation[];
-  translations: Partial<
-    Record<
-      "zh" | "en" | "ja" | "ko",
-      { title?: string; bio?: string; variations?: Record<string, string> }
-    >
-  > & { original_language?: string };
-  linked_avatars: Avatar[];
-  needs_enrichment?: boolean;
-  avatar_slug?: string | null;
-  supported?: boolean;
-  gender?: "female" | "male" | null;
-  last_listed_at?: string | null;
-  enrich_failures?: number;
-};
-export type SearchResult = {
-  count: number;
-  page: number;
-  totalPages: number;
-  smartCounts: Record<string, number>;
-  featureCounts: Record<string, number>;
-  items: Item[];
-  /** meaning-based matching: used, off, unavailable (provider slow or failing), skipped */
-  semantic?: "used" | "off" | "unavailable" | "skipped";
-  /** server-side steps of this request, in order */
-  trace?: { step: string; ms: number }[];
-  timing?: { searchMs: number; totalMs: number };
-};
 
 export const FEATURES = {
   quest: "Quest",

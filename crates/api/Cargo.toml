@@ -30,3 +30,6 @@ sqlx.workspace = true
 tantivy = "0.27"
 tokio = { workspace = true, features = ["sync", "time"] }
 tower-http = { version = "0.7", features = ["cors", "compression-gzip"] }
+
+[dev-dependencies]
+ts-rs = { version = "12", features = ["chrono-impl", "serde-json-impl"] }

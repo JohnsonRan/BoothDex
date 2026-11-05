@@ -8,10 +8,12 @@ use sqlx::PgPool;
 
 use crate::catalog::DocInput;
 
-/// Explicit typed representation of an item in API responses.
+/// Explicit typed representation of an item in API responses. The site's TypeScript types are generated from
+/// this and the types below (see `api_types`), so a change here that the site doesn't follow fails `tsc`.
 ///
 /// Internal columns like `embedding` (vectors) are deliberately omitted.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)] // a misspelt key in load_items' SQL fails loudly instead of leaving an Option as None
 pub struct ItemResponse {
     pub id: i64,
@@ -26,29 +28,123 @@ pub struct ItemResponse {
     pub smart_price_reason: Option<String>,
     pub likes: i32,
     pub is_adult: bool,
-    pub content_rating: Option<String>,
+    pub content_rating: Option<ContentRating>,
     pub quest: Option<String>,
     pub features: Vec<String>,
-    pub status: String,
+    pub status: Status,
     pub published_at: Option<DateTime<Utc>>,
     pub scraped_at: DateTime<Utc>,
     pub original_language: Option<String>,
     pub avatar_slug: Option<String>,
     pub supported: bool,
-    pub gender: Option<String>,
+    pub gender: Option<Gender>,
     pub needs_enrichment: bool,
     pub last_listed_at: Option<DateTime<Utc>>,
     pub enrich_failures: i16,
     pub media: Vec<String>,
     pub booth_tags: Vec<String>,
-    pub variations: Value,
+    pub variations: Vec<Variation>,
+    /// AI translations by language, plus `original_language`. Kept as raw JSON: a few rows carry stray keys, and
+    /// the API passes them through untouched. The site sees the documented shape.
+    #[cfg_attr(test, ts(as = "Translations"))]
     pub translations: Value,
-    pub linked_avatars: Value,
-    pub categories: Value,
+    pub linked_avatars: Vec<LinkedAvatar>,
+    pub categories: Vec<ItemCategory>,
     pub booth_images: Option<Vec<String>>,
     pub booth_images_complete: Option<bool>,
     /// delisted, but re-uploaded by the shop under this id
     pub relisted_as: Option<i64>,
+}
+
+// Values the database allows (CHECK constraints on `items`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub enum ContentRating {
+    #[allow(clippy::upper_case_acronyms)]
+    SFW,
+    Suggestive,
+    #[allow(clippy::upper_case_acronyms)]
+    NSFW,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "lowercase")]
+pub enum Status {
+    #[default]
+    Ok,
+    Delisted,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "lowercase")]
+pub enum Gender {
+    Female,
+    Male,
+}
+
+/// One purchasable variation, as stored by the crawler (`boothdex_core::booth::item_fields`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct Variation {
+    pub id: VariationId,
+    pub name: String,
+    pub price_jpy: Option<i64>,
+    pub status: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+}
+
+/// The crawler stores Booth's id as a string; items imported from VRCatalogue have numbers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(untagged)]
+pub enum VariationId {
+    Number(i64),
+    Text(String),
+}
+
+/// A model the item fits (built in `load_items`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct LinkedAvatar {
+    pub slug: String,
+    pub en: String,
+    pub ja: Option<String>,
+    pub ko: Option<String>,
+    pub image_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct ItemCategory {
+    pub slug: String,
+    pub is_primary: bool,
+}
+
+/// The documented shape of `ItemResponse::translations`, for the generated TypeScript only.
+#[cfg(test)]
+#[derive(ts_rs::TS)]
+#[ts(optional_fields)]
+#[allow(dead_code)]
+pub struct Translations {
+    zh: Option<Translation>,
+    en: Option<Translation>,
+    ja: Option<Translation>,
+    ko: Option<Translation>,
+    original_language: Option<String>,
+}
+
+#[cfg(test)]
+#[derive(ts_rs::TS)]
+#[ts(optional_fields)]
+#[allow(dead_code)]
+pub struct Translation {
+    title: Option<String>,
+    bio: Option<String>,
+    /// variation name -> translated name (null when the model returned none)
+    variations: Option<std::collections::BTreeMap<String, Option<String>>>,
 }
 
 impl ItemResponse {
@@ -59,9 +155,9 @@ impl ItemResponse {
         self.bio.clear();
         self.smart_price_reason = None;
         self.booth_tags.clear();
-        self.variations = Value::Array(Vec::new());
-        self.linked_avatars = Value::Array(Vec::new());
-        self.categories = Value::Array(Vec::new());
+        self.variations.clear();
+        self.linked_avatars.clear();
+        self.categories.clear();
         self.media.truncate(2);
         if let Some(b) = &mut self.booth_images {
             b.truncate(2);
@@ -97,7 +193,7 @@ impl Default for ItemResponse {
             content_rating: None,
             quest: None,
             features: Vec::new(),
-            status: "ok".to_owned(),
+            status: Status::Ok,
             published_at: None,
             scraped_at: DateTime::UNIX_EPOCH,
             original_language: None,
@@ -109,10 +205,10 @@ impl Default for ItemResponse {
             enrich_failures: 0,
             media: Vec::new(),
             booth_tags: Vec::new(),
-            variations: serde_json::json!([]),
+            variations: Vec::new(),
             translations: serde_json::json!({}),
-            linked_avatars: serde_json::json!([]),
-            categories: serde_json::json!([]),
+            linked_avatars: Vec::new(),
+            categories: Vec::new(),
             booth_images: None,
             booth_images_complete: None,
             relisted_as: None,
@@ -297,9 +393,15 @@ mod tests {
             booth_tags: vec!["tag".into()],
             media: vec!["m1".into(), "m2".into(), "m3".into()],
             booth_images: Some(vec!["b1".into(), "b2".into(), "b3".into(), "b4".into()]),
-            variations: json!([{ "id": "v" }]),
-            linked_avatars: json!([{ "slug": "shinano" }]),
-            categories: json!([{ "slug": "hair" }]),
+            variations: vec![Variation {
+                id: VariationId::Text("v".into()),
+                name: "A".into(),
+                price_jpy: Some(500),
+                status: "addable_to_cart".into(),
+                kind: "digital".into(),
+            }],
+            linked_avatars: vec![LinkedAvatar { slug: "shinano".into(), en: "Shinano".into(), ja: None, ko: None, image_url: None }],
+            categories: vec![ItemCategory { slug: "hair".into(), is_primary: true }],
             translations: json!({
                 "en": { "title": "T", "bio": "B", "variations": { "v": "V" } },
                 "ja": { "bio": "only a bio" },
@@ -314,7 +416,7 @@ mod tests {
         assert!(card.booth_tags.is_empty());
         assert_eq!(card.media, vec!["m1", "m2"]);
         assert_eq!(card.booth_images, Some(vec!["b1".into(), "b2".into()]));
-        assert_eq!((card.variations, card.linked_avatars, card.categories), (json!([]), json!([]), json!([])));
+        assert!(card.variations.is_empty() && card.linked_avatars.is_empty() && card.categories.is_empty());
         assert_eq!(card.translations, json!({ "en": { "title": "T" } }));
     }
 

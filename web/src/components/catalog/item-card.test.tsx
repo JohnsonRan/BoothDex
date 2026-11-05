@@ -34,6 +34,14 @@ const item: Item = {
   variations: [],
   translations: {},
   linked_avatars: [],
+  categories: [],
+  original_language: null,
+  avatar_slug: null,
+  supported: false,
+  gender: null,
+  needs_enrichment: false,
+  last_listed_at: null,
+  enrich_failures: 0,
 };
 
 function renderCard(booth_images: string[]) {

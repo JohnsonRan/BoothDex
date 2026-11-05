@@ -8,6 +8,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod account;
 mod admin;
+#[cfg(test)]
+mod api_types;
 mod catalog;
 mod db;
 mod gallery;
