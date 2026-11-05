@@ -1,8 +1,10 @@
 "use client";
 
-// Smart-tag picker inside the filter panel: search, then include (+) or exclude (−); chosen tags are
-// removable tokens (green included, red excluded).
+// The tag clause's editor: search, then include (+) or exclude (−); chosen tags are removable tokens (green
+// included, red excluded). Staged as the Popover Filter Panel block: the URL changes only on Apply.
 
+import { Button } from "@astryxdesign/core/Button";
+import { Divider } from "@astryxdesign/core/Divider";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
@@ -15,31 +17,38 @@ import { useUi } from "@/components/providers";
 import { tagName } from "@/lib/catalog";
 import { useTagSearch } from "@/lib/client-data";
 import { LOCALES } from "@/lib/settings-core";
+import type { TagSet } from "./tag-clause";
 
 export function TagPicker({
-  tags,
-  extags,
-  onChange,
+  value,
+  onApply,
 }: {
-  tags: string[];
-  extags: string[];
-  onChange: (tags: string[], extags: string[]) => void;
+  value: TagSet;
+  onApply: (next: TagSet) => void;
 }) {
   const { t, ui } = useUi();
+  const [{ tags, extags }, setDraft] = useState(value);
   const [q, setQ] = useState("");
   const { found, labels } = useTagSearch(q, ui);
   const without = (list: string[], name: string) =>
     list.filter((x) => x !== name);
   const include = (name: string) =>
-    onChange([...without(tags, name), name], without(extags, name));
+    setDraft({
+      tags: [...without(tags, name), name],
+      extags: without(extags, name),
+    });
   const exclude = (name: string) =>
-    onChange(without(tags, name), [...without(extags, name), name]);
+    setDraft({
+      tags: without(tags, name),
+      extags: [...without(extags, name), name],
+    });
   const remove = (name: string) =>
-    onChange(without(tags, name), without(extags, name));
+    setDraft({ tags: without(tags, name), extags: without(extags, name) });
   const label = (name: string) => labels[name] ?? name;
 
   return (
-    <VStack gap={2}>
+    // the popup floors its width at the trigger's; tag rows need this much
+    <VStack gap={3} style={{ width: 320 }}>
       {tags.length + extags.length > 0 && (
         <HStack gap={1} wrap="wrap">
           {tags.map((name) => (
@@ -68,34 +77,56 @@ export function TagPicker({
         value={q}
         onChange={setQ}
         startIcon="search"
-        size="sm"
       />
-      {found
-        .filter((x) => !tags.includes(x.name) && !extags.includes(x.name))
-        .map((x) => (
-          <HStack key={x.name} gap={1} vAlign="center">
-            <StackItem size="fill">
-              <Text maxLines={1}>{tagName(x, ui)}</Text>
-            </StackItem>
-            <Text type="supporting" hasTabularNumbers>
-              {x.item_count.toLocaleString(LOCALES[ui])}
-            </Text>
-            <IconButton
-              label={`${t("filter.include")} ${tagName(x, ui)}`}
-              icon={<Icon icon={Plus} />}
-              variant="ghost"
-              size="sm"
-              onClick={() => include(x.name)}
-            />
-            <IconButton
-              label={`${t("filter.exclude")} ${tagName(x, ui)}`}
-              icon={<Icon icon={Minus} />}
-              variant="ghost"
-              size="sm"
-              onClick={() => exclude(x.name)}
-            />
-          </HStack>
-        ))}
+      <VStack gap={0}>
+        {found
+          .filter((x) => !tags.includes(x.name) && !extags.includes(x.name))
+          .map((x) => (
+            <HStack key={x.name} gap={1} vAlign="center">
+              <StackItem size="fill">
+                <Text maxLines={1}>{tagName(x, ui)}</Text>
+              </StackItem>
+              <Text type="supporting" color="secondary" hasTabularNumbers>
+                {x.item_count.toLocaleString(LOCALES[ui])}
+              </Text>
+              <IconButton
+                label={`${t("filter.include")} ${tagName(x, ui)}`}
+                icon={<Icon icon={Plus} size="sm" />}
+                variant="ghost"
+                size="sm"
+                onClick={() => include(x.name)}
+              />
+              <IconButton
+                label={`${t("filter.exclude")} ${tagName(x, ui)}`}
+                icon={<Icon icon={Minus} size="sm" />}
+                variant="ghost"
+                size="sm"
+                onClick={() => exclude(x.name)}
+              />
+            </HStack>
+          ))}
+      </VStack>
+      <Divider />
+      <HStack gap={2} hAlign="between" vAlign="center">
+        <Button
+          label={t("filter.clear")}
+          variant="ghost"
+          size="sm"
+          isDisabled={
+            !tags.length &&
+            !extags.length &&
+            !value.tags.length &&
+            !value.extags.length
+          }
+          onClick={() => onApply({ tags: [], extags: [] })}
+        />
+        <Button
+          label={t("filter.apply")}
+          variant="secondary"
+          size="sm"
+          onClick={() => onApply({ tags, extags })}
+        />
+      </HStack>
     </VStack>
   );
 }

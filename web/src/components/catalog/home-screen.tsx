@@ -25,9 +25,10 @@ import {
   searchItems,
 } from "@/lib/server-data";
 import { type Rates, type Settings, translator } from "@/lib/settings-core";
-import { ActiveFilters } from "./active-filters";
 import { Arrival } from "./arrival";
 import { AvatarStrip } from "./avatar-strip";
+import { FilterBar } from "./filter-bar";
+import type { Facets } from "./filter-style";
 import { FilterUrlProvider } from "./filter-url";
 import { CountSilhouette, ResultsSilhouette } from "./loading";
 import { RefreshProgress } from "./refresh";
@@ -98,8 +99,15 @@ async function Catalog({
   const t = translator(settings.ui);
   // started here, awaited by the count and the results: the frame does not wait for it
   const outcome = searchItems(filters, page, noSemantic);
-  const featureCounts = outcome.then((o) =>
-    o.state === "ok" ? o.result.featureCounts : {},
+  const facets = outcome.then(
+    (o): Facets =>
+      o.state === "ok"
+        ? {
+            count: o.result.count,
+            smart: o.result.smartCounts,
+            features: o.result.featureCounts,
+          }
+        : { count: 0, smart: {}, features: {} },
   );
   const [avatars, categories] = await Promise.all([
     listAvatars().catch(() => []),
@@ -110,9 +118,6 @@ async function Catalog({
   const categoryTabs = categories
     .filter((c) => c.mode === "items")
     .map((c): [string, string] => [c.slug, localName(c, settings.ui)]);
-  const category = categories
-    .flatMap((c) => [c, ...c.children])
-    .find((c) => c.slug === filters.sc);
   const title = filters.q
     ? t("title.search", { q: filters.q })
     : filters.author
@@ -148,14 +153,8 @@ async function Catalog({
               {filters.view === "items" && (
                 <AvatarStrip avatars={avatars} value={filters.avatar} />
               )}
-              <Toolbar
-                categoryTabs={categoryTabs}
-                featureCounts={featureCounts}
-              />
-              <ActiveFilters
-                categoryName={category && localName(category, settings.ui)}
-                avatar={avatar}
-              />
+              <Toolbar categoryTabs={categoryTabs} facets={facets} />
+              <FilterBar facets={facets} />
             </VStack>
             <Divider />
             <Suspense
