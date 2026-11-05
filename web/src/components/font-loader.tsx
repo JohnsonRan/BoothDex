@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
-import { coverPainted, FONTS_CSS } from "@/lib/fonts";
+import {
+  coverPainted,
+  FONTS_CSS,
+  FONTS_USED,
+  FONTS_USED_MAX,
+} from "@/lib/fonts";
 
 let started = false;
 
@@ -19,6 +24,22 @@ function loadFonts() {
     );
     if (sheet?.href) localStorage.setItem(FONTS_CSS, sheet.href);
   });
+  document.fonts.addEventListener("loadingdone", rememberSlices);
+}
+
+/** Adds the slices drawn so far to the ones the next visit preloads (FONTS_EARLY). */
+function rememberSlices() {
+  try {
+    const used = new Set<string>(
+      JSON.parse(localStorage.getItem(FONTS_USED) ?? "[]"),
+    );
+    for (const e of performance.getEntriesByType("resource"))
+      if (/MiSans-VF\.\d+\.[^/]*woff2$/.test(e.name)) used.add(e.name);
+    localStorage.setItem(
+      FONTS_USED,
+      JSON.stringify([...used].slice(-FONTS_USED_MAX)),
+    );
+  } catch {}
 }
 
 function rules(s: CSSStyleSheet) {

@@ -7,10 +7,19 @@
 
 /** localStorage key holding the MiSans stylesheet's address once it has loaded. */
 export const FONTS_CSS = "fontsCss";
+/** localStorage key holding the MiSans slices this browser has drawn (newest last). */
+export const FONTS_USED = "fontsUsed";
+/** Slices remembered at most; a page of titles draws ~40. */
+export const FONTS_USED_MAX = 60;
 
-/** Inline head script: a returning visitor gets the (cached) stylesheet render-blocking, so text never swaps. */
-export const FONTS_EARLY = `try{var f=localStorage.getItem("${FONTS_CSS}");if(f){var l=document.createElement("link");
-l.rel="stylesheet";l.href=f;l.setAttribute("blocking","render");document.head.appendChild(l)}}catch(e){}`;
+/**
+ * Inline head script: a returning visitor gets the (cached) stylesheet render-blocking and the slices it drew
+ * before preloaded from the cache, so they are ready at first paint and text does not swap as the page shows.
+ */
+export const FONTS_EARLY = `try{var f=localStorage.getItem("${FONTS_CSS}");if(f){var h=document.head,
+u=JSON.parse(localStorage.getItem("${FONTS_USED}")||"[]");for(var i=0;i<u.length;i++){var p=document.createElement("link");
+p.rel="preload";p.as="font";p.type="font/woff2";p.crossOrigin="";p.href=u[i];h.appendChild(p)}
+var l=document.createElement("link");l.rel="stylesheet";l.href=f;l.setAttribute("blocking","render");h.appendChild(l)}}catch(e){}`;
 
 /** Resolves once these images are loaded, decoded and two frames have passed (or they failed). */
 const imagesPainted = async (imgs: HTMLImageElement[]) => {
