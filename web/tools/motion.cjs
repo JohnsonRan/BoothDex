@@ -24,9 +24,17 @@ const ENTRANCE = ["page-enter", "row-enter"];
       ENTRANCE,
     );
   const arrive = (p) =>
-    p.waitForFunction(() => document.querySelector(".astryx-grid img"), null, {
-      timeout: Number(delay) + 15000,
-    });
+    // streamed content waits in a hidden container until React reveals it, so only a visible cover counts
+    p.waitForFunction(
+      () =>
+        [...document.querySelectorAll(".astryx-grid img")].some((i) =>
+          i.checkVisibility(),
+        ),
+      null,
+      {
+        timeout: Number(delay) + 15000,
+      },
+    );
   const refreshed = async (p) => {
     await p
       .waitForSelector('[role="progressbar"]:visible', { timeout: 3000 })

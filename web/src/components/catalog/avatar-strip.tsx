@@ -1,5 +1,8 @@
 "use client";
-// Avatar picker (Carousel Snap template block): a snapping row of selectable cards with prev/next buttons.
+// Avatar picker (Carousel Snap template block): a snapping row of selectable cards with prev/next buttons and
+// the Carousel's own edge fade. Each card is media only, clipped by the card's radius (the Product Gallery
+// card's media slot: padding 0, square AspectRatio, cover), selected by the card's own state; the name sits
+// under it as the caption of the Top Nav template's category tiles.
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
 // focus or scroll in the strip, before any of them can come into view.
 
@@ -15,7 +18,7 @@ import { useUi } from "@/components/providers";
 import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
 import { useFilterUrl } from "./filter-url";
 
-// structural width of one card; the cover keeps Booth's portrait thumbnails uncropped
+// structural width of one card; Booth's avatar thumbnails are square
 const CARD_WIDTH = 104;
 // cards rendered before the strip is used: more than fit across 1440 px (with the "all" card)
 const FIRST_CARDS = 14;
@@ -65,7 +68,7 @@ export function AvatarStrip({
       aria-label={t("strip.label")}
     >
       <Tile label={t("strip.all")} selected={!value} onSelect={() => pick("")}>
-        <AspectRatio ratio={3 / 4} fit="center">
+        <AspectRatio ratio={1} fit="center">
           <Icon icon={LayoutGrid} size="lg" color="secondary" />
         </AspectRatio>
       </Tile>
@@ -76,7 +79,7 @@ export function AvatarStrip({
           selected={a.slug === value}
           onSelect={() => pick(a.slug === value ? "" : a.slug)}
         >
-          <AspectRatio ratio={3 / 4} fit="cover">
+          <AspectRatio ratio={1} fit="cover">
             {a.image_url ? (
               <img
                 src={imageSrc(a.image_url, "300x300_a2_g5")}
@@ -106,24 +109,23 @@ function Tile({
   children: React.ReactNode;
 }) {
   return (
-    <SelectableCard
-      label={label}
-      isSelected={selected}
-      onChange={onSelect}
-      padding={1}
-      width={CARD_WIDTH}
-    >
-      <VStack gap={1}>
+    <VStack gap={2} width={CARD_WIDTH}>
+      <SelectableCard
+        label={label}
+        isSelected={selected}
+        onChange={onSelect}
+        padding={0}
+      >
         {children}
-        <Text
-          type="supporting"
-          maxLines={1}
-          justify="center"
-          hasTruncateTooltip={false}
-        >
-          {label}
-        </Text>
-      </VStack>
-    </SelectableCard>
+      </SelectableCard>
+      <Text
+        type="supporting"
+        maxLines={1}
+        justify="center"
+        hasTruncateTooltip={false}
+      >
+        {label}
+      </Text>
+    </VStack>
   );
 }
