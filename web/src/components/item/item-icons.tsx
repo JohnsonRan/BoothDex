@@ -4,8 +4,7 @@
 
 import { registerIcons } from "@astryxdesign/core/Icon";
 import { ArrowRight, Download } from "lucide-react";
-
-const glyph = { size: "1em", "aria-hidden": true } as const;
+import { glyph } from "@/lib/icons";
 
 registerIcons({
   "site:download": <Download {...glyph} />,

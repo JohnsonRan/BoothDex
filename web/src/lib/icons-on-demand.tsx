@@ -17,8 +17,7 @@ import {
   Rss,
   Type,
 } from "lucide-react";
-
-const glyph = { size: "1em", "aria-hidden": true } as const;
+import { glyph } from "./icons";
 
 registerIcons({
   "site:viewed": <Eye {...glyph} />,
