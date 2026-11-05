@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { api } from "./api";
+import { api, fetchAccount } from "./api";
 import type { Item } from "./catalog";
 import { format, MESSAGES, type MessageKey } from "./messages";
 import {
@@ -84,7 +84,7 @@ export function SettingsProvider({
       writeCookie(migrated);
     }
     // signed-in users get their account preferences
-    api<{ preferences: Record<string, string> }>("/api/account")
+    fetchAccount<{ preferences: Record<string, string> }>()
       .then(({ preferences: p }) =>
         setS((cur) => {
           const next = parseSettings(

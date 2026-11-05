@@ -21,6 +21,8 @@ type Props = {
   viewed: boolean;
   onOpen: (it: Item) => void;
   onFavourite: (it: Item) => void;
+  /** in the first screen: load the cover at once ("high" for the likely LCP image) instead of lazily */
+  priority?: "high" | "auto";
 };
 
 export const ItemCard = memo(function ItemCard({
@@ -29,6 +31,7 @@ export const ItemCard = memo(function ItemCard({
   viewed,
   onOpen,
   onFavourite,
+  priority,
 }: Props) {
   const { t, price, text } = useSettings();
   const [preview, setPreview] = useState(false);
@@ -40,9 +43,7 @@ export const ItemCard = memo(function ItemCard({
         type="button"
         onClick={() => onOpen(item)}
         className="block w-full text-left"
-        aria-label={
-          viewed ? `${item.title} (${t("viewed.badge")})` : item.title
-        }
+        // named by its visible text (badges, title, shop, price), so voice control can target what is shown
       >
         <div
           onPointerEnter={(e) => {
@@ -53,7 +54,8 @@ export const ItemCard = memo(function ItemCard({
           <img
             src={imgUrl(item, 0)}
             alt=""
-            loading="lazy"
+            loading={priority ? "eager" : "lazy"}
+            fetchPriority={priority}
             decoding="async"
             className="absolute inset-0 size-full object-cover transition-transform duration-500 [@media(hover:hover)]:group-hover:scale-[1.04]"
           />
@@ -68,10 +70,7 @@ export const ItemCard = memo(function ItemCard({
             />
           )}
           {viewed && (
-            <div
-              aria-hidden="true"
-              className="absolute inset-0 bg-background/55 transition-opacity [@media(hover:hover)]:group-hover:opacity-0"
-            >
+            <div className="absolute inset-0 bg-background/55 transition-opacity [@media(hover:hover)]:group-hover:opacity-0">
               <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-sm bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur">
                 <Eye className="size-3" aria-hidden="true" />
                 {t("viewed.badge")}
@@ -95,9 +94,9 @@ export const ItemCard = memo(function ItemCard({
           </div>
         </div>
         <div className="space-y-1.5 px-0.5 pt-2 pb-1">
-          <h3 className="line-clamp-2 min-h-[2.8em] text-[13px] leading-[1.4] transition-colors [content-visibility:auto] [@media(hover:hover)]:group-hover:text-primary">
+          <h2 className="line-clamp-2 min-h-[2.8em] text-[13px] leading-[1.4] transition-colors [content-visibility:auto] [@media(hover:hover)]:group-hover:text-primary">
             {text(item, "title")}
-          </h3>
+          </h2>
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
               {item.author_icon && (

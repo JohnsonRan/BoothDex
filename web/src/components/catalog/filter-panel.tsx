@@ -488,9 +488,9 @@ function Chip({
 
 function Heading({ children }: { children: React.ReactNode }) {
   return (
-    <h4 className="mb-2 px-1 text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">
+    <h2 className="mb-2 px-1 text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">
       {children}
-    </h4>
+    </h2>
   );
 }
 

@@ -54,8 +54,9 @@ test("cards expose their cover and title without requesting hover previews", () 
   const html = renderCard(item.booth_images ?? []);
   expect(html).toContain('src="/img/b/300x300_a2_g5/u/i/1/cover.jpg"');
   expect(html).not.toContain("preview.jpg");
-  expect(html).toContain('aria-label="Test item"');
-  expect(html).toContain(">Test item</h3>");
+  // the open button is named by its visible text, not an aria-label that could drift from it
+  expect(html).toMatch(/<button type="button" class="block w-full text-left">/);
+  expect(html).toContain(">Test item</h2>");
   expect(html.match(/<img /g)).toHaveLength(1);
 });
 

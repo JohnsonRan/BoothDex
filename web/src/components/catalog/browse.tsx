@@ -185,17 +185,27 @@ export function Browse() {
   // first visit without an avatar in the URL: restore the remembered one
   const restored = useRef(false);
   useEffect(() => {
+    const search = (avatar: string) =>
+      `?${filtersToQuery({ ...DEFAULT_FILTERS, avatar })}`;
+    const restore = (avatar: string) =>
+      router.replace(`${pathname}${search(avatar)}`, { scroll: false });
+    // this browser's choice is known at once; the account's (signed in elsewhere) may differ and follows.
+    // Only a bare visit gets the remembered avatar; a shared link shows exactly what it encodes.
+    const local = localStorage.getItem("myAvatar") ?? "";
+    if (location.search.length <= 1 && local && !restored.current) {
+      restore(local);
+    }
     loadAccount().then((user) => {
       if (restored.current) return;
       restored.current = true;
-      const saved =
-        user?.preferences?.avatar ?? localStorage.getItem("myAvatar") ?? "";
-      // only a bare visit gets the remembered avatar; a shared link shows exactly what it encodes
-      if (saved && location.search.length <= 1)
-        router.replace(
-          `${pathname}?${filtersToQuery({ ...DEFAULT_FILTERS, avatar: saved })}`,
-          { scroll: false },
-        );
+      const saved = user?.preferences?.avatar ?? local;
+      // still bare, or still showing just the local avatar (the visitor hasn't moved on)
+      const untouched =
+        location.search.length <= 1 ||
+        (!!local && location.search === search(local));
+      if (saved && saved !== local && untouched) {
+        restore(saved);
+      }
     });
   }, [loadAccount, pathname, router]);
 
@@ -213,7 +223,8 @@ export function Browse() {
     const load: Promise<SearchResult> =
       filters.view !== "recent"
         ? api<SearchResult>(
-            `/api/search?${searchQuery(filters, page, PAGE_SIZE)}${noSemantic ? "&sem=0" : ""}`,
+            // card-sized items; the detail view loads the full record when opened
+            `/api/search?${searchQuery(filters, page, PAGE_SIZE)}&fields=card${noSemantic ? "&sem=0" : ""}`,
           )
         : // newest first, one page; filters and sort don't apply
           (ids.length
@@ -428,7 +439,8 @@ export function Browse() {
           className="flex shrink-0 items-center gap-2 font-heading text-[17px] font-semibold tracking-wide"
         >
           <Logo />
-          <span className="hidden sm:inline">BoothDex</span>
+          {/* sr-only on phones so the link keeps its name when the wordmark is hidden */}
+          <span className="max-sm:sr-only">BoothDex</span>
         </a>
         <button
           type="button"
@@ -623,10 +635,12 @@ export function Browse() {
               loading && shownItems.length > 0 && "opacity-50",
             )}
           >
-            {shownItems.map((it) => (
+            {shownItems.map((it, i) => (
               <ItemCard
                 key={it.id}
                 item={it}
+                // roughly the first screen (2 columns on phones, ~5 on desktop): skip lazy loading there
+                priority={i < 4 ? "high" : i < 10 ? "auto" : undefined}
                 favourite={!!favs?.has(it.id)}
                 viewed={!recent && viewedSet.has(it.id)}
                 onOpen={openItem}

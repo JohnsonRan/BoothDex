@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, fetchAccount } from "@/lib/api";
 import type { Item } from "@/lib/catalog";
 import { useSettings } from "@/lib/settings";
 import {
@@ -33,7 +33,8 @@ export function useAccount() {
   const loadAccount = useCallback(async () => {
     const gen = ++accountLoad.current;
     setViewed(null);
-    const user = await api<Me>("/api/account").catch(() => null);
+    // startup shares the account request with settings; subsequent loads (sign-in/out) start fresh
+    const user = await fetchAccount<Me>({ fresh: gen > 1 }).catch(() => null);
     // a newer sign-in/out supersedes this load; don't publish another account's data
     if (gen !== accountLoad.current) return user;
     setMe(user);

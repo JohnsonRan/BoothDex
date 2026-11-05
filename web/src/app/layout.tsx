@@ -10,6 +10,8 @@ import "./globals.css";
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  // only the admin console uses it; don't make every visitor download it up front
+  preload: false,
 });
 
 export const metadata: Metadata = {
