@@ -207,7 +207,6 @@ export const en: Dict = {
   "settings.theme": "Theme",
   "settings.dark": "Dark",
   "settings.light": "Light",
-  "settings.fontCredit": "Font: MiSans (Xiaomi)",
   "settings.source": "Source code",
   "settings.copyright": "© 2026 BoothDex contributors · AGPL-3.0-or-later",
   "common.close": "Close",

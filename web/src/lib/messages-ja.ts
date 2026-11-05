@@ -209,7 +209,6 @@ export const ja: Dict = {
   "settings.theme": "テーマ",
   "settings.dark": "ダーク",
   "settings.light": "ライト",
-  "settings.fontCredit": "フォント：MiSans（Xiaomi）",
   "settings.source": "ソースコード",
   "settings.copyright":
     "© 2026 BoothDex コントリビューター · AGPL-3.0-or-later",

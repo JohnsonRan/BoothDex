@@ -174,7 +174,6 @@ btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。�
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs)：内存筛选位图
 - [foyer](https://github.com/foyer-rs/foyer)：混合图片缓存
 - [shadcn/ui](https://ui.shadcn.com)：前端界面组件
-- [MiSans](https://hyperos.mi.com/font/)：小米提供的界面字体
 
 ## 许可证
 

@@ -4,14 +4,12 @@
 @import "@astryxdesign/theme-neutral/theme.css";
 
 /* Documented theme fix (docs/TEMPLATE-MAP.md, Deviations): the theme names Figtree and leaves loading it to the
-   app. next/font self-hosts it under a generated family name, so the font tokens point at its variable, then
-   MiSans for Chinese and Japanese (loaded late, lib/fonts.ts), then the theme's own system stack. Unlayered, so
-   it wins over the theme's layer. */
+   app. next/font self-hosts it under a generated family name, so the font tokens point at its variable, followed
+   by the theme's own system stack. Unlayered, so it wins over the theme's layer. */
 [data-astryx-theme="neutral"] {
   --font-family-body:
-    var(--font-figtree), "MiSans-VF", "PingFang SC", "Microsoft YaHei",
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
+    var(--font-figtree), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
   --font-family-heading: var(--font-family-body);
 }
 

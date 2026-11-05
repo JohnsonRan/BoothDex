@@ -83,9 +83,8 @@ Theme fix (rule 3), the only style override:
   from Google Fonts: a render-blocking request chain (~850 ms in Lighthouse). `next.config.ts` aliases that
   import (`turbopack.resolveAlias`) to the empty `src/app/theme-fonts.css`; `app/layout.tsx` loads Figtree with
   `next/font/google` (self-hosted, preloaded, `font-display: swap`); `app/globals.css` sets
-  `--font-family-body` and `--font-family-heading` to Figtree's variable, then MiSans for Chinese and Japanese
-  (loaded after the first covers are painted, as on master: `components/font-loader.tsx`, `lib/fonts.ts`), then
-  the theme's own system stack. The generated module stays exact, so `astryx doctor` keeps 0 failures; its
+  `--font-family-body` and `--font-family-heading` to Figtree's variable, followed by the theme's own system
+  stack (Chinese, Japanese and Korean use the system's fonts, the theme's supported fallback). The generated module stays exact, so `astryx doctor` keeps 0 failures; its
   `theme-fonts` warning ("External font imports prevent proof for neutral: Figtree") is expected, since doctor
   reads the package file, not the alias. Editing the generated module instead fails two doctor checks
   (`theme-module`, `theme-fonts`), and `astryx theme add neutral` rewrites it with the import back, so the alias
@@ -169,9 +168,7 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 - Icons are registered with `registerIcons()`, not `defineTheme({ extends: neutralTheme, icons })` as Astryx's
   dev warning suggests: extending the prebuilt theme makes it an unbuilt theme whose CSS `Theme` generates and
   injects at run time, on top of the shipped `theme.css`.
-- Tile title: `weight="normal"` on the level-4 Heading. MiSans' `subsetted-fonts` slices are static regular
-  fonts (no `fvar`/`gvar`) declared as `font-weight: 150 700`, so the browser neither varies nor synthesises
-  bold for CJK; a bold title set Latin in bold Figtree beside regular CJK.
+- Tile title: `weight="normal"` on the level-4 Heading, the weight the tiles were approved with at checkpoint 1.
 - Avatar strip: `SelectableCard` is documented for multi-select; the strip is single-select (one avatar or
   all). Kept because it is the component with a selected state for media cards; ClickableCard has none.
 

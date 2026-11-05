@@ -158,11 +158,6 @@ const LINKS = [
     icon: "site:code",
     href: "https://github.com/JohnsonRan/BoothDex",
   },
-  {
-    title: "settings.fontCredit",
-    icon: "site:itemText",
-    href: "https://hyperos.mi.com/font/",
-  },
 ] as const;
 
 function AboutPanel() {

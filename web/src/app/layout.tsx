@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
-import { FontLoader } from "@/components/font-loader";
-import { FONTS_EARLY } from "@/lib/fonts";
 import "./globals.css";
 
 // The neutral theme's Latin face, self-hosted and preloaded; globals.css points the theme's font tokens at it.
@@ -43,13 +41,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <meta name="darkreader-lock" />
         <script
           // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
-          dangerouslySetInnerHTML={{ __html: preferences + FONTS_EARLY }}
+          dangerouslySetInnerHTML={{ __html: preferences }}
         />
       </head>
-      <body>
-        {children}
-        <FontLoader />
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
