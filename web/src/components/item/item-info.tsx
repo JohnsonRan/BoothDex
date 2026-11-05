@@ -60,7 +60,7 @@ export function ItemInfo({
     initialLang(item, settings.content),
   );
   const tabs = langTabs(item);
-  const money = (jpy: number | null) => formatPrice(jpy, settings, rates);
+  const money = (jpy: number | null) => formatPrice(jpy, settings, rates, t);
   const listed =
     item.smart_price != null && item.smart_price !== item.price_jpy;
 

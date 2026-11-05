@@ -11,7 +11,7 @@ import { Selector } from "@astryxdesign/core/Selector";
 import { CURRENCY_SYMBOLS } from "@/components/frame/header-controls";
 import { useUi } from "@/components/providers";
 import {
-  MESSAGES,
+  LANG_NAMES,
   type MessageKey,
   UI_LANGS,
   type UiLang,
@@ -115,7 +115,7 @@ function LanguagePanel() {
         control={selector<UiLang>(
           "settings.ui",
           settings.ui,
-          UI_LANGS.map((l) => ({ value: l, label: MESSAGES[l]["lang.name"] })),
+          UI_LANGS.map((l) => ({ value: l, label: LANG_NAMES[l] })),
           (v) => update({ ui: v }),
         )}
       />
@@ -129,9 +129,7 @@ function LanguagePanel() {
           CONTENT_LANGS.map((l) => ({
             value: l,
             label:
-              l === "original"
-                ? t("settings.contentOriginal")
-                : MESSAGES[l]["lang.name"],
+              l === "original" ? t("settings.contentOriginal") : LANG_NAMES[l],
           })),
           (v) => update({ content: v }),
         )}

@@ -14,7 +14,7 @@ import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { useUi } from "@/components/providers";
-import { MESSAGES, UI_LANGS, type UiLang } from "@/lib/messages";
+import { LANG_NAMES, UI_LANGS, type UiLang } from "@/lib/messages";
 import {
   CONTENT_LANGS,
   type ContentLang,
@@ -63,11 +63,7 @@ export function LanguageMenu() {
           onChange={(v) => update({ ui: v as UiLang })}
         >
           {UI_LANGS.map((l) => (
-            <DropdownMenuRadioItem
-              key={l}
-              value={l}
-              label={MESSAGES[l]["lang.name"]}
-            />
+            <DropdownMenuRadioItem key={l} value={l} label={LANG_NAMES[l]} />
           ))}
         </DropdownMenuRadioGroup>
       </DropdownMenuGroup>
@@ -83,9 +79,7 @@ export function LanguageMenu() {
               key={l}
               value={l}
               label={
-                l === "original"
-                  ? t("settings.contentOriginal")
-                  : MESSAGES[l]["lang.name"]
+                l === "original" ? t("settings.contentOriginal") : LANG_NAMES[l]
               }
             />
           ))}

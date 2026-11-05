@@ -28,6 +28,7 @@ import {
   itemText,
   type Rates,
   type Settings,
+  type Translate,
 } from "@/lib/settings-core";
 import { ViewedMark } from "./viewed-mark";
 
@@ -47,13 +48,14 @@ export const tileOf = (
   item: ItemResponse,
   settings: Settings,
   rates: Rates,
+  t: Translate,
 ): Tile => ({
   id: item.id,
   cover: imgUrl(item, 0),
   title: itemText(item, "title", settings.content),
   shop: item.author_name,
   shopIcon: imageSrc(item.author_icon),
-  price: formatPrice(priceOf(item), settings, rates),
+  price: formatPrice(priceOf(item), settings, rates, t),
   marks: [
     ...(isNew(item) ? ["NEW"] : []),
     ...item.features.slice(0, 2).map((f) => FEATURES[f as Feature] ?? f),

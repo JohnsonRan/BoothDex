@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import type { ItemResponse } from "@/lib/api-types";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { useAccount } from "./session";
+import "@/lib/icons-on-demand";
 
 const PAGE = 100;
 
@@ -98,6 +99,7 @@ export function RecentResults({
       items={items}
       settings={settings}
       rates={resolved}
+      t={t}
       markViewed={false}
     />
   );

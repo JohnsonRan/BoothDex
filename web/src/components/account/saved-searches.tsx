@@ -26,6 +26,7 @@ import { filtersToQuery } from "@/lib/catalog";
 import type { MessageKey } from "@/lib/messages";
 import { useDelayed } from "@/lib/use-delayed";
 import { DeleteSaved } from "./delete-saved";
+import "@/lib/icons-on-demand";
 
 type Saved = { id: number; name: string; query: string };
 

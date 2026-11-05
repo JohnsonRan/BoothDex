@@ -2,8 +2,8 @@
 // client. No React here, so server components can import it.
 import type { ItemResponse } from "./api-types";
 import {
+  type Dict,
   format,
-  MESSAGES,
   type MessageKey,
   UI_LANGS,
   type UiLang,
@@ -115,11 +115,11 @@ export type Translate = (
   vars?: Record<string, string | number>,
 ) => string;
 
-/** Message lookup for one interface language; a key missing there falls back to Chinese. */
-export function translator(ui: UiLang): Translate {
-  const dict = MESSAGES[ui];
-  return (key, vars) => format(dict[key] ?? MESSAGES.zh[key], vars);
-}
+/** Message lookup in one language's dictionary (every dictionary has every key). */
+export const translate =
+  (dict: Dict): Translate =>
+  (key, vars) =>
+    format(dict[key], vars);
 
 /** Yen per unit of each other currency (frankfurter.dev, base JPY). */
 export type Rates = Partial<Record<Currency, number>>;
@@ -129,9 +129,10 @@ export function formatPrice(
   jpy: number | null | undefined,
   s: Pick<Settings, "ui" | "currency">,
   rates: Rates,
+  t: Translate,
 ): string {
   if (jpy == null) return "—";
-  if (jpy === 0) return translator(s.ui)("price.free");
+  if (jpy === 0) return t("price.free");
   const locale = LOCALES[s.ui];
   const rate = s.currency === "JPY" ? 1 : rates[s.currency];
   // plain ¥ for yen (Intl writes "JP¥" in zh-CN)

@@ -174,7 +174,7 @@ export function paletteSource({
               pick: { kind: "item", value: it.id },
               image: thumb(it.image),
               square: true,
-              meta: formatPrice(priceOf(it), settings, rates),
+              meta: formatPrice(priceOf(it), settings, rates, t),
             },
           }),
         ),

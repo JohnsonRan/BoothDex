@@ -3,12 +3,10 @@
 // ja-JP: desu-masu for messages, "...してください。" for requests; half-width ( ) for supplements; half-width space
 //        between full- and half-width characters; “ ” quotes.
 // ko-KR: conversational Microsoft voice; half-width ( ) with no space before.
-// Placeholders: {name}. One file per language (messages-<lang>.ts); the Chinese keys define MessageKey.
+// Placeholders: {name}. One file per language (messages-<lang>.ts); the Chinese keys define MessageKey. The
+// dictionaries are read on the server (dictionaries.ts), which hands the browser the visitor's language only.
 
-import { en } from "./messages-en";
-import { ja } from "./messages-ja";
-import { ko } from "./messages-ko";
-import { zh } from "./messages-zh";
+import type { zh } from "./messages-zh";
 
 export const UI_LANGS = ["zh", "en", "ja", "ko"] as const;
 export type UiLang = (typeof UI_LANGS)[number];
@@ -16,7 +14,13 @@ export type UiLang = (typeof UI_LANGS)[number];
 export type MessageKey = keyof typeof zh;
 export type Dict = Record<MessageKey, string>;
 
-export const MESSAGES: Record<UiLang, Dict> = { zh, en, ja, ko };
+/** Each language's name in itself, for the language menus. */
+export const LANG_NAMES: Record<UiLang, string> = {
+  zh: "中文",
+  en: "English",
+  ja: "日本語",
+  ko: "한국어",
+};
 
 export function format(
   template: string,

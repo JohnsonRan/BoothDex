@@ -16,6 +16,7 @@ import { useUi } from "@/components/providers";
 import { saveHistory } from "@/lib/history";
 import type { Rates } from "@/lib/settings-core";
 import { type Pick, paletteSource, type Row } from "./palette-source";
+import "@/lib/icons-on-demand";
 
 // the theme's semantic icons where it has one (TEMPLATE-MAP rule 6), the site's own otherwise (lib/icons)
 const ICONS = {

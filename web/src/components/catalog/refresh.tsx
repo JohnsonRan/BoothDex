@@ -4,10 +4,10 @@
 // held for at least 300 ms, and the new count and results then fade in. A failed refresh keeps the results with
 // an inline Banner to retry (doona apps/lite UI rules, Phase 1d of the rewrite).
 
-import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { VStack } from "@astryxdesign/core/Stack";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   type ReactNode,
@@ -21,6 +21,12 @@ import { useApiRecovery } from "@/lib/client-data";
 import { cancelOnReducedMotion, swapIn } from "@/lib/motion";
 import { useRefresh } from "./filter-url";
 import { FailedResults } from "./result-states";
+
+// shown only after a refresh fails, so its code loads then
+const Banner = dynamic(
+  () => import("@astryxdesign/core/Banner").then((m) => m.Banner),
+  { ssr: false },
+);
 
 /**
  * Beside the result count: its slot is always laid out, so nothing moves; the spinner is there only while a

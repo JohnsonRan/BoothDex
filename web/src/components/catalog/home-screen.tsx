@@ -18,6 +18,7 @@ import {
   localName,
   parseFilters,
 } from "@/lib/catalog";
+import { MESSAGES, translator } from "@/lib/dictionaries";
 import {
   componentCatalogue,
   exchangeRates,
@@ -27,7 +28,7 @@ import {
   type SearchOutcome,
   searchItems,
 } from "@/lib/server-data";
-import { type Rates, type Settings, translator } from "@/lib/settings-core";
+import type { Rates, Settings } from "@/lib/settings-core";
 import { Arrival } from "./arrival";
 import { AvatarStrip } from "./avatar-strip";
 import { FilterBar } from "./filter-bar";
@@ -66,6 +67,7 @@ export async function HomeScreen({
   return (
     <Providers
       settings={settings}
+      messages={MESSAGES[settings.ui]}
       catalogue={await componentCatalogue(settings.ui)}
     >
       <FilterUrlProvider filters={filters}>

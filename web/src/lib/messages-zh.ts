@@ -1,5 +1,4 @@
 export const zh = {
-  "lang.name": "中文",
   "nav.search": "搜索商品、模型、作者、标签",
   "nav.signIn": "登录",
   "nav.filters": "筛选",

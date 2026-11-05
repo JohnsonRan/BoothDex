@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
+import { translator } from "./dictionaries";
 import {
   DEFAULT_SETTINGS,
   formatPrice,
   itemText,
   parseSettings,
-  translator,
   uiFromAcceptLanguage,
 } from "./settings-core";
 
@@ -41,17 +41,18 @@ test("the theme defaults to following the system", () => {
   expect(parseSettings('{"theme":"system"}').theme).toBe("system");
 });
 
-test("translations fall back to Chinese and fill variables", () => {
+test("translations fill variables", () => {
   expect(translator("en")("title.count", { n: 3 })).toBe("3 items");
   expect(translator("zh")("title.count", { n: 3 })).toBe("3 件");
 });
 
 test("prices: yen as is, free by name, other currencies once a rate is known", () => {
   const s = { ui: "en", currency: "USD" } as const;
-  expect(formatPrice(null, s, {})).toBe("—");
-  expect(formatPrice(0, s, {})).toBe(translator("en")("price.free"));
-  expect(formatPrice(1500, s, {})).toBe("¥1,500");
-  expect(formatPrice(1500, s, { USD: 0.0066 })).toBe("≈$9.90");
+  const t = translator("en");
+  expect(formatPrice(null, s, {}, t)).toBe("—");
+  expect(formatPrice(0, s, {}, t)).toBe(t("price.free"));
+  expect(formatPrice(1500, s, {}, t)).toBe("¥1,500");
+  expect(formatPrice(1500, s, { USD: 0.0066 }, t)).toBe("≈$9.90");
 });
 
 test("item text uses the chosen translation, else the original", () => {

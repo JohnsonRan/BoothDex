@@ -14,6 +14,7 @@ import { IconButton } from "@astryxdesign/core/IconButton";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
 import { type Me, useAccount } from "./session";
+import "@/lib/icons-on-demand";
 
 const icon = (name: `site:${string}`) => <Icon icon={name} size="sm" />;
 

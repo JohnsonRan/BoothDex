@@ -17,14 +17,14 @@ import {
 } from "react";
 import { defaultThemeSlug, themes } from "@/astryx-themes";
 import "@/lib/icons";
-import type { UiLang } from "@/lib/messages";
+import type { Dict, UiLang } from "@/lib/messages";
 import { savePreferences } from "@/lib/preferences";
 import {
   LOCALES,
   SETTINGS_COOKIE,
   type Settings,
   type Translate,
-  translator,
+  translate,
 } from "@/lib/settings-core";
 
 type Ui = {
@@ -38,10 +38,13 @@ const UiContext = createContext<Ui | null>(null);
 
 export function Providers({
   settings: fromServer,
+  messages,
   catalogue,
   children,
 }: {
   settings: Settings;
+  /** the site's strings in the visitor's language (lib/dictionaries.ts) */
+  messages: Dict;
   /** the component library's strings for this language (English is built in) */
   catalogue?: Record<string, string>;
   children: React.ReactNode;
@@ -55,7 +58,7 @@ export function Providers({
     const settings = { ...fromServer, theme };
     return {
       ui: settings.ui,
-      t: translator(settings.ui),
+      t: translate(messages),
       settings,
       update: (patch) => {
         const next = { ...settings, ...patch };
@@ -69,7 +72,7 @@ export function Providers({
           startTransition(() => router.refresh());
       },
     };
-  }, [fromServer, theme, router]);
+  }, [fromServer, messages, theme, router]);
   return (
     <Theme theme={themes[defaultThemeSlug]} mode={theme}>
       <InternationalizationProvider

@@ -5,13 +5,9 @@
 import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import type { Filters } from "@/lib/catalog";
+import { translator } from "@/lib/dictionaries";
 import type { SearchOutcome } from "@/lib/server-data";
-import {
-  LOCALES,
-  type Rates,
-  type Settings,
-  translator,
-} from "@/lib/settings-core";
+import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { Pager } from "./pager";
 import { KeepResults, Swap } from "./refresh";
 import { EmptyResults, SemanticNote } from "./result-states";
@@ -68,6 +64,7 @@ export async function Results({
             items={result.items}
             settings={settings}
             rates={await rates}
+            t={translator(settings.ui)}
           />
           {result.semantic === "unavailable" && (
             <SemanticNote

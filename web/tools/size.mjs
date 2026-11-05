@@ -5,10 +5,11 @@
 import { gzipSync } from "node:zlib";
 
 const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
-// Bytes after gzip -9, from the measured build plus ~5 % (the HTML ~10 %: it carries live titles).
-// Measured 2026-11-06 (HTML 49,937, JS 362,176, CSS 42,979; master: 7,981 / 287,456 / 18,400); with the
-// account (session, favourite buttons, viewed marks; the dialogs and the menu load on demand) JS 391,068.
-const BUDGET = { html: 55_000, js: 410_000, css: 45_000 };
+// Bytes after gzip -9, from the measured build plus ~2 % (the HTML ~10 %: it carries live titles).
+// Measured 2026-11-06 (HTML 49,937, JS 362,176, CSS 42,979; master: 7,981 / 287,456 / 18,400). After the filter
+// row, the item dialog's host and the account (session, delegated favourites, viewed marks): JS 410,604; with the
+// browser given only the visitor's dictionary (HTML carries it: 57,004) and on-demand icons and Banner: 396,116.
+const BUDGET = { html: 62_000, js: 404_000, css: 45_000 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {

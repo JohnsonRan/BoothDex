@@ -1,7 +1,6 @@
 import type { Dict } from "./messages";
 
 export const ko: Dict = {
-  "lang.name": "한국어",
   "nav.search": "상품, 아바타, 상점, 태그 검색",
   "nav.signIn": "로그인",
   "nav.filters": "필터",

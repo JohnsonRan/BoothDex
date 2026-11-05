@@ -9,6 +9,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Overlay } from "@astryxdesign/core/Overlay";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
+import "@/lib/icons-on-demand";
 
 /** The scrim and badge over one viewed cover (loaded on demand by viewed-mark.tsx). */
 export default function ViewedOverlay({

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AdminConsole } from "@/components/admin/admin-console";
 import { Providers } from "@/components/providers";
+import { MESSAGES } from "@/lib/dictionaries";
 import { componentCatalogue, readSettings } from "@/lib/server-data";
 
 export const metadata: Metadata = {
@@ -14,6 +15,7 @@ async function AdminRoot({ children }: { children: React.ReactNode }) {
   return (
     <Providers
       settings={settings}
+      messages={MESSAGES[settings.ui]}
       catalogue={await componentCatalogue(settings.ui)}
     >
       <AdminConsole>{children}</AdminConsole>

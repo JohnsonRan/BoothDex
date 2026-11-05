@@ -1,7 +1,6 @@
 import type { Dict } from "./messages";
 
 export const ja: Dict = {
-  "lang.name": "日本語",
   "nav.search": "商品・アバター・ショップ・タグを検索",
   "nav.signIn": "ログイン",
   "nav.filters": "絞り込み",

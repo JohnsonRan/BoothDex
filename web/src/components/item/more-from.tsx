@@ -99,7 +99,7 @@ export function MoreFrom({
                   </AspectRatio>
                   <Caption
                     title={itemText(x, "title", settings.content)}
-                    price={formatPrice(priceOf(x), settings, rates)}
+                    price={formatPrice(priceOf(x), settings, rates, t)}
                   />
                 </VStack>
               ))

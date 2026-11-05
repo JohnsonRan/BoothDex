@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AccountProvider } from "@/components/account/session";
 import { Providers } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
+import { MESSAGES, translator } from "@/lib/dictionaries";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
 import { FIRST_TILES } from "./item-tile";
 import { ResultsGrid } from "./results-grid";
@@ -52,12 +53,16 @@ const item: ItemResponse = {
 const render = (items: ItemResponse[], content = DEFAULT_SETTINGS.content) =>
   renderToStaticMarkup(
     <AppRouterContext value={{} as AppRouterInstance}>
-      <Providers settings={DEFAULT_SETTINGS}>
+      <Providers
+        settings={DEFAULT_SETTINGS}
+        messages={MESSAGES[DEFAULT_SETTINGS.ui]}
+      >
         <AccountProvider>
           <ResultsGrid
             items={items}
             settings={{ ...DEFAULT_SETTINGS, content }}
             rates={{}}
+            t={translator(DEFAULT_SETTINGS.ui)}
           />
         </AccountProvider>
       </Providers>

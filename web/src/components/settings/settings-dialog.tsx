@@ -21,6 +21,7 @@ import { Heading, Text } from "@astryxdesign/core/Text";
 import { useId, useState } from "react";
 import { useUi } from "@/components/providers";
 import { PANEL_GROUPS, type PanelId, SettingsPanelBody } from "./panels";
+import "@/lib/icons-on-demand";
 
 const NARROW_VIEWPORT = "(max-width: 640px)";
 const PANELS = PANEL_GROUPS.flatMap((group) => group.panels);

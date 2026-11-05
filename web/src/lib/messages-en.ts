@@ -1,7 +1,6 @@
 import type { Dict } from "./messages";
 
 export const en: Dict = {
-  "lang.name": "English",
   "nav.search": "Search items, avatars, shops, tags",
   "nav.signIn": "Sign in",
   "nav.filters": "Filters",

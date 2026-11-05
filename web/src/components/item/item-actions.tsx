@@ -104,7 +104,7 @@ export function PhoneBar({
     <HStack gap={2} vAlign="center">
       <StackItem size="fill">
         <Text type="large" weight="bold" hasTabularNumbers>
-          {formatPrice(priceOf(item), settings, rates)}
+          {formatPrice(priceOf(item), settings, rates, t)}
         </Text>
       </StackItem>
       <IconButton
