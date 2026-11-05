@@ -9,7 +9,9 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // Measured 2026-11-06 (HTML 49,937, JS 362,176, CSS 42,979; master: 7,981 / 287,456 / 18,400). After the filter
 // row, the item dialog's host and the account (session, delegated favourites, viewed marks): JS 410,604; with the
 // browser given only the visitor's dictionary (HTML carries it: 57,004) and on-demand icons and Banner: 396,116.
-const BUDGET = { html: 62_000, js: 404_000, css: 45_000 };
+// Perf run 3: the later tiles fetched by the browser, Pagination on demand, one name per avatar: HTML 43,684,
+// JS 388,417, CSS 43,262.
+const BUDGET = { html: 48_000, js: 396_000, css: 44_000 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
