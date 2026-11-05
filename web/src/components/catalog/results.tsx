@@ -4,11 +4,11 @@
 
 import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import type { Filters } from "@/lib/catalog";
+import { type Filters, searchQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
 import type { SearchOutcome } from "@/lib/server-data";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
-import { Pager } from "./pager";
+import { LazyPager } from "./lazy-pager";
 import { KeepResults, Swap } from "./refresh";
 import { EmptyResults, SemanticNote } from "./result-states";
 import { ResultsGrid } from "./results-grid";
@@ -39,11 +39,15 @@ export async function Results({
   rates,
   settings,
   filters,
+  page,
+  noSemantic,
 }: {
   outcome: Promise<SearchOutcome>;
   rates: Promise<Rates>;
   settings: Settings;
   filters: Filters;
+  page: number;
+  noSemantic: boolean;
 }) {
   const o = await outcome;
   if (o.state !== "ok") return <KeepResults failure={o.state} />;
@@ -65,13 +69,15 @@ export async function Results({
             settings={settings}
             rates={await rates}
             t={translator(settings.ui)}
+            // the request searchItems (lib/server-data) made, so the API answers it from its cache
+            search={`/api/search?${searchQuery(filters, page, result.pageSize)}&fields=card${noSemantic ? "&sem=0" : ""}`}
           />
           {result.semantic === "unavailable" && (
             <SemanticNote
               text={translator(settings.ui)("list.semanticUnavailable")}
             />
           )}
-          <Pager
+          <LazyPager
             page={result.page}
             total={result.totalPages}
             noSemantic={!!filters.q && result.semantic !== "used"}

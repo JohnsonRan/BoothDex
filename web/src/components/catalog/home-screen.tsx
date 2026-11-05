@@ -108,16 +108,6 @@ async function Catalog({
   const outcome: Promise<SearchOutcome> = recent
     ? Promise.resolve({ state: "error" })
     : searchItems(filters, page, noSemantic);
-  const facets = outcome.then(
-    (o): Facets =>
-      o.state === "ok"
-        ? {
-            count: o.result.count,
-            smart: o.result.smartCounts,
-            features: o.result.featureCounts,
-          }
-        : { count: 0, smart: {}, features: {} },
-  );
   const [avatars, categories] = await Promise.all([
     listAvatars().catch(() => []),
     listCategories().catch(() => []),
@@ -127,6 +117,22 @@ async function Catalog({
   const categoryTabs = categories
     .filter((c) => c.mode === "items")
     .map((c): [string, string] => [c.slug, localName(c, settings.ui)]);
+  // the tabs show only their own counts: the subcategories' are left on the server
+  const tabSlugs = new Set(categoryTabs.map(([slug]) => slug));
+  const facets = outcome.then(
+    (o): Facets =>
+      o.state === "ok"
+        ? {
+            count: o.result.count,
+            smart: Object.fromEntries(
+              Object.entries(o.result.smartCounts).filter(([k]) =>
+                tabSlugs.has(k),
+              ),
+            ),
+            features: o.result.featureCounts,
+          }
+        : { count: 0, smart: {}, features: {} },
+  );
   const title = recent
     ? t("title.recent")
     : filters.q
@@ -167,7 +173,15 @@ async function Catalog({
             <VStack gap={4}>
               <SearchBox />
               {filters.view === "items" && (
-                <AvatarStrip avatars={avatars} value={filters.avatar} />
+                <AvatarStrip
+                  // one name per avatar, the visitor's, as `en` (avatarName falls back to it)
+                  avatars={avatars.map((a) => ({
+                    slug: a.slug,
+                    en: avatarName(a, settings.ui),
+                    image_url: a.image_url,
+                  }))}
+                  value={filters.avatar}
+                />
               )}
               {/* filters and sort do not apply to the recent view */}
               {!recent && (
@@ -189,6 +203,8 @@ async function Catalog({
                   rates={rates}
                   settings={settings}
                   filters={filters}
+                  page={page}
+                  noSemantic={noSemantic}
                 />
               )}
             </Suspense>
