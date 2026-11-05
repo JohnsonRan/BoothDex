@@ -39,7 +39,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Page inset | `Layout padding={6}` on header and content |
 | Rhythm | `VStack gap={6}` between page sections, `gap={4}` within the control block, `gap={2}` between a tile's cover and text, `gap={1}` between text lines |
 | Grid | `Grid columns={{minWidth: 160}} gap={4}`: two columns on a 390 px phone, six to seven at 1440 px |
-| Control size | `lg` in the page control row (search, tabs, filter, sort), `sm` inside the filter panel |
+| Control size | `lg` (36 px) for the whole control block: search, tabs, sort and every filter clause; `sm` for the buttons inside a clause's editor |
 | Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="supporting"` (sm); price `Text type="body" weight="bold"` |
 | Colour | neutral theme tokens only, light and dark via `light-dark()`; no overrides |
 | Radius, elevation | component defaults |
@@ -52,9 +52,8 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Home grid | `/` | page `library` (Card Grid): header with title, search, filter tabs + sort row, card grid, empty state | phase 1 |
 | Result tile | home grid | page `product-gallery`, `ProductCard` (square media; title, secondary line = shop icon and name, price `large` bold with a favourite `IconButton`); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`). The server renders the first 24 tiles; the rest of the page's 100 are drawn in the browser near the viewport, a tile silhouette holding their place | phase 1 |
 | Search | home, top of content | page `library` search `TextInput` (block `TextInputSearch`) | phase 1 |
-| Category / gender tabs, sort | home control row | page `library` (`ToggleButtonGroup` + `OverflowList`, `DropdownMenu`) | phase 1 |
-| Filter panel | "Filters" button | block `PopoverFilterPanel` (`presentation="adaptive"`: popover on desktop, bottom sheet on phones) | phase 1 |
-| Active filters | under the control row | block `TokenRemovable` | phase 1 |
+| Category / gender tabs, sort | home control row | page `library` (`ToggleButtonGroup` + `OverflowList`, `DropdownMenu`); a folded selected tab names the overflow menu | phase 1 |
+| Filter clauses | under the tabs | page `table-filter` filter row (block `ToolbarTableFilter`): one closed trigger per filter that doubles as its chip, folding from the end into "+N" (`Popover`; `BottomSheet` on phones), then Clear all. Editors: the template's Quote popup with block `PopoverFilterPanel`'s staged Apply | checkpoint 1 |
 | Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar, media only as the product-gallery card's media slot, name as caption below); the first 14 cards until the strip is touched, focused or scrolled | phase 1 |
 | Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
@@ -152,6 +151,45 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   with the favourite button and is `--size-element-sm` tall in tile and silhouette alike.
 - Avatar strip: `SelectableCard` is documented for multi-select; the strip is single-select (one avatar or
   all). Kept because it is the component with a selected state for media cards; ClickableCard has none.
+
+## Filter area (checkpoint 1, track A)
+
+Chosen structure: the Filterable Table template's default filter row, not its PowerSearch mode. The template
+itself keeps PowerSearch behind a toggle as the expert query bar (typed `field operator value` tokens); its
+default for a large filter set is the row of clause triggers, where a set clause is its own chip, so the
+tokens and the controls are one control at one height, nothing wraps (the row folds into "+N"), and phones
+get the folded set in a BottomSheet. The library template's search field and tabs stay above it (approved).
+Copies: `web/templates/pages/table-filter/page.tsx`, `blocks/ToolbarTableFilter.tsx`,
+`blocks/PopoverFilterPanel.tsx`; `blocks/PowerSearchPresetFilters.tsx` kept as the rejected alternative.
+
+| Master filter | Clause | Not 1:1 |
+|---|---|---|
+| View: Items / Avatar bodies | preset `ToggleButton` "Avatar bodies" (hidden in favourites) | a toggle, not a two-way switch |
+| Content rating | preset `ToggleButton` "Rating: All" | as above |
+| Known avatars only (avatar view) | preset `ToggleButton`, pressed by default | - |
+| Gender (avatar view) | the tabs row, as before | - |
+| Category, smart counts | the tabs row; counts in each tab's tooltip and in the folded tabs' menu rows | counts are not printed on visible tabs: they arrive after the tabs and would widen them (layout shift) |
+| Price: free, presets, min/max, swap | `ComplexSelector` (the template's Quote shell) with `CheckboxInput`, `RadioList`, two `TextInput`s, Clear / Apply | a preset is cleared by choosing "Any", not by clicking it again (RadioList); no × on the trigger (ComplexSelector has no `hasClear`, as the template's Quote) |
+| Published range | `Selector` with `hasClear` | - |
+| Features with counts | `MultiSelector`; counts as the option description | - |
+| Include / exclude tags, search, counts | `ComplexSelector` whose editor is the tag picker; staged, Clear / Apply | the trigger shows tag names as stored (Japanese), not the display names |
+| Shop (palette pick) | `Selector` holding the one shop, × removes it | master showed it as a token |
+| Active-filter tokens | gone: each set clause is its chip; query, avatar and category are shown by the search field, the strip and the tabs | - |
+| Mobile drawer, Clear, "Show {n} items" | the "+N" BottomSheet (`height="hug"`) ends with Clear and "Show {n} items" | on phones the row keeps whatever fits before "+N" |
+| Sort | unchanged (library `DropdownMenu`) | - |
+
+Deviations, all prop values or token-backed inline styles:
+
+- Size `lg` instead of the template's `sm`: one size with the library row above (measured 36 px for search,
+  tabs, sort, presets, selectors, "+N" at 1440 and 390).
+- The template's StyleX rules (`filterChrome`, `filterSurface`, `filterFill`, the slot and readout sizing) are
+  `style`/`controlStyle` objects of the same tokens (`catalog/filter-style.ts`): the site has no StyleX
+  compiler. `READOUT_RESERVE` is 88 px (only Clear all; the count stays in the page header).
+- The fold's Popover moves focus in only when opened by keyboard (`hasAutoFocus`); a click leaves focus on the
+  trigger, so the first clause is not drawn focused. Clause popups keep their own focus handling.
+- `BottomSheet` and the price and tag editors load on first open (`next/dynamic`), as the old filter panel did.
+- Icons: all through the theme registry (`chevronDown`, `close`, `search`, lucide in the neutral theme);
+  include/exclude in the tag editor are lucide `Plus`/`Minus` passed to `Icon`; checkmarks are CSS, no SVG.
 
 ## Remaining Tailwind or shadcn files
 
