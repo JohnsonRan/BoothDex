@@ -1,7 +1,7 @@
 // Recent searches, kept in this browser only (like the remembered avatar for signed-out visitors).
 
 const KEY = "searchHistory";
-export const HISTORY_MAX = 10;
+const HISTORY_MAX = 10;
 
 /** Newest first; the same query typed again moves to the top instead of repeating. */
 export function addQuery(

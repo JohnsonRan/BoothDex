@@ -35,7 +35,7 @@ export const variationName = (
   (lang === "original" ? name : it.translations?.[lang]?.variations?.[name]) ||
   name;
 
-export type VariationState = "available" | "soldOut" | "unavailable";
+type VariationState = "available" | "soldOut" | "unavailable";
 
 /** Booth's variation status as the three states the list shows. */
 export function variationState(status: string): VariationState {

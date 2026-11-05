@@ -131,7 +131,7 @@ export const EFFORTS = [
 ] as const;
 
 /** The safe run options per kind (owner ruling): flags and counts with the worker's defaults. */
-export type RunParam =
+type RunParam =
   | { name: "full" | "force"; type: "flag" }
   | { name: "max_pages" | "batch"; type: "count"; fallback?: number };
 export const RUN_PARAMS: Partial<Record<Kind, RunParam[]>> = {

@@ -3,9 +3,9 @@
 
 const KEY = "viewedItems";
 /** same cap as the API keeps per account */
-export const VIEWED_MAX = 500;
+const VIEWED_MAX = 500;
 
-export type ViewedPair = [id: number, at: number];
+type ViewedPair = [id: number, at: number];
 
 /** Newest first; opening an item again moves it to the top. */
 export function addViewed(

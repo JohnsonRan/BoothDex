@@ -45,7 +45,7 @@ export const FEATURES = {
 } as const;
 export type Feature = keyof typeof FEATURES;
 
-export type Size =
+type Size =
   | "48x48"
   | "72x72_a2_g5"
   | "300x300_a2_g5"

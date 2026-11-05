@@ -21,7 +21,7 @@ import { useDelayed } from "@/lib/use-delayed";
 import { useItemOpener } from "./item-host";
 
 // structural width of one card (master: 150 px on desktop)
-export const CARD_WIDTH = 150;
+const CARD_WIDTH = 150;
 // master: up to 12, by likes
 const SHOWN = 12;
 // avatar strip THUMB

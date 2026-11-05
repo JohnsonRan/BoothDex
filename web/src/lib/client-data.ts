@@ -20,7 +20,7 @@ export function useApiRecovery(waiting: boolean) {
   }, [waiting, router]);
 }
 
-export type Tag = {
+type Tag = {
   name: string;
   display: string;
   display_zh?: string | null;
