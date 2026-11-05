@@ -9,7 +9,11 @@ The site's screens are built from Astryx page templates and template blocks (`@a
 | `src/components/frame/site-frame.tsx` (Ctrl/Cmd+K)         | page `shell-nav`                                                                    |
 | `src/components/frame/palette.tsx`                         | blocks `CommandPaletteAsyncSearch`, `CommandPaletteRichItems`                       |
 | `src/components/frame/sign-in.tsx`                         | page `login-card`                                                                   |
-| `src/components/catalog/fav-button.tsx`                    | block `useToastHookUsage`                                                           |
+| `src/components/account/toaster.tsx`                       | block `useToastHookUsage`                                                           |
+| `src/components/account/menu.tsx`                          | block `DropdownMenuWithSections`                                                    |
+| `src/components/account/saved-searches.tsx`                | block `DialogFormDialog`                                                            |
+| `src/components/account/delete-saved.tsx`                  | block `PopoverConfirmAction`                                                        |
+| `src/components/settings/*`                                | page `settings-dialog`                                                              |
 | `templates/**` (verbatim copies)                           | the pages and blocks listed in `templates/README.md`                                |
 | `src/components/catalog/home-screen.tsx`                   | page `library` (Card Grid)                                                          |
 | `src/components/catalog/toolbar.tsx`                       | page `library` (Card Grid), control row                                             |
@@ -17,15 +21,25 @@ The site's screens are built from Astryx page templates and template blocks (`@a
 | `src/components/catalog/item-tile.tsx` (tile badges)       | block `BadgeCategoryTags`                                                           |
 | `src/components/catalog/filter-bar.tsx`, `filter-style.ts` | page `table-filter`, block `ToolbarTableFilter`                                     |
 | `src/components/catalog/filter-clauses.tsx`                | page `table-filter` (clause controls)                                               |
-| `src/components/catalog/price-*.tsx`, `tag-clause.tsx`     | page `table-filter` (Quote), block `PopoverFilterPanel`                             |
+| `src/components/catalog/price-clause.tsx`, `price-editor.tsx` | page `table-filter` (Quote), block `PopoverFilterPanel`                             |
+| `src/components/catalog/tag-clause.tsx`                    | page `table-filter` (Quote), block `PopoverFilterPanel`                             |
 | `src/components/catalog/avatar-strip.tsx`                  | block `CarouselSnap`                                                                |
 | `src/components/catalog/tag-picker.tsx`                    | blocks `TokenRemovable`, `PopoverFilterPanel`                                       |
 | `src/components/catalog/result-states.tsx`                 | block `EmptyStateActions`                                                           |
+| `src/components/catalog/viewed-overlay.tsx`                | block `OverlayBottomStrip`                                                          |
 | `src/components/item/*`                                    | page `product-detail` (Product Detail)                                              |
 | `src/components/item/item-dialog.tsx`                      | blocks `DialogAdaptivePresentation`, `DialogFullscreenDialog`, `DialogWithSubtitle` |
 | `src/components/item/item-gallery.tsx`                     | blocks `CarouselSnap`, `LightboxGallery`                                            |
 | `src/components/item/item-sections.tsx`                    | blocks `ListBasicList`, `MetadataListBasicMetadata`                                 |
 | `src/components/item/more-from.tsx`                        | block `CarouselSnap`                                                                |
+| `src/components/admin/admin-shell.tsx`                     | page `shell-side-nav`                                                               |
+| `src/components/admin/page-frame.tsx`                      | pages `incident-console`, `settings` (header)                                       |
+| `src/components/admin/overview.tsx`                        | page `dashboard`                                                                    |
+| `src/components/admin/tasks.tsx`                           | page `incident-console` (list), block `AlertDialogAsyncAction`                      |
+| `src/components/admin/job-*.tsx`, `task-row.tsx`, `live-status.tsx` | page `incident-console`; block `DialogScrollingContent` (job log)                   |
+| `src/components/admin/metric-card.tsx`                     | page `dashboard`                                                                    |
+| `src/components/admin/settings-page.tsx`                   | page `settings`                                                                     |
+| `src/components/admin/run-dialog.tsx`                      | block `DialogFormDialog`                                                            |
 
 Astryx is distributed under the MIT License:
 

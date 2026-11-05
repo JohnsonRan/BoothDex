@@ -18,6 +18,7 @@ import { loadHistory } from "@/lib/history";
 import type { UiLang } from "@/lib/messages";
 import {
   formatPrice,
+  LOCALES,
   type Rates,
   type Settings,
   type Translate,
@@ -142,7 +143,9 @@ export function paletteSource({
             group: g("palette.query"),
             pick: { kind: "query", value: q },
             icon: "search",
-            meta: t("palette.results", { n: res.itemCount.toLocaleString() }),
+            meta: t("palette.results", {
+              n: res.itemCount.toLocaleString(LOCALES[settings.ui]),
+            }),
           },
         },
         ...res.avatars.map(
@@ -157,7 +160,7 @@ export function paletteSource({
               square: true,
               note: (ui === "en" ? a.ja : a.en) ?? undefined,
               meta: t("palette.fitting", {
-                n: a.item_count.toLocaleString(),
+                n: a.item_count.toLocaleString(LOCALES[settings.ui]),
               }),
             },
           }),
@@ -195,7 +198,7 @@ export function paletteSource({
               group: g("palette.tags"),
               pick: { kind: "query", value: tag.display },
               icon: "tag",
-              meta: tag.item_count.toLocaleString(),
+              meta: tag.item_count.toLocaleString(LOCALES[settings.ui]),
             },
           }),
         ),

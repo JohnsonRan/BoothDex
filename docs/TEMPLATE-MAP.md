@@ -62,15 +62,14 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
 | Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); refresh: nothing for 150 ms, then a `Spinner size="sm"` beside the count held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
-| Item detail | `?item=<id>` | page `product-detail` inside a `Dialog` | planned |
 | Command palette | Ctrl/Cmd+K, top-bar magnifier | page `shell-nav` wiring + blocks `CommandPaletteAsyncSearch`, `CommandPaletteRichItems` | checkpoint 1 |
 | Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms) | checkpoint 1 |
-| Account menu | TopNav end, signed in | `DropdownMenu` (now: name + Sign out; full menu planned) | partial |
+| Account menu | TopNav end, signed in | `DropdownMenu` with sections (block `DropdownMenuWithSections`): favourites, recently viewed, saved searches (block `DialogFormDialog`), admin console, settings, sign out | track D |
 | Language, item text, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio groups; currency as a ghost DropdownMenu button | checkpoint 1 |
-| Settings (appearance, language, currency, item text) | TopNav end | page `settings-dialog` | planned |
-| Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid) | planned |
+| Settings (appearance, language, currency, item text) | TopNav end, account menu | page `settings-dialog`; synced to the account when signed in | track D |
+| Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid; recently viewed is read in the browser) | track D |
 | Admin frame | `/admin/*` | page `shell-side-nav` (collapsible, resizable `SideNav`, two titled groups, footer: back to site, language, colour mode; phone drawer from `AppShell`) | track F |
-| Admin sign-in, not an admin, unreachable | `/admin/*` before the probe succeeds | `EmptyState` inside the frame; sign-in opens the site's `login-card` dialog | track F |
+| Admin sign-in, not an admin, unreachable | `/admin/*` before the probe succeeds | `EmptyState` inside the frame; sign-in opens the site's `login-card` dialog, sign-in only under the admin heading | track F |
 | Admin overview | `/admin` | page `dashboard` (`MetricCard` grid, `Divider`, titled section of meters with `ProgressBar`); header `StatusDot` + text as page `incident-console` | track F |
 | Crawler tasks | `/admin/jobs` | page `incident-console` list rows (`List` compact with dividers, status `Token`); stop and run options through blocks `AlertDialogAsyncAction` and `DialogFormDialog` | track F |
 | Crawler history | `/admin/jobs/history` | page `incident-console` rows and `EmptyState`; kind and status `Selector`s in the URL; details in a `Dialog` with the inspector's `MetadataList` | track F |
@@ -161,8 +160,9 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   server markup (a 20 px round crop on `--color-background-muted`, Avatar `xsm`'s size and shape) instead of
   `Avatar`: Avatar is a client component, and with the per-tile favourite handler it put the home page over the
   380 KB JS budget (390,065 B).
-  For the same reason the favourite button is a server-rendered `IconButton` (`data-fav`) answered by one
-  document listener (`catalog/fav-toast.tsx`) whose toast code loads on the first click.
+  For the same reason the favourite button is a server-rendered `IconButton` (`data-fav="<id>"`): one document
+  listener (`account/favourites.tsx`) toggles it through the session and sets `aria-pressed` on saved items,
+  which fills the heart by CSS (the pressed icon of block `ToggleButtonShowcase`); notices load with the first.
 - Top bar inset: the template leaves TopNav at its own 8 px while its content sits at 24 px. One `style`
   (`padding-inline: var(--spacing-4)`) puts the logo on the content's 24 px edge and the last borderless
   action's label within its own padding (~5 px) of the right edge (rule 5). All end actions stay ghost, size md, as the template's (lines 186-194).
@@ -182,7 +182,7 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 | Quick search, search field | `search` (theme) | Search |
 | Filters | `funnel` (theme) | Filter |
 | Palette: recent search | `clock` (theme) | Clock |
-| Favourite (tiles) | `site:favourite` | Heart |
+| Favourite (tiles, item dialog; saved: filled by CSS on `aria-pressed`) | `site:favourite` | Heart |
 | Language menu | `site:language` | Languages |
 | Colour mode | `site:dark` / `site:light` | Moon / Sun |
 | Avatar strip "All", avatar without image | `site:allAvatars` | LayoutGrid |
@@ -239,10 +239,11 @@ Deviations, all prop values or token-backed inline styles:
 - Header: `DialogHeader` names the shop (avatar as start content, host as subtitle, "All items from shop" as end
   content); the dialog's accessible name is the item title. Master had the shop block at the top of the info
   column.
-- Hero: a snapping `Carousel` of square `AspectRatio` slides instead of one image, so phones swipe and desktops
-  get the Carousel's arrow buttons; each slide is a muted `ClickableCard` opening the Lightbox, the image
+- Hero: a snapping `Carousel` of square `AspectRatio` slides instead of one image, so phones swipe; each slide is a muted `ClickableCard` opening the Lightbox, the image
   `contain`ed (a product photo is not cropped; the template's hero is `cover`). Download (`DropdownMenu`) and the
-  counter sit in a row under it. Thumbnails, arrow buttons and sticky columns only from lg (master hid
+  counter sit in a row under it, the counter between previous and next ghost `IconButton`s: the Carousel's own
+  buttons live in the top layer and floated over the page behind the dialog when the hero scrolled, and no
+  template shows a gallery in a dialog. Thumbnails, arrow buttons and sticky columns only from lg (master hid
   thumbnails on phones; a single column cannot stick); past about three rows the thumbnails scroll in place
   (master: max-h-40), and so does a long variation list from lg (phones show it whole).
 - Sticky: the template's `stickyInfo` is put on both columns, so whichever is shorter stays in view.
@@ -256,7 +257,7 @@ Deviations, all prop values or token-backed inline styles:
   selection), under the two columns.
 - Tiles: the root carries `data-item` and the title is a plain `<a href="?item=">` in server markup (keyboard
   focus, new tab on a modified click); one document listener in `item/item-host.tsx` opens the dialog, as
-  `fav-toast.tsx` answers the favourite buttons. Astryx `Link` and `ClickableCard` are client components, which
+  `account/favourites.tsx` answers the favourite buttons. Astryx `Link` and `ClickableCard` are client components, which
   the server tiles avoid (TBT).
 - `?item=` uses the browser history API directly (it integrates with the Next router), so opening an item does
   not render the page again on the server.
