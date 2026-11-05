@@ -1,8 +1,8 @@
 "use client";
 // Avatar picker (Carousel Snap template block): a snapping row of selectable cards with prev/next buttons and
 // the Carousel's own edge fade. Each card is Product Detail's selectable image thumbnail as is (a transparent
-// SelectableCard with padding 0 filling a square AspectRatio; its corner radius and selection ring are the
-// card's own, the image only fills and covers); the name sits under it as the caption of the Top Nav template's
+// SelectableCard filling a square AspectRatio; its corner radius and selection ring are the card's own, the
+// image only fills and covers, inset by padding 1 so the ring shows); the name sits under it as the caption of the Top Nav template's
 // category tiles.
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
 // focus or scroll in the strip, before any of them can come into view.
@@ -23,12 +23,14 @@ const CARD_WIDTH = 104;
 // cards rendered before the strip is used: more than fit across 1440 px (with the "all" card)
 const FIRST_CARDS = 14;
 const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
-// Product Detail's thumbImage: fills the thumbnail card
+// Product Detail's thumbImage, inset by the card's padding: the card draws its selection ring as an inset
+// shadow, which an edge-to-edge image covers, so the image leaves the ring a frame and takes the inner radius
 const THUMB: CSSProperties = {
   width: "100%",
   height: "100%",
   objectFit: "cover",
   display: "block",
+  borderRadius: "var(--radius-inner)",
 };
 
 const AllGlyph = () => (
@@ -126,7 +128,7 @@ function Tile({
           isSelected={selected}
           onChange={onSelect}
           variant="transparent"
-          padding={0}
+          padding={1}
           width="100%"
           height="100%"
         >

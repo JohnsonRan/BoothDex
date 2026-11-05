@@ -14,8 +14,6 @@ const figtree = Figtree({
 export const metadata: Metadata = {
   title: "BoothDex",
   description: "Search and filter VRChat assets on Booth",
-  // the site has its own dark mode (Astryx theme, color-scheme set): tell Dark Reader not to filter it again
-  other: { "darkreader-lock": "" },
 };
 
 export const viewport: Viewport = {
@@ -41,6 +39,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <head>
+        {/* the site has its own dark mode (Astryx theme, color-scheme set): Dark Reader must not filter it again */}
+        <meta name="darkreader-lock" />
         <script
           // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
           dangerouslySetInnerHTML={{ __html: preferences + FONTS_EARLY }}
