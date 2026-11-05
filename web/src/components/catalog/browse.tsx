@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError, api, apiReady } from "@/lib/api";
+import { api, apiReady } from "@/lib/api";
 import {
   type Avatar,
   avatarName,
@@ -40,13 +40,7 @@ import { addQuery, loadHistory, saveHistory } from "@/lib/history";
 import type { MessageKey } from "@/lib/messages";
 import { useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
-import {
-  addViewed,
-  loadViewed,
-  recordLocalView,
-  saveViewed,
-} from "@/lib/viewed";
-import { AccountMenu, type Me } from "./account-menu";
+import { AccountMenu } from "./account-menu";
 import { AvatarStrip } from "./avatar-strip";
 import { activeFilterCount, FilterPanel } from "./filter-panel";
 import { ItemCard } from "./item-card";
@@ -54,6 +48,7 @@ import { Logo } from "./logo";
 import { Pagination } from "./pagination";
 import { SearchTrace, type TraceMeta } from "./search-trace";
 import { SettingsMenu } from "./settings-menu";
+import { useAccount } from "./use-account";
 
 const ItemDetail = dynamic(() =>
   import("./item-detail").then((mod) => mod.ItemDetail),
@@ -104,10 +99,16 @@ export function Browse() {
     | null
   >(null);
   const [loading, setLoading] = useState(true);
-  const [favs, setFavs] = useState<Set<number> | null>(null);
-  // opened items, newest first (null until the account or this browser's list is read)
-  const [viewed, setViewed] = useState<number[] | null>(null);
-  const [viewedGen, setViewedGen] = useState(0);
+  const {
+    me,
+    favs,
+    viewed,
+    viewedGen,
+    loadAccount,
+    toggleFav,
+    recordView,
+    clearViewed,
+  } = useAccount();
   const viewedRef = useRef(viewed);
   viewedRef.current = viewed;
   const viewedSet = useMemo(() => new Set(viewed), [viewed]);
@@ -145,8 +146,6 @@ export function Browse() {
   // bumped to reload everything once the API is back
   const [epoch, setEpoch] = useState(0);
 
-  const [me, setMe] = useState<Me | null>(null);
-
   // biome-ignore lint/correctness/useExhaustiveDependencies: epoch only triggers a reload
   useEffect(() => {
     api<{ items: Avatar[] }>("/api/avatars?limit=60")
@@ -156,52 +155,6 @@ export function Browse() {
       .then((r) => setCategories(r.categories))
       .catch(() => {});
   }, [epoch]);
-
-  // latest account load; answers to older ones are dropped
-  const accountLoad = useRef(0);
-
-  // session: who am I, my favourites, what I viewed; rerun after login/logout
-  const loadAccount = useCallback(async () => {
-    const gen = ++accountLoad.current;
-    setViewed(null);
-    const user = await api<Me>("/api/account").catch(() => null);
-    // a newer sign-in/out supersedes this load; don't publish another account's data
-    if (gen !== accountLoad.current) return user;
-    setMe(user);
-    if (user) {
-      // what this browser viewed while signed out moves into the account
-      const local = loadViewed();
-      if (local.length)
-        await api("/api/account/views", {
-          method: "POST",
-          json: { views: local.map(([id, at]) => ({ id, at })) },
-        })
-          .then(() => saveViewed([]))
-          .catch(() => {});
-      if (gen !== accountLoad.current) return user;
-      const res = await api<{ ids: number[] }>("/api/account/views").catch(
-        () => ({
-          ids: [],
-        }),
-      );
-      if (gen !== accountLoad.current) return user;
-      setViewed((cur) => [
-        ...(cur ?? []),
-        ...res.ids.filter((id) => !cur?.includes(id)),
-      ]);
-    } else {
-      setViewed(loadViewed().map(([id]) => id));
-    }
-    setViewedGen((g) => g + 1);
-    const favRes = user
-      ? await api<{ ids: number[] }>("/api/account/favourites").catch(() => ({
-          ids: [],
-        }))
-      : null;
-    if (gen !== accountLoad.current) return user;
-    setFavs(favRes ? new Set(favRes.ids) : null);
-    return user;
-  }, []);
 
   const update = useCallback(
     (patch: Partial<Filters>) => {
@@ -322,35 +275,6 @@ export function Browse() {
     return () => clearInterval(timer);
   }, [apiState, loadAccount]);
 
-  const toggleFav = useCallback(
-    async (it: Item) => {
-      if (!favs) return toast(tRef.current("fav.needSignIn"));
-      const on = favs.has(it.id);
-      setFavs((s) => {
-        const n = new Set(s);
-        on ? n.delete(it.id) : n.add(it.id);
-        return n;
-      });
-      try {
-        await api(`/api/account/favourites/${it.id}`, {
-          method: on ? "DELETE" : "PUT",
-        });
-      } catch (e) {
-        setFavs((s) => {
-          const n = new Set(s);
-          on ? n.add(it.id) : n.delete(it.id);
-          return n;
-        });
-        toast.error(
-          e instanceof ApiError && e.status === 401
-            ? tRef.current("fav.needSignIn")
-            : tRef.current("fav.failed"),
-        );
-      }
-    },
-    [favs],
-  );
-
   // the item=<id> URL parameter: push on open so Back closes it, replace when moving between items
   const itemUrl = useCallback(
     (id: number, push: boolean) => {
@@ -423,25 +347,8 @@ export function Browse() {
   // remember what was opened: in the account when signed in, otherwise in this browser
   const openId = open?.id;
   useEffect(() => {
-    if (!openId) return;
-    setViewed((v) => addViewed(v ?? [], openId));
-    if (me)
-      api("/api/account/views", {
-        method: "POST",
-        json: { views: [{ id: openId }] },
-      }).catch(() => {});
-    else recordLocalView(openId);
-  }, [openId, me]);
-
-  const clearViewed = async () => {
-    try {
-      if (me) await api("/api/account/views", { method: "DELETE" });
-      else saveViewed([]);
-      setViewed([]);
-    } catch {
-      toast.error(t("recent.clearFailed"));
-    }
-  };
+    if (openId) recordView(openId);
+  }, [openId, recordView]);
 
   const openById = (id: number) => {
     if (id === itemParam && open?.id === id) return;
