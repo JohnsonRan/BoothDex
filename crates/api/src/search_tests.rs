@@ -1,6 +1,8 @@
 //! Run with a disposable pgvector database: DATABASE_URL=... cargo test -p api -- --ignored.
 
 use super::*;
+use crate::catalog::Catalog;
+use crate::search::search;
 
 #[sqlx::test(migrations = "../core/migrations")]
 #[ignore = "requires PostgreSQL with pgvector"]
