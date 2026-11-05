@@ -1,241 +1,99 @@
-// Copyright (c) Meta Platforms, Inc. and affiliates.
+"use client";
+// The admin frame, from the Astryx page template shell-side-nav (templates/pages/shell-side-nav/page.tsx:164-201):
+// AppShell with a collapsible, resizable SideNav, its heading on top, the menu sections, and an account section
+// in the footer. The template's conversation list becomes two titled groups (Operate, System); the footer holds
+// the way back to the site and the site's own language and colour-mode controls. On phones AppShell turns the
+// nav into a drawer behind its own top bar.
 
-'use client';
-
-import {useState} from 'react';
-import {AppShell} from '@astryxdesign/core/AppShell';
-import {Divider} from '@astryxdesign/core/Divider';
-import {Layout, LayoutContent, LayoutFooter} from '@astryxdesign/core/Layout';
+import { AppShell } from "@astryxdesign/core/AppShell";
+import { NavIcon } from "@astryxdesign/core/NavIcon";
 import {
   SideNav,
   SideNavHeading,
   SideNavItem,
   SideNavSection,
-} from '@astryxdesign/core/SideNav';
-import {NavIcon} from '@astryxdesign/core/NavIcon';
-import {Icon} from '@astryxdesign/core/Icon';
-import type {IconType} from '@astryxdesign/core/Icon';
-import {MoreMenu} from '@astryxdesign/core/MoreMenu';
-import {StatusDot} from '@astryxdesign/core/StatusDot';
-import type {StatusDotVariant} from '@astryxdesign/core/StatusDot';
-import {Card} from '@astryxdesign/core/Card';
-import {Stack, VStack, HStack} from '@astryxdesign/core/Stack';
+} from "@astryxdesign/core/SideNav";
+import { HStack } from "@astryxdesign/core/Stack";
+import { usePathname } from "next/navigation";
 import {
-  SparklesIcon,
-  PlusIcon,
-  MagnifyingGlassIcon,
-  BookOpenIcon,
-  Cog6ToothIcon,
-  UserCircleIcon,
-  UserIcon,
-  BuildingOffice2Icon,
-  CodeBracketIcon,
-} from '@heroicons/react/24/outline';
+  ColorModeToggle,
+  LanguageMenu,
+} from "@/components/frame/header-controls";
+import { Logo } from "@/components/frame/logo";
+import { type AdminKey, useAdminT } from "./messages";
+import "./icons";
 
-type Conversation = {
-  label: string;
-  status: StatusDotVariant;
-  statusLabel: string;
-};
-
-type Workspace = {
-  name: string;
-  icon: IconType;
-  chats: Conversation[];
-};
-
-const WORKSPACES: Workspace[] = [
+type NavLink = { href: string; label: AdminKey; icon: `admin:${string}` };
+const GROUPS: { title: AdminKey; links: NavLink[] }[] = [
   {
-    name: 'Personal',
-    icon: UserIcon,
-    chats: [
-      {
-        label: 'Weekend trip planning',
-        status: 'success',
-        statusLabel: 'Active',
-      },
-      {
-        label: 'Recipe ideas for the week',
-        status: 'neutral',
-        statusLabel: 'Idle',
-      },
-      {
-        label: 'Book recommendations',
-        status: 'warning',
-        statusLabel: 'Needs review',
-      },
-      {label: 'Home workout plan', status: 'neutral', statusLabel: 'Idle'},
+    title: "nav.operate",
+    links: [
+      { href: "/admin", label: "nav.overview", icon: "admin:overview" },
+      { href: "/admin/jobs", label: "nav.jobs", icon: "admin:jobs" },
     ],
   },
   {
-    name: 'Acme Corp',
-    icon: BuildingOffice2Icon,
-    chats: [
-      {label: 'Q3 roadmap draft', status: 'accent', statusLabel: 'In progress'},
+    title: "nav.system",
+    links: [
       {
-        label: 'Customer onboarding flow',
-        status: 'success',
-        statusLabel: 'Active',
+        href: "/admin/settings",
+        label: "nav.settings",
+        icon: "admin:settings",
       },
-      {
-        label: 'Pricing strategy review',
-        status: 'warning',
-        statusLabel: 'Needs review',
-      },
-      {label: 'Standup summary', status: 'neutral', statusLabel: 'Idle'},
-    ],
-  },
-  {
-    name: 'Open Source',
-    icon: CodeBracketIcon,
-    chats: [
-      {
-        label: 'StyleX migration notes',
-        status: 'accent',
-        statusLabel: 'In progress',
-      },
-      {
-        label: 'Skeleton loading states',
-        status: 'success',
-        statusLabel: 'Active',
-      },
-      {label: 'Accessibility audit', status: 'error', statusLabel: 'Blocked'},
-      {label: 'Release notes v4.0', status: 'neutral', statusLabel: 'Idle'},
     ],
   },
 ];
 
-const SELECTED_CHAT = 'StyleX migration notes';
+/** Whole-segment prefix match, so /admin/jobs/history keeps Crawler selected and /admin selects only itself. */
+const isCurrent = (path: string, href: string) =>
+  href === "/admin"
+    ? path === href
+    : path === href || path.startsWith(`${href}/`);
 
-const MESSAGES = [
-  {role: 'assistant', width: '78%', height: 104},
-  {role: 'user', width: '48%', height: 48},
-  {role: 'assistant', width: '64%', height: 132},
-  {role: 'user', width: '38%', height: 40},
-];
-
-function ConversationItem({
-  label,
-  status,
-  statusLabel,
-  isSelected,
-}: {
-  label: string;
-  status: StatusDotVariant;
-  statusLabel: string;
-  isSelected?: boolean;
-}) {
-  const [isHovered, setIsHovered] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const showMenu = isHovered || isMenuOpen;
-
-  return (
-    <Stack
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}>
-      <SideNavItem
-        label={label}
-        href="#"
-        isSelected={isSelected}
-        endContent={
-          showMenu ? (
-            <MoreMenu
-              size="sm"
-              label="Conversation options"
-              onOpenChange={setIsMenuOpen}
-              items={[
-                {label: 'Pin', onClick: () => {}},
-                {label: 'Rename', onClick: () => {}},
-                {label: 'Archive', onClick: () => {}},
-                {label: 'Delete', onClick: () => {}},
-              ]}
-            />
-          ) : (
-            <StatusDot variant={status} label={statusLabel} />
-          )
-        }
-      />
-    </Stack>
-  );
-}
-
-export default function ShellSideNav() {
+export function AdminShell({ children }: { children: React.ReactNode }) {
+  const t = useAdminT();
+  const path = usePathname();
   return (
     <AppShell
       contentPadding={0}
       sideNav={
         <SideNav
           collapsible
-          resizable={{defaultWidth: 300, minWidth: 220, maxWidth: 420}}
+          resizable={{ defaultWidth: 260, minWidth: 220, maxWidth: 360 }}
           header={
             <SideNavHeading
-              heading="AI Assistant"
-              icon={<NavIcon icon={<Icon icon={SparklesIcon} size="sm" />} />}
-              headingHref="#"
+              heading={t("title")}
+              icon={<NavIcon icon={<Logo />} />}
+              headingHref="/admin"
             />
           }
           footer={
-            <SideNavSection title="Account" isHeaderHidden>
-              <SideNavItem label="Settings" icon={Cog6ToothIcon} href="#" />
-              <SideNavItem label="Sarah Chen" icon={UserCircleIcon} href="#" />
+            <SideNavSection title={t("nav.site")} isHeaderHidden>
+              <SideNavItem label={t("nav.site")} icon="admin:site" href="/" />
+              <HStack gap={1}>
+                <LanguageMenu />
+                <ColorModeToggle />
+              </HStack>
             </SideNavSection>
-          }>
-          <SideNavSection title="Menu" isHeaderHidden>
-            <SideNavItem label="New chat" icon={PlusIcon} href="#" />
-            <SideNavItem label="Search" icon={MagnifyingGlassIcon} href="#" />
-            <SideNavItem label="Library" icon={BookOpenIcon} href="#" />
-          </SideNavSection>
-          <Divider />
-          <SideNavSection title="Workspaces" isHeaderHidden>
-            {WORKSPACES.map(workspace => (
-              <SideNavItem
-                key={workspace.name}
-                label={workspace.name}
-                icon={workspace.icon}
-                collapsible={{defaultIsCollapsed: false}}>
-                <VStack gap={0.5}>
-                  {workspace.chats.map(chat => (
-                    <ConversationItem
-                      key={chat.label}
-                      label={chat.label}
-                      status={chat.status}
-                      statusLabel={chat.statusLabel}
-                      isSelected={chat.label === SELECTED_CHAT}
-                    />
-                  ))}
-                </VStack>
-              </SideNavItem>
-            ))}
-          </SideNavSection>
-        </SideNav>
-      }>
-      <Layout
-        height="fill"
-        contentWidth={768}
-        content={
-          <LayoutContent padding={6}>
-            <VStack gap={5}>
-              {MESSAGES.map((message, mi) => (
-                <HStack
-                  key={mi}
-                  hAlign={message.role === 'assistant' ? 'start' : 'end'}>
-                  <Card
-                    variant="muted"
-                    padding={0}
-                    width={message.width}
-                    height={message.height}
-                  />
-                </HStack>
+          }
+        >
+          {GROUPS.map((g) => (
+            <SideNavSection key={g.title} title={t(g.title)}>
+              {g.links.map((l) => (
+                <SideNavItem
+                  key={l.href}
+                  label={t(l.label)}
+                  icon={l.icon}
+                  href={l.href}
+                  isSelected={isCurrent(path, l.href)}
+                />
               ))}
-            </VStack>
-          </LayoutContent>
-        }
-        footer={
-          <LayoutFooter>
-            <Card variant="muted" padding={0} width="100%" height={56} />
-          </LayoutFooter>
-        }
-      />
+            </SideNavSection>
+          ))}
+        </SideNav>
+      }
+    >
+      {children}
     </AppShell>
   );
 }
