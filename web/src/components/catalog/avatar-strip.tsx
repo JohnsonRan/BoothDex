@@ -1,8 +1,9 @@
 "use client";
 // Avatar picker (Carousel Snap template block): a snapping row of selectable cards with prev/next buttons and
-// the Carousel's own edge fade. Each card is media only, clipped by the card's radius (the Product Gallery
-// card's media slot: padding 0, square AspectRatio, cover), selected by the card's own state; the name sits
-// under it as the caption of the Top Nav template's category tiles.
+// the Carousel's own edge fade. Each card is Product Detail's selectable image thumbnail as is (a transparent
+// SelectableCard with padding 0 filling a square AspectRatio; its corner radius and selection ring are the
+// card's own, the image only fills and covers); the name sits under it as the caption of the Top Nav template's
+// category tiles.
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
 // focus or scroll in the strip, before any of them can come into view.
 
@@ -12,8 +13,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { LayoutGrid } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
 import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
 import { useFilterUrl } from "./filter-url";
@@ -23,6 +23,19 @@ const CARD_WIDTH = 104;
 // cards rendered before the strip is used: more than fit across 1440 px (with the "all" card)
 const FIRST_CARDS = 14;
 const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
+// Product Detail's thumbImage: fills the thumbnail card
+const THUMB: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+  display: "block",
+};
+
+const AllGlyph = () => (
+  <VStack height="100%" hAlign="center" vAlign="center">
+    <Icon icon="site:allAvatars" size="lg" color="secondary" />
+  </VStack>
+);
 
 export function AvatarStrip({
   avatars,
@@ -68,9 +81,7 @@ export function AvatarStrip({
       aria-label={t("strip.label")}
     >
       <Tile label={t("strip.all")} selected={!value} onSelect={() => pick("")}>
-        <AspectRatio ratio={1} fit="center">
-          <Icon icon={LayoutGrid} size="lg" color="secondary" />
-        </AspectRatio>
+        <AllGlyph />
       </Tile>
       {(all ? avatars : avatars.slice(0, FIRST_CARDS - 1)).map((a) => (
         <Tile
@@ -79,18 +90,17 @@ export function AvatarStrip({
           selected={a.slug === value}
           onSelect={() => pick(a.slug === value ? "" : a.slug)}
         >
-          <AspectRatio ratio={1} fit="cover">
-            {a.image_url ? (
-              <img
-                src={imageSrc(a.image_url, "300x300_a2_g5")}
-                alt=""
-                loading="lazy"
-                decoding="async"
-              />
-            ) : (
-              <Icon icon={LayoutGrid} size="lg" color="secondary" />
-            )}
-          </AspectRatio>
+          {a.image_url ? (
+            <img
+              style={THUMB}
+              src={imageSrc(a.image_url, "300x300_a2_g5")}
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <AllGlyph />
+          )}
         </Tile>
       ))}
     </Carousel>
@@ -110,14 +120,19 @@ function Tile({
 }) {
   return (
     <VStack gap={2} width={CARD_WIDTH}>
-      <SelectableCard
-        label={label}
-        isSelected={selected}
-        onChange={onSelect}
-        padding={0}
-      >
-        {children}
-      </SelectableCard>
+      <AspectRatio ratio={1}>
+        <SelectableCard
+          label={label}
+          isSelected={selected}
+          onChange={onSelect}
+          variant="transparent"
+          padding={0}
+          width="100%"
+          height="100%"
+        >
+          {children}
+        </SelectableCard>
+      </AspectRatio>
       <Text
         type="supporting"
         maxLines={1}
