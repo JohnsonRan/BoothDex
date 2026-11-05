@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ItemResponse } from "@/lib/api-types";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
-import { ResultsGrid } from "./results-grid";
+import { FIRST_TILES, ResultsGrid } from "./results-grid";
 
 const item: ItemResponse = {
   id: 1,
@@ -57,6 +57,14 @@ test("the server HTML carries every cover, the first ones loading at once", () =
   expect(html).toContain('src="/img/b/300x300_a2_g5/u/i/1/cover.jpg"');
   expect(html.match(/<img [^>]*fetchPriority="high"/gi)).toHaveLength(4);
   expect(html.match(/loading="eager"/g)).toHaveLength(12);
+});
+
+test("a full page renders the first screen on the server and the rest in the browser", () => {
+  const items = Array.from({ length: 100 }, (_, i) => ({ ...item, id: i + 1 }));
+  const html = render(items);
+  expect(html.match(/<img /g)).toHaveLength(FIRST_TILES);
+  // one placeholder cell after the last server tile; the other tiles are drawn near the viewport
+  expect(html.match(/class="astryx-skeleton/g)).toHaveLength(1);
 });
 
 test("tiles show the title in the chosen language, the shop and the price", () => {
