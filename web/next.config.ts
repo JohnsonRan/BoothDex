@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Keep default gzip for HTML/JS/CSS; the API's SSE uses Cache-Control: no-transform to bypass it.
   cacheComponents: true,
-  partialPrefetching: true,
+  partialPrefetching: false,
   turbopack: {
     // the theme's font stylesheet is a render-blocking Google Fonts @import; Figtree comes from next/font
     resolveAlias: {

@@ -2,9 +2,9 @@
 // `--ease-standard`; every animation on the site reads these, so retuning one number retunes it everywhere.
 // Only transform and opacity move, and reduced motion leaves everything static.
 
-export const EASE = "cubic-bezier(0.24, 1, 0.4, 1)";
+const EASE = "cubic-bezier(0.24, 1, 0.4, 1)";
 
-export const MOTION = {
+const MOTION = {
   /** a page section rises this far and fades in */
   pageRise: 8,
   pageDuration: 360,
@@ -21,9 +21,9 @@ export const MOTION = {
   rowMax: 24,
 } as const;
 
-/** `Animation.id`s, so checks can tell the entrance from a component's own motion. */
-export const PAGE_ENTER_ID = "page-enter";
-export const ROW_ENTER_ID = "row-enter";
+/** `Animation.id`s (tools/motion.cjs matches them), so checks can tell the entrance from a component's own motion. */
+const PAGE_ENTER_ID = "page-enter";
+const ROW_ENTER_ID = "row-enter";
 
 /** Marks a container whose children (a carousel: its slides) enter as rows: the grid, the avatar strip. */
 export const ROWS = { "data-enter-rows": "" } as const;
