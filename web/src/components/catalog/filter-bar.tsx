@@ -128,6 +128,9 @@ function FilterOverflow({
   const [isOpen, setIsOpen] = useState(false);
   // mounted from the first open on, so later closes still animate
   const [wasOpened, setWasOpened] = useState(false);
+  // focus enters the panel only when it was opened from the keyboard: a click leaves it on the trigger, so
+  // the first clause does not light up as focused
+  const [byKeyboard, setByKeyboard] = useState(false);
   const count = items.length;
   const label = t("filter.more", { n: count });
 
@@ -173,6 +176,8 @@ function FilterOverflow({
       variant="ghost"
       size={CONTROL_SIZE}
       style={{ ...FILTER_CHROME, ...FILTER_SURFACE }}
+      onPointerDown={() => setByKeyboard(false)}
+      onKeyDown={() => setByKeyboard(true)}
       onClick={
         isCompactSurface
           ? () => {
@@ -208,6 +213,7 @@ function FilterOverflow({
       alignment="end"
       width={280}
       label={label}
+      hasAutoFocus={byKeyboard}
       content={body}
     >
       {trigger}
