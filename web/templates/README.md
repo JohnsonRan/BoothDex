@@ -14,3 +14,7 @@ not. Do not edit them: copy a newer version over them when Astryx is upgraded.
 | `pages/product-gallery/page.tsx` (ProductCard, grid) | `src/components/catalog/item-tile.tsx`, `results-grid.tsx` |
 | `pages/login-card/page.tsx` (sign-in card, providers dropped) | `src/components/frame/sign-in.tsx` |
 | `blocks/useToastHookUsage.tsx` | `src/components/catalog/fav-button.tsx` |
+| `pages/table-filter/page.tsx` (filter row: clause triggers, `FilterOverflow`, readout) | `src/components/catalog/filter-bar.tsx`, `filter-clauses.tsx` |
+| `blocks/ToolbarTableFilter.tsx` (the same filter row as a block) | `src/components/catalog/filter-bar.tsx` |
+| `blocks/PopoverFilterPanel.tsx` (Apply / Reset footer) | `src/components/catalog/price-editor.tsx`, `tag-picker.tsx` |
+| `blocks/PowerSearchPresetFilters.tsx` (considered, not used: see docs/TEMPLATE-MAP.md) | - |

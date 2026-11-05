@@ -40,6 +40,7 @@ export const en: Dict = {
   "filter.features": "Features",
   "filter.clear": "Clear",
   "filter.show": "Show {n} items",
+  "filter.more": "{n} more filters",
   "view.items": "Items",
   "view.avatars": "Avatar bodies",
   "title.avatars": "Avatar bodies",

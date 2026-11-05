@@ -3,22 +3,24 @@
 The site's screens are built from Astryx page templates and template blocks (`@astryxdesign/cli`, under
 `assets/templates/`). Files adapted from them name the template in their header comment:
 
-| File                                                          | Astryx template                                               |
-| ------------------------------------------------------------- | ------------------------------------------------------------- |
-| `src/components/frame/site-frame.tsx`                         | page `shell-top-nav` (Top Nav)                                |
-| `src/components/frame/site-frame.tsx` (Ctrl/Cmd+K)            | page `shell-nav`                                              |
-| `src/components/frame/palette.tsx`                            | blocks `CommandPaletteAsyncSearch`, `CommandPaletteRichItems` |
-| `src/components/frame/sign-in.tsx`                            | page `login-card`                                             |
-| `src/components/catalog/fav-button.tsx`                       | block `useToastHookUsage`                                     |
-| `templates/**` (verbatim copies)                              | the pages and blocks listed in `templates/README.md`          |
-| `src/components/catalog/home-screen.tsx`                      | page `library` (Card Grid)                                    |
-| `src/components/catalog/toolbar.tsx`                          | page `library` (Card Grid), control row                       |
-| `src/components/catalog/item-tile.tsx`                        | page `product-gallery` (Product Gallery), `ProductCard`       |
-| `src/components/catalog/item-tile.tsx` (tile badges)          | block `BadgeCategoryTags`                                     |
-| `src/components/catalog/filter-panel.tsx`                     | block `PopoverFilterPanel`                                    |
-| `src/components/catalog/avatar-strip.tsx`                     | block `CarouselSnap`                                          |
-| `src/components/catalog/active-filters.tsx`, `tag-picker.tsx` | block `TokenRemovable`                                        |
-| `src/components/catalog/result-states.tsx`                    | block `EmptyStateActions`                                     |
+| File                                                       | Astryx template                                               |
+| ---------------------------------------------------------- | ------------------------------------------------------------- |
+| `src/components/frame/site-frame.tsx`                      | page `shell-top-nav` (Top Nav)                                |
+| `src/components/frame/site-frame.tsx` (Ctrl/Cmd+K)         | page `shell-nav`                                              |
+| `src/components/frame/palette.tsx`                         | blocks `CommandPaletteAsyncSearch`, `CommandPaletteRichItems` |
+| `src/components/frame/sign-in.tsx`                         | page `login-card`                                             |
+| `src/components/catalog/fav-button.tsx`                    | block `useToastHookUsage`                                     |
+| `templates/**` (verbatim copies)                           | the pages and blocks listed in `templates/README.md`          |
+| `src/components/catalog/home-screen.tsx`                   | page `library` (Card Grid)                                    |
+| `src/components/catalog/toolbar.tsx`                       | page `library` (Card Grid), control row                       |
+| `src/components/catalog/item-tile.tsx`                     | page `product-gallery` (Product Gallery), `ProductCard`       |
+| `src/components/catalog/item-tile.tsx` (tile badges)       | block `BadgeCategoryTags`                                     |
+| `src/components/catalog/filter-bar.tsx`, `filter-style.ts` | page `table-filter`, block `ToolbarTableFilter`               |
+| `src/components/catalog/filter-clauses.tsx`                | page `table-filter` (clause controls)                         |
+| `src/components/catalog/price-*.tsx`, `tag-clause.tsx`     | page `table-filter` (Quote), block `PopoverFilterPanel`       |
+| `src/components/catalog/avatar-strip.tsx`                  | block `CarouselSnap`                                          |
+| `src/components/catalog/tag-picker.tsx`                    | blocks `TokenRemovable`, `PopoverFilterPanel`                 |
+| `src/components/catalog/result-states.tsx`                 | block `EmptyStateActions`                                     |
 
 Astryx is distributed under the MIT License:
 

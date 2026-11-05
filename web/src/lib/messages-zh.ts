@@ -38,6 +38,7 @@ export const zh = {
   "filter.features": "功能",
   "filter.clear": "清除",
   "filter.show": "查看 {n} 件商品",
+  "filter.more": "另外 {n} 项筛选",
   "view.items": "商品",
   "view.avatars": "模型本体",
   "title.avatars": "模型本体",

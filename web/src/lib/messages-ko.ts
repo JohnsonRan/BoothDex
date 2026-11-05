@@ -40,6 +40,7 @@ export const ko: Dict = {
   "filter.features": "기능",
   "filter.clear": "초기화",
   "filter.show": "상품 {n}개 보기",
+  "filter.more": "필터 {n}개 더 보기",
   "view.items": "상품",
   "view.avatars": "아바타 본체",
   "title.avatars": "아바타 본체",

@@ -40,6 +40,7 @@ export const ja: Dict = {
   "filter.features": "機能",
   "filter.clear": "クリア",
   "filter.show": "{n} 件を表示",
+  "filter.more": "ほか {n} 件のフィルター",
   "view.items": "商品",
   "view.avatars": "アバター本体",
   "title.avatars": "アバター本体",
