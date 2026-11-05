@@ -4,7 +4,6 @@
 // all). The fold opens a Popover with a pointer and a BottomSheet on a narrow or touch screen, as the
 // template's FilterOverflow; on phones the sheet ends with Clear and "Show {n} items".
 
-import { BottomSheet } from "@astryxdesign/core/BottomSheet";
 import { Button } from "@astryxdesign/core/Button";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Link } from "@astryxdesign/core/Link";
@@ -14,6 +13,7 @@ import {
 } from "@astryxdesign/core/OverflowList";
 import { Popover } from "@astryxdesign/core/Popover";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
+import dynamic from "next/dynamic";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
 import { activeFilterCount, FILTER_RESET } from "@/lib/catalog";
@@ -27,6 +27,12 @@ import {
   useFacets,
 } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
+
+// The sheet loads the first time a phone opens the fold, not with the page.
+const BottomSheet = dynamic(
+  () => import("@astryxdesign/core/BottomSheet").then((m) => m.BottomSheet),
+  { ssr: false },
+);
 
 // Below `md`, or a touch tablet, the fold opens a sheet (the template's COMPACT_SURFACE_QUERY).
 const COMPACT_SURFACE_QUERY =
@@ -120,6 +126,8 @@ function FilterOverflow({
   const { t, ui } = useUi();
   const { apply } = useFilterUrl();
   const [isOpen, setIsOpen] = useState(false);
+  // mounted from the first open on, so later closes still animate
+  const [wasOpened, setWasOpened] = useState(false);
   const count = items.length;
   const label = t("filter.more", { n: count });
 
@@ -165,7 +173,14 @@ function FilterOverflow({
       variant="ghost"
       size={CONTROL_SIZE}
       style={{ ...FILTER_CHROME, ...FILTER_SURFACE }}
-      onClick={isCompactSurface ? () => setIsOpen(true) : undefined}
+      onClick={
+        isCompactSurface
+          ? () => {
+              setWasOpened(true);
+              setIsOpen(true);
+            }
+          : undefined
+      }
     />
   );
 
@@ -173,15 +188,17 @@ function FilterOverflow({
     return (
       <>
         {trigger}
-        <BottomSheet
-          isOpen={isOpen}
-          onOpenChange={setIsOpen}
-          label={label}
-          height="hug"
-          padding={0}
-        >
-          {body}
-        </BottomSheet>
+        {wasOpened && (
+          <BottomSheet
+            isOpen={isOpen}
+            onOpenChange={setIsOpen}
+            label={label}
+            height="hug"
+            padding={0}
+          >
+            {body}
+          </BottomSheet>
+        )}
       </>
     );
   }
