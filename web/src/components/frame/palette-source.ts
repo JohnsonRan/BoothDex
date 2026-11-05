@@ -1,5 +1,6 @@
 // The quick-search palette's data: recent searches before typing, then /api/palette's groups (120 ms debounce,
-// the previous request aborted). Rows carry what picking them does; `rows` keeps them by id for the pick.
+// the previous request aborted). Rows carry what picking them does; `rows` keeps the ones offered by id for the
+// pick.
 
 import type {
   SearchableItem,
@@ -88,6 +89,13 @@ export function paletteSource({
     for (const r of list) rows.set(r.id, r);
     return list;
   };
+  // a search's rows replace the previous search's, so only the rows on screen are kept
+  let found: Row[] = [];
+  const keepFound = (list: Row[]) => {
+    for (const r of found) rows.delete(r.id);
+    found = list;
+    return keep(list);
+  };
   return {
     cancel: () => ctl?.abort(),
     // read on every open: searches made since the last open are recorded by the page
@@ -135,7 +143,7 @@ export function paletteSource({
       ).catch(() => null);
       if (!res) return [];
       const g = (key: Parameters<typeof t>[0]) => t(key);
-      return keep([
+      return keepFound([
         {
           id: `q:${q}`,
           label: t("palette.searchFor", { q }),
