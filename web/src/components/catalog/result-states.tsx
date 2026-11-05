@@ -8,6 +8,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import { useRouter } from "next/navigation";
+import { useAccount } from "@/components/account/session";
 import { useUi } from "@/components/providers";
 import { activeFilterCount, FILTER_RESET } from "@/lib/catalog";
 import { useApiRecovery } from "@/lib/client-data";
@@ -36,11 +37,18 @@ export function EmptyResults() {
   );
 }
 
-/** The API is starting (waits and reloads by itself) or failed (retry). */
-export function FailedResults({ starting }: { starting: boolean }) {
+/** The API is starting (waits and reloads by itself) or failed (retry: the page again, or `onRetry`). */
+export function FailedResults({
+  starting,
+  onRetry,
+}: {
+  starting: boolean;
+  /** for results read in the browser (the recent view) */
+  onRetry?: () => void;
+}) {
   const { t } = useUi();
   const router = useRouter();
-  useApiRecovery(starting);
+  useApiRecovery(starting, useAccount().reload);
   return starting ? (
     <EmptyState
       icon={<Spinner size="xl" />}
@@ -55,7 +63,7 @@ export function FailedResults({ starting }: { starting: boolean }) {
         <Button
           label={t("list.retry")}
           variant="primary"
-          onClick={() => router.refresh()}
+          onClick={onRetry ?? (() => router.refresh())}
         />
       }
     />

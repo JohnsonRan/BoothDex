@@ -21,7 +21,7 @@ import { api } from "@/lib/api";
 import { LOCALES } from "@/lib/settings-core";
 import { formatNumber, jobDuration } from "./format";
 import { JobStatusToken } from "./job-status";
-import { useAdminT } from "./messages";
+import { errorText, useAdminT } from "./messages";
 import type { Job } from "./types";
 
 const POLL_MS = 2000;
@@ -31,20 +31,18 @@ export function JobLog({ id, onClose }: { id: number; onClose: () => void }) {
   const t = useAdminT();
   const locale = LOCALES[useUi().ui];
   const [job, setJob] = useState<Job>();
-  const [error, setError] = useState<string>();
+  // the failure, worded at render in the current language
+  const [error, setError] = useState<unknown>();
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     let stopped = false;
     const load = () =>
-      api<Job>(`/api/admin/jobs/${id}`).then(
-        (j) => {
-          if (stopped) return;
-          setJob(j);
-          if (!finished(j)) timer = setTimeout(load, POLL_MS);
-        },
-        (e: Error) => setError(e.message),
-      );
+      api<Job>(`/api/admin/jobs/${id}`).then((j) => {
+        if (stopped) return;
+        setJob(j);
+        if (!finished(j)) timer = setTimeout(load, POLL_MS);
+      }, setError);
     load();
     return () => {
       stopped = true;
@@ -65,7 +63,7 @@ export function JobLog({ id, onClose }: { id: number; onClose: () => void }) {
         content={
           <LayoutContent>
             {error ? (
-              <Banner status="error" title={error} />
+              <Banner status="error" title={errorText(t, error)} />
             ) : !job ? (
               <Spinner label={t("log.output")} />
             ) : (

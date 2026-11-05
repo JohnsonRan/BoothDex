@@ -4,6 +4,7 @@
 
 import { useMemo } from "react";
 import { useUi } from "@/components/providers";
+import { type ApiErrors, errorKey } from "@/lib/api";
 import { format, type UiLang } from "@/lib/messages";
 import { adminEn } from "./messages-en";
 import { adminJa } from "./messages-ja";
@@ -30,3 +31,21 @@ export function useAdminT(): AdminT {
     return (key, vars) => format(dict[key], vars);
   }, [ui]);
 }
+
+/** The API errors the console explains (lib/api.ts errorKey); any other failure says only that it failed. */
+const ADMIN_ERRORS: ApiErrors<AdminKey> = {
+  messages: {
+    "A job of this kind is already queued or running": "error.jobBusy",
+    "Job is not queued or running": "error.jobIdle",
+    "Set the base URL and API key first": "error.aiUnset",
+  },
+  statuses: {
+    401: "gate.signInTitle",
+    403: "gate.forbiddenTitle",
+    502: "error.provider",
+  },
+};
+
+/** A failed call's message in the console's language. */
+export const errorText = (t: AdminT, e: unknown) =>
+  t(errorKey(e, ADMIN_ERRORS, "error.failed"));

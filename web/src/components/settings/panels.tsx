@@ -172,7 +172,7 @@ function AboutPanel() {
       <SettingsRow
         title="BoothDex"
         icon="info"
-        description="© 2026 BoothDex contributors · AGPL-3.0-or-later"
+        description={t("settings.copyright")}
       />
       {LINKS.map((link) => (
         <SettingsRow

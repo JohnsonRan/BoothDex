@@ -15,8 +15,8 @@ import { TextInput } from "@astryxdesign/core/TextInput";
 import { useToast } from "@astryxdesign/core/Toast";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
-import { api } from "@/lib/api";
-import type { MessageKey } from "@/lib/messages";
+import { api, errorKey } from "@/lib/api";
+import { API_ERRORS, type MessageKey } from "@/lib/messages";
 
 type Mode = "login" | "register";
 type Field = "login" | "password" | "display_name" | "username" | "email";
@@ -91,7 +91,7 @@ export function SignInDialog({
     } catch (err) {
       toast({
         type: "error",
-        body: err instanceof Error ? err.message : String(err),
+        body: t(errorKey(err, API_ERRORS, "error.failed")),
         uniqueID: "auth",
       });
     } finally {

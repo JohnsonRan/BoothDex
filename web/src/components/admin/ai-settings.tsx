@@ -16,7 +16,7 @@ import { useToast } from "@astryxdesign/core/Toast";
 import { Token } from "@astryxdesign/core/Token";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { type AdminKey, useAdminT } from "./messages";
+import { type AdminKey, errorText, useAdminT } from "./messages";
 import { type Ai, EFFORTS } from "./types";
 
 type Field = "base_url" | "model" | "embed_model";
@@ -48,10 +48,11 @@ export function AiSettings() {
     });
     setEffort(a.reasoning_effort ?? "none");
   }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: t only words a failure; a language change must not read the settings again over unsaved edits
   useEffect(() => {
     api<{ ai: Ai }>("/api/admin/settings").then(
       ({ ai }) => take(ai),
-      (e: Error) => toast({ type: "error", body: e.message }),
+      (e) => toast({ type: "error", body: errorText(t, e) }),
     );
   }, [toast, take]);
 
@@ -60,10 +61,7 @@ export function AiSettings() {
     try {
       await fn();
     } catch (e) {
-      toast({
-        type: "error",
-        body: e instanceof Error ? e.message : String(e),
-      });
+      toast({ type: "error", body: errorText(t, e) });
     } finally {
       setBusy(false);
     }

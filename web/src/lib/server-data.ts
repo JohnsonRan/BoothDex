@@ -20,6 +20,8 @@ import {
 
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:3000";
 const PAGE_SIZE = 100;
+/** How long the rate service may take before prices fall back to yen (the results wait for the rates). */
+const RATES_TIMEOUT_MS = 2000;
 
 async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_ORIGIN}${path}`, init);
@@ -85,7 +87,7 @@ export async function listCategories(): Promise<Category[]> {
     .categories;
 }
 
-/** Exchange rates for prices in another currency; none (plain yen) when the rate service fails. */
+/** Exchange rates for prices in another currency; none (plain yen) when the rate service fails or stalls. */
 export async function exchangeRates(): Promise<Rates> {
   "use cache";
   // refreshed every 12 hours, as master's browser cache was
@@ -93,6 +95,7 @@ export async function exchangeRates(): Promise<Rates> {
   const symbols = CURRENCIES.filter((c) => c !== "JPY").join(",");
   const res = await fetch(
     `https://api.frankfurter.dev/v1/latest?base=JPY&symbols=${symbols}`,
+    { signal: AbortSignal.timeout(RATES_TIMEOUT_MS) },
   );
   if (!res.ok) throw new Error(`rates: ${res.status}`);
   return (await res.json()).rates as Rates;

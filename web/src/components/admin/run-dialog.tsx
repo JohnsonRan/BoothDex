@@ -71,6 +71,9 @@ export function RunDialog({
                         ? t("param.default", { n: p.fallback })
                         : undefined
                     }
+                    // counts are whole and positive; the field commits a typed value within them
+                    min={1}
+                    isIntegerOnly
                     value={(params[p.name] as number | undefined) ?? null}
                     onChange={(v) => set(p.name, v)}
                   />

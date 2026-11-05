@@ -1,6 +1,6 @@
-// A signed-in visitor's settings also live in the account (/api/account/preferences), as on master
-// (settings.tsx): the account's values replace this browser's when the session is found, and every later
-// change is sent back. Signed out nothing is sent.
+// A signed-in visitor's settings and "my avatar" also live in the account (/api/account/preferences), as on
+// master (settings.tsx, browse.tsx): the account's values replace this browser's when the session is found, and
+// every later change is sent back. Signed out nothing is sent.
 
 import { api } from "./api";
 import { parseSettings, type Settings } from "./settings-core";
@@ -20,13 +20,24 @@ export function setPreferenceSync(on: boolean) {
   signedIn = on;
 }
 
-/** Sends changed settings to the account; a failure keeps them in this browser only, as on master. */
-export function savePreferences(patch: Partial<Settings>) {
+/** Sends preferences to the account; a failure keeps them in this browser only, as on master. */
+function send(json: Record<string, string>) {
   if (!signedIn) return;
-  const json = Object.fromEntries(
-    Object.entries(patch).map(([k, v]) => [NAMES[k as keyof Settings], v]),
-  );
   api("/api/account/preferences", { method: "PUT", json }).catch(() => {});
+}
+
+/** Sends changed settings to the account. */
+export function savePreferences(patch: Partial<Settings>) {
+  send(
+    Object.fromEntries(
+      Object.entries(patch).map(([k, v]) => [NAMES[k as keyof Settings], v]),
+    ),
+  );
+}
+
+/** Sends "my avatar" (the avatar-fit view's pick) to the account. */
+export function saveAvatar(avatar: string) {
+  send({ avatar });
 }
 
 /** The settings the account sets differently from `current` (invalid or missing values are ignored). */

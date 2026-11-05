@@ -11,8 +11,10 @@ import {
   useMemo,
   useTransition,
 } from "react";
+import { fetchAccount } from "@/lib/api";
 import { DEFAULT_FILTERS, type Filters, filtersToQuery } from "@/lib/catalog";
 import { addQuery, loadHistory, saveHistory } from "@/lib/history";
+import { saveAvatar } from "@/lib/preferences";
 import { useDelayed } from "@/lib/use-delayed";
 
 const MY_AVATAR = "myAvatar";
@@ -62,14 +64,25 @@ export function FilterUrlProvider({
   const shown = useDelayed(pending);
   const refresh = useMemo(() => ({ pending, shown }), [pending, shown]);
 
-  // a bare visit gets the avatar this browser picked last; a shared link shows exactly what it encodes
+  // A bare visit gets the avatar this browser picked last; a shared link shows exactly what it encodes. The
+  // account's pick (made on another device) follows, unless the visitor has moved on meanwhile, as on master.
   useEffect(() => {
-    const avatar = remembered();
-    if (location.search.length <= 1 && avatar)
-      router.replace(
-        `${pathname}?${filtersToQuery({ ...DEFAULT_FILTERS, avatar })}`,
-        { scroll: false },
-      );
+    const query = (avatar: string) =>
+      `?${filtersToQuery({ ...DEFAULT_FILTERS, avatar })}`;
+    const restore = (avatar: string) =>
+      router.replace(`${pathname}${query(avatar)}`, { scroll: false });
+    const local = remembered();
+    if (location.search.length <= 1 && local) restore(local);
+    fetchAccount<{ preferences: Record<string, string> }>().then(
+      ({ preferences }) => {
+        const saved = preferences.avatar;
+        const untouched =
+          location.search.length <= 1 ||
+          (!!local && location.search === query(local));
+        if (saved && saved !== local && untouched) restore(saved);
+      },
+      () => {},
+    );
   }, [pathname, router]);
 
   const value = useMemo<FilterUrl>(() => {
@@ -90,7 +103,10 @@ export function FilterUrlProvider({
           !patch.view && { view: "items" as const };
         go(filtersToQuery({ ...filters, ...view, ...patch }), false);
         if (patch.q) saveHistory(addQuery(loadHistory(), patch.q));
-        if (patch.avatar !== undefined) remember(patch.avatar);
+        if (patch.avatar !== undefined) {
+          remember(patch.avatar);
+          saveAvatar(patch.avatar);
+        }
       },
       // push, not replace: Back returns to the previous page
       goPage: (page, noSemantic) =>

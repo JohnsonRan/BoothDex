@@ -117,6 +117,11 @@ export const adminEn: AdminDict = {
   "run.desc":
     "Only options that don't add load on Booth. Leave a field empty for its default.",
   "common.cancel": "Cancel",
+  "error.jobBusy": "A job of this kind is already queued or running",
+  "error.jobIdle": "This job is not queued or running",
+  "error.aiUnset": "Set the API URL and API key first",
+  "error.provider": "The provider couldn't be reached or refused the request",
+  "error.failed": "Something went wrong. Try again",
   "run.submit": "Queue",
   "param.full": "Walk every page",
   "param.fullDesc": "Don't stop once caught up; used to complete the catalogue",
@@ -191,5 +196,6 @@ export const adminEn: AdminDict = {
   "reset.revoked": "{n} sessions signed out",
   "reset.copy": "Copy",
   "reset.copied": "Copied",
+  "reset.copyFailed": "Couldn't copy",
   "reset.hide": "Hide",
 };

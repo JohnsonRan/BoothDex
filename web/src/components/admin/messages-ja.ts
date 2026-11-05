@@ -116,6 +116,11 @@ export const adminJa: AdminDict = {
   "run.desc":
     "Booth の負荷を増やさないオプションのみ指定できます。空欄の場合は既定値を使用します。",
   "common.cancel": "キャンセル",
+  "error.jobBusy": "この種類のジョブはすでに待機中または実行中です",
+  "error.jobIdle": "このジョブは待機中でも実行中でもありません",
+  "error.aiUnset": "先に API URL と API キーを設定してください",
+  "error.provider": "プロバイダーに接続できないか、リクエストが拒否されました",
+  "error.failed": "問題が発生しました。もう一度お試しください",
   "run.submit": "キューに追加",
   "param.full": "全ページを巡回",
   "param.fullDesc":
@@ -189,5 +194,6 @@ export const adminJa: AdminDict = {
   "reset.revoked": "{n} 件のセッションをログアウトしました",
   "reset.copy": "コピー",
   "reset.copied": "コピーしました",
+  "reset.copyFailed": "コピーできませんでした",
   "reset.hide": "非表示",
 };

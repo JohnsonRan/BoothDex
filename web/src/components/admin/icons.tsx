@@ -17,8 +17,7 @@ import {
   ShieldAlert,
   Square,
 } from "lucide-react";
-
-const glyph = { size: "1em", "aria-hidden": true } as const;
+import { glyph } from "@/lib/icons";
 
 registerIcons({
   "admin:overview": <LayoutDashboard {...glyph} />,

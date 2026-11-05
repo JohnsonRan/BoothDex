@@ -16,6 +16,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAccount } from "@/components/account/session";
 import { useUi } from "@/components/providers";
 import { useApiRecovery } from "@/lib/client-data";
 import { cancelOnReducedMotion, swapIn } from "@/lib/motion";
@@ -117,7 +118,7 @@ export function KeepResults({
 function RefreshFailed({ starting }: { starting: boolean }) {
   const { t } = useUi();
   const router = useRouter();
-  useApiRecovery(starting);
+  useApiRecovery(starting, useAccount().reload);
   return (
     <Banner
       status={starting ? "info" : "error"}

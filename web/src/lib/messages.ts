@@ -6,6 +6,7 @@
 // Placeholders: {name}. One file per language (messages-<lang>.ts); the Chinese keys define MessageKey. The
 // dictionaries are read on the server (dictionaries.ts), which hands the browser the visitor's language only.
 
+import type { ApiErrors } from "./api";
 import type { zh } from "./messages-zh";
 
 export const UI_LANGS = ["zh", "en", "ja", "ko"] as const;
@@ -13,6 +14,20 @@ export type UiLang = (typeof UI_LANGS)[number];
 
 export type MessageKey = keyof typeof zh;
 export type Dict = Record<MessageKey, string>;
+
+/** The API errors the site explains (lib/api.ts errorKey); any other failure shows the action's own message. */
+export const API_ERRORS: ApiErrors<MessageKey> = {
+  messages: {
+    "Incorrect username or password.": "error.credentials",
+    "Username or email is already taken.": "error.taken",
+    "Saved search limit reached.": "saved.limit",
+  },
+  statuses: {
+    401: "error.signIn",
+    429: "error.tooMany",
+    503: "list.startingTitle",
+  },
+};
 
 /** Each language's name in itself, for the language menus. */
 export const LANG_NAMES: Record<UiLang, string> = {

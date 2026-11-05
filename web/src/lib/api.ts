@@ -9,6 +9,29 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The API errors a catalogue explains in its own words. The API identifies an error only by its English
+ * message, so `messages` matches that exactly; `statuses` covers the rest by HTTP status.
+ */
+export type ApiErrors<K extends string> = {
+  messages: Readonly<Record<string, K>>;
+  statuses: Readonly<Partial<Record<number, K>>>;
+};
+
+/** The message key for a failed call: what `known` names its error, else `fallback` (a network failure too). */
+export function errorKey<K extends string>(
+  e: unknown,
+  known: ApiErrors<K>,
+  fallback: K,
+): K {
+  if (!(e instanceof ApiError)) return fallback;
+  return (
+    (Object.hasOwn(known.messages, e.message)
+      ? known.messages[e.message]
+      : known.statuses[e.status]) ?? fallback
+  );
+}
+
 /** False while the API is still loading the catalogue (it answers 503) or not reachable at all. */
 export const apiReady = () =>
   fetch("/api/health", { cache: "no-store" }).then(

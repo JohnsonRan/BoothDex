@@ -16,8 +16,8 @@ import {
   Trash2,
 } from "lucide-react";
 
-// as the theme's own entries: Icon sets the size through the font size
-const glyph = { size: "1em", "aria-hidden": true } as const;
+/** Props of every registered glyph, as the theme's own entries: Icon sets the size through the font size. */
+export const glyph = { size: "1em", "aria-hidden": true } as const;
 
 const SITE_ICONS = {
   "site:favourite": <Heart {...glyph} />,
