@@ -14,3 +14,8 @@ not. Do not edit them: copy a newer version over them when Astryx is upgraded.
 | `pages/product-gallery/page.tsx` (ProductCard, grid) | `src/components/catalog/item-tile.tsx`, `results-grid.tsx` |
 | `pages/login-card/page.tsx` (sign-in card, providers dropped) | `src/components/frame/sign-in.tsx` |
 | `blocks/useToastHookUsage.tsx` | `src/components/catalog/fav-button.tsx` |
+| `pages/product-detail/page.tsx` (gallery, info column, collapsibles) | `src/components/item/*` |
+| `blocks/DialogAdaptivePresentation.tsx`, `DialogFullscreenDialog.tsx`, `DialogWithSubtitle.tsx` | `src/components/item/item-dialog.tsx` |
+| `blocks/LightboxGallery.tsx` (zoom) | `src/components/item/item-gallery.tsx` |
+| `blocks/CarouselSnap.tsx` (gallery swipe, "More from" strip) | `src/components/item/item-gallery.tsx`, `more-from.tsx` |
+| `blocks/ListBasicList.tsx` (variations), `MetadataListBasicMetadata.tsx` (info) | `src/components/item/item-sections.tsx` |
