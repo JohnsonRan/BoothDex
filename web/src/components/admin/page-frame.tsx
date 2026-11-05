@@ -1,9 +1,9 @@
 "use client";
-// The frame of every admin page, from the header of the Astryx page templates incident-console
-// (templates/pages/incident-console/page.tsx:492-523) and settings (page.tsx:73-91): a LayoutHeader with a
-// divider holding the h1, a short status beside it, then the content with the settings
-// template's padding (page.tsx:94), which puts it on the header's left edge. An optional tab row sits under
-// the title, as the reference admin puts sub-pages.
+// The frame of every admin page, from the header of the Astryx page template detail-page
+// (templates/pages/detail-page/page.tsx:169-262): a LayoutHeader with a divider and the template's padding,
+// the h1 with a short status beside it, and on pages with sub-pages the large full-bleed TabList as the
+// header's last row, sitting on the divider (no bottom padding). The content keeps the same padding, so it
+// starts on the header's left edge.
 
 import {
   HStack,
@@ -22,6 +22,7 @@ export function PageFrame({
 }: {
   title: string;
   meta?: React.ReactNode;
+  /** a `TabList size="lg" isFullBleed` */
   tabs?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -30,7 +31,11 @@ export function PageFrame({
       height="fill"
       contentWidth={1440}
       header={
-        <LayoutHeader hasDivider>
+        <LayoutHeader
+          hasDivider
+          padding={4}
+          paddingBlockEnd={tabs ? 0 : undefined}
+        >
           <VStack gap={3}>
             <HStack gap={3} vAlign="center" wrap="wrap">
               <Heading level={1}>{title}</Heading>
