@@ -48,20 +48,22 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 
 | Surface | Route / trigger | Astryx template | Status |
 |---|---|---|---|
-| Page frame | every route | page `shell-top-nav` (AppShell + TopNav, heading with logo) | phase 1 |
+| Page frame | every route | page `shell-top-nav` (AppShell + TopNav, heading with master's logo; end actions: magnifier, language menu, currency menu, colour mode, account) | checkpoint 1 |
 | Home grid | `/` | page `library` (Card Grid): header with title, search, filter tabs + sort row, card grid, empty state | phase 1 |
-| Result tile | home grid | page `product-gallery`, `ProductCard` (square media, title, supporting line, price); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`). The server renders the first 24 tiles; the rest of the page's 100 are drawn in the browser near the viewport, a tile silhouette holding their place | phase 1 |
+| Result tile | home grid | page `product-gallery`, `ProductCard` (square media; title, secondary line = shop icon and name, price `large` bold with a favourite `IconButton`); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`). The server renders the first 24 tiles; the rest of the page's 100 are drawn in the browser near the viewport, a tile silhouette holding their place | phase 1 |
 | Search | home, top of content | page `library` search `TextInput` (block `TextInputSearch`) | phase 1 |
 | Category / gender tabs, sort | home control row | page `library` (`ToggleButtonGroup` + `OverflowList`, `DropdownMenu`) | phase 1 |
 | Filter panel | "Filters" button | block `PopoverFilterPanel` (`presentation="adaptive"`: popover on desktop, bottom sheet on phones) | phase 1 |
 | Active filters | under the control row | block `TokenRemovable` | phase 1 |
-| Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar); the first 14 cards until the strip is touched, focused or scrolled | phase 1 |
+| Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar, media only as the product-gallery card's media slot, name as caption below); the first 14 cards until the strip is touched, focused or scrolled | phase 1 |
 | Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
 | Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); refresh: indeterminate `ProgressBar` under the header, failed refresh: inline `Banner` with retry above the kept results | phase 1 |
 | Item detail | `?item=<id>` | page `product-detail` inside a `Dialog` | planned |
-| Command palette | Ctrl+K, search button | block `CommandPaletteAsyncSearch` | planned |
-| Account menu, sign-in | TopNav end | `DropdownMenu` in TopNav `endContent`; sign-in page `login-card` in a `Dialog` | planned |
+| Command palette | Ctrl/Cmd+K, top-bar magnifier | page `shell-nav` wiring + blocks `CommandPaletteAsyncSearch`, `CommandPaletteRichItems` | checkpoint 1 |
+| Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms) | checkpoint 1 |
+| Account menu | TopNav end, signed in | `DropdownMenu` (now: name + Sign out; full menu planned) | partial |
+| Language, item text, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio groups; currency as a ghost DropdownMenu button | checkpoint 1 |
 | Settings (appearance, language, currency, item text) | TopNav end | page `settings-dialog` | planned |
 | Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid) | planned |
 | Admin login | `/admin` signed out | page `login-card` | planned |
@@ -125,6 +127,31 @@ structural or token-backed:
   size="static"`, so measuring the tabs' overflow on hydration no longer moves the buttons.
 - Motion values live in `lib/motion.ts` (Astryx `--ease-standard`). Only content that replaces a silhouette the
   visitor saw enters; the server-rendered first screen (the LCP cover and the title) is never animated.
+
+## Deviations in checkpoint 1 (frame and home)
+
+Templates copied as is to `web/templates/` (not compiled); each adapted file names its template.
+
+- Frame: no centre navigation (BoothDex has no sections; the template's mega menus are dropped). `contentPadding`
+  is not set and the template's 1100 px content cap is not used: the home page is the full-width library layout,
+  whose own `Layout padding={6}` gives the inset (rule 5).
+- Logo: master's SVG mark at 28 px instead of the template's `NavIcon` (the mark is itself a filled shape). On
+  phones (< 640 px) the wordmark is visually hidden by a documented rule in `globals.css` (`.site-heading`), as on
+  master: TopNavHeading has no prop for it, and five end actions do not fit beside a truncated name at 390 px.
+- End actions: the template's magnifier opens the palette instead of an inline search; the catalogue query keeps
+  the library template's full-width TextInput in the page. Both record recent searches in one list.
+- Currency: a ghost `DropdownMenu` button showing symbol and code ("¥ JPY") instead of an icon (owner: the coin
+  icon was not understood); rows show symbol, code and the localised name.
+- Palette: Astryx renders it as a centred dialog on phones too (master: full screen with a back arrow); Back,
+  Esc and the backdrop close it. Removing a single recent search is not offered: palette rows may not contain
+  buttons (CommandPalette rule); "Clear recent searches" stays. Picking an item opens it on Booth until the item
+  dialog exists.
+- Sign-in: the login card's centring frame and Card are dropped inside the Dialog (as the reference board
+  notes); no provider buttons or divider (no third-party sign-in). Tabs (TabList) switch sign-in and register.
+- Tile: secondary line is the shop (Avatar `xsm` + name) instead of a two-line description; the price row ends
+  with the favourite button and is `--size-element-sm` tall in tile and silhouette alike.
+- Avatar strip: `SelectableCard` is documented for multi-select; the strip is single-select (one avatar or
+  all). Kept because it is the component with a selected state for media cards; ClickableCard has none.
 
 ## Remaining Tailwind or shadcn files
 

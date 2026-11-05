@@ -12,7 +12,7 @@ import {
 export const CONTENT_LANGS = ["original", "zh", "en", "ja", "ko"] as const;
 export type ContentLang = (typeof CONTENT_LANGS)[number];
 /** "system" follows the operating system; the other two pin a mode. */
-export const THEMES = ["system", "light", "dark"] as const;
+const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
 export const CURRENCIES = [
   "JPY",
