@@ -8,6 +8,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import { useRouter } from "next/navigation";
+import { useAccount } from "@/components/account/session";
 import { useUi } from "@/components/providers";
 import { activeFilterCount, FILTER_RESET } from "@/lib/catalog";
 import { useApiRecovery } from "@/lib/client-data";
@@ -40,7 +41,7 @@ export function EmptyResults() {
 export function FailedResults({ starting }: { starting: boolean }) {
   const { t } = useUi();
   const router = useRouter();
-  useApiRecovery(starting);
+  useApiRecovery(starting, useAccount().reload);
   return starting ? (
     <EmptyState
       icon={<Spinner size="xl" />}
