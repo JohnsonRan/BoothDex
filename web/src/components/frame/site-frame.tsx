@@ -11,20 +11,22 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Account } from "@/components/account/account-button";
 import { Favourites } from "@/components/account/favourites";
 import { AccountProvider } from "@/components/account/session";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { ItemHost, useItemOpener } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
+import { preloadOn, preloadWhenIdle } from "@/lib/preload";
 import type { Rates } from "@/lib/settings-core";
 import { ColorModeToggle, CurrencyMenu, LanguageMenu } from "./header-controls";
 import { Logo } from "./logo";
 import type { Pick } from "./palette-source";
 
-// the palette's code loads on first open, not with the page
-const Palette = dynamic(() => import("./palette"), { ssr: false });
+// the palette's code loads after the page (lib/preload), not with it
+const loadPalette = () => import("./palette");
+const Palette = dynamic(loadPalette, { ssr: false });
 
 export function SiteFrame({
   rates,
@@ -43,6 +45,9 @@ export function SiteFrame({
         <AppShell
           variant="surface"
           height="auto"
+          // no drawer: the bar is the same on every width. Astryx's phone bar is chosen only in the browser, so
+          // it replaced the server's end actions after hydration and lost the clicks made before that
+          mobileNav={false}
           topNav={
             <TopNav
               label={t("nav.main")}
@@ -70,7 +75,9 @@ export function SiteFrame({
             />
           }
         >
-          {children}
+          {/* its own boundary: a click on the bar before the page has hydrated hydrates the bar at once (React
+              does so synchronously for the boundary clicked), not the catalogue with it */}
+          <Suspense>{children}</Suspense>
         </AppShell>
       </ItemHost>
       <Favourites />
@@ -84,6 +91,7 @@ function QuickSearch({ rates }: { rates: Promise<Rates> }) {
   const { open: openItem } = useItemOpener();
   // undefined: never opened, so the palette's code is not loaded
   const [open, setOpen] = useState<boolean>();
+  useEffect(() => preloadWhenIdle(loadPalette), []);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -108,6 +116,7 @@ function QuickSearch({ rates }: { rates: Promise<Rates> }) {
         variant="ghost"
         icon={<Icon icon="search" size="sm" />}
         onClick={() => setOpen(true)}
+        {...preloadOn(loadPalette)}
       />
       {open !== undefined && (
         <Palette

@@ -40,15 +40,11 @@ const AllGlyph = () => (
   </VStack>
 );
 
-export function AvatarStrip({
-  avatars,
-  value,
-}: {
-  avatars: Avatar[];
-  value: string;
-}) {
+export function AvatarStrip({ avatars }: { avatars: Avatar[] }) {
   const { t, ui } = useUi();
-  const { apply } = useFilterUrl();
+  const { filters, apply } = useFilterUrl();
+  // the picked avatar shows as selected at once, before its results arrive
+  const value = filters.avatar;
   const carousel = useRef<CarouselHandle>(null);
   const strip = useRef<HTMLDivElement>(null);
   const pick = (slug: string) => apply({ avatar: slug });

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
+import { EARLY_CLICKS } from "@/lib/early-clicks";
 import "./globals.css";
 
 // The neutral theme's Latin face, self-hosted and preloaded; globals.css points the theme's font tokens at it.
@@ -41,7 +42,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <meta name="darkreader-lock" />
         <script
           // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
-          dangerouslySetInnerHTML={{ __html: preferences }}
+          dangerouslySetInnerHTML={{ __html: preferences + EARLY_CLICKS }}
         />
       </head>
       <body>{children}</body>

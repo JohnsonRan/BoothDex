@@ -1,7 +1,9 @@
 "use client";
 // Filter state lives in the URL. The server parses it and renders the results; changing a filter navigates,
-// and the new results arrive as a server render inside a transition, so the old ones stay until then. Whether
-// one is under way has its own context (useRefresh), so the controls do not render again when it starts or ends.
+// and the new results arrive as a server render inside a transition, so the old ones stay until then. The
+// controls show the change at once (an optimistic copy of the filters, replaced by the server's when it arrives).
+// Whether a navigation is under way has its own context (useRefresh), so the controls do not render again when it
+// starts or ends.
 
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -9,6 +11,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useOptimistic,
   useTransition,
 } from "react";
 import { fetchAccount } from "@/lib/api";
@@ -61,6 +64,7 @@ export function FilterUrlProvider({
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startTransition] = useTransition();
+  const [current, setCurrent] = useOptimistic(filters);
   const shown = useDelayed(pending);
   const refresh = useMemo(() => ({ pending, shown }), [pending, shown]);
 
@@ -86,22 +90,23 @@ export function FilterUrlProvider({
   }, [pathname, router]);
 
   const value = useMemo<FilterUrl>(() => {
-    const go = (query: string, push: boolean) => {
+    const go = (query: string, push: boolean, next = current) => {
       const url = query ? `${pathname}?${query}` : pathname;
-      startTransition(() =>
-        push
-          ? router.push(url, { scroll: false })
-          : router.replace(url, { scroll: false }),
-      );
+      startTransition(() => {
+        setCurrent(next);
+        if (push) router.push(url, { scroll: false });
+        else router.replace(url, { scroll: false });
+      });
       window.scrollTo({ top: 0 });
     };
     return {
-      filters,
+      filters: current,
       apply: (patch) => {
         // a search, shop or avatar picked in the recent view leaves it, as on master
-        const view = filters.view === "recent" &&
+        const view = current.view === "recent" &&
           !patch.view && { view: "items" as const };
-        go(filtersToQuery({ ...filters, ...view, ...patch }), false);
+        const next = { ...current, ...view, ...patch };
+        go(filtersToQuery(next), false, next);
         if (patch.q) saveHistory(addQuery(loadHistory(), patch.q));
         if (patch.avatar !== undefined) {
           remember(patch.avatar);
@@ -112,7 +117,7 @@ export function FilterUrlProvider({
       goPage: (page, noSemantic) =>
         go(
           [
-            filtersToQuery(filters),
+            filtersToQuery(current),
             page > 1 ? `page=${page}` : "",
             page > 1 && noSemantic ? "sem=0" : "",
           ]
@@ -121,7 +126,7 @@ export function FilterUrlProvider({
           true,
         ),
     };
-  }, [filters, pathname, router]);
+  }, [current, setCurrent, pathname, router]);
 
   return (
     <Ctx value={value}>

@@ -172,22 +172,29 @@ async function Catalog({
           <VStack gap={6}>
             <VStack gap={4}>
               <SearchBox />
+              {/* each row of controls is its own boundary: a click on one before the page has hydrated makes React
+                  hydrate that row at once (synchronously, the boundary clicked), not the other rows with it */}
               {filters.view === "items" && (
-                <AvatarStrip
-                  // one name per avatar, the visitor's, as `en` (avatarName falls back to it)
-                  avatars={avatars.map((a) => ({
-                    slug: a.slug,
-                    en: avatarName(a, settings.ui),
-                    image_url: a.image_url,
-                  }))}
-                  value={filters.avatar}
-                />
+                <Suspense>
+                  <AvatarStrip
+                    // one name per avatar, the visitor's, as `en` (avatarName falls back to it)
+                    avatars={avatars.map((a) => ({
+                      slug: a.slug,
+                      en: avatarName(a, settings.ui),
+                      image_url: a.image_url,
+                    }))}
+                  />
+                </Suspense>
               )}
               {/* filters and sort do not apply to the recent view */}
               {!recent && (
                 <>
-                  <Toolbar categoryTabs={categoryTabs} facets={facets} />
-                  <FilterBar facets={facets} />
+                  <Suspense>
+                    <Toolbar categoryTabs={categoryTabs} facets={facets} />
+                  </Suspense>
+                  <Suspense>
+                    <FilterBar facets={facets} />
+                  </Suspense>
                 </>
               )}
             </VStack>
