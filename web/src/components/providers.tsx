@@ -29,6 +29,7 @@ import {
   type Translate,
   translate,
 } from "@/lib/settings-core";
+import { ToastHost } from "./toasts";
 
 type Ui = {
   ui: UiLang;
@@ -117,7 +118,9 @@ export function Providers({
         messages={catalogue ? { [locale]: catalogue } : undefined}
       >
         <LinkProvider component={Link}>
-          <UiContext value={value}>{children}</UiContext>
+          <UiContext value={value}>
+            <ToastHost>{children}</ToastHost>
+          </UiContext>
         </LinkProvider>
       </InternationalizationProvider>
     </Theme>

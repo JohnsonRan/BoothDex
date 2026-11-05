@@ -12,9 +12,9 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
-import { useToast } from "@astryxdesign/core/Toast";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
+import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
 import { API_ERRORS, type MessageKey } from "@/lib/messages";
 

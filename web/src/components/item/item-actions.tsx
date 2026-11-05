@@ -9,10 +9,10 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { HStack, StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { useToast } from "@astryxdesign/core/Toast";
 import { useEffect, useState } from "react";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
+import { useToast } from "@/components/toasts";
 import { api } from "@/lib/api";
 import type { ItemResponse } from "@/lib/api-types";
 import {

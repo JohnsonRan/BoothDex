@@ -1,9 +1,10 @@
 "use client";
+
 // Job rows and schedules from GET /api/admin/jobs (the last 100 jobs), polled every 5 s while a crawler page is
 // open, as master did. `act` runs one write, toasts its result and reloads the rows.
 
-import { useToast } from "@astryxdesign/core/Toast";
 import { useCallback, useEffect, useState } from "react";
+import { useToast } from "@/components/toasts";
 import { api } from "@/lib/api";
 import { errorText, useAdminT } from "./messages";
 import type { Job, Schedule } from "./types";

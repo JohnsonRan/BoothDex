@@ -2,9 +2,8 @@
 // The visitor's session on every route, as master's use-account.ts: who is signed in, their favourites and the
 // items they opened (in the account when signed in, else in this browser). The frame provides it
 // (site-frame.tsx); the account button, the favourite buttons, the viewed marks and the recent view read it.
-// Notices go through one toaster that loads with the first notice, so the page does not ship the toast code.
+// Notices are the site's toasts (components/toasts.tsx), whose code loads with the first one.
 
-import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   createContext,
@@ -16,6 +15,7 @@ import {
   useState,
 } from "react";
 import { useUi } from "@/components/providers";
+import { useToast } from "@/components/toasts";
 import { ApiError, api, fetchAccount } from "@/lib/api";
 import type { MessageKey } from "@/lib/messages";
 import { accountPatch, setPreferenceSync } from "@/lib/preferences";
@@ -26,8 +26,6 @@ import {
   saveViewed,
 } from "@/lib/viewed";
 
-const Toaster = dynamic(() => import("./toaster"), { ssr: false });
-
 export type Me = {
   id: number;
   username: string;
@@ -36,9 +34,6 @@ export type Me = {
   is_admin: boolean;
   preferences: Record<string, string>;
 };
-
-/** One toast: info confirms or explains, error reports a failure (and stays until dismissed). */
-export type Notice = { key: MessageKey; type?: "error"; n: number };
 
 type Session = {
   /** undefined until the first answer, then the account or null (signed out) */
@@ -60,7 +55,8 @@ type Session = {
 const Ctx = createContext<Session | null>(null);
 
 export function AccountProvider({ children }: { children: React.ReactNode }) {
-  const { settings, update } = useUi();
+  const { t, settings, update } = useUi();
+  const toast = useToast();
   const router = useRouter();
   // read inside the loader, which must not run again when a setting changes
   const ui = useRef({ settings, update });
@@ -68,11 +64,11 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me | null>();
   const [favs, setFavs] = useState<Set<number> | null>(null);
   const [viewed, setViewed] = useState<number[] | null>(null);
-  const [notice, setNotice] = useState<Notice>();
+  // info confirms or explains, error reports a failure; one toast per message: raising it again replaces it
   const notify = useCallback(
     (key: MessageKey, type?: "error") =>
-      setNotice((n) => ({ key, type, n: (n?.n ?? 0) + 1 })),
-    [],
+      toast({ body: t(key), type, uniqueID: key }),
+    [toast, t],
   );
   // the latest load; answers to older ones are dropped
   const loads = useRef(0);
@@ -177,12 +173,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     [me, favs, viewed, notify, load, router],
   );
 
-  return (
-    <Ctx value={value}>
-      {children}
-      {notice && <Toaster notice={notice} />}
-    </Ctx>
-  );
+  return <Ctx value={value}>{children}</Ctx>;
 }
 
 export function useAccount(): Session {

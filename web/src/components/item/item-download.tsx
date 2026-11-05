@@ -9,8 +9,8 @@ import {
 } from "@astryxdesign/core/DropdownMenu";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
-import { useToast } from "@astryxdesign/core/Toast";
 import { useUi } from "@/components/providers";
+import { useToast } from "@/components/toasts";
 import type { ItemResponse } from "@/lib/api-types";
 import { imgUrl } from "@/lib/catalog";
 import {
