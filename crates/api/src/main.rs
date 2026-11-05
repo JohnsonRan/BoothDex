@@ -62,6 +62,10 @@ struct AppState {
     embed_inflight: std::sync::Mutex<HashMap<String, EmbedWatch>>,
     /// caps concurrent upstream /embeddings HTTP calls
     embed_permits: Arc<tokio::sync::Semaphore>,
+    /// AI settings for query embeddings; see `ai_config`
+    ai: arc_swap::ArcSwapOption<boothdex_core::settings::AiConfig>,
+    /// serializes AI settings saves across database write and cache publication
+    ai_save: tokio::sync::Mutex<()>,
 }
 
 impl AppState {
@@ -96,7 +100,20 @@ impl AppState {
             embed_cache: moka::sync::Cache::new(EMBED_CACHE_CAP),
             embed_inflight: Default::default(),
             embed_permits: Arc::new(tokio::sync::Semaphore::new(4)),
+            ai: Default::default(),
+            ai_save: tokio::sync::Mutex::new(()),
         })
+    }
+
+    /// AI settings, read from the database once. They only change through the admin endpoint in this process,
+    /// which stores the new value here; a lookup racing with it never overwrites that.
+    async fn ai_config(&self) -> Result<Arc<boothdex_core::settings::AiConfig>, sqlx::Error> {
+        if let Some(c) = self.ai.load_full() {
+            return Ok(c);
+        }
+        let c = Arc::new(boothdex_core::settings::ai(&self.pool).await?);
+        self.ai.compare_and_swap(&None::<Arc<_>>, Some(c.clone()));
+        Ok(c)
     }
 
     fn snap(&self) -> arc_swap::Guard<Arc<Snapshot>> {

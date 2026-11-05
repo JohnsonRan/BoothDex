@@ -126,8 +126,8 @@ pub(crate) async fn search(
 
 /// Resolves the query embedding (or why there isn't one) before acquiring a search execution permit.
 pub(crate) async fn semantic_vector(s: Arc<AppState>, ip: std::net::IpAddr, q: &str, trace: &mut Trace) -> EmbedPlan {
-    let Ok(c) = boothdex_core::settings::ai(&s.pool).await else { return EmbedPlan::Unavailable };
-    let (Some(base), Some(key), Some(model)) = (c.base_url, c.api_key, c.embed_model) else { return EmbedPlan::Off };
+    let Ok(c) = s.ai_config().await else { return EmbedPlan::Unavailable };
+    let (Some(base), Some(key), Some(model)) = (c.base_url.clone(), c.api_key.clone(), c.embed_model.clone()) else { return EmbedPlan::Off };
     trace.step("settings");
     match query_embedding(s, ip, q, base, key, model, trace).await {
         Some(v) => EmbedPlan::Vector(v),

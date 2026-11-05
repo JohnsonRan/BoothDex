@@ -318,6 +318,7 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
             "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars; reasoning effort: none, minimal, low, medium, high or xhigh",
         ));
     }
+    let _guard = s.ai_save.lock().await;
     let mut v = settings::stored_ai(&s.pool).await?;
     if let Some(u) = b.base_url {
         v["base_url"] = json!(u.trim().trim_end_matches('/'));
@@ -339,6 +340,7 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
         .execute(&s.pool)
         .await?;
     let config = settings::resolve(&v, |k| std::env::var(k).ok());
+    s.ai.store(Some(Arc::new(config.clone())));
     queue_localize_if_needed(&s.pool, &config).await?;
     Ok(Json(public_ai(&config)).into_response())
 }
