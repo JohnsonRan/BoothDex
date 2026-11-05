@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { FONTS_CSS, imagesPainted } from "@/lib/fonts";
+import { coverPainted, FONTS_CSS } from "@/lib/fonts";
 
 let started = false;
 
@@ -30,13 +30,13 @@ function rules(s: CSSStyleSheet) {
 }
 
 /**
- * Loads MiSans once the page has loaded and its first-screen covers (the eager images, rendered on the server)
- * are painted, so its slices never compete with the LCP image (see lib/fonts).
+ * Loads MiSans once the page has loaded and a first-screen cover (the eager images, rendered on the server) is
+ * the reported largest paint, so its slices never compete with the LCP image (see lib/fonts).
  */
 export function FontLoader() {
   useEffect(() => {
     const start = () =>
-      imagesPainted([
+      coverPainted([
         ...document.querySelectorAll<HTMLImageElement>('img[loading="eager"]'),
       ]).then(loadFonts);
     if (document.readyState === "complete") start();
