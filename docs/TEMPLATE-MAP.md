@@ -12,7 +12,11 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 
 1. Official setup only: `@astryxdesign/core`, `@stylexjs/stylex`, `@astryxdesign/theme-neutral`,
    `@astryxdesign/cli`; `astryx init`, `astryx theme add neutral`, plain-CSS path (no Tailwind, no StyleX
-   compiler: Astryx ships prebuilt CSS).
+   compiler: Astryx ships prebuilt CSS). The source build (`@astryxdesign/build`, `withAstryx` + `@astryx;`) was
+   measured on 2026-11-06 and not adopted: under Turbopack it emits the same stylesheet (240,691 B, 40.0 KB gz,
+   against 241,014 B / 39.9 KB gz prebuilt); under webpack 189,870 B / 38.6 KB gz, still every rule of the package
+   (both compile every source file of `@astryxdesign/*`, not only the imported ones), at the cost of Turbopack and
+   `next/font`.
 2. Every screen starts from an Astryx page template; parts it lacks come from template blocks. Layout comes
    from the template, features from the old site. A surface no template covers is listed as a gap, not invented.
 3. Every UI element is an Astryx component; site components only compose them. No theme overrides except
@@ -46,12 +50,12 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 |---|---|---|---|
 | Page frame | every route | page `shell-top-nav` (AppShell + TopNav, heading with logo) | phase 1 |
 | Home grid | `/` | page `library` (Card Grid): header with title, search, filter tabs + sort row, card grid, empty state | phase 1 |
-| Result tile | home grid | page `product-gallery`, `ProductCard` (square media, title, supporting line, price); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`) | phase 1 |
+| Result tile | home grid | page `product-gallery`, `ProductCard` (square media, title, supporting line, price); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`). The server renders the first 24 tiles; the rest of the page's 100 are drawn in the browser near the viewport, a `Skeleton` cell holding their place | phase 1 |
 | Search | home, top of content | page `library` search `TextInput` (block `TextInputSearch`) | phase 1 |
 | Category / gender tabs, sort | home control row | page `library` (`ToggleButtonGroup` + `OverflowList`, `DropdownMenu`) | phase 1 |
 | Filter panel | "Filters" button | block `PopoverFilterPanel` (`presentation="adaptive"`: popover on desktop, bottom sheet on phones) | phase 1 |
 | Active filters | under the control row | block `TokenRemovable` | phase 1 |
-| Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar) | phase 1 |
+| Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar); the first 14 cards until the strip is touched, focused or scrolled | phase 1 |
 | Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
 | Item detail | `?item=<id>` | page `product-detail` inside a `Dialog` | planned |
