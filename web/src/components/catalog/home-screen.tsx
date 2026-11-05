@@ -8,7 +8,12 @@ import { Heading } from "@astryxdesign/core/Text";
 import { Suspense } from "react";
 import { Providers } from "@/components/providers";
 import { SiteFrame } from "@/components/site-frame";
-import { avatarName, type Filters, parseFilters } from "@/lib/catalog";
+import {
+  avatarName,
+  type Filters,
+  localName,
+  parseFilters,
+} from "@/lib/catalog";
 import {
   componentCatalogue,
   exchangeRates,
@@ -92,6 +97,13 @@ async function Catalog({
   ]);
   const result = outcome.state === "ok" ? outcome.result : null;
   const avatar = avatars.find((a) => a.slug === filters.avatar);
+  // only names cross to the browser, not the whole taxonomy in every language
+  const categoryTabs = categories
+    .filter((c) => c.mode === "items")
+    .map((c): [string, string] => [c.slug, localName(c, settings.ui)]);
+  const category = categories
+    .flatMap((c) => [c, ...c.children])
+    .find((c) => c.slug === filters.sc);
   const title = filters.q
     ? t("title.search", { q: filters.q })
     : filters.author
@@ -125,10 +137,13 @@ async function Catalog({
                 <AvatarStrip avatars={avatars} value={filters.avatar} />
               )}
               <Toolbar
-                categories={categories}
+                categoryTabs={categoryTabs}
                 featureCounts={result?.featureCounts ?? {}}
               />
-              <ActiveFilters categories={categories} avatar={avatar} />
+              <ActiveFilters
+                categoryName={category && localName(category, settings.ui)}
+                avatar={avatar}
+              />
             </VStack>
             <Divider />
             {outcome.state !== "ok" ? (

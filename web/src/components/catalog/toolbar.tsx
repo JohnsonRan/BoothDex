@@ -18,12 +18,7 @@ import {
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
-import {
-  activeFilterCount,
-  type Category,
-  type Filters,
-  localName,
-} from "@/lib/catalog";
+import { activeFilterCount, type Filters } from "@/lib/catalog";
 import type { MessageKey } from "@/lib/messages";
 import { useFilterUrl } from "./filter-url";
 
@@ -49,13 +44,14 @@ const SORTS = [
 ] as const satisfies readonly [Filters["sort"], Filters["dir"], MessageKey][];
 
 export function Toolbar({
-  categories,
+  categoryTabs,
   featureCounts,
 }: {
-  categories: Category[];
+  /** the items view's category tabs: slug and name in the interface language */
+  categoryTabs: [string, string][];
   featureCounts: Record<string, number>;
 }) {
-  const { t, ui } = useUi();
+  const { t } = useUi();
   const { filters, apply } = useFilterUrl();
   const [panelOpen, setPanelOpen] = useState(false);
   const avatars = filters.view === "avatars";
@@ -66,12 +62,7 @@ export function Toolbar({
         ["female", t("filter.female")],
         ["male", t("filter.male")],
       ]
-    : [
-        ["", t("filter.all")],
-        ...categories
-          .filter((c) => c.mode === "items")
-          .map((c): [string, string] => [c.slug, localName(c, ui)]),
-      ];
+    : [["", t("filter.all")], ...categoryTabs];
   const tab = avatars ? filters.gender : filters.sc;
   const pickTab = (v: string) =>
     apply(avatars ? { gender: v as Filters["gender"] } : { sc: v });

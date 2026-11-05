@@ -4,30 +4,21 @@
 import { HStack } from "@astryxdesign/core/Stack";
 import { Token } from "@astryxdesign/core/Token";
 import { useUi } from "@/components/providers";
-import {
-  type Avatar,
-  avatarName,
-  type Category,
-  FEATURES,
-  type Filters,
-  localName,
-} from "@/lib/catalog";
+import { type Avatar, avatarName, FEATURES, type Filters } from "@/lib/catalog";
 import type { MessageKey } from "@/lib/messages";
 import { useFilterUrl } from "./filter-url";
 
 export function ActiveFilters({
-  categories,
+  categoryName,
   avatar,
 }: {
-  categories: Category[];
+  /** the chosen category's name in the interface language, when it is known */
+  categoryName?: string;
   /** the selected avatar, when the strip has it */
   avatar?: Avatar;
 }) {
   const { t, ui } = useUi();
   const { filters: f, apply } = useFilterUrl();
-  const category = categories
-    .flatMap((c) => [c, ...c.children])
-    .find((c) => c.slug === f.sc);
   const price = f.free
     ? t("filter.free")
     : f.pmin || f.pmax
@@ -37,7 +28,7 @@ export function ActiveFilters({
     [f.q && `“${f.q}”`, { q: "" }],
     [f.author, { author: "" }],
     [f.avatar && (avatar ? avatarName(avatar, ui) : f.avatar), { avatar: "" }],
-    [f.sc && (category ? localName(category, ui) : f.sc), { sc: "" }],
+    [f.sc && (categoryName ?? f.sc), { sc: "" }],
     [
       f.adult === "include" ? `${t("filter.rating")}: ${t("filter.all")}` : "",
       { adult: "safe" },
