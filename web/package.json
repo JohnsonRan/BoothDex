@@ -9,6 +9,9 @@
     "start": "next start -p 3100",
     "lint": "biome check",
     "check:size": "node tools/size.mjs",
+    "check:layout": "node tools/loading-layout.cjs",
+    "check:motion": "node tools/motion.cjs",
+    "lab:slow-api": "node tools/slow-api.mjs",
     "format": "biome format --write"
   },
   "dependencies": {
