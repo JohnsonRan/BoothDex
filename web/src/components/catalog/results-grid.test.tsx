@@ -50,10 +50,13 @@ const render = (items: ItemResponse[], content = DEFAULT_SETTINGS.content) =>
     />,
   );
 
-test("the server HTML carries every cover, the first ones loading at once", () => {
-  const items = Array.from({ length: 20 }, (_, i) => ({ ...item, id: i + 1 }));
+test("the server HTML carries the first screen's covers, the first ones loading at once", () => {
+  const items = Array.from({ length: FIRST_TILES }, (_, i) => ({
+    ...item,
+    id: i + 1,
+  }));
   const html = render(items);
-  expect(html.match(/<img /g)).toHaveLength(20);
+  expect(html.match(/<img /g)).toHaveLength(FIRST_TILES);
   expect(html).toContain('src="/img/b/300x300_a2_g5/u/i/1/cover.jpg"');
   expect(html.match(/<img [^>]*fetchPriority="high"/gi)).toHaveLength(4);
   expect(html.match(/loading="eager"/g)).toHaveLength(12);
