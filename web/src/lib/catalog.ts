@@ -1,17 +1,8 @@
 // Types and helpers for the public catalogue. Filter state lives in the URL and uses the API's own
 // query format (VRCatalogue-compatible): list values are joined with a literal "+".
 
-import type { ItemResponse, SearchResponse } from "./api-types";
-
 // Item and search types come from the Rust API (generated, see api-types.ts).
-export type { Variation } from "./api-types";
-export type Item = ItemResponse;
-/** A result page; the recently-viewed list builds one locally, without the search-only fields. */
-export type SearchResult = Pick<
-  SearchResponse,
-  "count" | "page" | "totalPages" | "smartCounts" | "featureCounts" | "items"
-> &
-  Partial<Pick<SearchResponse, "semantic" | "trace" | "timing">>;
+import type { ItemResponse } from "./api-types";
 
 export type Avatar = {
   slug: string;
@@ -63,7 +54,7 @@ export type Size =
 
 /** Proxied, WebP-encoded image URL; delisted items fall back to our archived copies. */
 export function imgUrl(
-  it: Pick<Item, "booth_images" | "media">,
+  it: Pick<ItemResponse, "booth_images" | "media">,
   i = 0,
   size: Size = "300x300_a2_g5",
 ): string {
@@ -89,16 +80,12 @@ export function imageSrc(
     return u.replace("https://booth.pximg.net/", `/img/b/${size}/`);
   return u;
 }
-export const imageCount = (it: Pick<Item, "booth_images" | "media">) =>
+export const imageCount = (it: Pick<ItemResponse, "booth_images" | "media">) =>
   Math.max(it.booth_images?.length ?? 0, it.media?.length ?? 0);
 
-export const priceOf = (it: Pick<Item, "smart_price" | "price_jpy">) =>
+export const priceOf = (it: Pick<ItemResponse, "smart_price" | "price_jpy">) =>
   it.smart_price ?? it.price_jpy;
-export function priceText(it: Pick<Item, "smart_price" | "price_jpy">) {
-  const p = priceOf(it);
-  return p == null ? "—" : p === 0 ? "免费" : `¥${p.toLocaleString()}`;
-}
-export const isNew = (it: Pick<Item, "published_at">) =>
+export const isNew = (it: Pick<ItemResponse, "published_at">) =>
   !!it.published_at && Date.now() - Date.parse(it.published_at) < 7 * 864e5;
 /** Avatar name for the interface language; Chinese UI uses the Japanese name, as the community does. */
 export const avatarName = (a: Avatar, ui: string = "ja") =>
@@ -228,3 +215,30 @@ export function searchQuery(f: Filters, page: number, pageSize = 30) {
     "",
   );
 }
+
+/** What "clear" resets: every filter, while the view, query, shop, avatar and sort stay. */
+export const FILTER_RESET: Partial<Filters> = {
+  sc: "",
+  features: [],
+  adult: "safe",
+  tags: [],
+  extags: [],
+  free: false,
+  pmin: 0,
+  pmax: 0,
+  range: "",
+  gender: "",
+  asup: "supported",
+};
+
+/** Number of filters set, for the filter button's count. */
+export const activeFilterCount = (f: Filters) =>
+  (f.sc ? 1 : 0) +
+  f.features.length +
+  (f.adult !== "safe" ? 1 : 0) +
+  f.tags.length +
+  f.extags.length +
+  (f.free || f.pmin || f.pmax ? 1 : 0) +
+  (f.range ? 1 : 0) +
+  (f.view === "avatars" && f.gender ? 1 : 0) +
+  (f.view === "avatars" && f.asup !== "supported" ? 1 : 0);

@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import {
+  activeFilterCount,
   DEFAULT_FILTERS,
+  FILTER_RESET,
   filtersToQuery,
   imageSrc,
   imgUrl,
   parseFilters,
-  priceText,
+  priceOf,
   searchQuery,
 } from "./catalog";
 
@@ -102,9 +104,9 @@ test("image URLs go through the proxy, delisted items through the archive", () =
 });
 
 test("prices prefer the inferred price", () => {
-  expect(priceText({ smart_price: 0, price_jpy: 500 })).toBe("免费");
-  expect(priceText({ smart_price: null, price_jpy: 1200 })).toBe("¥1,200");
-  expect(priceText({ smart_price: null, price_jpy: null })).toBe("—");
+  expect(priceOf({ smart_price: 0, price_jpy: 500 })).toBe(0);
+  expect(priceOf({ smart_price: null, price_jpy: 1200 })).toBe(1200);
+  expect(priceOf({ smart_price: null, price_jpy: null })).toBeNull();
 });
 
 test("imageSrc avoids the closed VRCatalogue CDN", () => {
@@ -121,4 +123,16 @@ test("imageSrc avoids the closed VRCatalogue CDN", () => {
   const icon = "https://booth.pximg.net/c/48x48/users/1/icon_image/x.jpg";
   expect(imageSrc(icon)).toBe(icon);
   expect(imageSrc(null)).toBe("");
+});
+
+test("clearing filters keeps the view, query, shop, avatar and sort", () => {
+  const f = parseFilters(
+    "v=avatars&q=hat&authors=Shop&avatars=rusk&sc=hair&if=quest&tags=a&adult=include&free=1&range=7d&gender=male&sort=newest",
+  );
+  expect(activeFilterCount(f)).toBe(7);
+  const cleared = { ...f, ...FILTER_RESET };
+  expect(activeFilterCount(cleared)).toBe(0);
+  expect(filtersToQuery(cleared)).toBe(
+    "v=avatars&q=hat&avatars=rusk&authors=Shop&sort=newest",
+  );
 });

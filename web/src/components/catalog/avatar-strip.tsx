@@ -1,181 +1,106 @@
 "use client";
+// Avatar picker (Carousel Snap template block): a snapping row of selectable cards with prev/next buttons.
 
-import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AspectRatio } from "@astryxdesign/core/AspectRatio";
+import { Carousel, type CarouselHandle } from "@astryxdesign/core/Carousel";
+import { Icon } from "@astryxdesign/core/Icon";
+import { SelectableCard } from "@astryxdesign/core/SelectableCard";
+import { VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
+import { LayoutGrid } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { useUi } from "@/components/providers";
 import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
-import { useSettings } from "@/lib/settings";
-import { cn } from "@/lib/utils";
+import { useFilterUrl } from "./filter-url";
 
-/** Horizontal avatar picker: swipe on touch, arrows + mouse wheel on desktop, no visible scrollbar. */
+// structural width of one card; the cover keeps Booth's portrait thumbnails uncropped
+const CARD_WIDTH = 104;
+
 export function AvatarStrip({
   avatars,
   value,
-  onChange,
 }: {
   avatars: Avatar[];
   value: string;
-  onChange: (slug: string) => void;
 }) {
-  const { t, ui } = useSettings();
-  const ref = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState({ l: false, r: false });
+  const { t, ui } = useUi();
+  const { apply } = useFilterUrl();
+  const carousel = useRef<CarouselHandle>(null);
+  const pick = (slug: string) => apply({ avatar: slug });
 
-  const update = useCallback(() => {
-    const el = ref.current;
-    if (el)
-      setEdges({
-        l: el.scrollLeft > 4,
-        r: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
-      });
-  }, []);
-
+  // keep the chosen avatar in view, also when the page opens on one far down the list
+  const index = avatars.findIndex((a) => a.slug === value) + 1;
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    update();
-    const onWheel = (e: WheelEvent) => {
-      if (
-        Math.abs(e.deltaY) <= Math.abs(e.deltaX) ||
-        el.scrollWidth <= el.clientWidth
-      )
-        return;
-      e.preventDefault();
-      el.scrollLeft += e.deltaY;
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener("wheel", onWheel);
-      ro.disconnect();
-    };
-  }, [update]);
-
-  // keep the selected avatar in view (e.g. picked from the palette)
-  useEffect(() => {
-    const el = ref.current?.querySelector<HTMLElement>(
-      `[data-slug="${CSS.escape(value)}"]`,
-    );
-    if (el && ref.current) {
-      const s = ref.current;
-      if (
-        el.offsetLeft < s.scrollLeft ||
-        el.offsetLeft + el.offsetWidth > s.scrollLeft + s.clientWidth
-      )
-        s.scrollTo({ left: el.offsetLeft - 48, behavior: "smooth" });
-    }
-  }, [value]);
-
-  const page = (dir: 1 | -1) =>
-    ref.current?.scrollBy({
-      left: dir * ref.current.clientWidth * 0.8,
-      behavior: "smooth",
-    });
-  const mask =
-    edges.l && edges.r
-      ? "[mask-image:linear-gradient(90deg,transparent,#000_64px,#000_calc(100%-64px),transparent)]"
-      : edges.l
-        ? "[mask-image:linear-gradient(90deg,transparent,#000_64px)]"
-        : edges.r
-          ? "[mask-image:linear-gradient(90deg,#000_calc(100%-64px),transparent)]"
-          : "";
+    if (index > 0) carousel.current?.scrollTo(index);
+  }, [index]);
 
   return (
-    <div className="relative">
-      <div
-        ref={ref}
-        onScroll={update}
-        className={cn(
-          "flex snap-x gap-2.5 overflow-x-auto py-3 [scrollbar-width:none] sm:gap-3 [&::-webkit-scrollbar]:hidden",
-          mask,
-        )}
-      >
-        <Tile slug="" active={!value} label={t("strip.all")} onClick={onChange}>
-          <div className="grid size-full place-items-center bg-muted text-muted-foreground">
-            <Sparkles className="size-5" />
-          </div>
-        </Tile>
-        {avatars.map((a) => (
-          <Tile
-            key={a.slug}
-            slug={a.slug}
-            active={a.slug === value}
-            label={avatarName(a, ui)}
-            onClick={onChange}
-          >
-            {a.image_url && (
+    <Carousel
+      gap={2}
+      hasSnap
+      handleRef={carousel}
+      aria-label={t("strip.label")}
+    >
+      <Tile label={t("strip.all")} selected={!value} onSelect={() => pick("")}>
+        <AspectRatio ratio={3 / 4} fit="center">
+          <Icon icon={LayoutGrid} size="lg" color="secondary" />
+        </AspectRatio>
+      </Tile>
+      {avatars.map((a) => (
+        <Tile
+          key={a.slug}
+          label={avatarName(a, ui)}
+          selected={a.slug === value}
+          onSelect={() => pick(a.slug === value ? "" : a.slug)}
+        >
+          <AspectRatio ratio={3 / 4} fit="cover">
+            {a.image_url ? (
               <img
                 src={imageSrc(a.image_url, "300x300_a2_g5")}
                 alt=""
                 loading="lazy"
-                className="size-full object-cover"
+                decoding="async"
               />
+            ) : (
+              <Icon icon={LayoutGrid} size="lg" color="secondary" />
             )}
-          </Tile>
-        ))}
-      </div>
-      {(["l", "r"] as const).map((side) => (
-        <button
-          key={side}
-          type="button"
-          aria-label={side === "l" ? t("strip.left") : t("strip.right")}
-          onClick={() => page(side === "l" ? -1 : 1)}
-          className={cn(
-            "absolute top-1/2 z-10 hidden size-9 -translate-y-[60%] place-items-center rounded-full border bg-popover/90 shadow-lg backdrop-blur transition-opacity hover:bg-accent [@media(hover:hover)]:grid",
-            side === "l" ? "left-0" : "right-0",
-            edges[side] ? "opacity-100" : "pointer-events-none opacity-0",
-          )}
-        >
-          {side === "l" ? (
-            <ChevronLeft className="size-5" />
-          ) : (
-            <ChevronRight className="size-5" />
-          )}
-        </button>
+          </AspectRatio>
+        </Tile>
       ))}
-    </div>
+    </Carousel>
   );
 }
 
 function Tile({
-  slug,
-  active,
   label,
-  onClick,
+  selected,
+  onSelect,
   children,
 }: {
-  slug: string;
-  active: boolean;
   label: string;
-  onClick: (s: string) => void;
+  selected: boolean;
+  onSelect: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      data-slug={slug}
-      onClick={() => onClick(slug)}
-      aria-pressed={active}
-      className="w-[76px] shrink-0 snap-start text-center sm:w-[104px]"
+    <SelectableCard
+      label={label}
+      isSelected={selected}
+      onChange={onSelect}
+      padding={1}
+      width={CARD_WIDTH}
     >
-      <div
-        className={cn(
-          "mb-1.5 h-24 overflow-hidden rounded-xl border-2 transition sm:h-[132px] sm:rounded-2xl",
-          active
-            ? "border-primary shadow-[0_8px_24px_-6px_var(--primary)]"
-            : "border-transparent brightness-[.82] saturate-[.85] [@media(hover:hover)]:hover:brightness-100",
-        )}
-      >
+      <VStack gap={1}>
         {children}
-      </div>
-      <span
-        className={cn(
-          "block min-h-[1.5em] truncate text-[11px] [content-visibility:auto] sm:text-xs",
-          active ? "font-semibold text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {label}
-      </span>
-    </button>
+        <Text
+          type="supporting"
+          maxLines={1}
+          justify="center"
+          hasTruncateTooltip={false}
+        >
+          {label}
+        </Text>
+      </VStack>
+    </SelectableCard>
   );
 }
