@@ -6,8 +6,9 @@ import { gzipSync } from "node:zlib";
 
 const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // Bytes after gzip -9, from the measured build plus ~5 % (the HTML ~10 %: it carries live titles).
-// Measured 2026-11-06 (HTML 49,937, JS 362,176, CSS 42,979; master: 7,981 / 287,456 / 18,400).
-const BUDGET = { html: 55_000, js: 380_000, css: 45_000 };
+// Measured 2026-11-06 (HTML 49,937, JS 362,176, CSS 42,979; master: 7,981 / 287,456 / 18,400). With the item
+// dialog's host and `next/dynamic` on the page (the dialog's code loads on the first item): JS 383,307.
+const BUDGET = { html: 55_000, js: 390_000, css: 45_000 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
