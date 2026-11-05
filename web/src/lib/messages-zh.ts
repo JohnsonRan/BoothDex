@@ -199,6 +199,7 @@ export const zh = {
   "settings.light": "浅色",
   "settings.fontCredit": "字体：MiSans（小米）",
   "settings.source": "源代码",
+  "settings.copyright": "© 2026 BoothDex 贡献者 · AGPL-3.0-or-later",
   "common.close": "关闭",
   "common.delete": "删除",
   "common.cancel": "取消",

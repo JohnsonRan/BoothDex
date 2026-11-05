@@ -204,6 +204,8 @@ export const ja: Dict = {
   "settings.light": "ライト",
   "settings.fontCredit": "フォント：MiSans（Xiaomi）",
   "settings.source": "ソースコード",
+  "settings.copyright":
+    "© 2026 BoothDex コントリビューター · AGPL-3.0-or-later",
   "common.close": "閉じる",
   "common.delete": "削除",
   "common.cancel": "キャンセル",

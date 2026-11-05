@@ -203,6 +203,7 @@ export const ko: Dict = {
   "settings.light": "라이트",
   "settings.fontCredit": "글꼴: MiSans (Xiaomi)",
   "settings.source": "소스 코드",
+  "settings.copyright": "© 2026 BoothDex 기여자 · AGPL-3.0-or-later",
   "common.close": "닫기",
   "common.delete": "삭제",
   "common.cancel": "취소",
