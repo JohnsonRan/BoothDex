@@ -54,8 +54,11 @@ export const HeaderSilhouette = ({ shown }: { shown: boolean }) => (
 export function DetailSilhouette({
   shown,
   columns,
+  isWide,
 }: {
   shown: boolean;
+  /** the info column's action rows exist from lg up (item-info.tsx) */
+  isWide: boolean;
   columns: { minWidth: number; repeat: "fit" };
 }) {
   const { t } = useUi();
@@ -93,10 +96,12 @@ export function DetailSilhouette({
           <Skeleton width="4rem" height="var(--spacing-5)" />
           <Skeleton width="4rem" height="var(--spacing-5)" />
         </HStack>
-        <VStack gap={2}>
-          <Control size="lg" width="100%" />
-          <Control size="lg" width="100%" />
-        </VStack>
+        {isWide && (
+          <VStack gap={2}>
+            <Control size="lg" width="100%" />
+            <Control size="lg" width="100%" />
+          </VStack>
+        )}
       </VStack>
     </Grid>
   );

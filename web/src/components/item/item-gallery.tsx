@@ -10,30 +10,17 @@
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Carousel, type CarouselHandle } from "@astryxdesign/core/Carousel";
 import { ClickableCard } from "@astryxdesign/core/ClickableCard";
-import {
-  DropdownMenu,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-} from "@astryxdesign/core/DropdownMenu";
 import { Grid } from "@astryxdesign/core/Grid";
-import { Icon } from "@astryxdesign/core/Icon";
-import { IconButton } from "@astryxdesign/core/IconButton";
 import { Lightbox } from "@astryxdesign/core/Lightbox";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { useToast } from "@astryxdesign/core/Toast";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
 import { imageCount, imgUrl } from "@/lib/catalog";
-import {
-  downloadFormats,
-  downloadName,
-  downloadUrl,
-  type Format,
-  STICKY,
-} from "./item-data";
+import { STICKY } from "./item-data";
+import { Download } from "./item-download";
 
 // template heroImage, but contained: a product photo is never cropped (the card's muted surface shows around a
 // non-square one)
@@ -201,55 +188,5 @@ export function ItemGallery({
         hasZoom
       />
     </VStack>
-  );
-}
-
-/** The current image at full size, re-encoded by the image proxy (master's DownloadMenu). */
-function Download({ item, index }: { item: ItemResponse; index: number }) {
-  const { t } = useUi();
-  const toast = useToast();
-  const orig = imgUrl(item, index, "orig");
-  if (!orig) return null;
-  const save = async (format: Format) => {
-    try {
-      const res = await fetch(downloadUrl(orig, format));
-      if (!res.ok) throw new Error(String(res.status));
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(await res.blob());
-      a.download = downloadName(item.id, index, format);
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
-    } catch {
-      toast({
-        body: t("list.loadFailed"),
-        type: "error",
-        uniqueID: "download",
-      });
-    }
-  };
-  return (
-    <DropdownMenu
-      placement="below"
-      alignment="start"
-      renderTrigger={(props) => (
-        <IconButton
-          {...props}
-          label={t("detail.download")}
-          tooltip={t("detail.download")}
-          variant="ghost"
-          icon={<Icon icon="site:download" size="sm" />}
-        />
-      )}
-    >
-      <DropdownMenuGroup title={t("detail.download")}>
-        {downloadFormats(orig).map((f) => (
-          <DropdownMenuItem
-            key={f}
-            label={t("detail.downloadAs", { format: f.toUpperCase() })}
-            onClick={() => save(f)}
-          />
-        ))}
-      </DropdownMenuGroup>
-    </DropdownMenu>
   );
 }

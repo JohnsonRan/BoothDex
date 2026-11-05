@@ -5,36 +5,24 @@
 // ListBasicList), fitting avatars (Tokens, first 12 then show all), Booth tags (Tokens) and the info list
 // (block MetadataListBasicMetadata).
 
-import { Avatar } from "@astryxdesign/core/Avatar";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Collapsible, CollapsibleGroup } from "@astryxdesign/core/Collapsible";
 import { Divider } from "@astryxdesign/core/Divider";
-import { List, ListItem } from "@astryxdesign/core/List";
 import {
   MetadataList,
   MetadataListItem,
 } from "@astryxdesign/core/MetadataList";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import { Token } from "@astryxdesign/core/Token";
 import { Fragment, useLayoutEffect, useRef, useState } from "react";
-import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
-import { avatarName, imageSrc } from "@/lib/catalog";
 import { type ContentLang, itemText, LOCALES } from "@/lib/settings-core";
-import { commonPrice, variationName, variationState } from "./item-data";
-import { useItemOpener } from "./item-host";
+import { commonPrice } from "./item-data";
+import { FitsAvatars, Tags, Variations } from "./item-lists";
 
-// master: first 12 avatars, then "Show all n"
-const AVATARS_SHOWN = 12;
-// master: at most 40 Booth tags
-const TAGS_SHOWN = 40;
 // the description's lines before "Show more" (master: 20rem at its 28 px leading)
 const BIO_LINES = 12;
-// long variation lists scroll in place (master: max-h-72, 18rem)
-const VARIATIONS_HEIGHT = "18rem";
 
 type Money = (jpy: number | null) => string;
 
@@ -155,122 +143,5 @@ function Bio({ text }: { text: string }) {
         />
       )}
     </VStack>
-  );
-}
-
-function Variations({
-  item,
-  lang,
-  money,
-  shared,
-}: {
-  item: ItemResponse;
-  lang: ContentLang;
-  money: Money;
-  shared: number | null;
-}) {
-  const { t } = useUi();
-  return (
-    <VStack
-      // a scrolling region is reachable by keyboard (master: the list is focusable)
-      tabIndex={0}
-      aria-label={t("detail.variations", { n: item.variations.length })}
-      style={{ maxBlockSize: VARIATIONS_HEIGHT, overflowY: "auto" }}
-    >
-      <List>
-        {item.variations.map((v) => {
-          const state = variationState(v.status);
-          return (
-            <ListItem
-              key={v.id}
-              label={
-                variationName(item, v.name, lang) ||
-                t("detail.defaultVariation")
-              }
-              isDisabled={state !== "available"}
-              endContent={
-                <HStack gap={2} vAlign="center">
-                  {state !== "available" && (
-                    <Badge
-                      label={
-                        state === "soldOut"
-                          ? t("detail.soldOut")
-                          : t("detail.unavailable")
-                      }
-                    />
-                  )}
-                  {shared == null && (
-                    <Text type="body" weight="bold" hasTabularNumbers>
-                      {money(v.price_jpy ?? 0)}
-                    </Text>
-                  )}
-                </HStack>
-              }
-            />
-          );
-        })}
-      </List>
-    </VStack>
-  );
-}
-
-/** Avatar chips: picking one filters by it and closes the dialog; the current one is green. */
-function FitsAvatars({ item }: { item: ItemResponse }) {
-  const { t, ui } = useUi();
-  const { filters, apply } = useFilterUrl();
-  const { close } = useItemOpener();
-  const [all, setAll] = useState(false);
-  const total = item.linked_avatars.length;
-  const shown = all
-    ? item.linked_avatars
-    : item.linked_avatars.slice(0, AVATARS_SHOWN);
-  return (
-    <HStack gap={1} wrap="wrap" vAlign="center">
-      {shown.map((a) => (
-        <Token
-          key={a.slug}
-          label={avatarName(a, ui)}
-          color={a.slug === filters.avatar ? "green" : "default"}
-          icon={
-            a.image_url ? (
-              <Avatar
-                src={imageSrc(a.image_url)}
-                name={avatarName(a, ui)}
-                size="xsm"
-                tooltip={false}
-              />
-            ) : undefined
-          }
-          onClick={() => close(() => apply({ avatar: a.slug }))}
-        />
-      ))}
-      {total > AVATARS_SHOWN && (
-        <Button
-          label={all ? t("detail.less") : t("detail.allAvatars", { n: total })}
-          variant="ghost"
-          size="sm"
-          aria-expanded={all}
-          onClick={() => setAll((o) => !o)}
-        />
-      )}
-    </HStack>
-  );
-}
-
-/** Booth's own tags; one searches the catalogue for it. */
-function Tags({ tags }: { tags: string[] }) {
-  const { apply } = useFilterUrl();
-  const { close } = useItemOpener();
-  return (
-    <HStack gap={1} wrap="wrap">
-      {tags.slice(0, TAGS_SHOWN).map((tag) => (
-        <Token
-          key={tag}
-          label={tag}
-          size="sm"
-          onClick={() => close(() => apply({ q: tag }))}
-        />
-      ))}
-    </HStack>
   );
 }

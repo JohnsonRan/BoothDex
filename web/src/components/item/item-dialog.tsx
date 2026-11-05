@@ -25,10 +25,11 @@ import { imageSrc } from "@/lib/catalog";
 import type { Rates } from "@/lib/settings-core";
 import { useDelayed } from "@/lib/use-delayed";
 import { recordLocalView } from "@/lib/viewed";
+import { PhoneBar } from "./item-actions";
 import { shopHost } from "./item-data";
 import { ItemGallery } from "./item-gallery";
 import { useItemOpener } from "./item-host";
-import { ItemInfo, PhoneBar } from "./item-info";
+import { ItemInfo } from "./item-info";
 import {
   DetailSilhouette,
   HeaderSilhouette,
@@ -167,7 +168,11 @@ export default function ItemDialog({
                 <MoreFrom item={item} rates={known} isWide={!phone} />
               </VStack>
             ) : (
-              <DetailSilhouette shown={shown} columns={COLUMNS} />
+              <DetailSilhouette
+                shown={shown}
+                columns={COLUMNS}
+                isWide={!phone}
+              />
             )}
           </LayoutContent>
         }
