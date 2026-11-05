@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start -p 3100",
     "lint": "biome check",
+    "check:size": "node tools/size.mjs",
     "format": "biome format --write"
   },
   "dependencies": {
