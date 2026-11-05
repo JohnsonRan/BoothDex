@@ -12,6 +12,7 @@ import {
   CountSilhouette,
   ResultsSilhouette,
 } from "@/components/catalog/loading";
+import { FailedResults } from "@/components/catalog/result-states";
 import { ResultsGrid } from "@/components/catalog/results-grid";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
@@ -22,9 +23,9 @@ import "@/lib/icons-on-demand";
 
 const PAGE = 100;
 
-// one request per list, shared by the count and the grid
+// one request per list while it is under way, shared by the count and the grid; a later read asks again
 const requests = new Map<string, Promise<ItemResponse[]>>();
-function itemsOf(ids: number[]): Promise<ItemResponse[]> {
+export function itemsOf(ids: number[]): Promise<ItemResponse[]> {
   const key = ids.join(",");
   let p = requests.get(key);
   if (!p) {
@@ -34,30 +35,49 @@ function itemsOf(ids: number[]): Promise<ItemResponse[]> {
         )
       : Promise.resolve([]);
     requests.set(key, p);
-    p.catch(() => requests.delete(key));
+    const done = () => requests.delete(key);
+    p.then(done, done);
   }
   return p;
 }
 
-/** The opened items still in the list, in its order; null while either is loading. */
-function useRecentItems(): ItemResponse[] | null {
+// the count and the grid read again together when the visitor retries
+const retries = new Set<() => void>();
+const retry = () => {
+  for (const again of retries) again();
+};
+
+/** The opened items still in the list, in its order; null while either is loading, "failed" if the read failed. */
+function useRecentItems(): ItemResponse[] | "failed" | null {
   const { viewed } = useAccount();
-  const [found, setFound] = useState<ItemResponse[] | null>(null);
+  const [found, setFound] = useState<ItemResponse[] | "failed" | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const again = () => {
+      setFound(null);
+      setAttempt((n) => n + 1);
+    };
+    retries.add(again);
+    return () => {
+      retries.delete(again);
+    };
+  }, []);
   const ids = viewed?.slice(0, PAGE);
   const key = ids?.join(",");
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the key stands for the ids
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the key stands for the ids; attempt reads them again
   useEffect(() => {
     if (!ids) return;
     let live = true;
     itemsOf(ids).then(
       (items) => live && setFound(items),
-      () => live && setFound([]),
+      () => live && setFound("failed"),
     );
     return () => {
       live = false;
     };
-  }, [key]);
+  }, [key, attempt]);
   if (!viewed || !found) return null;
+  if (found === "failed") return found;
   // a sign-out or a cleared history hides the items at once, before the next answer
   const order = new Map(viewed.map((id, i) => [id, i]));
   return found
@@ -69,6 +89,7 @@ export function RecentCount() {
   const { t, ui } = useUi();
   const items = useRecentItems();
   if (!items) return <CountSilhouette />;
+  if (items === "failed") return null;
   return (
     <Text type="supporting" hasTabularNumbers>
       {t("title.count", { n: items.length.toLocaleString(LOCALES[ui]) })}
@@ -87,6 +108,8 @@ export function RecentResults({
   const items = useRecentItems();
   const resolved = use(rates);
   if (!items) return <ResultsSilhouette label={t("list.loading")} />;
+  if (items === "failed")
+    return <FailedResults starting={false} onRetry={retry} />;
   if (!items.length)
     return (
       <EmptyState

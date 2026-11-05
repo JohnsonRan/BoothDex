@@ -37,8 +37,15 @@ export function EmptyResults() {
   );
 }
 
-/** The API is starting (waits and reloads by itself) or failed (retry). */
-export function FailedResults({ starting }: { starting: boolean }) {
+/** The API is starting (waits and reloads by itself) or failed (retry: the page again, or `onRetry`). */
+export function FailedResults({
+  starting,
+  onRetry,
+}: {
+  starting: boolean;
+  /** for results read in the browser (the recent view) */
+  onRetry?: () => void;
+}) {
   const { t } = useUi();
   const router = useRouter();
   useApiRecovery(starting, useAccount().reload);
@@ -56,7 +63,7 @@ export function FailedResults({ starting }: { starting: boolean }) {
         <Button
           label={t("list.retry")}
           variant="primary"
-          onClick={() => router.refresh()}
+          onClick={onRetry ?? (() => router.refresh())}
         />
       }
     />
