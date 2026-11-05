@@ -12,4 +12,5 @@ not. Do not edit them: copy a newer version over them when Astryx is upgraded.
 | `blocks/CommandPaletteAsyncSearch.tsx` | `src/components/frame/search-palette.tsx` |
 | `pages/library/page.tsx` (header, search, tabs, sort) | `src/components/catalog/home-screen.tsx`, `search-box.tsx`, `toolbar.tsx` |
 | `pages/product-gallery/page.tsx` (ProductCard, grid) | `src/components/catalog/item-tile.tsx`, `results-grid.tsx` |
+| `pages/login-card/page.tsx` (sign-in card, providers dropped) | `src/components/frame/sign-in.tsx` |
 | `blocks/useToastHookUsage.tsx` | `src/components/catalog/fav-button.tsx` |
