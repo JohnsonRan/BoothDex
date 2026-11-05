@@ -9,7 +9,7 @@
 // attached, and `__reactProps…` on each element it has hydrated.
 
 /** Controls whose early click is replayed; links work without React and are left alone. */
-export const EARLY_CONTROLS =
+const EARLY_CONTROLS =
   'button,[role="button"],[role="checkbox"],[role="radio"],[role="switch"],[role="tab"]';
 
 export const EARLY_CLICKS = `;(function(){var d=document,c,t,last=0,until=0;
