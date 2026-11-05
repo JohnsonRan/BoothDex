@@ -50,7 +50,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 |---|---|---|---|
 | Page frame | every route | page `shell-top-nav` (AppShell + TopNav, heading with logo) | phase 1 |
 | Home grid | `/` | page `library` (Card Grid): header with title, search, filter tabs + sort row, card grid, empty state | phase 1 |
-| Result tile | home grid | page `product-gallery`, `ProductCard` (square media, title, supporting line, price); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`). The server renders the first 24 tiles; the rest of the page's 100 are drawn in the browser near the viewport, a `Skeleton` cell holding their place | phase 1 |
+| Result tile | home grid | page `product-gallery`, `ProductCard` (square media, title, supporting line, price); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`). The server renders the first 24 tiles; the rest of the page's 100 are drawn in the browser near the viewport, a tile silhouette holding their place | phase 1 |
 | Search | home, top of content | page `library` search `TextInput` (block `TextInputSearch`) | phase 1 |
 | Category / gender tabs, sort | home control row | page `library` (`ToggleButtonGroup` + `OverflowList`, `DropdownMenu`) | phase 1 |
 | Filter panel | "Filters" button | block `PopoverFilterPanel` (`presentation="adaptive"`: popover on desktop, bottom sheet on phones) | phase 1 |
@@ -58,6 +58,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar); the first 14 cards until the strip is touched, focused or scrolled | phase 1 |
 | Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
+| Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); refresh: indeterminate `ProgressBar` under the header, failed refresh: inline `Banner` with retry above the kept results | phase 1 |
 | Item detail | `?item=<id>` | page `product-detail` inside a `Dialog` | planned |
 | Command palette | Ctrl+K, search button | block `CommandPaletteAsyncSearch` | planned |
 | Account menu, sign-in | TopNav end | `DropdownMenu` in TopNav `endContent`; sign-in page `login-card` in a `Dialog` | planned |
@@ -106,9 +107,24 @@ The rest are prop values, not style overrides:
   content mounted (visibility is CSS), so every first-screen tile would download its second image, and it is a
   client component per tile (the TBT cost above). Listed for
   the owner.
-- Results are not dimmed while a navigation is pending: no Astryx component exposes a pending state for a
-  region (Grid, Layout, Card, Section have none); the result count turns into a `Spinner` instead. Listed for
-  the owner.
+- Results are not dimmed while a navigation is pending (no Astryx component exposes a pending state for a
+  region). Owner ruling 2026-11-06: an indeterminate `ProgressBar` under the header instead, as in doona's
+  `apps/lite`; the current results and the count stay until the next ones arrive.
+
+Loading and motion (phase 1d, ported from doona `apps/lite` UI-RULES §2-§3), the only `style` props, all
+structural or token-backed:
+
+- Silhouettes (`catalog/silhouette.tsx`, `catalog/loading.tsx`): each text line is a box of
+  `calc(var(--text-<type>-leading) * var(--text-<type>-size))` with a `Skeleton` of the font size inside; the
+  badge row is `var(--spacing-5)` (Badge's height). The real tile keeps the same boxes: its title has
+  `min-block-size: 2lh` (always two lines, as the clamp allows at most two) and its badge row stays, one badge
+  tall, when the item has no badges. `tools/loading-layout.cjs` checks every box within 2 px.
+- The refresh `ProgressBar` sits in a zero-height `VStack` (`position: relative`), so showing it moves nothing.
+- The entrance observer (`catalog/arrival.tsx`) is a `display: contents` `VStack`.
+- Toolbar: the tabs' `StackItem` has `min-width: 0` and the Filters and sort buttons are `StackItem
+  size="static"`, so measuring the tabs' overflow on hydration no longer moves the buttons.
+- Motion values live in `lib/motion.ts` (Astryx `--ease-standard`). Only content that replaces a silhouette the
+  visitor saw enters; the server-rendered first screen (the LCP cover and the title) is never animated.
 
 ## Remaining Tailwind or shadcn files
 
