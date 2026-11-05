@@ -4,15 +4,18 @@
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
+import { Center } from "@astryxdesign/core/Center";
 import { DropdownMenu } from "@astryxdesign/core/DropdownMenu";
 import { Icon } from "@astryxdesign/core/Icon";
 import { OverflowList } from "@astryxdesign/core/OverflowList";
 import { Popover } from "@astryxdesign/core/Popover";
+import { Spinner } from "@astryxdesign/core/Spinner";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import {
   ToggleButton,
   ToggleButtonGroup,
 } from "@astryxdesign/core/ToggleButton";
+import dynamic from "next/dynamic";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
 import {
@@ -22,8 +25,20 @@ import {
   localName,
 } from "@/lib/catalog";
 import type { MessageKey } from "@/lib/messages";
-import { FilterPanel } from "./filter-panel";
 import { useFilterUrl } from "./filter-url";
+
+// The panel's inputs (segmented control, checkboxes, tag search) load on first use, not with the page.
+const FilterPanel = dynamic(
+  () => import("./filter-panel").then((m) => m.FilterPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <Center>
+        <Spinner />
+      </Center>
+    ),
+  },
+);
 
 const SORTS = [
   ["trending", "desc", "sort.trending"],
