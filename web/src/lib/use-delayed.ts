@@ -5,8 +5,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-export const SHOW_AFTER = 150;
-export const HOLD_FOR = 300;
+const SHOW_AFTER = 150;
+const HOLD_FOR = 300;
 
 /** Whether the indicator for `waiting` is visible now. */
 export function useDelayed(waiting: boolean): boolean {
