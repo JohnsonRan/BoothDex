@@ -59,7 +59,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
 | Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); refresh: indeterminate `ProgressBar` under the header, failed refresh: inline `Banner` with retry above the kept results | phase 1 |
-| Item detail | `?item=<id>` | page `product-detail` inside a `Dialog` | planned |
+| Item detail | `?item=<id>`, tile click, palette item | page `product-detail` inside a `Dialog` (blocks `DialogAdaptivePresentation`, `DialogFullscreenDialog`, `DialogWithSubtitle`): gallery (block `CarouselSnap` hero, `SelectableCard` thumbnails, block `LightboxGallery` zoom), info column (SegmentedControl language tabs, display-2 title, rating row as likes, price row, `Badge` marks, `Banner` avatar fit, two lg actions, `CollapsibleGroup` sections with blocks `ListBasicList` and `MetadataListBasicMetadata`, `Token` chips), "More from" `Carousel` strip; full screen with a `LayoutFooter` bar below lg | phase 2 |
 | Command palette | Ctrl/Cmd+K, top-bar magnifier | page `shell-nav` wiring + blocks `CommandPaletteAsyncSearch`, `CommandPaletteRichItems` | checkpoint 1 |
 | Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms) | checkpoint 1 |
 | Account menu | TopNav end, signed in | `DropdownMenu` (now: name + Sign out; full menu planned) | partial |
@@ -144,14 +144,42 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   icon was not understood); rows show symbol, code and the localised name.
 - Palette: Astryx renders it as a centred dialog on phones too (master: full screen with a back arrow); Back,
   Esc and the backdrop close it. Removing a single recent search is not offered: palette rows may not contain
-  buttons (CommandPalette rule); "Clear recent searches" stays. Picking an item opens it on Booth until the item
-  dialog exists.
+  buttons (CommandPalette rule); "Clear recent searches" stays. Picking an item opens the item dialog.
 - Sign-in: the login card's centring frame and Card are dropped inside the Dialog (as the reference board
   notes); no provider buttons or divider (no third-party sign-in). Tabs (TabList) switch sign-in and register.
 - Tile: secondary line is the shop (Avatar `xsm` + name) instead of a two-line description; the price row ends
   with the favourite button and is `--size-element-sm` tall in tile and silhouette alike.
 - Avatar strip: `SelectableCard` is documented for multi-select; the strip is single-select (one avatar or
   all). Kept because it is the component with a selected state for media cards; ClickableCard has none.
+
+## Deviations in phase 2 (item detail)
+
+- Container: the template is a page; here it is a `Dialog` 1200 px wide (the template's `contentWidth`) and 92dvh
+  tall (master), the fullscreen variant below 1024 px (master's lg). On phones the actions move to a
+  `LayoutFooter` bar (price, favourite, Buy on Booth), as master's sticky bar.
+- Header: `DialogHeader` names the shop (avatar as start content, host as subtitle, "All items from shop" as end
+  content); the dialog's accessible name is the item title. Master had the shop block at the top of the info
+  column.
+- Hero: a snapping `Carousel` of square `AspectRatio` slides instead of one image, so phones swipe and desktops
+  get the Carousel's arrow buttons; each slide is a muted `ClickableCard` opening the Lightbox, the image
+  `contain`ed (a product photo is not cropped; the template's hero is `cover`). Download (`DropdownMenu`) and the
+  counter sit in a row under it. Thumbnails, arrow buttons and sticky columns only from lg (master hid
+  thumbnails on phones; a single column cannot stick).
+- Sticky: the template's `stickyInfo` is put on both columns, so whichever is shorter stays in view.
+- Description: inside the `CollapsibleGroup` (first section, open) instead of the template's large text above
+  the options: Booth descriptions run to hundreds of lines and would push the actions off screen. It is clamped
+  to 12 lines with Show more / Show less.
+- Options: the template's glaze/finish `SegmentedControl`s become the item-text language tabs (Original and the
+  translated languages); quantity and Add to Cart have no counterpart. Rating row: likes with the favourite
+  glyph instead of stars.
+- "More from {shop}": a `Carousel` of the avatar strip's card pattern with `ClickableCard` (it opens an item; no
+  selection), under the two columns.
+- Tiles: the root carries `data-item` and the title is a plain `<a href="?item=">` in server markup (keyboard
+  focus, new tab on a modified click); one document listener in `item/item-host.tsx` opens the dialog, as
+  `fav-toast.tsx` answers the favourite buttons. Astryx `Link` and `ClickableCard` are client components, which
+  the server tiles avoid (TBT).
+- `?item=` uses the browser history API directly (it integrates with the Next router), so opening an item does
+  not render the page again on the server.
 
 ## Remaining Tailwind or shadcn files
 

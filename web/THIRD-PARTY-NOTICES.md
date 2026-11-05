@@ -19,6 +19,11 @@ The site's screens are built from Astryx page templates and template blocks (`@a
 | `src/components/catalog/avatar-strip.tsx`                     | block `CarouselSnap`                                          |
 | `src/components/catalog/active-filters.tsx`, `tag-picker.tsx` | block `TokenRemovable`                                        |
 | `src/components/catalog/result-states.tsx`                    | block `EmptyStateActions`                                     |
+| `src/components/item/*`                                       | page `product-detail` (Product Detail)                        |
+| `src/components/item/item-dialog.tsx`                         | blocks `DialogAdaptivePresentation`, `DialogFullscreenDialog`, `DialogWithSubtitle` |
+| `src/components/item/item-gallery.tsx`                        | blocks `CarouselSnap`, `LightboxGallery`                      |
+| `src/components/item/item-sections.tsx`                       | blocks `ListBasicList`, `MetadataListBasicMetadata`           |
+| `src/components/item/more-from.tsx`                           | block `CarouselSnap`                                          |
 
 Astryx is distributed under the MIT License:
 
