@@ -129,6 +129,9 @@ export function ItemTile({
           accessibilityLevel={2}
           maxLines={2}
           hasTruncateTooltip={false}
+          // MiSans' slices are static regular-weight fonts (no wght axis), so CJK cannot follow a bold heading;
+          // one weight keeps Latin and CJK in a title alike
+          weight="normal"
           // always two lines tall, like its loading silhouette (silhouette.tsx), so tiles never shift
           style={{ minBlockSize: "2lh" }}
         >

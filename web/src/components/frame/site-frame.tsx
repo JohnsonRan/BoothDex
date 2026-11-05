@@ -41,8 +41,8 @@ export function SiteFrame({
       topNav={
         <TopNav
           label={t("nav.main")}
-          // one frame inset (TEMPLATE-MAP rule 5): the bar's own 8 px plus this put the logo and the last
-          // (borderless) action's label on the content's 24 px edges
+          // one frame inset (TEMPLATE-MAP rule 5): the bar's own 8 px plus this put the logo on the content's
+          // 24 px edge and the last (borderless) action's label within its padding of the right edge
           style={{ paddingInline: "var(--spacing-4)" }}
           heading={
             <TopNavHeading

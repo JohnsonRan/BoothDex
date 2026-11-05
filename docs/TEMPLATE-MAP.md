@@ -25,8 +25,11 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
    widths (grid column floor, card width).
 5. One page frame for every route: `SiteFrame` (AppShell + TopNav). Each page renders its own `Layout` inside
    it with `padding={6}`, so titles and content share one left edge at every width.
-6. Icons: the theme's semantic names (`search`, `funnel`, `error`, ...) first, otherwise lucide-react (the icon
-   set the neutral theme itself uses). No hand-drawn glyphs.
+6. Icons: all lucide (owner: 「全 lucide」), always through Astryx's `Icon`. The theme's semantic names
+   (`search`, `funnel`, `error`, ...) first; the neutral registry maps all 29 of them to lucide, so components'
+   internal glyphs (chevrons, close, check) are lucide too and none falls back to core's heroicons. Glyphs with
+   no semantic name are registered once under `site:` (`lib/icons.tsx`, table below). No hand-drawn glyphs
+   (the logo is the brand mark, not an icon).
 7. Appearance: System (default), Light, Dark from the settings cookie; a head script sets `data-theme` and
    `lang` before first paint, and the root `Theme` gets the same mode from the server.
 8. This file lists every surface before it is built.
@@ -55,10 +58,10 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Category / gender tabs, sort | home control row | page `library` (`ToggleButtonGroup` + `OverflowList`, `DropdownMenu`) | phase 1 |
 | Filter panel | "Filters" button | block `PopoverFilterPanel` (`presentation="adaptive"`: popover on desktop, bottom sheet on phones) | phase 1 |
 | Active filters | under the control row | block `TokenRemovable` | phase 1 |
-| Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar, media only as the product-gallery card's media slot, name as caption below); the first 14 cards until the strip is touched, focused or scrolled | phase 1 |
+| Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar exactly as page `product-detail`'s image thumbnails, lines 117-150: square `AspectRatio` > `SelectableCard variant="transparent" padding={0}` filling it > image filling and covering; name as caption below); the first 14 cards until the strip is touched, focused or scrolled | phase 1 |
 | Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
-| Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); refresh: indeterminate `ProgressBar` under the header, failed refresh: inline `Banner` with retry above the kept results | phase 1 |
+| Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); refresh: nothing for 150 ms, then a `Spinner size="sm"` beside the count held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
 | Item detail | `?item=<id>` | page `product-detail` inside a `Dialog` | planned |
 | Command palette | Ctrl/Cmd+K, top-bar magnifier | page `shell-nav` wiring + blocks `CommandPaletteAsyncSearch`, `CommandPaletteRichItems` | checkpoint 1 |
 | Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms) | checkpoint 1 |
@@ -111,7 +114,8 @@ The rest are prop values, not style overrides:
   the owner.
 - Results are not dimmed while a navigation is pending (no Astryx component exposes a pending state for a
   region). Owner ruling 2026-11-06: an indeterminate `ProgressBar` under the header instead, as in doona's
-  `apps/lite`; the current results and the count stay until the next ones arrive.
+  `apps/lite`; replaced in checkpoint 1 (owner: the bar on every change was ugly) by the 150/300 ms rule and a
+  small `Spinner` beside the count. The current results and the count stay until the next ones arrive.
 
 Loading and motion (phase 1d, ported from doona `apps/lite` UI-RULES §2-§3), the only `style` props, all
 structural or token-backed:
@@ -121,7 +125,9 @@ structural or token-backed:
   badge row is `var(--spacing-5)` (Badge's height). The real tile keeps the same boxes: its title has
   `min-block-size: 2lh` (always two lines, as the clamp allows at most two) and its badge row stays, one badge
   tall, when the item has no badges. `tools/loading-layout.cjs` checks every box within 2 px.
-- The refresh `ProgressBar` sits in a zero-height `VStack` (`position: relative`), so showing it moves nothing.
+- The refresh indicator's slot (`catalog/refresh.tsx`) is always laid out, 16 px square, beside the count; the
+  `Spinner` is mounted only while shown, so nothing animates at rest. The count's `Swap` has `min-width: 6em`
+  (the count silhouette's width).
 - The entrance observer (`catalog/arrival.tsx`) is a `display: contents` `VStack`.
 - Toolbar: the tabs' `StackItem` has `min-width: 0` and the Filters and sort buttons are `StackItem
   size="static"`, so measuring the tabs' overflow on hydration no longer moves the buttons.
@@ -148,10 +154,41 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   dialog exists.
 - Sign-in: the login card's centring frame and Card are dropped inside the Dialog (as the reference board
   notes); no provider buttons or divider (no third-party sign-in). Tabs (TabList) switch sign-in and register.
-- Tile: secondary line is the shop (Avatar `xsm` + name) instead of a two-line description; the price row ends
-  with the favourite button and is `--size-element-sm` tall in tile and silhouette alike.
+- Tile: secondary line is the shop (icon + name) instead of a two-line description; the price row ends
+  with the favourite button and is `--size-element-sm` tall in tile and silhouette alike. The shop icon is
+  server markup (a 20 px round crop on `--color-background-muted`, Avatar `xsm`'s size and shape) instead of
+  `Avatar`: Avatar is a client component, and with the per-tile favourite handler it put the home page over the
+  380 KB JS budget (390,065 B).
+  For the same reason the favourite button is a server-rendered `IconButton` (`data-fav`) answered by one
+  document listener (`catalog/fav-toast.tsx`) whose toast code loads on the first click.
+- Top bar inset: the template leaves TopNav at its own 8 px while its content sits at 24 px. One `style`
+  (`padding-inline: var(--spacing-4)`) puts the logo on the content's 24 px edge and the last borderless
+  action's label within its own padding (~5 px) of the right edge (rule 5). All end actions stay ghost, size md, as the template's (lines 186-194).
+- Icons are registered with `registerIcons()`, not `defineTheme({ extends: neutralTheme, icons })` as Astryx's
+  dev warning suggests: extending the prebuilt theme makes it an unbuilt theme whose CSS `Theme` generates and
+  injects at run time, on top of the shipped `theme.css`.
+- Tile title: `weight="normal"` on the level-4 Heading. MiSans' `subsetted-fonts` slices are static regular
+  fonts (no `fvar`/`gvar`) declared as `font-weight: 150 700`, so the browser neither varies nor synthesises
+  bold for CJK; a bold title set Latin in bold Figtree beside regular CJK.
 - Avatar strip: `SelectableCard` is documented for multi-select; the strip is single-select (one avatar or
   all). Kept because it is the component with a selected state for media cards; ClickableCard has none.
+
+## Icons
+
+| Use | Name | lucide glyph |
+|---|---|---|
+| Quick search, search field | `search` (theme) | Search |
+| Filters | `funnel` (theme) | Filter |
+| Palette: recent search | `clock` (theme) | Clock |
+| Favourite (tiles) | `site:favourite` | Heart |
+| Language menu | `site:language` | Languages |
+| Colour mode | `site:dark` / `site:light` | Moon / Sun |
+| Avatar strip "All", avatar without image | `site:allAvatars` | LayoutGrid |
+| Palette: tag row, clear recent | `site:tag`, `site:clear` | Hash, Trash2 |
+| Component internals (chevrons, close, check, carousel arrows, pagination) | theme semantic names | ChevronDown/Left/Right, X, Check, ... |
+
+`tag-picker.tsx` (filter area, track A) still imports Plus/Minus directly. Sizes: `sm` in the top bar, tiles
+and menus (as shell-top-nav), `lg` for the strip's "All" glyph.
 
 ## Remaining Tailwind or shadcn files
 

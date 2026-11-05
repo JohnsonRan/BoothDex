@@ -58,8 +58,15 @@ export function Swap({
   const { shown } = useRefresh();
   const ref = useRef<HTMLDivElement>(null);
   const armed = useRef(false);
+  // armed once the indicator has been on screen (two frames): content that arrives with it does not fade
   useEffect(() => {
-    if (shown) armed.current = true;
+    if (!shown) return;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        armed.current = true;
+      });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [shown]);
   // keyed on the content: a new server render brings new children
   // biome-ignore lint/correctness/useExhaustiveDependencies: children is the trigger, not an input
