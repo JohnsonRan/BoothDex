@@ -6,7 +6,6 @@
 // nav into a drawer behind its own top bar.
 
 import { AppShell } from "@astryxdesign/core/AppShell";
-import { NavIcon } from "@astryxdesign/core/NavIcon";
 import {
   SideNav,
   SideNavHeading,
@@ -63,7 +62,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           header={
             <SideNavHeading
               heading={t("title")}
-              icon={<NavIcon icon={<Logo />} />}
+              // the mark itself, as in the site's top bar; NavIcon would paint an accent disc behind it
+              icon={<Logo />}
               headingHref="/admin"
             />
           }
