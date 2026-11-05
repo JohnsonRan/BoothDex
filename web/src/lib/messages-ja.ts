@@ -129,6 +129,7 @@ export const ja: Dict = {
   "detail.buy": "BOOTH で購入",
   "detail.copy": "リンクをコピー",
   "detail.copied": "リンクをコピーしました",
+  "detail.copyFailed": "リンクをコピーできませんでした",
   "detail.variations": "バリエーション · {n}",
   "detail.defaultVariation": "(標準)",
   "detail.soldOut": "売り切れ",

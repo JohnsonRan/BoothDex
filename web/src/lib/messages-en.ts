@@ -128,6 +128,7 @@ export const en: Dict = {
   "detail.buy": "Buy on Booth",
   "detail.copy": "Copy link",
   "detail.copied": "Link copied",
+  "detail.copyFailed": "Couldn't copy the link",
   "detail.variations": "Variations · {n}",
   "detail.defaultVariation": "(default)",
   "detail.soldOut": "Sold out",

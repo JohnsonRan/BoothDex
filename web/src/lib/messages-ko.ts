@@ -128,6 +128,7 @@ export const ko: Dict = {
   "detail.buy": "BOOTH에서 구매",
   "detail.copy": "링크 복사",
   "detail.copied": "링크를 복사했습니다",
+  "detail.copyFailed": "링크를 복사하지 못했습니다",
   "detail.variations": "옵션 · {n}",
   "detail.defaultVariation": "(기본)",
   "detail.soldOut": "품절",

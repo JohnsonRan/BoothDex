@@ -21,6 +21,7 @@ import {
   imageSrc,
   priceOf,
 } from "@/lib/catalog";
+import { copyText } from "@/lib/clipboard";
 import { formatPrice, type Rates } from "@/lib/settings-core";
 import { boothUrl } from "./item-data";
 
@@ -83,9 +84,15 @@ export function CopyLink({ id }: { id: number }) {
       width="100%"
       icon={<Icon icon="copy" />}
       onClick={() =>
-        navigator.clipboard
-          .writeText(boothUrl(id))
-          .then(() => toast({ body: t("detail.copied"), uniqueID: "copied" }))
+        copyText(boothUrl(id)).then(
+          () => toast({ body: t("detail.copied"), uniqueID: "copied" }),
+          () =>
+            toast({
+              type: "error",
+              body: t("detail.copyFailed"),
+              uniqueID: "copied",
+            }),
+        )
       }
     />
   );

@@ -194,5 +194,6 @@ export const adminJa: AdminDict = {
   "reset.revoked": "{n} 件のセッションをログアウトしました",
   "reset.copy": "コピー",
   "reset.copied": "コピーしました",
+  "reset.copyFailed": "コピーできませんでした",
   "reset.hide": "非表示",
 };

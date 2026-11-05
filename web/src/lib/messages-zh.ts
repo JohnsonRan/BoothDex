@@ -125,6 +125,7 @@ export const zh = {
   "detail.buy": "在 Booth 购买",
   "detail.copy": "复制链接",
   "detail.copied": "已复制链接",
+  "detail.copyFailed": "无法复制链接",
   "detail.variations": "变体 · {n}",
   "detail.defaultVariation": "(默认)",
   "detail.soldOut": "售罄",

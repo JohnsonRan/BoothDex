@@ -23,6 +23,7 @@ import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
 import { api, errorKey } from "@/lib/api";
 import { filtersToQuery } from "@/lib/catalog";
+import { copyText } from "@/lib/clipboard";
 import { API_ERRORS, type MessageKey } from "@/lib/messages";
 import { useDelayed } from "@/lib/use-delayed";
 import { DeleteSaved } from "./delete-saved";
@@ -100,7 +101,7 @@ export default function SavedSearches({
   };
   // feed links point at this site's origin, whatever the API was told
   const copyFeed = (s: Saved) =>
-    navigator.clipboard.writeText(`${location.origin}/api/rss?${s.query}`).then(
+    copyText(`${location.origin}/api/rss?${s.query}`).then(
       () => toast({ body: t("saved.copied"), uniqueID: "saved" }),
       (err) => fail(err, "saved.copyFailed"),
     );

@@ -186,5 +186,6 @@ export const adminZh = {
   "reset.revoked": "已退出 {n} 个登录会话",
   "reset.copy": "复制",
   "reset.copied": "已复制",
+  "reset.copyFailed": "无法复制",
   "reset.hide": "隐藏",
 };

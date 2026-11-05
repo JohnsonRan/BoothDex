@@ -196,5 +196,6 @@ export const adminEn: AdminDict = {
   "reset.revoked": "{n} sessions signed out",
   "reset.copy": "Copy",
   "reset.copied": "Copied",
+  "reset.copyFailed": "Couldn't copy",
   "reset.hide": "Hide",
 };
