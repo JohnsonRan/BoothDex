@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { Browse } from "@/components/catalog/browse";
 import { homeMetadata } from "@/lib/seo";
@@ -15,10 +16,21 @@ export async function generateMetadata({
 
 export default function Home() {
   return (
-    <Suspense>
-      <WithSettings />
-    </Suspense>
+    <>
+      <Suspense>
+        <WithSettings />
+      </Suspense>
+      {/* metadata depends on the query (noindex for searches), so mark the page as per-request on purpose */}
+      <Suspense>
+        <DynamicMarker />
+      </Suspense>
+    </>
   );
+}
+
+async function DynamicMarker() {
+  await connection();
+  return null;
 }
 
 /** Reads the visitor's settings (cookie, else Accept-Language) so the very first HTML is already in their language. */
