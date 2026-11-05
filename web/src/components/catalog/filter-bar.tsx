@@ -13,11 +13,10 @@ import {
 } from "@astryxdesign/core/OverflowList";
 import { Popover } from "@astryxdesign/core/Popover";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
-import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { useUi } from "@/components/providers";
 import { activeFilterCount, FILTER_RESET } from "@/lib/catalog";
-import { preloadWhenIdle } from "@/lib/preload";
+import { Lazy, lazySurface, preloadWhenIdle } from "@/lib/lazy";
 import { LOCALES } from "@/lib/settings-core";
 import { useClauses } from "./filter-clauses";
 import {
@@ -29,11 +28,10 @@ import {
 } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
 
-// The sheet's code loads after the page on phones (lib/preload), not with it.
-const loadSheet = () => import("@astryxdesign/core/BottomSheet");
-const BottomSheet = dynamic(() => loadSheet().then((m) => m.BottomSheet), {
-  ssr: false,
-});
+// The sheet's code loads after the page on phones (lib/lazy), not with it.
+const BottomSheet = lazySurface(() =>
+  import("@astryxdesign/core/BottomSheet").then((m) => m.BottomSheet),
+);
 
 // Below `md`, or a touch tablet, the fold opens a sheet (the template's COMPACT_SURFACE_QUERY).
 const COMPACT_SURFACE_QUERY =
@@ -135,7 +133,7 @@ function FilterOverflow({
   const count = items.length;
   const label = t("filter.more", { n: count });
   useEffect(() => {
-    if (isCompactSurface) preloadWhenIdle(loadSheet);
+    if (isCompactSurface) preloadWhenIdle(BottomSheet.preload);
   }, [isCompactSurface]);
 
   // each control fills the panel: a column of content-width triggers reads as a ragged edge
@@ -198,7 +196,8 @@ function FilterOverflow({
       <>
         {trigger}
         {wasOpened && (
-          <BottomSheet
+          <Lazy
+            surface={BottomSheet}
             isOpen={isOpen}
             onOpenChange={setIsOpen}
             label={label}
@@ -206,7 +205,7 @@ function FilterOverflow({
             padding={0}
           >
             {body}
-          </BottomSheet>
+          </Lazy>
         )}
       </>
     );

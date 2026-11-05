@@ -10,7 +10,6 @@ import { AppShell } from "@astryxdesign/core/AppShell";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
-import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState } from "react";
 import { Account } from "@/components/account/account-button";
 import { Favourites } from "@/components/account/favourites";
@@ -18,15 +17,14 @@ import { AccountProvider } from "@/components/account/session";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { ItemHost, useItemOpener } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
-import { preloadOn, preloadWhenIdle } from "@/lib/preload";
+import { Lazy, lazySurface, preloadOn, preloadWhenIdle } from "@/lib/lazy";
 import type { Rates } from "@/lib/settings-core";
 import { ColorModeToggle, CurrencyMenu, LanguageMenu } from "./header-controls";
 import { Logo } from "./logo";
 import type { Pick } from "./palette-source";
 
-// the palette's code loads after the page (lib/preload), not with it
-const loadPalette = () => import("./palette");
-const Palette = dynamic(loadPalette, { ssr: false });
+// the palette's code loads after the page (lib/lazy), not with it
+const Palette = lazySurface(() => import("./palette").then((m) => m.default));
 
 export function SiteFrame({
   rates,
@@ -91,7 +89,7 @@ function QuickSearch({ rates }: { rates: Promise<Rates> }) {
   const { open: openItem } = useItemOpener();
   // undefined: never opened, so the palette's code is not loaded
   const [open, setOpen] = useState<boolean>();
-  useEffect(() => preloadWhenIdle(loadPalette), []);
+  useEffect(() => preloadWhenIdle(Palette.preload), []);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -116,10 +114,11 @@ function QuickSearch({ rates }: { rates: Promise<Rates> }) {
         variant="ghost"
         icon={<Icon icon="search" size="sm" />}
         onClick={() => setOpen(true)}
-        {...preloadOn(loadPalette)}
+        {...preloadOn(Palette.preload)}
       />
       {open !== undefined && (
-        <Palette
+        <Lazy
+          surface={Palette}
           isOpen={open}
           onOpenChange={setOpen}
           adult={filters.adult}

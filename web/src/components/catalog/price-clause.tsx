@@ -1,19 +1,17 @@
 "use client";
 // The price clause: a ComplexSelector, as the table-filter template's Quote range. The trigger is the chip;
-// the editor's (free, presets, min/max) code loads after the page (lib/preload).
+// the editor's (free, presets, min/max) code loads after the page (lib/lazy).
 
 import { ComplexSelector } from "@astryxdesign/core/ComplexSelector";
-import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import { useUi } from "@/components/providers";
-import { preloadWhenIdle } from "@/lib/preload";
+import { Lazy, lazySurface, preloadWhenIdle } from "@/lib/lazy";
 import { CONTROL_SIZE, clause, FILTER_FILL } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
 
-const loadEditor = () => import("./price-editor");
-const PriceEditor = dynamic(() => loadEditor().then((m) => m.PriceEditor), {
-  ssr: false,
-});
+const PriceEditor = lazySurface(() =>
+  import("./price-editor").then((m) => m.PriceEditor),
+);
 
 export type Price = { free: boolean; pmin: number; pmax: number };
 
@@ -28,7 +26,7 @@ export function priceText({ pmin, pmax }: Price) {
 export function PriceClause() {
   const { t } = useUi();
   const { filters: f, apply } = useFilterUrl();
-  useEffect(() => preloadWhenIdle(loadEditor), []);
+  useEffect(() => preloadWhenIdle(PriceEditor.preload), []);
   const value: Price = { free: f.free, pmin: f.pmin, pmax: f.pmax };
   const set = f.free || !!f.pmin || !!f.pmax;
   return (
@@ -51,7 +49,8 @@ export function PriceClause() {
     >
       {(v, onChange, close, state) =>
         state.isOpen && (
-          <PriceEditor
+          <Lazy
+            surface={PriceEditor}
             value={v}
             onApply={(next) => {
               onChange(next);

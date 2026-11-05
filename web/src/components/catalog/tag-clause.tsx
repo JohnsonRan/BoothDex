@@ -1,26 +1,24 @@
 "use client";
 // The tag clause: a ComplexSelector whose editor is the tag picker (search, include, exclude). Set, the
-// trigger reads as the clause ("Tags: A, +2"); the picker's code loads after the page (lib/preload).
+// trigger reads as the clause ("Tags: A, +2"); the picker's code loads after the page (lib/lazy).
 
 import { ComplexSelector } from "@astryxdesign/core/ComplexSelector";
-import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import { useUi } from "@/components/providers";
-import { preloadWhenIdle } from "@/lib/preload";
+import { Lazy, lazySurface, preloadWhenIdle } from "@/lib/lazy";
 import { CONTROL_SIZE, clause, FILTER_FILL } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
 
-const loadPicker = () => import("./tag-picker");
-const TagPicker = dynamic(() => loadPicker().then((m) => m.TagPicker), {
-  ssr: false,
-});
+const TagPicker = lazySurface(() =>
+  import("./tag-picker").then((m) => m.TagPicker),
+);
 
 export type TagSet = { tags: string[]; extags: string[] };
 
 export function TagClause() {
   const { t } = useUi();
   const { filters: f, apply } = useFilterUrl();
-  useEffect(() => preloadWhenIdle(loadPicker), []);
+  useEffect(() => preloadWhenIdle(TagPicker.preload), []);
   const names = [...f.tags, ...f.extags.map((x) => `−${x}`)];
   return (
     <ComplexSelector<TagSet>
@@ -42,7 +40,8 @@ export function TagClause() {
     >
       {(v, onChange, close, state) =>
         state.isOpen && (
-          <TagPicker
+          <Lazy
+            surface={TagPicker}
             value={v}
             onApply={(next) => {
               onChange(next);
