@@ -95,7 +95,7 @@ pub async fn incremental(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
             .await?;
         for id in &unknown {
             tokio::time::sleep(delay).await;
-            if let Some(v) = ctx.booth.item(*id).await? {
+            if let Some(v) = ctx.booth.http.item(*id).await? {
                 store_item(ctx.pool, &v).await?;
                 new_items += 1;
             }
@@ -124,7 +124,7 @@ async fn fetch_each(ctx: &mut Ctx<'_>, ids: Vec<i64>, delay: Duration, label: &s
     let total = ids.len() as i64;
     let (mut ok, mut gone) = (0i64, 0i64);
     for (n, id) in ids.iter().enumerate() {
-        match ctx.booth.item(*id).await? {
+        match ctx.booth.http.item(*id).await? {
             Some(v) => {
                 store_item(ctx.pool, &v).await?;
                 ok += 1;

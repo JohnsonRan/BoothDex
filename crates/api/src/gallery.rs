@@ -10,35 +10,28 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use boothdex_core::booth::{mark_delisted, store_item};
+use boothdex_core::booth_client::BoothClient;
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 
 use crate::{ApiError, AppState};
 
-const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
-
 pub struct Fetcher {
-    client: reqwest::Client,
+    booth: BoothClient,
     permits: Semaphore,
 }
 
 impl Fetcher {
     pub fn new() -> anyhow::Result<Self> {
         rustls::crypto::ring::default_provider().install_default().ok();
-        Ok(Self { client: reqwest::Client::builder().user_agent(UA).timeout(Duration::from_secs(15)).build()?, permits: Semaphore::new(4) })
+        // a visitor is waiting: one try, and stored data is served if Booth is busy
+        Ok(Self { booth: BoothClient::new(1, Duration::from_secs(15))?, permits: Semaphore::new(4) })
     }
 
-    /// English endpoint, so category names match the archive. `Ok(None)` = Booth says the item is gone.
+    /// `Ok(None)` = Booth says the item is gone.
     async fn fetch(&self, id: i64) -> anyhow::Result<Option<Value>> {
         let _p = self.permits.acquire().await?;
-        let r = self.client.get(format!("https://booth.pm/en/items/{id}.json")).send().await.map_err(|e| anyhow::anyhow!("{e:?}"))?;
-        if r.status() == StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-        if !r.status().is_success() {
-            anyhow::bail!("booth {} for item {id}", r.status());
-        }
-        Ok(Some(r.json().await?))
+        self.booth.item(id).await
     }
 }
 

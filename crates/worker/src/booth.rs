@@ -1,27 +1,17 @@
-//! Booth HTTP access: polite client with retry/backoff, request counters, listing and item parsing.
+//! Booth listing pages: walks newest-first search results and parses item cards and image links.
+//! HTTP (user agent, retry/backoff, counters) lives in `boothdex_core::booth_client`.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+use anyhow::Result;
 use regex::Regex;
 use scraper::{Html, Selector};
-use serde_json::Value;
 
+use boothdex_core::booth_client::BoothClient;
 use boothdex_core::urlencode;
 
-const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
-
-#[derive(Default)]
-pub struct Counters {
-    pub requests: AtomicU64,
-    pub errors: AtomicU64,
-    pub rate_limited: AtomicU64,
-}
-
 pub struct Booth {
-    client: reqwest::Client,
-    pub counters: Counters,
+    pub http: BoothClient,
     img: Regex,
     pager: Regex,
 }
@@ -30,60 +20,16 @@ impl Booth {
     pub fn new() -> Result<Self> {
         rustls::crypto::ring::default_provider().install_default().ok();
         Ok(Self {
-            client: reqwest::Client::builder().user_agent(UA).timeout(Duration::from_secs(30)).build()?,
-            counters: Counters::default(),
+            http: BoothClient::new(6, Duration::from_secs(30))?,
             img: Regex::new(r#"https://booth\.pximg\.net/(?:c/[^/"'\s]+/)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i/(\d+)/([^"'\s)?]+)"#)?,
             pager: Regex::new(r"[?&]page=(\d+)")?,
         })
     }
 
-    /// GET with retry/backoff on 429, 5xx and network errors. `Ok(None)` = 404.
-    pub async fn get(&self, url: &str) -> Result<Option<String>> {
-        for attempt in 0..6u32 {
-            self.counters.requests.fetch_add(1, Ordering::Relaxed);
-            match self.client.get(url).send().await {
-                Ok(r) if r.status() == 404 => return Ok(None),
-                Ok(r) if r.status().is_success() => return Ok(Some(r.text().await?)),
-                Ok(r) if r.status() == 429 || r.status().is_server_error() => {
-                    if r.status() == 429 {
-                        self.counters.rate_limited.fetch_add(1, Ordering::Relaxed);
-                    } else {
-                        self.counters.errors.fetch_add(1, Ordering::Relaxed);
-                    }
-                    if attempt == 5 {
-                        break;
-                    }
-                    let wait = r.headers().get("retry-after").and_then(|v| v.to_str().ok()?.parse().ok()).unwrap_or(2u64.pow(attempt + 1));
-                    tokio::time::sleep(Duration::from_secs(wait.min(300))).await;
-                }
-                Ok(r) => {
-                    self.counters.errors.fetch_add(1, Ordering::Relaxed);
-                    bail!("{} on {url}", r.status());
-                }
-                Err(e) => {
-                    self.counters.errors.fetch_add(1, Ordering::Relaxed);
-                    if attempt == 5 {
-                        bail!("{e:?} on {url}");
-                    }
-                    tokio::time::sleep(Duration::from_secs(2u64.pow(attempt + 1))).await;
-                }
-            }
-        }
-        bail!("giving up on {url}")
-    }
-
-    /// Item JSON from the English site, so the category name matches the archive ("3D Clothing").
-    pub async fn item(&self, id: i64) -> Result<Option<Value>> {
-        match self.get(&format!("https://booth.pm/en/items/{id}.json")).await? {
-            Some(body) => Ok(Some(serde_json::from_str(&body).with_context(|| format!("item {id}"))?)),
-            None => Ok(None),
-        }
-    }
-
     /// One newest-first search page as raw HTML, plus the last page number.
     pub async fn listing_html(&self, tag: &str, page: u32) -> Result<(String, u32)> {
         let url = format!("https://booth.pm/ja/items?tags%5B%5D={}&sort=new&page={page}", urlencode(tag));
-        let html = self.get(&url).await?.unwrap_or_default();
+        let html = self.http.get(&url).await?.unwrap_or_default();
         let last = self.pager.captures_iter(&html).filter_map(|c| c[1].parse::<u32>().ok()).max().unwrap_or(page);
         Ok((html, last))
     }
@@ -132,13 +78,13 @@ pub fn parse_listing(html: &str, img: &Regex) -> Vec<(i64, Vec<String>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::Ordering;
 
     #[tokio::test(start_paused = true)]
     async fn exhausted_retries_do_not_sleep_and_keep_retry_after() {
         for (status, retry_after, seconds) in [(429, Some("3"), 15), (503, None, 62)] {
             let (url, requests) = crate::retry_test_server(status.try_into().unwrap(), retry_after).await;
-            let mut booth = Booth::new().unwrap();
-            booth.client = reqwest::Client::builder().no_proxy().pool_max_idle_per_host(0).build().unwrap();
+            let booth = BoothClient::from_reqwest(reqwest::Client::builder().no_proxy().pool_max_idle_per_host(0).build().unwrap(), 6);
             let start = tokio::time::Instant::now();
             assert!(booth.get(&url).await.unwrap_err().to_string().contains("giving up"));
             assert_eq!(requests.load(Ordering::Relaxed), 6);

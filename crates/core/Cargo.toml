@@ -13,5 +13,5 @@ pgvector.workspace = true
 sqlx.workspace = true
 anyhow.workspace = true
 percent-encoding = "2"
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "gzip", "json", "http2", "charset"] }
 tokio = { workspace = true, features = ["time"] }

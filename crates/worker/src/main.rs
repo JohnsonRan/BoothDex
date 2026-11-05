@@ -52,7 +52,7 @@ async fn heartbeat(pool: PgPool, booth: Arc<Booth>) {
             }
             _ => None,
         };
-        let c = &booth.counters;
+        let c = &booth.http.counters;
         let r = sqlx::query(
             "update worker_status set heartbeat_at = now(), rss_bytes = $1, booth_requests = $2, booth_errors = $3, booth_rate_limited = $4,
                current_job = (select id from jobs where status in ('running', 'cancelling') order by started_at desc limit 1)",

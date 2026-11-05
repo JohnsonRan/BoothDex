@@ -1,4 +1,5 @@
 pub mod booth;
+pub mod booth_client;
 pub mod embed;
 pub mod settings;
 
