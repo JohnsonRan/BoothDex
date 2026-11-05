@@ -9,6 +9,7 @@ The site's screens are built from Astryx page templates and template blocks (`@a
 | `src/components/catalog/home-screen.tsx`                      | page `library` (Card Grid)                              |
 | `src/components/catalog/toolbar.tsx`                          | page `library` (Card Grid), control row                 |
 | `src/components/catalog/results-grid.tsx`                     | page `product-gallery` (Product Gallery), `ProductCard` |
+| `src/components/catalog/results-grid.tsx` (tile badges)      | block `BadgeCategoryTags`                               |
 | `src/components/catalog/filter-panel.tsx`                     | block `PopoverFilterPanel`                              |
 | `src/components/catalog/avatar-strip.tsx`                     | block `CarouselSnap`                                    |
 | `src/components/catalog/active-filters.tsx`, `tag-picker.tsx` | block `TokenRemovable`                                  |

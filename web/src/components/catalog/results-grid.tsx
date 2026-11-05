@@ -1,12 +1,12 @@
 // The result grid, rendered on the server so every cover is in the HTML. Tiles follow the Product Gallery
-// template's ProductCard: square media, title, supporting line, price; NEW and feature markers sit on the cover
-// as in the Overlay Bottom Strip block.
+// template's ProductCard: square media, title, supporting line, price; then NEW and feature tags as Badges (Badge
+// Category Tags block). Not over the cover: Overlay is a client component, and ~70 of them cost ~1.3 s of
+// Lighthouse TBT on hydration.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Card } from "@astryxdesign/core/Card";
 import { Grid } from "@astryxdesign/core/Grid";
-import { Overlay } from "@astryxdesign/core/Overlay";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
@@ -26,7 +26,7 @@ const COLUMNS = { minWidth: 160 } as const;
 const EAGER = 12;
 const HIGH = 4;
 
-/** NEW, then up to two feature tags; null when there are none, so those covers get no overlay at all. */
+/** NEW, then up to two feature tags; null when there are none. */
 function markersOf(item: ItemResponse) {
   const features = item.features.slice(0, 2);
   if (!isNew(item) && features.length === 0) return null;
@@ -51,28 +51,18 @@ function ItemTile({
   settings: Settings;
   rates: Rates;
 }) {
-  const cover = (
-    <AspectRatio ratio={1} fit="cover">
-      <img
-        src={imgUrl(item, 0)}
-        alt=""
-        loading={index < EAGER ? "eager" : "lazy"}
-        fetchPriority={index < HIGH ? "high" : undefined}
-        decoding="async"
-      />
-    </AspectRatio>
-  );
-  const markers = markersOf(item);
   return (
     <VStack gap={2}>
       <Card padding={0}>
-        {markers ? (
-          <Overlay position="top" align="start" scrim={false} content={markers}>
-            {cover}
-          </Overlay>
-        ) : (
-          cover
-        )}
+        <AspectRatio ratio={1} fit="cover">
+          <img
+            src={imgUrl(item, 0)}
+            alt=""
+            loading={index < EAGER ? "eager" : "lazy"}
+            fetchPriority={index < HIGH ? "high" : undefined}
+            decoding="async"
+          />
+        </AspectRatio>
       </Card>
       <VStack gap={1}>
         {/* level 4 is the body-sized heading; tiles still sit at outline level 2, under the page title */}
@@ -90,6 +80,7 @@ function ItemTile({
         <Text type="body" weight="bold" hasTabularNumbers>
           {formatPrice(priceOf(item), settings, rates)}
         </Text>
+        {markersOf(item)}
       </VStack>
     </VStack>
   );

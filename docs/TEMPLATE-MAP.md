@@ -46,7 +46,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 |---|---|---|---|
 | Page frame | every route | page `shell-top-nav` (AppShell + TopNav, heading with logo) | phase 1 |
 | Home grid | `/` | page `library` (Card Grid): header with title, search, filter tabs + sort row, card grid, empty state | phase 1 |
-| Result tile | home grid | page `product-gallery`, `ProductCard` (square media, title, supporting line, price) | phase 1 |
+| Result tile | home grid | page `product-gallery`, `ProductCard` (square media, title, supporting line, price); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`) | phase 1 |
 | Search | home, top of content | page `library` search `TextInput` (block `TextInputSearch`) | phase 1 |
 | Category / gender tabs, sort | home control row | page `library` (`ToggleButtonGroup` + `OverflowList`, `DropdownMenu`) | phase 1 |
 | Filter panel | "Filters" button | block `PopoverFilterPanel` (`presentation="adaptive"`: popover on desktop, bottom sheet on phones) | phase 1 |
@@ -90,8 +90,21 @@ The rest are prop values, not style overrides:
   level stays 2 through `accessibilityLevel`.
 - The Card Grid template groups cards under per-category headings; BoothDex pages results instead, so there
   is one `Divider` above one grid.
-- Product Gallery tiles have no badges; feature tags and NEW markers were dropped from tiles because
-  `Badge` is for counts only (they belong in item detail).
+- Product Gallery tiles have no badges; BoothDex adds NEW and up to two feature tags as a `Badge` row under
+  the price (an `HStack` as in the Badge Category Tags block), only on tiles that have one. NEW is
+  `variant="blue"` (as the Item With Media block's "New"), feature tags the default neutral. Master showed them
+  over the cover; the Overlay Bottom Strip block does the same with `Overlay`, but Overlay is a client component
+  and ~70 of them (one per marked tile on the first page) raised median Lighthouse TBT from 1669 to 2969 ms
+  (5 runs each), so the row stays server-rendered. `Badge` is not for counts only: `astryx component Badge`
+  documents status labels and category tags (blocks `BadgeStatusLabels`, `BadgeCategoryTags`); the
+  `astryx init` rule "Badge = counts only" is shorthand for "not for metadata".
+- The tile has no hover second image: `Card` has no media swap, and `Overlay showOn="hover"` keeps its
+  content mounted (visibility is CSS), so every first-screen tile would download its second image, and it is a
+  client component per tile (the TBT cost above). Listed for
+  the owner.
+- Results are not dimmed while a navigation is pending: no Astryx component exposes a pending state for a
+  region (Grid, Layout, Card, Section have none); the result count turns into a `Spinner` instead. Listed for
+  the owner.
 
 ## Remaining Tailwind or shadcn files
 

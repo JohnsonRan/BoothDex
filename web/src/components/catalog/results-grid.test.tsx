@@ -66,7 +66,7 @@ test("tiles show the title in the chosen language, the shop and the price", () =
   expect(html).toContain("¥1,000");
 });
 
-test("new items and feature tags are marked on the cover; plain items get no overlay", () => {
+test("new items and feature tags are marked; plain items get no badges", () => {
   const html = render([
     {
       ...item,
@@ -80,5 +80,5 @@ test("new items and feature tags are marked on the cover; plain items get no ove
   expect(html).toContain("Quest");
   expect(html).toContain("MA");
   expect(html).not.toContain("lilToon");
-  expect(html.match(/class="astryx-overlay /g)).toHaveLength(1);
+  expect(html.match(/class="astryx-badge /g)).toHaveLength(3);
 });
