@@ -1,17 +1,19 @@
 "use client";
 // The price clause: a ComplexSelector, as the table-filter template's Quote range. The trigger is the chip;
-// the editor (free, presets, min/max) loads the first time the popup opens.
+// the editor's (free, presets, min/max) code loads after the page (lib/preload).
 
 import { ComplexSelector } from "@astryxdesign/core/ComplexSelector";
 import dynamic from "next/dynamic";
+import { useEffect } from "react";
 import { useUi } from "@/components/providers";
+import { preloadWhenIdle } from "@/lib/preload";
 import { CONTROL_SIZE, clause, FILTER_FILL } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
 
-const PriceEditor = dynamic(
-  () => import("./price-editor").then((m) => m.PriceEditor),
-  { ssr: false },
-);
+const loadEditor = () => import("./price-editor");
+const PriceEditor = dynamic(() => loadEditor().then((m) => m.PriceEditor), {
+  ssr: false,
+});
 
 export type Price = { free: boolean; pmin: number; pmax: number };
 
@@ -26,6 +28,7 @@ export function priceText({ pmin, pmax }: Price) {
 export function PriceClause() {
   const { t } = useUi();
   const { filters: f, apply } = useFilterUrl();
+  useEffect(() => preloadWhenIdle(loadEditor), []);
   const value: Price = { free: f.free, pmin: f.pmin, pmax: f.pmax };
   const set = f.free || !!f.pmin || !!f.pmax;
   return (

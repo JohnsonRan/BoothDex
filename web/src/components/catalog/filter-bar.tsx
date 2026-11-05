@@ -14,9 +14,10 @@ import {
 import { Popover } from "@astryxdesign/core/Popover";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useUi } from "@/components/providers";
 import { activeFilterCount, FILTER_RESET } from "@/lib/catalog";
+import { preloadWhenIdle } from "@/lib/preload";
 import { LOCALES } from "@/lib/settings-core";
 import { useClauses } from "./filter-clauses";
 import {
@@ -28,11 +29,11 @@ import {
 } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
 
-// The sheet loads the first time a phone opens the fold, not with the page.
-const BottomSheet = dynamic(
-  () => import("@astryxdesign/core/BottomSheet").then((m) => m.BottomSheet),
-  { ssr: false },
-);
+// The sheet's code loads after the page on phones (lib/preload), not with it.
+const loadSheet = () => import("@astryxdesign/core/BottomSheet");
+const BottomSheet = dynamic(() => loadSheet().then((m) => m.BottomSheet), {
+  ssr: false,
+});
 
 // Below `md`, or a touch tablet, the fold opens a sheet (the template's COMPACT_SURFACE_QUERY).
 const COMPACT_SURFACE_QUERY =
@@ -133,6 +134,9 @@ function FilterOverflow({
   const [byKeyboard, setByKeyboard] = useState(false);
   const count = items.length;
   const label = t("filter.more", { n: count });
+  useEffect(() => {
+    if (isCompactSurface) preloadWhenIdle(loadSheet);
+  }, [isCompactSurface]);
 
   // each control fills the panel: a column of content-width triggers reads as a ragged edge
   const body = (
