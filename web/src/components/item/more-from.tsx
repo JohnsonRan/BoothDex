@@ -35,9 +35,12 @@ const THUMB: CSSProperties = {
 export function MoreFrom({
   item,
   rates,
+  isWide,
 }: {
   item: ItemResponse;
   rates: Rates;
+  /** the Carousel's buttons from lg up; phones swipe */
+  isWide: boolean;
 }) {
   const { t, settings } = useUi();
   const { filters } = useFilterUrl();
@@ -70,6 +73,7 @@ export function MoreFrom({
         <Carousel
           gap={2}
           hasSnap
+          hasButtons={isWide}
           aria-label={t("detail.moreFrom", { name: author })}
         >
           {items

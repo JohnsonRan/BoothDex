@@ -60,12 +60,12 @@ const RATING: Record<ContentRating, "success" | "warning" | "error"> = {
 export function ItemInfo({
   item,
   rates,
-  hasActions,
+  isWide,
 }: {
   item: ItemResponse;
   rates: Rates;
-  /** the action buttons (from lg up; phones have PhoneBar) */
-  hasActions: boolean;
+  /** from lg up: the action buttons (phones have PhoneBar) and the sticky column */
+  isWide: boolean;
 }) {
   const { t, settings } = useUi();
   const [lang, setLang] = useState<ContentLang>(() =>
@@ -77,7 +77,7 @@ export function ItemInfo({
     item.smart_price != null && item.smart_price !== item.price_jpy;
 
   return (
-    <VStack gap={5} style={STICKY}>
+    <VStack gap={5} style={isWide ? STICKY : undefined}>
       <VStack gap={2}>
         {tabs.length > 1 && (
           <VStack hAlign="start">
@@ -124,7 +124,7 @@ export function ItemInfo({
       </VStack>
       <Marks item={item} />
       <AvatarFit item={item} />
-      {hasActions && (
+      {isWide && (
         <VStack gap={2}>
           <Button
             label={t("detail.buy")}

@@ -11,6 +11,9 @@ import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { useUi } from "@/components/providers";
 
+// the dialog's height cap (master: 92 % of the viewport)
+export const MAX_HEIGHT = "92dvh";
+
 type TextType = "display-2" | "body" | "large" | "supporting";
 
 function Line({ type, width }: { type: TextType; width: string }) {
@@ -35,18 +38,18 @@ const Control = ({
   width: string;
 }) => <Skeleton height={`var(--size-element-${size})`} width={width} />;
 
-export function HeaderSilhouette({ shown }: { shown: boolean }) {
-  return (
-    <HStack
-      gap={2}
-      vAlign="center"
-      style={{ visibility: shown ? "visible" : "hidden" }}
-    >
-      <Skeleton width={32} height={32} radius="rounded" />
-      <Line type="body" width="8rem" />
-    </HStack>
-  );
-}
+// Avatar size md
+const AVATAR = 36;
+
+/** The shop's avatar while loading; the header's text lines stay blank. */
+export const HeaderSilhouette = ({ shown }: { shown: boolean }) => (
+  <Skeleton
+    width={AVATAR}
+    height={AVATAR}
+    radius="rounded"
+    style={{ visibility: shown ? "visible" : "hidden" }}
+  />
+);
 
 export function DetailSilhouette({
   shown,
@@ -62,7 +65,11 @@ export function DetailSilhouette({
       gap={5}
       aria-busy
       aria-label={t("detail.loading")}
-      style={{ visibility: shown ? "visible" : "hidden" }}
+      // as tall as the dialog allows, as a loaded item is: the centred dialog does not move when it arrives
+      style={{
+        visibility: shown ? "visible" : "hidden",
+        minBlockSize: MAX_HEIGHT,
+      }}
     >
       <VStack gap={3}>
         <AspectRatio ratio={1}>

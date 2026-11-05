@@ -19,16 +19,21 @@ import { useToast } from "@astryxdesign/core/Toast";
 import { use, useEffect, useRef, useState } from "react";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import type { ItemResponse } from "@/lib/api-types";
 import { imageSrc } from "@/lib/catalog";
 import type { Rates } from "@/lib/settings-core";
 import { useDelayed } from "@/lib/use-delayed";
+import { recordLocalView } from "@/lib/viewed";
 import { shopHost } from "./item-data";
 import { ItemGallery } from "./item-gallery";
 import { useItemOpener } from "./item-host";
 import { ItemInfo, PhoneBar } from "./item-info";
-import { DetailSilhouette, HeaderSilhouette } from "./item-silhouette";
+import {
+  DetailSilhouette,
+  HeaderSilhouette,
+  MAX_HEIGHT,
+} from "./item-silhouette";
 import { MoreFrom } from "./more-from";
 import "./item-icons";
 
@@ -36,10 +41,18 @@ import "./item-icons";
 const PHONE = "(max-width: 1023px)";
 // template: Layout contentWidth={1200}
 const WIDTH = 1200;
-// master: 92 % of the viewport's height
-const MAX_HEIGHT = "92dvh";
 // template: Grid columns={{minWidth: 320, repeat: 'fit'}} gap={5}
 const COLUMNS = { minWidth: 320, repeat: "fit" } as const;
+
+/** Remembers an opened item: in the account when signed in, else in this browser (master's recordView). */
+function recordView(id: number) {
+  api("/api/account/views", {
+    method: "POST",
+    json: { views: [{ id }] },
+  }).catch((e) => {
+    if (e instanceof ApiError && e.status === 401) recordLocalView(id);
+  });
+}
 
 type Gallery = { images: string[]; complete: boolean };
 
@@ -63,9 +76,13 @@ function useItem(id: number): ItemResponse | null {
       gallery ? { ...it, booth_images: gallery, media: [] } : it;
     const fail = () => live && failed.current();
     api<{ items: ItemResponse[] }>(`/api/items?ids=${id}`)
-      .then((r) =>
-        r.items[0] ? live && setItem(withGallery(r.items[0])) : fail(),
-      )
+      .then((r) => {
+        const it = r.items[0];
+        if (!it) return fail();
+        if (!live) return;
+        setItem(withGallery(it));
+        recordView(id);
+      })
       .catch(fail);
     api<Gallery>(`/api/items/${id}/gallery`)
       .then((g) => {
@@ -124,7 +141,10 @@ export default function ItemDialog({
             />
           ) : (
             <DialogHeader
-              title={<HeaderSilhouette shown={shown} />}
+              // blank lines keep the loaded header's height (title and subtitle)
+              title={"\u00a0"}
+              subtitle={"\u00a0"}
+              startContent={<HeaderSilhouette shown={shown} />}
               onOpenChange={() => close()}
             />
           )
@@ -135,16 +155,16 @@ export default function ItemDialog({
             {item ? (
               <VStack gap={6}>
                 <Grid columns={COLUMNS} gap={5}>
-                  <ItemGallery key={item.id} item={item} />
+                  <ItemGallery key={item.id} item={item} isWide={!phone} />
                   <ItemInfo
                     key={item.id}
                     item={item}
                     rates={known}
-                    hasActions={!phone}
+                    isWide={!phone}
                   />
                 </Grid>
                 <Divider />
-                <MoreFrom item={item} rates={known} />
+                <MoreFrom item={item} rates={known} isWide={!phone} />
               </VStack>
             ) : (
               <DetailSilhouette shown={shown} columns={COLUMNS} />

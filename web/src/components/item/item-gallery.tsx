@@ -55,7 +55,14 @@ const THUMBS = { minWidth: 64, repeat: "fill" } as const;
 // a slide is the current one once most of it is in view
 const SEEN = 0.6;
 
-export function ItemGallery({ item }: { item: ItemResponse }) {
+export function ItemGallery({
+  item,
+  isWide,
+}: {
+  item: ItemResponse;
+  /** from lg up: thumbnails, arrow buttons and the sticky column (phones swipe, master) */
+  isWide: boolean;
+}) {
   const { t } = useUi();
   const count = Math.max(imageCount(item), 1);
   const [index, setIndex] = useState(0);
@@ -108,22 +115,22 @@ export function ItemGallery({ item }: { item: ItemResponse }) {
   const alt = (i: number) => t("detail.image", { n: i + 1 });
 
   return (
-    <VStack gap={3} style={STICKY}>
+    <VStack
+      gap={3}
+      style={{ ...(isWide && STICKY), containerType: "inline-size" }}
+    >
       <Carousel
         gap={0}
         hasSnap
+        hasButtons={isWide}
         hasEdgeFade={false}
         handleRef={carousel}
         ref={strip}
         aria-label={t("detail.label")}
       >
         {images.map((i) => (
-          <VStack
-            key={i}
-            data-slide={String(i)}
-            width="100%"
-            style={{ flex: "none" }}
-          >
+          // one slide is the gallery's width (the Carousel sizes slides by their content)
+          <VStack key={i} data-slide={String(i)} width="100cqi">
             <AspectRatio ratio={1}>
               <ClickableCard
                 label={alt(i)}
@@ -157,7 +164,7 @@ export function ItemGallery({ item }: { item: ItemResponse }) {
           </Text>
         )}
       </HStack>
-      {count > 1 && (
+      {isWide && count > 1 && (
         <Grid columns={THUMBS} gap={2}>
           {images.map((i) => (
             <AspectRatio key={i} ratio={1}>

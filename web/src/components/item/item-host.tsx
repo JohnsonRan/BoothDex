@@ -16,9 +16,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ApiError, api } from "@/lib/api";
 import type { Rates } from "@/lib/settings-core";
-import { recordLocalView } from "@/lib/viewed";
 import { itemHref, itemParam } from "./item-data";
 
 const ItemDialog = dynamic(() => import("./item-dialog"), { ssr: false });
@@ -35,16 +33,6 @@ export function useItemOpener(): Opener {
   const v = useContext(Ctx);
   if (!v) throw new Error("useItemOpener outside ItemHost");
   return v;
-}
-
-/** In the account when signed in, else in this browser (master's recordView). */
-function recordView(id: number) {
-  api("/api/account/views", {
-    method: "POST",
-    json: { views: [{ id }] },
-  }).catch((e) => {
-    if (e instanceof ApiError && e.status === 401) recordLocalView(id);
-  });
 }
 
 export function ItemHost({
@@ -68,10 +56,6 @@ export function ItemHost({
     addEventListener("popstate", sync);
     return () => removeEventListener("popstate", sync);
   }, []);
-
-  useEffect(() => {
-    if (id) recordView(id);
-  }, [id]);
 
   const opener = useMemo<Opener>(
     () => ({
