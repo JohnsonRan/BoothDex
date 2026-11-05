@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
 import { EARLY_CLICKS } from "@/lib/early-clicks";
+import { SESSION_HINT_SCRIPT } from "@/lib/session-hint";
 import "./globals.css";
 
 // The neutral theme's Latin face, self-hosted and preloaded; globals.css points the theme's font tokens at it.
@@ -22,7 +23,7 @@ export const viewport: Viewport = {
 
 // Applies the saved appearance and language before first paint (from the cookie, or master's localStorage copy
 // until providers.tsx moves it over). Without a saved mode the page follows the system (no data-theme), so only a
-// pinned light or dark mode needs the attribute.
+// pinned light or dark mode needs the attribute. SESSION_HINT_SCRIPT marks the last session's sign-in the same way.
 const preferences = `try{var m=document.cookie.match(/(?:^|; )settings=([^;]*)/);
 var s=JSON.parse(m?decodeURIComponent(m[1]):localStorage.getItem("settings")||"{}");var d=document.documentElement;
 if(s.theme==="light"||s.theme==="dark")d.setAttribute("data-theme",s.theme);
@@ -30,7 +31,7 @@ var l={zh:"zh-CN",en:"en-US",ja:"ja-JP",ko:"ko-KR"}[s.ui];if(l)d.lang=l}catch(e)
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    // data-theme and lang may be changed by the script above before hydration
+    // data-theme, data-account and lang may be changed by the script below before hydration
     <html
       lang="zh-CN"
       data-astryx-theme="neutral"
@@ -42,7 +43,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <meta name="darkreader-lock" />
         <script
           // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
-          dangerouslySetInnerHTML={{ __html: preferences + EARLY_CLICKS }}
+          dangerouslySetInnerHTML={{
+            __html: preferences + SESSION_HINT_SCRIPT + EARLY_CLICKS,
+          }}
         />
       </head>
       <body>{children}</body>

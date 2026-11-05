@@ -19,6 +19,7 @@ import { useToast } from "@/components/toasts";
 import { ApiError, api, fetchAccount } from "@/lib/api";
 import type { MessageKey } from "@/lib/messages";
 import { accountPatch, setPreferenceSync } from "@/lib/preferences";
+import { keepSessionHint } from "@/lib/session-hint";
 import {
   addViewed,
   loadViewed,
@@ -79,6 +80,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     const user = await fetchAccount<Me>({ fresh: gen > 1 }).catch(() => null);
     if (gen !== loads.current) return;
     setMe(user);
+    keepSessionHint(!!user);
     setPreferenceSync(false);
     if (!user) {
       setFavs(null);

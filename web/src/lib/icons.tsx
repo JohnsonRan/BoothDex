@@ -7,6 +7,7 @@
 
 import { registerIcons } from "@astryxdesign/core/Icon";
 import {
+  CircleUser,
   Heart,
   Languages,
   LayoutGrid,
@@ -22,6 +23,7 @@ export const glyph = { size: "1em", "aria-hidden": true } as const;
 const SITE_ICONS = {
   "site:favourite": <Heart {...glyph} />,
   "site:settings": <Settings {...glyph} />,
+  "site:account": <CircleUser {...glyph} />,
   "site:language": <Languages {...glyph} />,
   "site:allAvatars": <LayoutGrid {...glyph} />,
   "site:dark": <Moon {...glyph} />,
