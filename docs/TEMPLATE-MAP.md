@@ -254,7 +254,9 @@ Deviations, all prop values or token-backed inline styles:
   translated languages); quantity and Add to Cart have no counterpart. Rating row: likes with the favourite
   glyph instead of stars.
 - "More from {shop}": a `Carousel` of the avatar strip's card pattern with `ClickableCard` (it opens an item; no
-  selection), under the two columns.
+  selection), under the two columns. From lg its heading row holds ghost scroll `IconButton`s with the
+  Carousel's own labels, in place of the Carousel's top-layer buttons (they floated over the page when the
+  dialog scrolled the strip away).
 - Tiles: the root carries `data-item` and the title is a plain `<a href="?item=">` in server markup (keyboard
   focus, new tab on a modified click); one document listener in `item/item-host.tsx` opens the dialog, as
   `account/favourites.tsx` answers the favourite buttons. Astryx `Link` and `ClickableCard` are client components, which

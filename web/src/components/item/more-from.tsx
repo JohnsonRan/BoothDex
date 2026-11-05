@@ -3,14 +3,19 @@
 // card the avatar strip's pattern (avatar-strip.tsx): a square AspectRatio filled by a transparent card with
 // padding 0 and a covering image, the caption below. A ClickableCard rather than a SelectableCard, since a
 // card here opens an item instead of selecting one; the look is the same. Picking one shows it in place.
+// The Carousel's own buttons live in the top layer and float over the page when the dialog scrolls the strip
+// away, so from lg the heading row carries scroll buttons instead, with the Carousel's own labels.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
-import { Carousel } from "@astryxdesign/core/Carousel";
+import { Carousel, type CarouselHandle } from "@astryxdesign/core/Carousel";
 import { ClickableCard } from "@astryxdesign/core/ClickableCard";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { useTranslator } from "@astryxdesign/core/i18n";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
-import { VStack } from "@astryxdesign/core/Stack";
+import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
@@ -39,7 +44,7 @@ export function MoreFrom({
 }: {
   item: ItemResponse;
   rates: Rates;
-  /** the Carousel's buttons from lg up; phones swipe */
+  /** scroll buttons from lg up; phones swipe */
   isWide: boolean;
 }) {
   const { t, settings } = useUi();
@@ -61,10 +66,32 @@ export function MoreFrom({
   }, [author, item.id, filters.adult]);
   const items = same?.of === item.id ? same.items : null;
   const shown = useDelayed(!items);
+  const strip = useRef<CarouselHandle>(null);
+  const library = useTranslator();
 
   return (
     <VStack gap={3}>
-      <Heading level={3}>{t("detail.moreFrom", { name: author })}</Heading>
+      <HStack gap={2} vAlign="center">
+        <StackItem size="fill">
+          <Heading level={3}>{t("detail.moreFrom", { name: author })}</Heading>
+        </StackItem>
+        {isWide &&
+          !!items?.length &&
+          (["Left", "Right"] as const).map((side) => (
+            <IconButton
+              key={side}
+              label={library(`@astryx.carousel.scroll${side}`)}
+              tooltip={library(`@astryx.carousel.scroll${side}`)}
+              variant="ghost"
+              icon={<Icon icon={`chevron${side}`} size="sm" />}
+              onClick={() =>
+                side === "Left"
+                  ? strip.current?.scrollPrev()
+                  : strip.current?.scrollNext()
+              }
+            />
+          ))}
+      </HStack>
       {items?.length === 0 ? (
         <Text type="body" color="secondary">
           {t("detail.noMore")}
@@ -73,7 +100,8 @@ export function MoreFrom({
         <Carousel
           gap={2}
           hasSnap
-          hasButtons={isWide}
+          hasButtons={false}
+          handleRef={strip}
           aria-label={t("detail.moreFrom", { name: author })}
         >
           {items
