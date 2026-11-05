@@ -11,7 +11,7 @@ RUN bun run build \
  && { [ ! -d public ] || cp -r public .next/standalone/; } \
  && cp -r .next/static .next/standalone/.next/
 
-FROM docker.io/library/node:22-bookworm-slim
+FROM docker.io/library/node:26-trixie-slim
 WORKDIR /app
 COPY --from=build /web/.next/standalone ./
 ENV NODE_ENV=production PORT=3100 HOSTNAME=0.0.0.0

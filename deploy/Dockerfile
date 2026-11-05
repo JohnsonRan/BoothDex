@@ -3,7 +3,7 @@
 # Dependencies are compiled in their own layer (cargo-chef), so a change to our code only recompiles our crates;
 # CI keeps that layer in its build cache. The lindera-ipadic build script downloads the IPADIC dictionary
 # (network needed; it fails now and then, so it is retried twice) and embeds it in the api binary.
-FROM docker.io/library/rust:1-bookworm AS chef
+FROM docker.io/library/rust:1-trixie AS chef
 RUN cargo install cargo-chef --version 0.1.78 --locked
 WORKDIR /src
 
@@ -20,7 +20,7 @@ COPY crates ./crates
 RUN cargo build --release -p api -p imgproxy -p worker \
  && mkdir -p /out && cp target/release/api target/release/imgproxy target/release/worker /out/
 
-FROM docker.io/library/debian:bookworm-slim AS runtime
+FROM docker.io/library/debian:trixie-slim AS runtime
 # ca-certificates: TLS to booth.pm / pximg / AI provider (rustls uses the system trust store)
 # writable mount points for the non-root user (named volumes inherit this ownership)
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* \
