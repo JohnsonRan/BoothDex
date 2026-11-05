@@ -1,5 +1,15 @@
 import type { Metadata, Viewport } from "next";
+import { Figtree } from "next/font/google";
+import { FontLoader } from "@/components/font-loader";
+import { FONTS_EARLY } from "@/lib/fonts";
 import "./globals.css";
+
+// The neutral theme's Latin face, self-hosted and preloaded; globals.css points the theme's font tokens at it.
+const figtree = Figtree({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-figtree",
+});
 
 export const metadata: Metadata = {
   title: "BoothDex",
@@ -21,14 +31,22 @@ var l={zh:"zh-CN",en:"en-US",ja:"ja-JP",ko:"ko-KR"}[s.ui];if(l)d.lang=l}catch(e)
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     // data-theme and lang may be changed by the script above before hydration
-    <html lang="zh-CN" data-astryx-theme="neutral" suppressHydrationWarning>
+    <html
+      lang="zh-CN"
+      data-astryx-theme="neutral"
+      className={figtree.variable}
+      suppressHydrationWarning
+    >
       <head>
         <script
           // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
-          dangerouslySetInnerHTML={{ __html: preferences }}
+          dangerouslySetInnerHTML={{ __html: preferences + FONTS_EARLY }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <FontLoader />
+      </body>
     </html>
   );
 }

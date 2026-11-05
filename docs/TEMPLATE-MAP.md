@@ -16,7 +16,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 2. Every screen starts from an Astryx page template; parts it lacks come from template blocks. Layout comes
    from the template, features from the old site. A surface no template covers is listed as a gap, not invented.
 3. Every UI element is an Astryx component; site components only compose them. No theme overrides except
-   documented fixes (none so far).
+   documented fixes (listed under Deviations).
 4. Spacing and sizes are Astryx tokens (spacing steps on component props). Raw pixels only for structural
    widths (grid column floor, card width).
 5. One page frame for every route: `SiteFrame` (AppShell + TopNav). Each page renders its own `Layout` inside
@@ -66,7 +66,22 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 
 ## Deviations from the templates in phase 1
 
-Each is a prop value, not a style override:
+Theme fix (rule 3), the only style override:
+
+- Fonts. The neutral theme's `fonts.css`, imported by the generated `src/astryx-themes.ts`, `@import`s Figtree
+  from Google Fonts: a render-blocking request chain (~850 ms in Lighthouse). `next.config.ts` aliases that
+  import (`turbopack.resolveAlias`) to the empty `src/app/theme-fonts.css`; `app/layout.tsx` loads Figtree with
+  `next/font/google` (self-hosted, preloaded, `font-display: swap`); `app/globals.css` sets
+  `--font-family-body` and `--font-family-heading` to Figtree's variable, then MiSans for Chinese and Japanese
+  (loaded after the first covers are painted, as on master: `components/font-loader.tsx`, `lib/fonts.ts`), then
+  the theme's own system stack. The generated module stays exact, so `astryx doctor` keeps 0 failures; its
+  `theme-fonts` warning ("External font imports prevent proof for neutral: Figtree") is expected, since doctor
+  reads the package file, not the alias. Editing the generated module instead fails two doctor checks
+  (`theme-module`, `theme-fonts`), and `astryx theme add neutral` rewrites it with the import back, so the alias
+  is the stable form: nothing needs re-applying after `theme add` or `theme use`. If a theme release renames
+  `fonts.css`, update the alias key.
+
+The rest are prop values, not style overrides:
 
 - `AppShell height="auto"` and `Layout height="auto"`: the window scrolls instead of an inner region, so a
   phone's address bar collapses and the grid is one long page.
