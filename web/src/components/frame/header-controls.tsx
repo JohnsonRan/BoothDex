@@ -13,7 +13,6 @@ import {
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
-import { Languages, Moon, Sun } from "lucide-react";
 import { useUi } from "@/components/providers";
 import { MESSAGES, UI_LANGS, type UiLang } from "@/lib/messages";
 import {
@@ -53,7 +52,7 @@ export function LanguageMenu() {
           label={t("nav.language")}
           tooltip={t("nav.language")}
           variant="ghost"
-          icon={<Icon icon={Languages} size="sm" />}
+          icon={<Icon icon="site:language" size="sm" />}
         />
       )}
     >
@@ -142,7 +141,7 @@ export function ColorModeToggle() {
       label={label}
       tooltip={label}
       variant="ghost"
-      icon={<Icon icon={isDark ? Sun : Moon} size="sm" />}
+      icon={<Icon icon={isDark ? "site:light" : "site:dark"} size="sm" />}
       onClick={() => update({ theme: isDark ? "light" : "dark" })}
     />
   );

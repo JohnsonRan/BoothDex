@@ -11,19 +11,18 @@ import {
 } from "@astryxdesign/core/CommandPalette";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
-import { Hash, Trash2 } from "lucide-react";
 import { use, useEffect, useMemo, useRef } from "react";
 import { useUi } from "@/components/providers";
 import { saveHistory } from "@/lib/history";
 import type { Rates } from "@/lib/settings-core";
 import { type Pick, paletteSource, type Row } from "./palette-source";
 
-// the theme's semantic icons where it has one (TEMPLATE-MAP rule 6), lucide otherwise
+// the theme's semantic icons where it has one (TEMPLATE-MAP rule 6), the site's own otherwise (lib/icons)
 const ICONS = {
   history: "clock",
   search: "search",
-  tag: Hash,
-  clear: Trash2,
+  tag: "site:tag",
+  clear: "site:clear",
 } as const;
 
 export default function Palette({

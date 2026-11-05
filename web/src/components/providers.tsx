@@ -16,6 +16,7 @@ import {
   useTransition,
 } from "react";
 import { defaultThemeSlug, themes } from "@/astryx-themes";
+import "@/lib/icons";
 import type { UiLang } from "@/lib/messages";
 import {
   LOCALES,
