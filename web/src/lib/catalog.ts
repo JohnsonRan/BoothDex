@@ -45,12 +45,7 @@ export const FEATURES = {
 } as const;
 export type Feature = keyof typeof FEATURES;
 
-type Size =
-  | "48x48"
-  | "72x72_a2_g5"
-  | "300x300_a2_g5"
-  | "620x620"
-  | "orig";
+type Size = "48x48" | "72x72_a2_g5" | "300x300_a2_g5" | "620x620" | "orig";
 
 /** Proxied, WebP-encoded image URL; delisted items fall back to our archived copies. */
 export function imgUrl(
