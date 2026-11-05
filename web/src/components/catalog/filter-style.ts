@@ -29,6 +29,16 @@ export const FILTER_FILL: CSSProperties = {
   backgroundColor: "var(--color-overlay-pressed)",
 };
 
+// filterLabelValue / filterLabelEmpty: a Selector states its emptiness typographically (normal weight,
+// secondary text unset); button labels are medium and primary, so the toggles take the selectors' type.
+export const FILTER_LABEL_VALUE: CSSProperties = {
+  fontWeight: "var(--font-weight-normal)",
+};
+export const FILTER_LABEL_EMPTY: CSSProperties = {
+  fontWeight: "var(--font-weight-normal)",
+  color: "var(--color-text-secondary)",
+};
+
 /** "Field: value", the set clause's trigger text. */
 export const clause = (field: string, value: string) => `${field}: ${value}`;
 

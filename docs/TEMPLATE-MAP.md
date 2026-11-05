@@ -165,7 +165,7 @@ Copies: `web/templates/pages/table-filter/page.tsx`, `blocks/ToolbarTableFilter.
 | Master filter | Clause | Not 1:1 |
 |---|---|---|
 | View: Items / Avatar bodies | preset `ToggleButton` "Avatar bodies" (hidden in favourites) | a toggle, not a two-way switch |
-| Content rating | preset `ToggleButton` "Rating: All" | as above |
+| Content rating | `Selector` (All ages / All) with `hasClear`; All ages is the unset default | - |
 | Known avatars only (avatar view) | preset `ToggleButton`, pressed by default | - |
 | Gender (avatar view) | the tabs row, as before | - |
 | Category, smart counts | the tabs row; counts in each tab's tooltip and in the folded tabs' menu rows | counts are not printed on visible tabs: they arrive after the tabs and would widen them (layout shift) |
@@ -184,7 +184,7 @@ Deviations, all prop values or token-backed inline styles:
   tabs, sort, presets, selectors, "+N" at 1440 and 390).
 - The template's StyleX rules (`filterChrome`, `filterSurface`, `filterFill`, the slot and readout sizing) are
   `style`/`controlStyle` objects of the same tokens (`catalog/filter-style.ts`): the site has no StyleX
-  compiler. `READOUT_RESERVE` is 88 px (only Clear all; the count stays in the page header).
+  compiler. Popup editors are 300 px (the template's `quotePopover`). `READOUT_RESERVE` is 88 px (only Clear all; the count stays in the page header).
 - The fold's Popover moves focus in only when opened by keyboard (`hasAutoFocus`); a click leaves focus on the
   trigger, so the first clause is not drawn focused. Clause popups keep their own focus handling.
 - `BottomSheet` and the price and tag editors load on first open (`next/dynamic`), as the old filter panel did.

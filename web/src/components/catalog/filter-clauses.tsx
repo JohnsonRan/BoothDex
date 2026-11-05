@@ -18,6 +18,8 @@ import {
   type Facets,
   FILTER_CHROME,
   FILTER_FILL,
+  FILTER_LABEL_EMPTY,
+  FILTER_LABEL_VALUE,
   FILTER_SURFACE,
 } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
@@ -43,7 +45,9 @@ export function useClauses(facets: Facets | null): ReactElement[] {
       size={CONTROL_SIZE}
       isPressed={isPressed}
       style={
-        isPressed ? FILTER_CHROME : { ...FILTER_CHROME, ...FILTER_SURFACE }
+        isPressed
+          ? { ...FILTER_CHROME, ...FILTER_LABEL_VALUE }
+          : { ...FILTER_CHROME, ...FILTER_LABEL_EMPTY, ...FILTER_SURFACE }
       }
       onPressedChange={onPressed}
     />
@@ -80,12 +84,23 @@ export function useClauses(facets: Facets | null): ReactElement[] {
       preset("asup", t("filter.supportedOnly"), f.asup === "supported", (on) =>
         apply({ asup: on ? "supported" : "all" }),
       ),
-    preset(
-      "adult",
-      clause(t("filter.rating"), t("filter.all")),
-      f.adult === "include",
-      (on) => apply({ adult: on ? "include" : "safe" }),
-    ),
+    // two ratings with the default unset, so the trigger reads as the bare field until "All" is chosen
+    <Selector
+      key="adult"
+      label={t("filter.rating")}
+      isLabelHidden
+      placeholder={t("filter.rating")}
+      size={CONTROL_SIZE}
+      hasClear
+      options={[
+        { value: "safe", label: t("filter.safe") },
+        { value: "include", label: t("filter.all") },
+      ]}
+      value={f.adult === "include" ? "include" : null}
+      renderValue={(o) => clause(t("filter.rating"), String(o.label))}
+      controlStyle={f.adult === "include" ? FILTER_FILL : undefined}
+      onChange={(v) => apply({ adult: v === "include" ? "include" : "safe" })}
+    />,
     <PriceClause key="price" />,
     <Selector
       key="range"

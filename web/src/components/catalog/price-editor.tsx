@@ -49,7 +49,7 @@ export function PriceEditor({
 
   return (
     // the popup floors its width at the trigger's; the presets and two inputs need this much
-    <VStack gap={4} style={{ width: 280 }}>
+    <VStack gap={4} style={{ width: 300 }}>
       <VStack gap={0}>
         <Text type="label">{t("filter.price")}</Text>
         <Text type="large" hasTabularNumbers>
