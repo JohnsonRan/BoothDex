@@ -1,21 +1,31 @@
-// One result tile (Product Gallery template's ProductCard): square media, title, supporting line, price; then
-// NEW and feature tags as Badges (Badge Category Tags block). Not over the cover: Overlay is a client component,
+// One result tile, adapted from the Product Gallery template's ProductCard (templates/pages/product-gallery):
+// square media, then title, a secondary line (the shop, with its icon) and the price in large bold; the price
+// row ends with the favourite button, and NEW and feature tags follow as Badges (Badge Category Tags block). Not over the cover: Overlay is a client component,
 // and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration. No directive: the server renders the first screen
 // of tiles and LaterTiles renders the rest in the browser, both from this module.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
+import { Avatar } from "@astryxdesign/core/Avatar";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Card } from "@astryxdesign/core/Card";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import type { ItemResponse } from "@/lib/api-types";
-import { FEATURES, type Feature, imgUrl, isNew, priceOf } from "@/lib/catalog";
+import {
+  FEATURES,
+  type Feature,
+  imageSrc,
+  imgUrl,
+  isNew,
+  priceOf,
+} from "@/lib/catalog";
 import {
   formatPrice,
   itemText,
   type Rates,
   type Settings,
 } from "@/lib/settings-core";
+import { FavButton } from "./fav-button";
 
 /** What a tile shows, already in the visitor's language and currency (small enough to send to the browser). */
 export type Tile = {
@@ -23,6 +33,7 @@ export type Tile = {
   cover: string;
   title: string;
   shop: string;
+  shopIcon: string;
   price: string;
   /** NEW first, then up to two feature tags */
   marks: string[];
@@ -37,6 +48,7 @@ export const tileOf = (
   cover: imgUrl(item, 0),
   title: itemText(item, "title", settings.content),
   shop: item.author_name,
+  shopIcon: imageSrc(item.author_icon),
   price: formatPrice(priceOf(item), settings, rates),
   marks: [
     ...(isNew(item) ? ["NEW"] : []),
@@ -57,7 +69,7 @@ const HIGH = 4;
 
 export function ItemTile({ tile, index }: { tile: Tile; index: number }) {
   return (
-    <VStack gap={2}>
+    <VStack gap={3}>
       <Card padding={0}>
         <AspectRatio ratio={1} fit="cover">
           <img
@@ -76,17 +88,42 @@ export function ItemTile({ tile, index }: { tile: Tile; index: number }) {
           accessibilityLevel={2}
           maxLines={2}
           hasTruncateTooltip={false}
-          // always two lines tall, like its loading silhouette (loading.tsx), so tiles never shift
+          // always two lines tall, like its loading silhouette (silhouette.tsx), so tiles never shift
           style={{ minBlockSize: "2lh" }}
         >
           {tile.title}
         </Heading>
-        <Text type="supporting" maxLines={1} hasTruncateTooltip={false}>
-          {tile.shop}
-        </Text>
-        <Text type="body" weight="bold" hasTabularNumbers>
-          {tile.price}
-        </Text>
+        <HStack gap={1.5} vAlign="center">
+          <Avatar
+            src={tile.shopIcon || undefined}
+            name={tile.shop}
+            size="xsm"
+            tooltip={false}
+          />
+          <StackItem size="fill" style={{ minWidth: 0 }}>
+            <Text
+              type="body"
+              color="secondary"
+              maxLines={1}
+              hasTruncateTooltip={false}
+            >
+              {tile.shop}
+            </Text>
+          </StackItem>
+        </HStack>
+        {/* as tall as the favourite button, in the silhouette too */}
+        <HStack
+          gap={2}
+          vAlign="center"
+          style={{ minBlockSize: "var(--size-element-sm)" }}
+        >
+          <StackItem size="fill">
+            <Text type="large" weight="bold" hasTabularNumbers>
+              {tile.price}
+            </Text>
+          </StackItem>
+          <FavButton />
+        </HStack>
         {/* kept when empty: one badge tall, as in the silhouette */}
         <HStack
           gap={1}

@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
+import {
+  AppRouterContext,
+  type AppRouterInstance,
+} from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
+import { Providers } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
 import { FIRST_TILES } from "./item-tile";
@@ -42,13 +47,18 @@ const item: ItemResponse = {
   enrich_failures: 0,
 };
 
+// the tiles' favourite buttons read the settings, which need a router to apply changes
 const render = (items: ItemResponse[], content = DEFAULT_SETTINGS.content) =>
   renderToStaticMarkup(
-    <ResultsGrid
-      items={items}
-      settings={{ ...DEFAULT_SETTINGS, content }}
-      rates={{}}
-    />,
+    <AppRouterContext value={{} as AppRouterInstance}>
+      <Providers settings={DEFAULT_SETTINGS}>
+        <ResultsGrid
+          items={items}
+          settings={{ ...DEFAULT_SETTINGS, content }}
+          rates={{}}
+        />
+      </Providers>
+    </AppRouterContext>,
   );
 
 test("the server HTML carries the first screen's covers, the first ones loading at once", () => {
@@ -67,9 +77,9 @@ test("a full page renders the first screen on the server and the rest in the bro
   const items = Array.from({ length: 100 }, (_, i) => ({ ...item, id: i + 1 }));
   const html = render(items);
   expect(html.match(/<img /g)).toHaveLength(FIRST_TILES);
-  // one tile silhouette after the last server tile (cover, two title lines, shop, price, badge row); the other
-  // tiles are drawn near the viewport
-  expect(html.match(/class="astryx-skeleton/g)).toHaveLength(6);
+  // one tile silhouette after the last server tile (cover, two title lines, shop icon and name, price, badge
+  // row); the other tiles are drawn near the viewport
+  expect(html.match(/class="astryx-skeleton/g)).toHaveLength(7);
 });
 
 test("every tile reserves two title lines and a badge row, as its loading silhouette does", () => {

@@ -6,10 +6,10 @@
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Card } from "@astryxdesign/core/Card";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import type { Ref } from "react";
 
-type TextType = "heading-1" | "heading-4" | "supporting" | "body";
+type TextType = "heading-1" | "heading-4" | "supporting" | "body" | "large";
 
 /** `lines` lines of `type` text, each a bar of the font's size centred in the text's line box. */
 export function TextSilhouette({
@@ -41,7 +41,7 @@ export function TextSilhouette({
 /** One result tile: square cover, two title lines, shop, price, badge row (item-tile.tsx). */
 export function TileSilhouette({ ref }: { ref?: Ref<HTMLDivElement> }) {
   return (
-    <VStack ref={ref} gap={2} aria-hidden>
+    <VStack ref={ref} gap={3} aria-hidden>
       <Card padding={0}>
         <AspectRatio ratio={1}>
           <Skeleton radius="none" />
@@ -51,8 +51,20 @@ export function TileSilhouette({ ref }: { ref?: Ref<HTMLDivElement> }) {
         <VStack>
           <TextSilhouette type="heading-4" lines={2} width="60%" />
         </VStack>
-        <TextSilhouette type="supporting" width="50%" />
-        <TextSilhouette type="body" width="35%" />
+        <HStack gap={1.5} vAlign="center">
+          <Skeleton height={20} width={20} radius="rounded" />
+          <StackItem size="fill">
+            <TextSilhouette type="body" width="50%" />
+          </StackItem>
+        </HStack>
+        <HStack
+          vAlign="center"
+          style={{ minBlockSize: "var(--size-element-sm)" }}
+        >
+          <StackItem size="fill">
+            <TextSilhouette type="large" width="35%" />
+          </StackItem>
+        </HStack>
         <HStack style={{ minBlockSize: "var(--spacing-5)" }}>
           <Skeleton height="var(--spacing-5)" width="40%" radius="rounded" />
         </HStack>
