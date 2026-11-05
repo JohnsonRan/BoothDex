@@ -102,8 +102,13 @@ export function ItemInfo({
             {money(priceOf(item))}
           </Text>
           {listed && (
-            <Tooltip content={item.smart_price_reason ?? ""}>
-              <Text type="body" color="secondary">
+            // focusable, and opened by a tap: the reason is the point of the line (master: a title attribute)
+            <Tooltip
+              content={item.smart_price_reason ?? ""}
+              hasHoverIndication
+              touchTrigger="tap"
+            >
+              <Text type="body" color="secondary" tabIndex={0}>
                 {t("price.listed", { price: money(item.price_jpy) })}
               </Text>
             </Tooltip>
@@ -139,7 +144,7 @@ export function ItemInfo({
           </HStack>
         </VStack>
       )}
-      <ItemSections item={item} lang={lang} money={money} />
+      <ItemSections item={item} lang={lang} money={money} isWide={isWide} />
     </VStack>
   );
 }

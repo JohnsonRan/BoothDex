@@ -10,7 +10,6 @@
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
-import { Divider } from "@astryxdesign/core/Divider";
 import { Grid } from "@astryxdesign/core/Grid";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
@@ -34,6 +33,7 @@ import {
   DetailSilhouette,
   HeaderSilhouette,
   MAX_HEIGHT,
+  PhoneBarSilhouette,
 } from "./item-silhouette";
 import { MoreFrom } from "./more-from";
 import "./item-icons";
@@ -164,7 +164,7 @@ export default function ItemDialog({
                     isWide={!phone}
                   />
                 </Grid>
-                <Divider />
+                {/* the sections end on their own Divider (template page.tsx:269) */}
                 <MoreFrom item={item} rates={known} isWide={!phone} />
               </VStack>
             ) : (
@@ -177,9 +177,13 @@ export default function ItemDialog({
           </LayoutContent>
         }
         footer={
-          phone && item ? (
+          phone ? (
             <LayoutFooter>
-              <PhoneBar item={item} rates={known} />
+              {item ? (
+                <PhoneBar item={item} rates={known} />
+              ) : (
+                <PhoneBarSilhouette shown={shown} />
+              )}
             </LayoutFooter>
           ) : undefined
         }

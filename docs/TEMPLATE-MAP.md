@@ -164,7 +164,8 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   get the Carousel's arrow buttons; each slide is a muted `ClickableCard` opening the Lightbox, the image
   `contain`ed (a product photo is not cropped; the template's hero is `cover`). Download (`DropdownMenu`) and the
   counter sit in a row under it. Thumbnails, arrow buttons and sticky columns only from lg (master hid
-  thumbnails on phones; a single column cannot stick).
+  thumbnails on phones; a single column cannot stick); past about three rows the thumbnails scroll in place
+  (master: max-h-40), and so does a long variation list from lg (phones show it whole).
 - Sticky: the template's `stickyInfo` is put on both columns, so whichever is shorter stays in view.
 - Description: inside the `CollapsibleGroup` (first section, open) instead of the template's large text above
   the options: Booth descriptions run to hundreds of lines and would push the actions off screen. It is clamped

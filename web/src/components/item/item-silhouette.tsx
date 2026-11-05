@@ -51,6 +51,21 @@ export const HeaderSilhouette = ({ shown }: { shown: boolean }) => (
   />
 );
 
+/** The phones' footer bar (PhoneBar): price, favourite, Buy on Booth. */
+export const PhoneBarSilhouette = ({ shown }: { shown: boolean }) => (
+  <HStack
+    gap={2}
+    vAlign="center"
+    style={{ visibility: shown ? "visible" : "hidden" }}
+  >
+    <VStack style={{ flex: 1 }}>
+      <Line type="large" width="4rem" />
+    </VStack>
+    <Control size="lg" width="var(--size-element-lg)" />
+    <Control size="lg" width="8rem" />
+  </HStack>
+);
+
 export function DetailSilhouette({
   shown,
   columns,

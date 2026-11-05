@@ -30,10 +30,13 @@ export function ItemSections({
   item,
   lang,
   money,
+  isWide,
 }: {
   item: ItemResponse;
   lang: ContentLang;
   money: Money;
+  /** from lg up the variation list scrolls in place; phones show it whole (no scroll inside a scroll) */
+  isWide: boolean;
 }) {
   const { t, ui } = useUi();
   const locale = LOCALES[ui];
@@ -53,7 +56,13 @@ export function ItemSections({
         .filter(Boolean)
         .join(" · "),
       body: (
-        <Variations item={item} lang={lang} money={money} shared={shared} />
+        <Variations
+          item={item}
+          lang={lang}
+          money={money}
+          shared={shared}
+          isCapped={isWide}
+        />
       ),
     },
     item.linked_avatars.length > 0 && {

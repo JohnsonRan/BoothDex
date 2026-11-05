@@ -39,6 +39,8 @@ const THUMB: CSSProperties = {
 };
 // the thumbnails' floor width: master's 64 px grid cells
 const THUMBS = { minWidth: 64, repeat: "fill" } as const;
+// about three rows of thumbnails at the dialog's width
+const THUMBS_HEIGHT = "15rem";
 // a slide is the current one once most of it is in view
 const SEEN = 0.6;
 
@@ -152,29 +154,39 @@ export function ItemGallery({
         )}
       </HStack>
       {isWide && count > 1 && (
-        <Grid columns={THUMBS} gap={2}>
-          {images.map((i) => (
-            <AspectRatio key={i} ratio={1}>
-              <SelectableCard
-                label={alt(i)}
-                isSelected={index === i}
-                onChange={() => go(i)}
-                variant="transparent"
-                padding={0}
-                width="100%"
-                height="100%"
-              >
-                <img
-                  style={THUMB}
-                  src={imgUrl(item, i, "300x300_a2_g5")}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                />
-              </SelectableCard>
-            </AspectRatio>
-          ))}
-        </Grid>
+        // a long gallery scrolls in place (master: max-h-40), so the sticky column keeps the hero in view
+        <VStack
+          style={{
+            maxBlockSize: THUMBS_HEIGHT,
+            overflowY: "auto",
+            padding: "var(--spacing-1)",
+            margin: "calc(-1 * var(--spacing-1))",
+          }}
+        >
+          <Grid columns={THUMBS} gap={2}>
+            {images.map((i) => (
+              <AspectRatio key={i} ratio={1}>
+                <SelectableCard
+                  label={alt(i)}
+                  isSelected={index === i}
+                  onChange={() => go(i)}
+                  variant="transparent"
+                  padding={0}
+                  width="100%"
+                  height="100%"
+                >
+                  <img
+                    style={THUMB}
+                    src={imgUrl(item, i, "300x300_a2_g5")}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </SelectableCard>
+              </AspectRatio>
+            ))}
+          </Grid>
+        </VStack>
       )}
       <Lightbox
         isOpen={zoom}

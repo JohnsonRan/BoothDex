@@ -32,19 +32,25 @@ export function Variations({
   lang,
   money,
   shared,
+  isCapped,
 }: {
   item: ItemResponse;
   lang: ContentLang;
   money: Money;
   shared: number | null;
+  isCapped: boolean;
 }) {
   const { t } = useUi();
   return (
     <VStack
       // a scrolling region is reachable by keyboard (master: the list is focusable)
-      tabIndex={0}
+      tabIndex={isCapped ? 0 : undefined}
       aria-label={t("detail.variations", { n: item.variations.length })}
-      style={{ maxBlockSize: VARIATIONS_HEIGHT, overflowY: "auto" }}
+      style={
+        isCapped
+          ? { maxBlockSize: VARIATIONS_HEIGHT, overflowY: "auto" }
+          : undefined
+      }
     >
       <List>
         {item.variations.map((v) => {
