@@ -3,20 +3,15 @@
 // display name's initial. The full account menu (favourites, recent views, saved searches) is the next step of
 // the rewrite; for now the menu names the account and signs out, as master's did first and last.
 
-import { Avatar } from "@astryxdesign/core/Avatar";
 import { Button } from "@astryxdesign/core/Button";
-import {
-  DropdownMenu,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-} from "@astryxdesign/core/DropdownMenu";
-import { IconButton } from "@astryxdesign/core/IconButton";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useUi } from "@/components/providers";
-import { api, fetchAccount } from "@/lib/api";
+import { fetchAccount } from "@/lib/api";
 
+// the menu's code (with Avatar) loads only for a signed-in visitor
+const AccountMenu = dynamic(() => import("./account-menu"), { ssr: false });
 // the dialog's code loads on first open
 const SignInDialog = dynamic(
   () => import("./sign-in").then((m) => m.SignInDialog),
@@ -38,37 +33,16 @@ export function Account() {
   }, []);
   useEffect(() => load(), [load]);
 
-  if (me) {
-    const name = me.display_name || me.username;
+  if (me)
     return (
-      <DropdownMenu
-        placement="below"
-        alignment="end"
-        renderTrigger={(props) => (
-          <IconButton
-            {...props}
-            label={t("nav.account")}
-            tooltip={name}
-            variant="ghost"
-            icon={<Avatar name={name} size="sm" tooltip={false} />}
-          />
-        )}
-      >
-        <DropdownMenuGroup title={name}>
-          <DropdownMenuItem
-            label={t("account.signOut")}
-            onClick={async () => {
-              await api("/api/account/logout", { method: "POST" }).catch(
-                () => {},
-              );
-              setMe(null);
-              router.refresh();
-            }}
-          />
-        </DropdownMenuGroup>
-      </DropdownMenu>
+      <AccountMenu
+        name={me.display_name || me.username}
+        onSignedOut={() => {
+          setMe(null);
+          router.refresh();
+        }}
+      />
     );
-  }
   return (
     <>
       <Button

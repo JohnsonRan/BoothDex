@@ -8,7 +8,15 @@ import { useEffect, useRef, useState } from "react";
 import { ItemTile, type Tile } from "./item-tile";
 import { TileSilhouette } from "./silhouette";
 
-export function LaterTiles({ tiles, from }: { tiles: Tile[]; from: number }) {
+export function LaterTiles({
+  tiles,
+  from,
+  favLabel,
+}: {
+  tiles: Tile[];
+  from: number;
+  favLabel: string;
+}) {
   const [shown, setShown] = useState(false);
   const marker = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -26,7 +34,12 @@ export function LaterTiles({ tiles, from }: { tiles: Tile[]; from: number }) {
 
   if (shown)
     return tiles.map((tile, i) => (
-      <ItemTile key={tile.id} tile={tile} index={from + i} />
+      <ItemTile
+        key={tile.id}
+        tile={tile}
+        index={from + i}
+        favLabel={favLabel}
+      />
     ));
   return <TileSilhouette ref={marker} />;
 }

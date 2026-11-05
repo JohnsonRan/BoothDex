@@ -12,6 +12,7 @@ import { IconButton } from "@astryxdesign/core/IconButton";
 import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { FavToast } from "@/components/catalog/fav-toast";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
 import type { Rates } from "@/lib/settings-core";
@@ -62,6 +63,7 @@ export function SiteFrame({
       }
     >
       {children}
+      <FavToast />
     </AppShell>
   );
 }

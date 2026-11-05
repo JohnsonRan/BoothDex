@@ -2,12 +2,15 @@
 // square media, then title, a secondary line (the shop, with its icon) and the price in large bold; the price
 // row ends with the favourite button, and NEW and feature tags follow as Badges (Badge Category Tags block). Not over the cover: Overlay is a client component,
 // and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration. No directive: the server renders the first screen
-// of tiles and LaterTiles renders the rest in the browser, both from this module.
+// of tiles and LaterTiles renders the rest in the browser, both from this module. For the same reason a tile
+// carries no handler of its own: one listener answers every favourite button (fav-toast.tsx), and the shop
+// icon is server markup rather than a client Avatar.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
-import { Avatar } from "@astryxdesign/core/Avatar";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Card } from "@astryxdesign/core/Card";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import type { ItemResponse } from "@/lib/api-types";
@@ -25,7 +28,6 @@ import {
   type Rates,
   type Settings,
 } from "@/lib/settings-core";
-import { FavButton } from "./fav-button";
 
 /** What a tile shows, already in the visitor's language and currency (small enough to send to the browser). */
 export type Tile = {
@@ -67,7 +69,46 @@ export const FIRST_TILES = 24;
 const EAGER = 12;
 const HIGH = 4;
 
-export function ItemTile({ tile, index }: { tile: Tile; index: number }) {
+/** The shop's icon at Avatar's xsm size: a round crop, a muted disc when the shop has none. */
+function ShopIcon({ src }: { src: string }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "inline-flex",
+        flex: "none",
+        inlineSize: 20,
+        blockSize: 20,
+        borderRadius: "var(--radius-full)",
+        overflow: "hidden",
+        background: "var(--color-background-muted)",
+      }}
+    >
+      {src && (
+        <img
+          src={src}
+          alt=""
+          width={20}
+          height={20}
+          loading="lazy"
+          decoding="async"
+          style={{ objectFit: "cover" }}
+        />
+      )}
+    </span>
+  );
+}
+
+export function ItemTile({
+  tile,
+  index,
+  favLabel,
+}: {
+  tile: Tile;
+  index: number;
+  /** the favourite button's name, in the visitor's language */
+  favLabel: string;
+}) {
   return (
     <VStack gap={3}>
       <Card padding={0}>
@@ -94,12 +135,7 @@ export function ItemTile({ tile, index }: { tile: Tile; index: number }) {
           {tile.title}
         </Heading>
         <HStack gap={1.5} vAlign="center">
-          <Avatar
-            src={tile.shopIcon || undefined}
-            name={tile.shop}
-            size="xsm"
-            tooltip={false}
-          />
+          <ShopIcon src={tile.shopIcon} />
           <StackItem size="fill" style={{ minWidth: 0 }}>
             <Text
               type="body"
@@ -122,7 +158,14 @@ export function ItemTile({ tile, index }: { tile: Tile; index: number }) {
               {tile.price}
             </Text>
           </StackItem>
-          <FavButton />
+          <IconButton
+            // answered by fav-toast.tsx
+            data-fav=""
+            label={favLabel}
+            variant="ghost"
+            size="sm"
+            icon={<Icon icon="site:favourite" size="sm" />}
+          />
         </HStack>
         {/* kept when empty: one badge tall, as in the silhouette */}
         <HStack
