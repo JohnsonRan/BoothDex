@@ -95,6 +95,8 @@ The rest are prop values, not style overrides:
 
 - `AppShell height="auto"` and `Layout height="auto"`: the window scrolls instead of an inner region, so a
   phone's address bar collapses and the grid is one long page.
+- `AppShell mobileNav={false}`: the bar has no drawer content, and Astryx's phone bar (chosen by a media query
+  in the browser only) remounted the end actions after hydration, dropping the clicks made before it.
 - Grid column floor 160 px instead of the template's 320 px: product tiles need two columns on a phone.
 - Tile title `Heading level={4}` instead of level 2: level 2 is xl, too large for a 160 px tile; the outline
   level stays 2 through `accessibilityLevel`.
