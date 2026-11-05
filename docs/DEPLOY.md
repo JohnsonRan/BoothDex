@@ -103,8 +103,6 @@ sha256sum -c SHA256SUMS
 tar -xf images.tar -C /srv/boothdex    # extracts to /srv/boothdex/images/*.webp
 ```
 
-> `crates/importer` is only for raw VRCatalogue JSON archives (`items/`, `avatars/`, `dict/`, `labels/`); it is not used with `catalogue.dump`.
-
 ## 3. Configure
 
 Edit `.env` in the directory holding `compose.yaml` (`/srv/boothdex/.env` or `/srv/boothdex/app/deploy/.env`):

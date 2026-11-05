@@ -134,7 +134,6 @@ flowchart TD
 | `crates/api` | Search API. Facets are Roaring bitmaps in memory; the Tantivy text index lives on disk (`INDEX_DIR`) and is reused across restarts; page payloads come from PostgreSQL |
 | `crates/worker` | Job runner across 3 lanes: `incremental` (new items), `sweep` (full listing), `details`, `refresh`, `enrich`, `localize` and `embed` (AI). `worker run` is the daemon; `worker once <kind> [params-json]` runs a single job |
 | `crates/imgproxy` | `/b/{size}/...` transcodes and caches BOOTH images as WebP; `/v/{sha1}.webp` serves archived images |
-| `crates/importer` | One-off importer for raw VRCatalogue archive directories |
 | `web` | Next.js website and `/admin` console |
 | `deploy` | Dockerfiles, `docker-bake.hcl`, `compose.yaml` and `.env.example` |
 | `scripts` | Local dev launcher (Windows / Git Bash), data bundle scripts and mock AI server |
@@ -171,8 +170,6 @@ target/release/worker once incremental '{"max_pages": 3, "full": true}'
   four services in the background and log to `<service>.log`.
 - **Mock AI provider**: run `bun scripts/mock-ai.ts` and set the AI base URL to `http://127.0.0.1:3555/v1` in
   `/admin` to test enrichment and embeddings without an API key.
-- **VRCatalogue raw archive**: import `items/`, `avatars/`, `dict/` and `labels/` with
-  `DATABASE_URL=... cargo run --release -p importer -- <archive-dir>` (idempotent; ~90 s for 215k items).
 
 Tests and checks:
 

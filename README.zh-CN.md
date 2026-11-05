@@ -117,7 +117,6 @@ flowchart TD
 | `crates/api` | 搜索 API。筛选使用内存 Roaring 位图；Tantivy 文本索引持久化在磁盘（`INDEX_DIR`）并在重启间复用；分页详情从 PostgreSQL 读取 |
 | `crates/worker` | 分三通道并发执行的后台任务器：`incremental`（增量上新）、`sweep`（全量巡检）、`details`、`refresh`、`enrich`、`localize` 与 `embed`（AI）。`worker run` 为守护进程，`worker once <kind> [params-json]` 单次执行指定任务 |
 | `crates/imgproxy` | `/b/{size}/...` 将 BOOTH 图片转码为 WebP 并缓存；`/v/{sha1}.webp` 提供下架商品存档图片 |
-| `crates/importer` | 一次性导入原始 VRCatalogue JSON 存档目录的工具 |
 | `web` | Next.js 前端站点与 `/admin` 管理后台 |
 | `deploy` | 容器构建文件、`docker-bake.hcl`、`compose.yaml` 与 `.env.example` |
 | `scripts` | 本地开发启停脚本（Windows / Git Bash）、数据包打包校验脚本与模拟 AI 服务 |
@@ -150,7 +149,6 @@ target/release/worker once incremental '{"max_pages": 3, "full": true}'
 
 - **Windows（Git Bash）**：使用 `scripts/dev-up.sh`、`scripts/dev-down.sh` 和 `scripts/dev-restart.sh` 可在后台一键启停全部四个服务，日志输出至 `<service>.log`。
 - **模拟 AI 服务**：没有 API 密钥时，运行 `bun scripts/mock-ai.ts` 并在管理后台将服务地址设为 `http://127.0.0.1:3555/v1` 即可联调 AI 任务。
-- **导入 VRCatalogue 原始存档**：若有原始 JSON 存档目录（`items/`、`avatars/`、`dict/`、`labels/`），可执行 `DATABASE_URL=... cargo run --release -p importer -- <存档目录>` 导入（支持重复执行，21.5 万件商品约需 90 秒）。
 
 运行测试与静态检查：
 

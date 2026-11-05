@@ -112,7 +112,6 @@ flowchart TD
 | `crates/api` | 検索 API。絞り込みにはメモリ上の Roaring ビットマップを使用し、Tantivy 全文検索インデックスはディスク (`INDEX_DIR`) に保持して再起動時も再利用します。ページ表示用の商品データは PostgreSQL から取得します |
 | `crates/worker` | 3 レーン構成のジョブランナー: `incremental` (新着取得)、`sweep` (全件巡回)、`details`、`refresh`、`enrich`、`localize`、`embed` (AI)。`worker run` でデーモン起動、`worker once <kind> [params-json]` で単発実行します |
 | `crates/imgproxy` | `/b/{size}/...` で BOOTH 画像を WebP に変換・キャッシュ配信し、`/v/{sha1}.webp` でアーカイブ画像を配信します |
-| `crates/importer` | VRCatalogue 形式のアーカイブディレクトリを一括インポートするツール |
 | `web` | Next.js フロントエンドおよび `/admin` 管理画面 |
 | `deploy` | Dockerfile、`docker-bake.hcl`、`compose.yaml`、および `.env.example` |
 | `scripts` | ローカル開発用起動スクリプト (Windows / Git Bash)、データバンドル作成ツール、モック AI サーバー |
@@ -145,7 +144,6 @@ target/release/worker once incremental '{"max_pages": 3, "full": true}'
 
 - **Windows (Git Bash)**: `scripts/dev-up.sh`、`scripts/dev-down.sh`、`scripts/dev-restart.sh` で 4 つのサービスをまとめてバックグラウンド起動・停止できます。ログは `<service>.log` に出力されます。
 - **モック AI プロバイダー**: API キーがない場合でも、`bun scripts/mock-ai.ts` を起動して管理画面の AI 接続先に `http://127.0.0.1:3555/v1` を指定すると AI ジョブの動作を確認できます。
-- **VRCatalogue アーカイブのインポート**: VRCatalogue API 形式のアーカイブ (`items/`、`avatars/`、`dict/`、`labels/`) がある場合は、`DATABASE_URL=... cargo run --release -p importer -- <アーカイブディレクトリ>` でインポートできます (再実行しても安全です。約 21.5 万件で所要時間は約 90 秒です)。
 
 テストと静的解析:
 
