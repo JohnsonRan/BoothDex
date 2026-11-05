@@ -18,3 +18,8 @@ not. Do not edit them: copy a newer version over them when Astryx is upgraded.
 | `blocks/ToolbarTableFilter.tsx` (the same filter row as a block) | `src/components/catalog/filter-bar.tsx` |
 | `blocks/PopoverFilterPanel.tsx` (Apply / Reset footer) | `src/components/catalog/price-editor.tsx`, `tag-picker.tsx` |
 | `blocks/PowerSearchPresetFilters.tsx` (considered, not used: see docs/TEMPLATE-MAP.md) | - |
+| `pages/product-detail/page.tsx` (gallery, info column, collapsibles) | `src/components/item/*` |
+| `blocks/DialogAdaptivePresentation.tsx`, `DialogFullscreenDialog.tsx`, `DialogWithSubtitle.tsx` | `src/components/item/item-dialog.tsx` |
+| `blocks/LightboxGallery.tsx` (zoom) | `src/components/item/item-gallery.tsx` |
+| `blocks/CarouselSnap.tsx` (gallery swipe, "More from" strip) | `src/components/item/item-gallery.tsx`, `more-from.tsx` |
+| `blocks/ListBasicList.tsx` (variations), `MetadataListBasicMetadata.tsx` (info) | `src/components/item/item-sections.tsx` |

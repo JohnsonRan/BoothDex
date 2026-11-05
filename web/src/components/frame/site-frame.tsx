@@ -14,6 +14,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { FavToast } from "@/components/catalog/fav-toast";
 import { useFilterUrl } from "@/components/catalog/filter-url";
+import { ItemHost, useItemOpener } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
 import type { Rates } from "@/lib/settings-core";
 import { Account } from "./account";
@@ -34,46 +35,50 @@ export function SiteFrame({
 }) {
   const { t } = useUi();
   return (
-    // auto height: the window scrolls (and a phone's address bar collapses); the nav stays sticky
-    <AppShell
-      variant="surface"
-      height="auto"
-      topNav={
-        <TopNav
-          label={t("nav.main")}
-          // one frame inset (TEMPLATE-MAP rule 5): the bar's own 8 px plus this put the logo on the content's
-          // 24 px edge and the last (borderless) action's label within its padding of the right edge
-          style={{ paddingInline: "var(--spacing-4)" }}
-          heading={
-            <TopNavHeading
-              // the wordmark is visually hidden on phones (globals.css), as on master; the link keeps its name
-              className="site-heading"
-              heading="BoothDex"
-              headingHref="/"
-              logo={<Logo />}
-            />
-          }
-          endContent={
-            <>
-              <QuickSearch rates={rates} />
-              <LanguageMenu />
-              <CurrencyMenu />
-              <ColorModeToggle />
-              <Account />
-            </>
-          }
-        />
-      }
-    >
-      {children}
-      <FavToast />
-    </AppShell>
+    // the item dialog (`?item=`) opens from tiles, the palette and the dialog itself
+    <ItemHost rates={rates}>
+      {/* auto height: the window scrolls (and a phone's address bar collapses); the nav stays sticky */}
+      <AppShell
+        variant="surface"
+        height="auto"
+        topNav={
+          <TopNav
+            label={t("nav.main")}
+            // one frame inset (TEMPLATE-MAP rule 5): the bar's own 8 px plus this put the logo and the last
+            // (borderless) action's label on the content's 24 px edges
+            style={{ paddingInline: "var(--spacing-4)" }}
+            heading={
+              <TopNavHeading
+                // the wordmark is visually hidden on phones (globals.css), as on master; the link keeps its name
+                className="site-heading"
+                heading="BoothDex"
+                headingHref="/"
+                logo={<Logo />}
+              />
+            }
+            endContent={
+              <>
+                <QuickSearch rates={rates} />
+                <LanguageMenu />
+                <CurrencyMenu />
+                <ColorModeToggle />
+                <Account />
+              </>
+            }
+          />
+        }
+      >
+        {children}
+        <FavToast />
+      </AppShell>
+    </ItemHost>
   );
 }
 
 function QuickSearch({ rates }: { rates: Promise<Rates> }) {
   const { t } = useUi();
   const { filters, apply } = useFilterUrl();
+  const { open: openItem } = useItemOpener();
   // undefined: never opened, so the palette's code is not loaded
   const [open, setOpen] = useState<boolean>();
   useEffect(() => {
@@ -90,9 +95,7 @@ function QuickSearch({ rates }: { rates: Promise<Rates> }) {
     if (p.kind === "query") apply({ q: p.value });
     else if (p.kind === "avatar") apply({ avatar: p.value });
     else if (p.kind === "shop") apply({ author: p.value, q: "", avatar: "" });
-    // the item dialog is the next step of the rewrite; until then the item opens on Booth
-    else if (p.kind === "item")
-      window.open(`https://booth.pm/ja/items/${p.value}`, "_blank", "noopener");
+    else if (p.kind === "item") openItem(p.value);
   };
   return (
     <>

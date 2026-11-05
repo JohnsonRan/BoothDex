@@ -58,6 +58,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Category / gender tabs, sort | home control row | page `library` (`ToggleButtonGroup` + `OverflowList`, `DropdownMenu`); a folded selected tab names the overflow menu | phase 1 |
 | Filter clauses | under the tabs | page `table-filter` filter row (block `ToolbarTableFilter`): one closed trigger per filter that doubles as its chip, folding from the end into "+N" (`Popover`; `BottomSheet` on phones), then Clear all. Editors: the template's Quote popup with block `PopoverFilterPanel`'s staged Apply | checkpoint 1 |
 | Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar exactly as page `product-detail`'s image thumbnails, lines 117-150: square `AspectRatio` > `SelectableCard variant="transparent" padding={0}` filling it > image filling and covering; name as caption below); the first 14 cards until the strip is touched, focused or scrolled | phase 1 |
+| Item detail | `?item=<id>`, tile click, palette item | page `product-detail` inside a `Dialog` (blocks `DialogAdaptivePresentation`, `DialogFullscreenDialog`, `DialogWithSubtitle`): gallery (block `CarouselSnap` hero, `SelectableCard` thumbnails, block `LightboxGallery` zoom), info column (SegmentedControl language tabs, display-2 title, rating row as likes, price row, `Badge` marks, `Banner` avatar fit, two lg actions, `CollapsibleGroup` sections with blocks `ListBasicList` and `MetadataListBasicMetadata`, `Token` chips), "More from" `Carousel` strip; full screen with a `LayoutFooter` bar below lg | phase 2 |
 | Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
 | Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); refresh: nothing for 150 ms, then a `Spinner size="sm"` beside the count held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
@@ -229,6 +230,37 @@ Deviations, all prop values or token-backed inline styles:
 - `BottomSheet` and the price and tag editors load on first open (`next/dynamic`), as the old filter panel did.
 - Icons: all through the theme registry (`chevronDown`, `close`, `search`, lucide in the neutral theme);
   include/exclude in the tag editor are lucide `Plus`/`Minus` passed to `Icon`; checkmarks are CSS, no SVG.
+
+## Deviations in phase 2 (item detail)
+
+- Container: the template is a page; here it is a `Dialog` 1200 px wide (the template's `contentWidth`) and 92dvh
+  tall (master), the fullscreen variant below 1024 px (master's lg). On phones the actions move to a
+  `LayoutFooter` bar (price, favourite, Buy on Booth), as master's sticky bar.
+- Header: `DialogHeader` names the shop (avatar as start content, host as subtitle, "All items from shop" as end
+  content); the dialog's accessible name is the item title. Master had the shop block at the top of the info
+  column.
+- Hero: a snapping `Carousel` of square `AspectRatio` slides instead of one image, so phones swipe and desktops
+  get the Carousel's arrow buttons; each slide is a muted `ClickableCard` opening the Lightbox, the image
+  `contain`ed (a product photo is not cropped; the template's hero is `cover`). Download (`DropdownMenu`) and the
+  counter sit in a row under it. Thumbnails, arrow buttons and sticky columns only from lg (master hid
+  thumbnails on phones; a single column cannot stick); past about three rows the thumbnails scroll in place
+  (master: max-h-40), and so does a long variation list from lg (phones show it whole).
+- Sticky: the template's `stickyInfo` is put on both columns, so whichever is shorter stays in view.
+- Description: inside the `CollapsibleGroup` (first section, open) instead of the template's large text above
+  the options: Booth descriptions run to hundreds of lines and would push the actions off screen. It is clamped
+  to 12 lines with Show more / Show less.
+- Options: the template's glaze/finish `SegmentedControl`s become the item-text language tabs (Original and the
+  translated languages); quantity and Add to Cart have no counterpart. Rating row: likes with the favourite
+  glyph instead of stars.
+- "More from {shop}": a `Carousel` of the avatar strip's card pattern with `ClickableCard` (it opens an item; no
+  selection), under the two columns.
+- Tiles: the root carries `data-item` and the title is a plain `<a href="?item=">` in server markup (keyboard
+  focus, new tab on a modified click); one document listener in `item/item-host.tsx` opens the dialog, as
+  `fav-toast.tsx` answers the favourite buttons. Astryx `Link` and `ClickableCard` are client components, which
+  the server tiles avoid (TBT).
+- `?item=` uses the browser history API directly (it integrates with the Next router), so opening an item does
+  not render the page again on the server.
+
 
 ## Remaining Tailwind or shadcn files
 

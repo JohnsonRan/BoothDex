@@ -110,7 +110,8 @@ export function ItemTile({
   favLabel: string;
 }) {
   return (
-    <VStack gap={3}>
+    // opened by item-host.tsx's one listener: a click anywhere on the tile but the favourite button
+    <VStack gap={3} data-item={String(tile.id)} style={{ cursor: "pointer" }}>
       <Card padding={0}>
         <AspectRatio ratio={1} fit="cover">
           <img
@@ -135,7 +136,13 @@ export function ItemTile({
           // always two lines tall, like its loading silhouette (silhouette.tsx), so tiles never shift
           style={{ minBlockSize: "2lh" }}
         >
-          {tile.title}
+          {/* the tile's link: keyboard focus, and a new tab on a modified click */}
+          <a
+            href={`?item=${tile.id}`}
+            style={{ color: "inherit", textDecoration: "none" }}
+          >
+            {tile.title}
+          </a>
         </Heading>
         <HStack gap={1.5} vAlign="center">
           <ShopIcon src={tile.shopIcon} />
