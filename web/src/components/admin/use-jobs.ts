@@ -5,20 +5,22 @@
 import { useToast } from "@astryxdesign/core/Toast";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { errorText, useAdminT } from "./messages";
 import type { Job, Schedule } from "./types";
 
 const POLL_MS = 5000;
 
 export function useJobs() {
+  const t = useAdminT();
   const toast = useToast();
   const [data, setData] = useState<{ jobs: Job[]; schedules: Schedule[] }>();
 
   const load = useCallback(() => {
     api<{ jobs: Job[]; schedules: Schedule[] }>("/api/admin/jobs").then(
       setData,
-      (e: Error) => toast({ type: "error", body: e.message, uniqueID: "jobs" }),
+      (e) => toast({ type: "error", body: errorText(t, e), uniqueID: "jobs" }),
     );
-  }, [toast]);
+  }, [toast, t]);
 
   useEffect(() => {
     load();
@@ -38,14 +40,11 @@ export function useJobs() {
         load();
         return true;
       } catch (e) {
-        toast({
-          type: "error",
-          body: e instanceof Error ? e.message : String(e),
-        });
+        toast({ type: "error", body: errorText(t, e) });
         return false;
       }
     },
-    [toast, load],
+    [toast, load, t],
   );
 
   return { jobs: data?.jobs, schedules: data?.schedules, act };

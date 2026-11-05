@@ -21,9 +21,9 @@ import { useToast } from "@astryxdesign/core/Toast";
 import { useCallback, useEffect, useState } from "react";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
-import { api } from "@/lib/api";
+import { api, errorKey } from "@/lib/api";
 import { filtersToQuery } from "@/lib/catalog";
-import type { MessageKey } from "@/lib/messages";
+import { API_ERRORS, type MessageKey } from "@/lib/messages";
 import { useDelayed } from "@/lib/use-delayed";
 import { DeleteSaved } from "./delete-saved";
 import "@/lib/icons-on-demand";
@@ -66,7 +66,7 @@ export default function SavedSearches({
   const fail = (err: unknown, fallback: MessageKey) =>
     toast({
       type: "error",
-      body: err instanceof Error && err.message ? err.message : t(fallback),
+      body: t(errorKey(err, API_ERRORS, fallback)),
       uniqueID: "saved",
     });
   const subscribe = async () => {

@@ -12,7 +12,7 @@ import { TextInput } from "@astryxdesign/core/TextInput";
 import { useToast } from "@astryxdesign/core/Toast";
 import { useState } from "react";
 import { ApiError, api } from "@/lib/api";
-import { useAdminT } from "./messages";
+import { errorText, useAdminT } from "./messages";
 
 type Result = { username: string; password: string; sessions_revoked: number };
 
@@ -38,11 +38,7 @@ export function ResetPassword() {
       setUsername("");
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setNotFound(true);
-      else
-        toast({
-          type: "error",
-          body: e instanceof Error ? e.message : String(e),
-        });
+      else toast({ type: "error", body: errorText(t, e) });
     } finally {
       setBusy(false);
       setConfirm(false);

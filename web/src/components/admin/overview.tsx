@@ -18,7 +18,7 @@ import { LOCALES } from "@/lib/settings-core";
 import { useLive } from "./admin-console";
 import { formatBytes, formatNumber } from "./format";
 import { LiveStatus } from "./live-status";
-import { useAdminT } from "./messages";
+import { errorText, useAdminT } from "./messages";
 import { MetricCard } from "./metric-card";
 import { PageFrame } from "./page-frame";
 import { SystemMeters } from "./system-meters";
@@ -41,7 +41,7 @@ export function Overview() {
     api("/api/admin/reload", { method: "POST" })
       .then(
         () => toast({ body: t("toast.reload") }),
-        (e: Error) => toast({ type: "error", body: e.message }),
+        (e) => toast({ type: "error", body: errorText(t, e) }),
       )
       .finally(() => setReloading(false));
   };
