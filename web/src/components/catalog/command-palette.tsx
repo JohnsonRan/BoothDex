@@ -1,7 +1,15 @@
 "use client";
 
-import { Hash, History, Search, Store, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  ArrowLeft,
+  Hash,
+  History,
+  Search,
+  Store,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import {
   Command,
   CommandDialog,
@@ -93,10 +101,41 @@ export function CommandPalette({
     };
   }, [q, adult]);
 
+  // Open = one history entry, so Back (the phone's back gesture) closes the palette instead of leaving the site.
+  // Closing without a pick (arrow button, Esc, Ctrl+K) steps back; picks take the entry off before navigating.
+  const entry = useRef(false);
+  const close = useRef(onOpenChange);
+  close.current = onOpenChange;
+  useEffect(() => {
+    if (open && !entry.current) {
+      entry.current = true;
+      window.history.pushState(null, "", location.href);
+    } else if (!open && entry.current) {
+      entry.current = false;
+      window.history.back();
+    }
+    if (!open) return;
+    const onBack = () => {
+      // ignore popstate from our own run() back navigation
+      if (!entry.current) return;
+      entry.current = false;
+      close.current(false);
+    };
+    addEventListener("popstate", onBack);
+    return () => removeEventListener("popstate", onBack);
+  }, [open]);
+
   const run = (fn: () => void) => {
     onOpenChange(false);
     setQ("");
-    fn();
+    // pop the palette's entry first so item picks (which push) don't leave a duplicate entry behind
+    if (entry.current) {
+      entry.current = false;
+      addEventListener("popstate", () => fn(), { once: true });
+      window.history.back();
+    } else {
+      fn();
+    }
   };
   const thumb = (url: string | null) =>
     url?.includes("booth.pximg.net")
@@ -114,11 +153,27 @@ export function CommandPalette({
       className="top-0 h-dvh max-w-none translate-y-0 rounded-none! sm:top-[12vh] sm:h-auto sm:max-w-xl sm:rounded-xl!"
     >
       <Command shouldFilter={false} className="h-full">
-        <CommandInput
-          placeholder={t("palette.placeholder")}
-          value={q}
-          onValueChange={setQ}
-        />
+        <div className="flex items-center pr-1">
+          {/* full screen on phones: no backdrop to tap and no Esc key, so offer a way out */}
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            aria-label={t("palette.close")}
+            // 44px tap target; the negative margin keeps the header row as tall as the input
+            className="-my-1 grid size-11 shrink-0 place-items-center pt-1 text-muted-foreground hover:text-foreground sm:hidden"
+          >
+            <ArrowLeft className="size-5" />
+          </button>
+          <div className="min-w-0 flex-1 max-sm:-ml-1">
+            <CommandInput
+              placeholder={t("palette.placeholder")}
+              value={q}
+              onValueChange={setQ}
+              // 16px on phones: iOS zooms the page into smaller inputs on focus
+              className="max-sm:text-base"
+            />
+          </div>
+        </div>
         <CommandList className="max-h-none flex-1 sm:max-h-[60vh]">
           <CommandEmpty>
             {q.trim() ? t("palette.empty") : t("palette.hint")}
