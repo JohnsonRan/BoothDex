@@ -65,3 +65,20 @@ test("tiles show the title in the chosen language, the shop and the price", () =
   expect(html).toContain("Test shop");
   expect(html).toContain("¥1,000");
 });
+
+test("new items and feature tags are marked on the cover; plain items get no overlay", () => {
+  const html = render([
+    {
+      ...item,
+      id: 1,
+      published_at: new Date().toISOString(),
+      features: ["quest", "ma", "liltoon"],
+    },
+    { ...item, id: 2 },
+  ]);
+  expect(html).toContain("NEW");
+  expect(html).toContain("Quest");
+  expect(html).toContain("MA");
+  expect(html).not.toContain("lilToon");
+  expect(html.match(/class="astryx-overlay /g)).toHaveLength(1);
+});

@@ -1,14 +1,17 @@
 // The result grid, rendered on the server so every cover is in the HTML. Tiles follow the Product Gallery
-// template's ProductCard: square media, title, supporting line, price.
+// template's ProductCard: square media, title, supporting line, price; NEW and feature markers sit on the cover
+// as in the Overlay Bottom Strip block.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
+import { Badge } from "@astryxdesign/core/Badge";
 import { Card } from "@astryxdesign/core/Card";
 import { Grid } from "@astryxdesign/core/Grid";
+import { Overlay } from "@astryxdesign/core/Overlay";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
-import { VStack } from "@astryxdesign/core/Stack";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import type { ItemResponse } from "@/lib/api-types";
-import { imgUrl, priceOf } from "@/lib/catalog";
+import { FEATURES, type Feature, imgUrl, isNew, priceOf } from "@/lib/catalog";
 import {
   formatPrice,
   itemText,
@@ -23,6 +26,20 @@ const COLUMNS = { minWidth: 160 } as const;
 const EAGER = 12;
 const HIGH = 4;
 
+/** NEW, then up to two feature tags; null when there are none, so those covers get no overlay at all. */
+function markersOf(item: ItemResponse) {
+  const features = item.features.slice(0, 2);
+  if (!isNew(item) && features.length === 0) return null;
+  return (
+    <HStack gap={1} wrap="wrap">
+      {isNew(item) && <Badge label="NEW" variant="blue" />}
+      {features.map((f) => (
+        <Badge key={f} label={FEATURES[f as Feature] ?? f} />
+      ))}
+    </HStack>
+  );
+}
+
 function ItemTile({
   item,
   index,
@@ -34,18 +51,28 @@ function ItemTile({
   settings: Settings;
   rates: Rates;
 }) {
+  const cover = (
+    <AspectRatio ratio={1} fit="cover">
+      <img
+        src={imgUrl(item, 0)}
+        alt=""
+        loading={index < EAGER ? "eager" : "lazy"}
+        fetchPriority={index < HIGH ? "high" : undefined}
+        decoding="async"
+      />
+    </AspectRatio>
+  );
+  const markers = markersOf(item);
   return (
     <VStack gap={2}>
       <Card padding={0}>
-        <AspectRatio ratio={1} fit="cover">
-          <img
-            src={imgUrl(item, 0)}
-            alt=""
-            loading={index < EAGER ? "eager" : "lazy"}
-            fetchPriority={index < HIGH ? "high" : undefined}
-            decoding="async"
-          />
-        </AspectRatio>
+        {markers ? (
+          <Overlay position="top" align="start" scrim={false} content={markers}>
+            {cover}
+          </Overlay>
+        ) : (
+          cover
+        )}
       </Card>
       <VStack gap={1}>
         {/* level 4 is the body-sized heading; tiles still sit at outline level 2, under the page title */}
