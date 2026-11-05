@@ -108,20 +108,26 @@ function Body({
   const strip = useRef<HTMLDivElement>(null);
   const sameStrip = useRef<HTMLDivElement>(null);
 
-  // listings only carry 4 Booth images; the API fetches the complete gallery on first open
+  // result cards are card-sized (no bio, variations or avatars), so load the full record; listings also only
+  // carry 4 Booth images, so the API fetches the complete gallery on first open. Either may answer first.
   useEffect(() => {
+    let gallery: string[] | null = null;
+    const withGallery = (it: Item): Item =>
+      gallery ? { ...it, booth_images: gallery, media: [] } : it;
+    api<{ items: Item[] }>(`/api/items?ids=${initial.id}`)
+      .then((r) => r.items[0] && setItem(withGallery(r.items[0])))
+      .catch(() => {});
     api<{ images: string[]; complete: boolean }>(
       `/api/items/${initial.id}/gallery`,
     )
-      .then(
-        (g) =>
-          g.complete &&
-          g.images.length &&
-          setItem((it) => ({ ...it, booth_images: g.images, media: [] })),
-      )
+      .then((g) => {
+        if (!g.complete || !g.images.length) return;
+        gallery = g.images;
+        setItem(withGallery);
+      })
       .catch(() => {});
     api<SearchResult>(
-      `/api/search?authors=${encodeURIComponent(initial.author_name)}&adult=${adult}&sort=likes&pageSize=13`,
+      `/api/search?authors=${encodeURIComponent(initial.author_name)}&adult=${adult}&sort=likes&pageSize=13&fields=card`,
     )
       .then((r) =>
         setSame(r.items.filter((x) => x.id !== initial.id).slice(0, 12)),

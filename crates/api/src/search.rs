@@ -103,7 +103,11 @@ pub(crate) async fn search(
     let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref(), semantic))?;
     trace.step("search");
     let search_ms = t0.elapsed().as_secs_f64() * 1e3;
-    let items = db::load_items(&s.pool, &r.ids).await?;
+    let mut items = db::load_items(&s.pool, &r.ids).await?;
+    // the site's result grids ask for card-sized items; other callers keep the full records
+    if p.get("fields").as_deref() == Some("card") {
+        items = items.into_iter().map(db::ItemResponse::card).collect();
+    }
     trace.step("items");
     Ok(Json(json!({
         "count": r.count,

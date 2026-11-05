@@ -154,9 +154,9 @@ cd web && bun test src/lib && bunx tsc --noEmit && bunx biome check src
 
 ## API
 
-`/api/search` は VRCatalogue 互換のクエリパラメーターを受け付けます: `v q sort dir page pageSize adult avatars authors tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender`。その他のエンドポイントとして `/api/avatars`、`/api/authors`、`/api/tags`、`/api/booth-tags` (`?q=&offset=&limit=`)、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、および `/api/rss?<検索クエリ>` があります。
+`/api/search` は VRCatalogue 互換のクエリパラメーターを受け付けます: `v q sort dir page pageSize adult avatars authors tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。その他のエンドポイントとして `/api/avatars`、`/api/authors`、`/api/tags`、`/api/booth-tags` (`?q=&offset=&limit=`)、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、および `/api/rss?<検索クエリ>` があります。
 
-VRCatalogue との違い: 機能 (Features) のファセット件数が選択中のカテゴリを反映します。「人気」(Trending) 順は経過時間で減衰させた「スキ!」数で算出します。`range` パラメーターでは `7d`、`30d`、`90d` も指定できます。
+VRCatalogue との違い: 機能 (Features) のファセット件数が選択中のカテゴリを反映します。「人気」(Trending) 順は経過時間で減衰させた「スキ!」数で算出します。`range` パラメーターでは `7d`、`30d`、`90d` も指定できます。`fields=card` でカード表示用の軽量データを取得できます (bio、variations、booth_tags、linked_avatars、categories、smart_price_reason を空にし、translations はタイトルのみ保持、booth_images/media は最大 2 枚に制限。デフォルト応答は完全なまま。完全な記録は `/api/items?ids=` で取得)。
 
 ## 謝辞
 

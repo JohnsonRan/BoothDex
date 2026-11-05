@@ -51,6 +51,33 @@ pub struct ItemResponse {
     pub relisted_as: Option<i64>,
 }
 
+impl ItemResponse {
+    /// What a result card shows, in the same shape: bio, variations, tags, linked avatars, categories and the
+    /// price reason come back empty, translations keep only titles and images only the cover and hover preview.
+    /// A page of 100 shrinks from ~1.3 MB to ~100 KB of JSON; the item page loads the full record.
+    pub fn card(mut self) -> Self {
+        self.bio.clear();
+        self.smart_price_reason = None;
+        self.booth_tags.clear();
+        self.variations = Value::Array(Vec::new());
+        self.linked_avatars = Value::Array(Vec::new());
+        self.categories = Value::Array(Vec::new());
+        self.media.truncate(2);
+        if let Some(b) = &mut self.booth_images {
+            b.truncate(2);
+        }
+        let titles = match &self.translations {
+            Value::Object(langs) => langs
+                .iter()
+                .filter_map(|(lang, t)| Some((lang.clone(), serde_json::json!({ "title": t.get("title")? }))))
+                .collect(),
+            _ => serde_json::Map::new(),
+        };
+        self.translations = Value::Object(titles);
+        self
+    }
+}
+
 #[cfg(test)]
 impl Default for ItemResponse {
     fn default() -> Self {
@@ -256,7 +283,46 @@ pub async fn load_items(pool: &PgPool, ids: &[i64]) -> Result<Vec<ItemResponse>>
 mod tests {
     use std::collections::HashMap;
 
+    use serde_json::json;
+
     use super::*;
+
+    #[test]
+    fn card_keeps_what_a_result_card_shows() {
+        let full = ItemResponse {
+            id: 1,
+            title: "Title".into(),
+            bio: "Long description".into(),
+            smart_price_reason: Some("reason".into()),
+            booth_tags: vec!["tag".into()],
+            media: vec!["m1".into(), "m2".into(), "m3".into()],
+            booth_images: Some(vec!["b1".into(), "b2".into(), "b3".into(), "b4".into()]),
+            variations: json!([{ "id": "v" }]),
+            linked_avatars: json!([{ "slug": "shinano" }]),
+            categories: json!([{ "slug": "hair" }]),
+            translations: json!({
+                "en": { "title": "T", "bio": "B", "variations": { "v": "V" } },
+                "ja": { "bio": "only a bio" },
+                "original_language": "ja",
+            }),
+            ..Default::default()
+        };
+        let card = full.card();
+        assert_eq!(card.title, "Title");
+        assert_eq!(card.bio, "");
+        assert_eq!(card.smart_price_reason, None);
+        assert!(card.booth_tags.is_empty());
+        assert_eq!(card.media, vec!["m1", "m2"]);
+        assert_eq!(card.booth_images, Some(vec!["b1".into(), "b2".into()]));
+        assert_eq!((card.variations, card.linked_avatars, card.categories), (json!([]), json!([]), json!([])));
+        assert_eq!(card.translations, json!({ "en": { "title": "T" } }));
+    }
+
+    #[test]
+    fn card_tolerates_non_object_translations() {
+        let card = ItemResponse { translations: json!(null), ..Default::default() }.card();
+        assert_eq!(card.translations, json!({}));
+    }
 
     #[test]
     fn order_preservation_and_empty_behavior() {

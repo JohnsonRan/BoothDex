@@ -181,12 +181,14 @@ cd web && bun test src/lib && bunx tsc --noEmit && bunx biome check src
 ## API
 
 `/api/search` accepts a VRCatalogue-compatible query string: `v q sort dir page pageSize adult avatars authors
-tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender`. Other endpoints:
+tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`. Other endpoints:
 `/api/avatars`, `/api/authors`, `/api/tags` and `/api/booth-tags` (`?q=&offset=&limit=`), `/api/categories`,
 `/api/items?ids=`, `/api/palette?q=` and `/api/rss?<search query>`.
 
 Differences from VRCatalogue: feature facet counts respect the selected category; Trending is likes decayed by
-age; `range` also accepts `7d`, `30d` and `90d`.
+age; `range` also accepts `7d`, `30d` and `90d`; `fields=card` opts into compact card records (bio, variations,
+booth_tags, linked_avatars, categories and smart_price_reason emptied, translations keep only titles,
+booth_images/media at most 2; default response unchanged; fetch full records via `/api/items?ids=`).
 
 ## Acknowledgments
 
