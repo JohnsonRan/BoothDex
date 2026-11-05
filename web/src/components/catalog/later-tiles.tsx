@@ -15,7 +15,7 @@ import { ItemTile, type Tile, tileOf } from "./item-tile";
 import { TileSilhouette } from "./silhouette";
 
 /** Where the browser gets the later tiles: the page's search and what the server already drew. */
-export type LaterSource = {
+type LaterSource = {
   /** the server's /api/search request for this page */
   path: string;
   /** the server tiles' items, left out if the answer repeats them */
