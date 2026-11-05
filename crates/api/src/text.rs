@@ -78,7 +78,8 @@ fn text_field(tokenizer: &str, positions: bool) -> TextOptions {
 }
 
 /// Bump when what goes into the index changes, so indexes already on disk are rebuilt.
-const FORMAT: u32 = 2;
+/// 3: tantivy 0.27 and Lindera 6 (dictionary and tokenizer versions changed).
+const FORMAT: u32 = 3;
 
 /// Lowercase letters and digits only: "Short-Hair" and "short hair" both become "shorthair".
 fn compact(s: &str) -> String {
