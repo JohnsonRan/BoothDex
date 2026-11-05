@@ -23,7 +23,6 @@ pub struct Fetcher {
 
 impl Fetcher {
     pub fn new() -> anyhow::Result<Self> {
-        rustls::crypto::ring::default_provider().install_default().ok();
         // a visitor is waiting: one try, and stored data is served if Booth is busy
         Ok(Self { booth: BoothClient::new(1, Duration::from_secs(15))?, permits: Semaphore::new(4) })
     }

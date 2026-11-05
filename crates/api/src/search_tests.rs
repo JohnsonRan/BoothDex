@@ -34,6 +34,7 @@ async fn check_semantic_search(pool: PgPool) {
         .bind(boothdex_core::embed::HalfVector::from_f32_slice(&vector)).execute(&pool).await.unwrap();
 
     let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
+    crate::install_tls();
     let state = Arc::new(
         AppState::new(
             pool,

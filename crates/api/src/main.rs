@@ -178,7 +178,6 @@ impl AppState {
         dummy_hash: String,
         http_timeout: Option<std::time::Duration>,
     ) -> Result<Self> {
-        // Fetcher::new installs the rustls crypto provider required by reqwest before building the HTTP client.
         let gallery = gallery::Fetcher::new()?;
         let mut builder = reqwest::Client::builder();
         if let Some(t) = http_timeout {
@@ -774,8 +773,14 @@ async fn serve_starting(bind: &str, ready: tokio::sync::oneshot::Receiver<()>) -
     }))
 }
 
+/// reqwest is built without a default crypto provider: install ring once, before any client is built.
+fn install_tls() {
+    rustls::crypto::ring::default_provider().install_default().ok();
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    install_tls();
     let bind = std::env::var("BIND").unwrap_or_else(|_| "127.0.0.1:3000".into());
     let (ready, ready_rx) = tokio::sync::oneshot::channel();
     let starting = serve_starting(&bind, ready_rx).await?;
@@ -875,6 +880,7 @@ mod tests {
             loaded_at: chrono::Utc::now(),
             build_secs: 0.0,
         };
+        super::install_tls();
         std::sync::Arc::new(
             super::AppState::new(
                 sqlx::postgres::PgPoolOptions::new().connect_lazy("postgres://localhost/unused").unwrap(),

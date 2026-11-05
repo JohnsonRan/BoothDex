@@ -196,8 +196,14 @@ async fn daemon(pool: PgPool, booth: Arc<Booth>) -> Result<()> {
     }
 }
 
+/// reqwest is built without a default crypto provider: install ring once, before any client is built.
+fn install_tls() {
+    rustls::crypto::ring::default_provider().install_default().ok();
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    install_tls();
     let pool = PgPool::connect(&std::env::var("DATABASE_URL").context("DATABASE_URL not set")?).await?;
     boothdex_core::MIGRATOR.run(&pool).await?;
     let booth = Arc::new(Booth::new()?);

@@ -18,7 +18,6 @@ pub struct Booth {
 
 impl Booth {
     pub fn new() -> Result<Self> {
-        rustls::crypto::ring::default_provider().install_default().ok();
         Ok(Self {
             http: BoothClient::new(6, Duration::from_secs(30))?,
             img: Regex::new(r#"https://booth\.pximg\.net/(?:c/[^/"'\s]+/)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i/(\d+)/([^"'\s)?]+)"#)?,
@@ -82,6 +81,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn exhausted_retries_do_not_sleep_and_keep_retry_after() {
+        crate::install_tls();
         for (status, retry_after, seconds) in [(429, Some("3"), 15), (503, None, 62)] {
             let (url, requests) = crate::retry_test_server(status.try_into().unwrap(), retry_after).await;
             let booth = BoothClient::from_reqwest(reqwest::Client::builder().no_proxy().pool_max_idle_per_host(0).build().unwrap(), 6);
@@ -97,6 +97,7 @@ mod tests {
 
     #[test]
     fn groups_images_by_item_and_strips_size() {
+        crate::install_tls();
         let b = Booth::new().unwrap();
         let html = r#"<img data-original="https://booth.pximg.net/c/300x300_a2_g5/dc33a5b5-f8f7-418f-8087-393ea802b496/i/9064622/aaa_base_resized.jpg">
             <img data-original="https://booth.pximg.net/c/300x300_a2_g5/dc33a5b5-f8f7-418f-8087-393ea802b496/i/9064622/bbb_base_resized.jpg">

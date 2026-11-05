@@ -236,8 +236,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn exhausted_retries_return_provider_error_without_extra_sleep() {
-        // the binary installs it in Booth::new; alone, this test must do it itself
-        rustls::crypto::ring::default_provider().install_default().ok();
+        crate::install_tls();
         for status in [429, 503] {
             let (base_url, requests) = crate::retry_test_server(status.try_into().unwrap(), None).await;
             let ai = Ai {
@@ -478,8 +477,7 @@ mod tests {
 
     #[test]
     fn request_sends_reasoning_effort_as_configured() {
-        // the binary installs it in Booth::new; alone, this test must do it itself
-        rustls::crypto::ring::default_provider().install_default().ok();
+        crate::install_tls();
         let mut c = boothdex_core::settings::resolve(&json!({ "base_url": "http://x/v1", "model": "m", "api_key": "k" }), |_| None);
         let ai = Ai::from_config(&c).unwrap().unwrap();
         assert_eq!(ai.body("s", "u")["reasoning_effort"], "none");
