@@ -9,7 +9,8 @@ import {
   type UiLang,
 } from "./messages";
 
-export type ContentLang = "original" | "zh" | "en" | "ja" | "ko";
+export const CONTENT_LANGS = ["original", "zh", "en", "ja", "ko"] as const;
+export type ContentLang = (typeof CONTENT_LANGS)[number];
 /** "system" follows the operating system; the other two pin a mode. */
 export const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
@@ -95,9 +96,7 @@ export function parseSettings(
       pick(v.ui, UI_LANGS) ??
       uiFromAcceptLanguage(acceptLanguage) ??
       DEFAULT_SETTINGS.ui,
-    content:
-      pick(v.content, ["original", "zh", "en", "ja", "ko"] as const) ??
-      DEFAULT_SETTINGS.content,
+    content: pick(v.content, CONTENT_LANGS) ?? DEFAULT_SETTINGS.content,
     currency: pick(v.currency, CURRENCIES) ?? DEFAULT_SETTINGS.currency,
     theme: pick(v.theme, THEMES) ?? DEFAULT_SETTINGS.theme,
   };

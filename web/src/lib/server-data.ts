@@ -88,7 +88,8 @@ export async function listCategories(): Promise<Category[]> {
 /** Exchange rates for prices in another currency; none (plain yen) when the rate service fails. */
 export async function exchangeRates(): Promise<Rates> {
   "use cache";
-  cacheLife("hours");
+  // refreshed every 12 hours, as master's browser cache was
+  cacheLife({ stale: 3600, revalidate: 43200, expire: 86400 });
   const symbols = CURRENCIES.filter((c) => c !== "JPY").join(",");
   const res = await fetch(
     `https://api.frankfurter.dev/v1/latest?base=JPY&symbols=${symbols}`,

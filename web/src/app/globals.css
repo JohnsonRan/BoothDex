@@ -14,3 +14,17 @@
     sans-serif;
   --font-family-heading: var(--font-family-body);
 }
+
+/* Documented deviation (docs/TEMPLATE-MAP.md): on phones the top bar shows only the logo, as on master, so the
+   five end actions fit at 390 px. TopNavHeading has no prop for it; the wordmark is hidden visually and stays
+   the link's accessible name. */
+@media (width < 640px) {
+  .site-heading > :not(:first-child) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

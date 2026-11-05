@@ -8,8 +8,8 @@ import { Layout, LayoutContent, LayoutHeader } from "@astryxdesign/core/Layout";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Heading } from "@astryxdesign/core/Text";
 import { Suspense } from "react";
+import { SiteFrame } from "@/components/frame/site-frame";
 import { Providers } from "@/components/providers";
-import { SiteFrame } from "@/components/site-frame";
 import {
   avatarName,
   type Filters,
@@ -54,15 +54,18 @@ export async function HomeScreen({
   const [settings, params] = await Promise.all([readSettings(), searchParams]);
   const filters = filtersFrom(params);
   const page = Math.max(1, Number.parseInt(String(params.page), 10) || 1);
-  const t = translator(settings.ui);
+  // started here: the palette (item prices) and the results use them; nothing waits for them
+  const rates =
+    settings.currency === "JPY"
+      ? Promise.resolve({} as Rates)
+      : exchangeRates().catch((): Rates => ({}));
   return (
     <Providers
-      ui={settings.ui}
-      mode={settings.theme}
+      settings={settings}
       catalogue={await componentCatalogue(settings.ui)}
     >
-      <SiteFrame label={t("nav.main")}>
-        <FilterUrlProvider filters={filters}>
+      <FilterUrlProvider filters={filters}>
+        <SiteFrame rates={rates}>
           {/* no fallback: the frame waits only for the cached avatar and category lists */}
           <Arrival>
             <Catalog
@@ -70,10 +73,11 @@ export async function HomeScreen({
               filters={filters}
               page={page}
               noSemantic={params.sem === "0"}
+              rates={rates}
             />
           </Arrival>
-        </FilterUrlProvider>
-      </SiteFrame>
+        </SiteFrame>
+      </FilterUrlProvider>
     </Providers>
   );
 }
@@ -83,11 +87,13 @@ async function Catalog({
   filters,
   page,
   noSemantic,
+  rates,
 }: {
   settings: Settings;
   filters: Filters;
   page: number;
   noSemantic: boolean;
+  rates: Promise<Rates>;
 }) {
   const t = translator(settings.ui);
   // started here, awaited by the count and the results: the frame does not wait for it
@@ -95,10 +101,6 @@ async function Catalog({
   const featureCounts = outcome.then((o) =>
     o.state === "ok" ? o.result.featureCounts : {},
   );
-  const rates =
-    settings.currency === "JPY"
-      ? Promise.resolve({} as Rates)
-      : exchangeRates().catch((): Rates => ({}));
   const [avatars, categories] = await Promise.all([
     listAvatars().catch(() => []),
     listCategories().catch(() => []),
