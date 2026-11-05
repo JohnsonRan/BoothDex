@@ -1,55 +1,69 @@
-// A number tile: the Astryx dashboard template's MetricCard (templates/pages/dashboard/page.tsx:586-623), with
-// a warning dot beside the value while the number asks for attention, an optional progress bar for a share
-// (the template's ProgressBar, :369-375) and an optional action at the bottom.
+// A number tile: the Astryx template dashboard-scorecard's ScorecardTile
+// (templates/pages/dashboard-scorecard/page.tsx:461-477: label in label text, the value as a level-2 heading)
+// with the label's icon, as the reference admin tags its tiles. A status dot beside the value only while the
+// number asks for attention, an optional usage bar (the template dashboard's ProgressBar,
+// templates/pages/dashboard/page.tsx:369-375) and one supporting line. The card fills its grid cell, so the
+// tiles of a row share one height.
 
 import { Card } from "@astryxdesign/core/Card";
+import { Icon } from "@astryxdesign/core/Icon";
 import { HStack, VStack } from "@astryxdesign/core/Layout";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { useAdminT } from "./messages";
 
+/** Usage at or above these percentages turns the bar to warning, then error. */
+const USAGE_WARN = 80;
+const USAGE_HIGH = 90;
+
 export function MetricCard({
   label,
+  icon,
   value,
   sub,
-  isWarning,
-  percent,
-  action,
+  attention,
+  usage,
 }: {
   label: string;
+  icon: `admin:${string}`;
   value: string;
   sub?: React.ReactNode;
-  isWarning?: boolean;
-  /** 0-100; above 90 the bar turns to the error colour */
-  percent?: number;
-  action?: React.ReactNode;
+  attention?: "warning" | "error";
+  /** 0-100, a share of a resource in use */
+  usage?: number;
 }) {
-  const attention = useAdminT()("tile.attention");
+  const t = useAdminT();
+  const note = attention && t(`tile.${attention}`);
   return (
-    <Card>
-      <VStack gap={2}>
-        <Heading level={4} accessibilityLevel={3}>
-          {label}
-        </Heading>
+    <Card padding={4} height="100%">
+      <VStack gap={1}>
+        <HStack gap={2} vAlign="center" wrap="nowrap">
+          <Icon icon={icon} size="sm" color="secondary" />
+          <Text type="label" color="secondary">
+            {label}
+          </Text>
+        </HStack>
         <HStack gap={2} vAlign="center">
-          <Heading level={2} accessibilityLevel={4}>
+          <Heading level={2} accessibilityLevel={3}>
             {value}
           </Heading>
-          {isWarning && (
-            <StatusDot
-              variant="warning"
-              label={attention}
-              tooltip={attention}
-            />
+          {note && (
+            <StatusDot variant={attention} label={note} tooltip={note} />
           )}
         </HStack>
-        {percent !== undefined && (
+        {usage !== undefined && (
           <ProgressBar
             label={label}
             isLabelHidden
-            value={percent}
-            variant={percent > 90 ? "error" : "accent"}
+            value={usage}
+            variant={
+              usage >= USAGE_HIGH
+                ? "error"
+                : usage >= USAGE_WARN
+                  ? "warning"
+                  : "accent"
+            }
           />
         )}
         {sub && (
@@ -57,7 +71,6 @@ export function MetricCard({
             {sub}
           </Text>
         )}
-        {action && <HStack>{action}</HStack>}
       </VStack>
     </Card>
   );

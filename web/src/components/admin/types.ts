@@ -103,6 +103,13 @@ export type Overview = {
   } | null;
 };
 
+/** GET /api/admin/trends: the last 30 UTC days, oldest first (crates/api/src/admin/trends.rs). */
+export type Trends = {
+  /** `fetched`: item pages fetched by the details and refresh runs that finished that day */
+  days: { day: string; published: number; fetched: number }[];
+  runs: { day: string; kind: Kind; status: JobStatus; n: number }[];
+};
+
 export type Ai = {
   base_url?: string | null;
   model?: string | null;
