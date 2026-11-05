@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono } from "next/font/google";
-// MiSans variable font in unicode-range slices: the browser downloads only the slices a page uses.
-// No CJK web-font fallback: the browser fetches it too while MiSans loads; the few missing glyphs use system fonts
-import "subsetted-fonts/MiSans-VF/MiSans-VF.css";
+// MiSans variable font in unicode-range slices: the browser downloads only the slices a page uses. Loaded after
+// the page (see FontLoader). No CJK web-font fallback: the browser would fetch it too; missing glyphs use system fonts
+import { FontLoader } from "@/components/font-loader";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { FONTS_EARLY } from "@/lib/fonts";
 import "./globals.css";
 
 const geistMono = Geist_Mono({
@@ -40,13 +41,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <head>
-        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input */}
-        <script dangerouslySetInnerHTML={{ __html: preferences }} />
+        <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
+          dangerouslySetInnerHTML={{ __html: preferences + FONTS_EARLY }}
+        />
       </head>
       <body className="min-h-full flex flex-col">
         {/* settings are provided per page (see app/page.tsx), where the request cookie is available */}
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster />
+        <FontLoader />
       </body>
     </html>
   );

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { loadFonts } from "@/components/font-loader";
 import { Button } from "@/components/ui/button";
 import {
   Drawer,
@@ -36,6 +37,7 @@ import {
   type SearchResult,
   searchQuery,
 } from "@/lib/catalog";
+import { HOLD_FONTS, imagesPainted } from "@/lib/fonts";
 import { addQuery, loadHistory, saveHistory } from "@/lib/history";
 import type { MessageKey } from "@/lib/messages";
 import { useSettings } from "@/lib/settings";
@@ -208,6 +210,18 @@ export function Browse() {
       }
     });
   }, [loadAccount, pathname, router]);
+
+  // MiSans waits for the first screen's covers so its ~40 slices don't compete with them (see lib/fonts)
+  const grid = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (loading) return;
+    const covers = [
+      ...(grid.current?.querySelectorAll<HTMLImageElement>(
+        'img[loading="eager"]',
+      ) ?? []),
+    ];
+    imagesPainted(covers).then(loadFonts);
+  }, [loading]);
 
   // one page of results
   // biome-ignore lint/correctness/useExhaustiveDependencies: epoch only triggers a reload
@@ -628,6 +642,8 @@ export function Browse() {
           </div>
 
           <div
+            ref={grid}
+            {...{ [HOLD_FONTS]: "" }}
             aria-busy={loading}
             inert={loading && shownItems.length > 0}
             className={cn(
