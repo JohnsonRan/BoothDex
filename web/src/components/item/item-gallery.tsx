@@ -50,10 +50,13 @@ const SEEN = 0.6;
 export function ItemGallery({
   item,
   isWide,
+  isOpen,
 }: {
   item: ItemResponse;
   /** from lg up: thumbnails, arrow buttons and the sticky column (phones swipe, master) */
   isWide: boolean;
+  /** the dialog is open; a closed one keeps its content, so the keys must leave the page alone */
+  isOpen: boolean;
 }) {
   const { t } = useUi();
   const count = Math.max(imageCount(item), 1);
@@ -98,10 +101,11 @@ export function ItemGallery({
     go(index + (e.key === "ArrowRight" ? 1 : -1));
   };
   useEffect(() => {
+    if (!isOpen) return;
     const key = (e: KeyboardEvent) => keys.current(e);
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
-  }, []);
+  }, [isOpen]);
 
   const images = Array.from({ length: count }, (_, i) => i);
   const alt = (i: number) => t("detail.image", { n: i + 1 });

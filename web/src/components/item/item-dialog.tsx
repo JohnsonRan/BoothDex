@@ -147,7 +147,12 @@ export default function ItemDialog({
             {item ? (
               <VStack gap={6}>
                 <Grid columns={COLUMNS} gap={5}>
-                  <ItemGallery key={item.id} item={item} isWide={!phone} />
+                  <ItemGallery
+                    key={item.id}
+                    item={item}
+                    isWide={!phone}
+                    isOpen={id > 0}
+                  />
                   <ItemInfo
                     key={item.id}
                     item={item}
