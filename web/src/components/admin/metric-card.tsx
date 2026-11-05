@@ -7,6 +7,7 @@ import { HStack, VStack } from "@astryxdesign/core/Layout";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Heading, Text } from "@astryxdesign/core/Text";
+import { useAdminT } from "./messages";
 
 export function MetricCard({
   label,
@@ -24,6 +25,7 @@ export function MetricCard({
   percent?: number;
   action?: React.ReactNode;
 }) {
+  const attention = useAdminT()("tile.attention");
   return (
     <Card>
       <VStack gap={2}>
@@ -34,7 +36,13 @@ export function MetricCard({
           <Heading level={2} accessibilityLevel={4}>
             {value}
           </Heading>
-          {isWarning && <StatusDot variant="warning" label={label} />}
+          {isWarning && (
+            <StatusDot
+              variant="warning"
+              label={attention}
+              tooltip={attention}
+            />
+          )}
         </HStack>
         {percent !== undefined && (
           <ProgressBar

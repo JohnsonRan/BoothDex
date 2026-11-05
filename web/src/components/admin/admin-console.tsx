@@ -1,10 +1,9 @@
 "use client";
 // The admin session: probes /api/admin/overview, then keeps the overview live over the SSE stream (one event
 // every 2 s; EventSource reconnects by itself). Until the probe says the visitor is an admin, the shell shows a
-// state instead of the page: checking, sign in (the public site's dialog), not an admin, or unreachable.
+// state in the page frame instead of the page: checking, sign in (the public site's dialog), not an admin, or unreachable.
 
 import { Button } from "@astryxdesign/core/Button";
-import { Center } from "@astryxdesign/core/Center";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Spinner } from "@astryxdesign/core/Spinner";
@@ -20,6 +19,7 @@ import { useUi } from "@/components/providers";
 import { ApiError, api } from "@/lib/api";
 import { AdminShell } from "./admin-shell";
 import { type AdminKey, useAdminT } from "./messages";
+import { PageFrame } from "./page-frame";
 import type { Overview } from "./types";
 
 const SignInDialog = dynamic(
@@ -95,17 +95,17 @@ export function AdminConsole({ children }: { children: React.ReactNode }) {
   if (gate === "checking")
     return (
       <AdminShell>
-        <Center height="100%">
+        <PageFrame title={t("title")}>
           <Spinner label={t("gate.checking")} />
-        </Center>
+        </PageFrame>
       </AdminShell>
     );
   const state = GATE[gate];
   return (
     <AdminShell>
-      <Center height="100%">
+      <PageFrame title={t("title")}>
         <EmptyState
-          headingLevel={1}
+          headingLevel={2}
           title={t(state.title)}
           description={state.desc && t(state.desc)}
           icon={<Icon icon={state.icon} size="lg" />}
@@ -121,7 +121,7 @@ export function AdminConsole({ children }: { children: React.ReactNode }) {
             )
           }
         />
-      </Center>
+      </PageFrame>
       {signIn !== undefined && (
         <SignInDialog
           isOpen={signIn}

@@ -76,34 +76,32 @@ export function ResetPassword() {
           status="success"
           title={t("reset.result", { name: result.username })}
           description={
-            <VStack gap={1}>
+            <VStack gap={2}>
               <Text type="code">{result.password}</Text>
+              <HStack gap={2}>
+                <Button
+                  label={t("reset.copy")}
+                  variant="secondary"
+                  size="sm"
+                  icon={<Icon icon="admin:copy" size="sm" />}
+                  onClick={() =>
+                    navigator.clipboard.writeText(result.password).then(
+                      () => toast({ body: t("reset.copied") }),
+                      (e: Error) => toast({ type: "error", body: e.message }),
+                    )
+                  }
+                />
+                <Button
+                  label={t("reset.hide")}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setResult(undefined)}
+                />
+              </HStack>
               <Text type="supporting" color="secondary">
                 {t("reset.revoked", { n: result.sessions_revoked })}
               </Text>
             </VStack>
-          }
-          endContent={
-            <HStack gap={2}>
-              <Button
-                label={t("reset.copy")}
-                variant="secondary"
-                size="sm"
-                icon={<Icon icon="admin:copy" size="sm" />}
-                onClick={() =>
-                  navigator.clipboard.writeText(result.password).then(
-                    () => toast({ body: t("reset.copied") }),
-                    (e: Error) => toast({ type: "error", body: e.message }),
-                  )
-                }
-              />
-              <Button
-                label={t("reset.hide")}
-                variant="ghost"
-                size="sm"
-                onClick={() => setResult(undefined)}
-              />
-            </HStack>
           }
         />
       )}

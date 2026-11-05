@@ -69,7 +69,7 @@ export function JobLog({ id, onClose }: { id: number; onClose: () => void }) {
             ) : !job ? (
               <Spinner label={t("log.output")} />
             ) : (
-              <VStack gap={4}>
+              <VStack gap={4} hAlign="stretch">
                 <MetadataList
                   columns="single"
                   label={{ position: "start", width: 96 }}
@@ -88,7 +88,11 @@ export function JobLog({ id, onClose }: { id: number; onClose: () => void }) {
                     <Text type="body">{job.created_by}</Text>
                   </MetadataListItem>
                   <MetadataListItem label={t("log.created")}>
-                    <Timestamp value={job.created_at} format="date_time" />
+                    <Timestamp
+                      value={job.created_at}
+                      format="date_time"
+                      type="body"
+                    />
                   </MetadataListItem>
                   <MetadataListItem label={t("log.params")}>
                     <Text type="code">{JSON.stringify(job.params)}</Text>
@@ -104,7 +108,6 @@ export function JobLog({ id, onClose }: { id: number; onClose: () => void }) {
                 <CodeBlock
                   title={t("log.output")}
                   code={job.log || t("log.empty")}
-                  isWrapped
                   maxHeight="40dvh"
                 />
               </VStack>

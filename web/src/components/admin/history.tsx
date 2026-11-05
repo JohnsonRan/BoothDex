@@ -78,7 +78,9 @@ export function History() {
         <StackItem size="fill" />
         {jobs && (
           <Text type="supporting" color="secondary">
-            {t("history.count", { n: jobs.length })}
+            {rows && rows.length < jobs.length
+              ? t("history.shown", { shown: rows.length, n: jobs.length })
+              : t("history.count", { n: jobs.length })}
           </Text>
         )}
       </HStack>
