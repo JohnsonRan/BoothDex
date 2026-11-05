@@ -11,7 +11,9 @@ import { useRouter } from "next/navigation";
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
@@ -21,6 +23,7 @@ import type { Dict, UiLang } from "@/lib/messages";
 import { savePreferences } from "@/lib/preferences";
 import {
   LOCALES,
+  parseSettings,
   SETTINGS_COOKIE,
   type Settings,
   type Translate,
@@ -35,6 +38,9 @@ type Ui = {
   update: (patch: Partial<Settings>) => void;
 };
 const UiContext = createContext<Ui | null>(null);
+
+/** master's localStorage key for the settings, before they moved to the cookie */
+const LEGACY_SETTINGS = "settings";
 
 export function Providers({
   settings: fromServer,
@@ -54,6 +60,8 @@ export function Providers({
   // the mode applies at once on the client; the rest is rendered on the server
   const [theme, setTheme] = useState(fromServer.theme);
   const locale = LOCALES[fromServer.ui];
+  // what the cookie holds: a second change made before the first one's render arrives builds on it
+  const written = useRef(fromServer);
   const value = useMemo<Ui>(() => {
     const settings = { ...fromServer, theme };
     return {
@@ -61,18 +69,47 @@ export function Providers({
       t: translate(messages),
       settings,
       update: (patch) => {
-        const next = { ...settings, ...patch };
+        const next = { ...written.current, ...patch };
+        written.current = next;
         // biome-ignore lint/suspicious/noDocumentCookie: the server reads this cookie; Cookie Store is not in every browser
         document.cookie = `${SETTINGS_COOKIE}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=31536000; samesite=lax`;
         // signed in, the account keeps them too (lib/preferences.ts)
         savePreferences(patch);
         if (patch.theme) setTheme(patch.theme);
-        if (patch.ui) document.documentElement.lang = LOCALES[patch.ui];
         if (patch.ui || patch.content || patch.currency)
           startTransition(() => router.refresh());
       },
     };
   }, [fromServer, messages, theme, router]);
+
+  // the language the page is rendered in, also when it came from Accept-Language rather than the cookie
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
+  // visitors from before the cookie existed: their settings move over from localStorage once, as on master
+  const { update } = value;
+  useEffect(() => {
+    try {
+      const old = localStorage.getItem(LEGACY_SETTINGS);
+      if (old === null) return;
+      localStorage.removeItem(LEGACY_SETTINGS);
+      if (
+        document.cookie
+          .split("; ")
+          .some((c) => c.startsWith(`${SETTINGS_COOKIE}=`))
+      )
+        return;
+      const saved = parseSettings(old, navigator.language);
+      const patch = Object.fromEntries(
+        Object.entries(saved).filter(
+          ([k, v]) => written.current[k as keyof Settings] !== v,
+        ),
+      );
+      if (Object.keys(patch).length) update(patch);
+    } catch {}
+  }, [update]);
+
   return (
     <Theme theme={themes[defaultThemeSlug]} mode={theme}>
       <InternationalizationProvider
