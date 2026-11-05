@@ -172,8 +172,9 @@ async function Catalog({
           <VStack gap={6}>
             <VStack gap={4}>
               <SearchBox />
-              {/* each row of controls is its own boundary: a click on one before the page has hydrated makes React
-                  hydrate that row at once (synchronously, the boundary clicked), not the other rows with it */}
+              {/* the avatar strip and the filter row are boundaries of their own: a click before the page has
+                  hydrated makes React hydrate the boundary clicked at once (synchronously), so a click on the bar
+                  or the tabs does not wait for these rows, the heaviest to hydrate */}
               {filters.view === "items" && (
                 <Suspense>
                   <AvatarStrip
@@ -189,9 +190,9 @@ async function Catalog({
               {/* filters and sort do not apply to the recent view */}
               {!recent && (
                 <>
-                  <Suspense>
-                    <Toolbar categoryTabs={categoryTabs} facets={facets} />
-                  </Suspense>
+                  {/* hydrated with the page, not later: OverflowList counts each tab's tooltip layer as an item
+                      (a child must be a single element), so tabs measured after the counts arrive fold wrongly */}
+                  <Toolbar categoryTabs={categoryTabs} facets={facets} />
                   <Suspense>
                     <FilterBar facets={facets} />
                   </Suspense>

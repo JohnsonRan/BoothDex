@@ -10,7 +10,7 @@ import { AppShell } from "@astryxdesign/core/AppShell";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
-import { Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Account } from "@/components/account/account-button";
 import { Favourites } from "@/components/account/favourites";
 import { AccountProvider } from "@/components/account/session";
@@ -73,9 +73,7 @@ export function SiteFrame({
             />
           }
         >
-          {/* its own boundary: a click on the bar before the page has hydrated hydrates the bar at once (React
-              does so synchronously for the boundary clicked), not the catalogue with it */}
-          <Suspense>{children}</Suspense>
+          {children}
         </AppShell>
       </ItemHost>
       <Favourites />
