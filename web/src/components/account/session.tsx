@@ -74,9 +74,12 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   );
   // the latest load; answers to older ones are dropped
   const loads = useRef(0);
+  // while a load reads the account's views, the items opened meanwhile, oldest first: the read may predate them
+  const openedDuringLoad = useRef<number[] | null>(null);
 
   const load = useCallback(async () => {
     const gen = ++loads.current;
+    openedDuringLoad.current = [];
     // the first read shares the request other callers make on load; later ones (sign-in, sign-out) start fresh
     const user = await fetchAccount<Me>({ fresh: gen > 1 }).catch(() => null);
     if (gen !== loads.current) return;
@@ -91,7 +94,10 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     });
     keepSessionHint(!!user);
     setPreferenceSync(false);
-    if (!user) return;
+    if (!user) {
+      openedDuringLoad.current = null;
+      return;
+    }
     // the account's settings replace this browser's; changes from now on are sent back
     const patch = accountPatch(user.preferences, ui.current.settings);
     if (Object.keys(patch).length) ui.current.update(patch);
@@ -111,8 +117,10 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
       ),
     );
     if (gen !== loads.current) return;
+    const opened = openedDuringLoad.current ?? [];
+    openedDuringLoad.current = null;
     startTransition(() => {
-      setViewed(views.ids);
+      setViewed(opened.reduce((v, id) => addViewed(v, id), views.ids));
       setFavs(new Set(favourites.ids));
     });
   }, []);
@@ -161,6 +169,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         });
       },
       recordView: (id) => {
+        openedDuringLoad.current?.push(id);
         setViewed((v) => addViewed(v ?? [], id));
         if (me)
           api("/api/account/views", {
