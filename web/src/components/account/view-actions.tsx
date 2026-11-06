@@ -18,7 +18,8 @@ export function ViewActions() {
   return (
     <StackItem size="fill">
       {filters.view === "recent" && <SearchShortcut />}
-      <HStack gap={1} hAlign="end">
+      {/* end-aligned; at a phone's width, after the title (app/filter-row.css) */}
+      <HStack gap={1} hAlign="end" className="view-actions">
         {filters.view === "recent" && !!viewed?.length && (
           <Button
             label={t("recent.clear")}

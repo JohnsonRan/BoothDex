@@ -261,6 +261,8 @@ Deviations, all prop values or token-backed inline styles:
 - The readout is the slot's sibling, pulled back over the reserve, instead of its child: where a phone's toolbar
   cannot hold the search, "+N" and the reserve (a toolbar below 25.5rem), it takes a line of its own under the row
   (owner's request), and the search and "+N" keep their places.
+- The favourites and recent views' actions start after the title below the 860 px toolbar width, where the end
+  cluster drops below, instead of sitting on the far side of a wrapped line.
 - The fold's Popover moves focus in only when opened by keyboard (`hasAutoFocus`); a click leaves focus on the
   trigger. Clause popups keep their own focus handling.
 - `BottomSheet`, the price and tag editors and the saved-views code load after the page (`lib/lazy`; the
