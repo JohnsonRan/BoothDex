@@ -1,12 +1,13 @@
 "use client";
 // The signed-in account menu, master's (account-menu.tsx:95-137) in Astryx: the trigger is the bar's account
-// IconButton (trigger.tsx; DropdownMenu `renderTrigger`, as the bar's other menus); its data-driven rows form two groups: the account's lists, titled with the
-// display name, then
-// settings, the console (admins only) and Sign out. Saved searches live in the filter row
+// IconButton (trigger.tsx; DropdownMenu `renderTrigger`, as the bar's other menus); its data-driven rows form
+// two groups: the account's lists, titled with the display name, then settings, the console (admins only) and
+// Sign out. Saved searches live in the filter row
 // (catalog/toolbar.tsx), as the table-filter template's saved views.
 
 import {
   DropdownMenu,
+  type DropdownMenuItemData,
   type DropdownMenuOption,
 } from "@astryxdesign/core/DropdownMenu";
 import { Icon } from "@astryxdesign/core/Icon";
@@ -30,7 +31,7 @@ export default function AccountMenu({
   const { apply } = useFilterUrl();
   const name = me.display_name || me.username;
   // a section title sits on the rows' inset; the menu's `header` is for controls and has none
-  const lists: DropdownMenuOption[] = [
+  const lists: DropdownMenuItemData[] = [
     {
       label: t("account.myFavourites"),
       icon: icon("site:favourite"),
