@@ -34,19 +34,38 @@ impl Ai {
         Ok(Some(Self { http, base_url, model, api_key, reasoning_effort: c.reasoning_effort }))
     }
 
-    fn body(&self, system: &str, user: &str) -> Value {
+    fn body(&self, messages: Value) -> Value {
         json!({
             "model": self.model,
             "temperature": 0,
             "reasoning_effort": self.reasoning_effort,
             "response_format": { "type": "json_object" },
-            "messages": [{ "role": "system", "content": system }, { "role": "user", "content": user }],
+            "messages": messages,
         })
     }
 
     /// One JSON-mode chat completion; retries 429/5xx with backoff. Returns the parsed JSON object.
     pub async fn json(&self, system: &str, user: &str) -> Result<Value> {
-        let body = self.body(system, user);
+        self.chat(json!([{ "role": "system", "content": system }, { "role": "user", "content": user }])).await
+    }
+
+    /// Asks again in the same conversation after `rejected` failed validation with `error`, for a full corrected reply.
+    pub async fn json_correction(&self, system: &str, user: &str, rejected: &Value, error: &str) -> Result<Value> {
+        let mut fix = format!("Your reply was rejected: {error}. Reply again with the complete corrected JSON object.");
+        if error.contains("categories") {
+            fix.push_str(" Copy every category slug character for character from the list, including its first word, and use a child slug (with \"--\"), never a parent alone.");
+        }
+        self.chat(json!([
+            { "role": "system", "content": system },
+            { "role": "user", "content": user },
+            { "role": "assistant", "content": rejected.to_string() },
+            { "role": "user", "content": fix },
+        ]))
+        .await
+    }
+
+    async fn chat(&self, messages: Value) -> Result<Value> {
+        let body = self.body(messages);
         for attempt in 0..5u32 {
             let res = self.http.post(format!("{}/chat/completions", self.base_url)).bearer_auth(&self.api_key).json(&body).send().await;
             match res {
@@ -270,6 +289,31 @@ mod tests {
             assert_eq!(requests.load(std::sync::atomic::Ordering::Relaxed), 5);
             assert_eq!(start.elapsed(), Duration::from_secs(30));
         }
+    }
+
+    #[tokio::test]
+    async fn correction_resends_rejected_reply_and_error() {
+        crate::install_tls();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Value::Null));
+        let store = seen.clone();
+        let app = axum::Router::new().fallback(move |axum::Json(body): axum::Json<Value>| {
+            *store.lock().unwrap() = body;
+            async { axum::Json(json!({"choices": [{"message": {"content": "{\"ok\": true}"}}]})) }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let ai = Ai { http: reqwest::Client::builder().no_proxy().build().unwrap(), base_url, model: "m".into(), api_key: "k".into(), reasoning_effort: "none" };
+
+        let rejected = json!({"categories": ["animations-x"]});
+        let reply = ai.json_correction("sys", "item", &rejected, "missing or invalid categories in AI reply: [\"animations-x\"]").await.unwrap();
+        assert_eq!(reply, json!({"ok": true}));
+        let msgs = seen.lock().unwrap()["messages"].clone();
+        let roles: Vec<&str> = msgs.as_array().unwrap().iter().map(|m| m["role"].as_str().unwrap()).collect();
+        assert_eq!(roles, ["system", "user", "assistant", "user"]);
+        assert_eq!(msgs[2]["content"], rejected.to_string());
+        let fix = msgs[3]["content"].as_str().unwrap();
+        assert!(fix.contains("animations-x") && fix.contains("first word"), "{fix}");
     }
 
     #[test]
@@ -515,8 +559,8 @@ mod tests {
         crate::install_tls();
         let mut c = boothdex_core::settings::resolve(&json!({ "base_url": "http://x/v1", "model": "m", "api_key": "k" }), |_| None);
         let ai = Ai::from_config(&c).unwrap().unwrap();
-        assert_eq!(ai.body("s", "u")["reasoning_effort"], "none");
+        assert_eq!(ai.body(json!([]))["reasoning_effort"], "none");
         c.reasoning_effort = "high";
-        assert_eq!(Ai::from_config(&c).unwrap().unwrap().body("s", "u")["reasoning_effort"], "high");
+        assert_eq!(Ai::from_config(&c).unwrap().unwrap().body(json!([]))["reasoning_effort"], "high");
     }
 }

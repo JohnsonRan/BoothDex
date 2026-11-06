@@ -330,17 +330,27 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let (mut ok, mut failed) = (0i64, 0i64);
     let mut stream = futures_util::stream::iter(items.into_iter().map(|it| {
         let prompt = crate::ai::enrich_prompt(&it, &category_list);
-        let ai = &ai;
-        async move { (it, ai.json(crate::ai::ENRICH_SYSTEM, &prompt).await) }
+        let (ai, known) = (&ai, &known);
+        async move {
+            let system = crate::ai::ENRICH_SYSTEM;
+            let validation = match ai.json(system, &prompt).await {
+                // a reply that parsed but failed validation (e.g. a misspelt category slug) gets one correction round
+                Ok(v) => match crate::ai::validate_enrichment(&v, known, &it["translations"]) {
+                    Err(e) => match ai.json_correction(system, &prompt, &v, &format!("{e:#}")).await {
+                        Ok(v2) => crate::ai::validate_enrichment(&v2, known, &it["translations"]).map_err(|e2| e2.context(format!("after correction (first: {e:#})"))),
+                        Err(err) => Err(err),
+                    },
+                    ok => ok,
+                },
+                Err(e) => Err(e),
+            };
+            (it, validation)
+        }
     }))
     .buffer_unordered(concurrency);
     use futures_util::StreamExt;
-    while let Some((it, reply)) = stream.next().await {
+    while let Some((it, validation)) = stream.next().await {
         let id = it["id"].as_i64().unwrap_or_default();
-        let validation = match reply {
-            Ok(v) => crate::ai::validate_enrichment(&v, &known, &it["translations"]),
-            Err(e) => Err(e),
-        };
         match validation {
             Ok(e) => {
                 let variation_names: Vec<&str> = it["variations"].as_array().into_iter().flatten().filter_map(|v| v["name"].as_str()).collect();
