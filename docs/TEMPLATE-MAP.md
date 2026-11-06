@@ -24,7 +24,11 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 4. Spacing and sizes are Astryx tokens (spacing steps on component props). Raw pixels only for structural
    widths (grid column floor, card width).
 5. One page frame for every route: `SiteFrame` (AppShell + TopNav). Each page renders its own `Layout` inside
-   it with `padding={6}`, so titles and content share one left edge at every width.
+   it with `padding={6}`, so titles and content share one left edge at every width. Exception: the admin
+   console (`/admin/*`) has its own frame (page `shell-side-nav`) and pads header and content with 4, as its
+   templates do (page `detail-page` header, page.tsx:169; page `settings` content, page.tsx:111). Its page
+   title row is taller than the side nav's heading row (h1 against the nav's heading), so the two are not on
+   one line; both rows are the templates' own.
 6. Icons: all lucide (owner: 「全 lucide」), always through Astryx's `Icon`. The theme's semantic names
    (`search`, `funnel`, `error`, ...) first; the neutral registry maps all 29 of them to lucide, so components'
    internal glyphs (chevrons, close, check) are lucide too and none falls back to core's heroicons. Glyphs with
@@ -68,10 +72,10 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Settings (appearance, language, currency, item text) | TopNav end, account menu | page `settings-dialog`; synced to the account when signed in; item text defaults to the interface language | track D |
 | Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid; recently viewed is read in the browser) | track D |
 | Admin frame | `/admin/*` | page `shell-side-nav` (collapsible, resizable `SideNav`, two titled groups, footer: back to site, language, colour mode; phone drawer from `AppShell`) | track F |
-| Admin sign-in, not an admin, unreachable | `/admin/*` before the probe succeeds | `EmptyState` inside the frame; sign-in opens the site's `login-card` dialog, sign-in only under the admin heading | track F |
-| Admin overview | `/admin` | page `dashboard-scorecard`: titled bands (catalogue, crawler, system) 40 px apart, each a tight tile grid (gap 8 px, four across, two on a phone) with the daily `TrendChart` cards under the tiles they explain (recharts, loaded on first use, admin only); usage tiles keep page `dashboard`'s `ProgressBar` (warning from 80 %, error from 90 %); tiles use padding 16 px, not 20, for density; header `StatusDot` + text as page `incident-console` | track F |
-| Crawler tasks | `/admin/jobs` | header as page `detail-page` (title row, then `TabList size="lg" isFullBleed` on the header divider); page `incident-console` list rows (`List` compact with dividers, status `Token`); stop and run options through blocks `AlertDialogAsyncAction` and `DialogFormDialog` | track F |
-| Crawler history | `/admin/jobs/history` | the tasks page's header and tabs; page `incident-console` rows and `EmptyState`; kind and status `Selector`s in the URL; details in a `Dialog` with the inspector's `MetadataList` | track F |
+| Admin sign-in, not an admin, unreachable | `/admin/*` before the probe succeeds | `EmptyState` (or the checking `Spinner`) in place of the page's content, under the page's own title and tabs; sign-in opens the site's `login-card` dialog, sign-in only under the admin heading | track F |
+| Admin overview | `/admin` | page `dashboard-scorecard`: titled bands 40 px apart in the order an operator reads them (status, with tiles asking for attention sorted first and the index rebuild in its heading; activity, the last 24 hours then the daily trends; catalogue; system), each a tight tile grid (gap 8 px, up to four across, two on a phone, a short band shares its row); one `TrendChart` card for every trend: a 2 px line per series with a wash fading downward, horizontal grid only, five value ticks (three on a phone), legend of short line keys above the plot, one tooltip per day, plot 14 rem (12 rem on a phone), recharts loaded on first use, admin only; usage tiles keep page `dashboard`'s `ProgressBar` (warning from 80 %, error from 90 %); tiles and chart cards use padding 16 px, not 20, for density; header `StatusDot` + text as page `incident-console` | track F |
+| Crawler tasks | `/admin/jobs` | header as page `detail-page` (title row, then `TabList size="lg" isFullBleed` on the header divider); page `incident-console` list rows (`List` compact with dividers, `edge="outset"` so the text sits on the title's line, status `Token`; schedule, one small secondary Run or Stop and the `MoreMenu` in the row's end slot, under the description on a phone); stop and run options through blocks `AlertDialogAsyncAction` and `DialogFormDialog` | track F |
+| Crawler history | `/admin/jobs/history` | the tasks page's header and tabs; page `incident-console` rows (`edge="outset"`) and `EmptyState`; kind and status `Selector`s in the URL; details in a `Dialog` with the inspector's `MetadataList` | track F |
 | Admin settings (AI provider, reset password) | `/admin/settings` | page `settings` (two-column sections with `Divider`); key overwrite and reset behind `AlertDialog` | track F |
 
 ## Deviations from the templates in phase 1

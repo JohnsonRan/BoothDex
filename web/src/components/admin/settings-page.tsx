@@ -1,7 +1,8 @@
 "use client";
 // Settings, from the Astryx page template settings (templates/pages/settings/page.tsx): one scrolling form of
 // sections, each a two-column Grid (:120-150) with the heading and supporting text on the left and the fields
-// with their own Save on the right, a Divider between sections. With two sections the template's side list and
+// with their own Save on the right, a Divider between sections. The template's 40 px gap parts the columns; when
+// a phone stacks them, the fields follow the description at the fields' own 16 px gap. With two sections the template's side list and
 // search are not needed.
 
 import { Divider } from "@astryxdesign/core/Divider";
@@ -23,7 +24,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <Grid columns={{ minWidth: 320 }} gap={10}>
+    <Grid columns={{ minWidth: 320 }} columnGap={10} rowGap={4}>
       <VStack gap={1}>
         <Heading level={3} accessibilityLevel={2}>
           {title}
