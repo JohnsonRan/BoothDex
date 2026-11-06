@@ -39,9 +39,12 @@ VRCatalogue. Item data and images belong to their creators; every item links bac
 - Japanese text search uses Lindera (IPADIC). Optional semantic search finds items by meaning across languages
   ("哥特裙" finds ゴスロリ dresses) and merges both rankings.
 
+<details>
+<summary>Suggestions for "manuka": the avatar body, then matching items</summary>
+
 ![Search suggestions grouped into avatars and items under the search field](docs/screenshots/en/search.webp)
 
-Suggestions for "manuka": the avatar body, then matching items.
+</details>
 
 ### Browsing and accounts
 
@@ -51,9 +54,12 @@ Suggestions for "manuka": the avatar body, then matching items.
 - Favourites, recently viewed items (marked "Viewed" in results), a remembered avatar, and saved searches as
   saved views that you can rename and follow by RSS.
 
+<details>
+<summary>An item's details open over the results</summary>
+
 ![The item dialog with the gallery, translated title and Buy on Booth button](docs/screenshots/en/item.webp)
 
-An item's details open over the results.
+</details>
 
 ### Appearance and languages
 
@@ -63,17 +69,26 @@ An item's details open over the results.
 - Chinese, English, Japanese and Korean; item titles in the original language or translated; currency
   conversion; a layout that works on phones.
 
+<details>
+<summary>Choose the colour mode and the style in Settings</summary>
+
 ![Settings, Appearance: the theme modes and the 7 styles](docs/screenshots/en/settings.webp)
 
-Choose the colour mode and the style in Settings.
+</details>
+
+<details>
+<summary>The Matcha style in dark mode</summary>
 
 ![The home page in the Matcha style, dark mode](docs/screenshots/matcha.webp)
 
-The Matcha style in dark mode.
+</details>
 
-<img src="docs/screenshots/phone.webp" width="390" alt="The home page on a phone, with the filters folded behind +8">
+<details>
+<summary>The home page on a phone</summary>
 
-The home page on a phone.
+<p align="center"><img src="docs/screenshots/phone.webp" width="390" alt="The home page on a phone, with the filters folded behind +8"></p>
+
+</details>
 
 ### Crawling, AI and images
 
@@ -92,9 +107,12 @@ The home page on a phone.
 - Configure the AI provider and reset user passwords.
 - The console is available in Chinese, English and Japanese.
 
+<details>
+<summary>The admin overview</summary>
+
 ![The admin overview: worker status, index and activity cards above the trend charts](docs/screenshots/en/admin.webp)
 
-The admin overview.
+</details>
 
 Standalone item pages, price history, social logins and password-reset emails are intentionally omitted
 (administrators reset passwords). Item descriptions and variation names are kept in the original language; only

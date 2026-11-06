@@ -32,9 +32,12 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 - 搜索框把每个搜索词显示为可单独删除的词条；识别为模型或分类的词合为一个词条，前面显示模型图片或分类图标。
 - 日文全文检索基于 Lindera（IPADIC）。可选的语义搜索支持跨语言按语义查找（如搜索“哥特裙”即可匹配ゴスロリ连衣裙），并与关键词结果融合排序。
 
+<details>
+<summary>输入“manuka”时的建议：先列出模型本体，再列出匹配的商品</summary>
+
 ![搜索框下方按模型和商品分组的搜索建议](docs/screenshots/zh-CN/search.webp)
 
-输入“manuka”时的建议：先列出模型本体，再列出匹配的商品。
+</details>
 
 ### 浏览与账户
 
@@ -42,9 +45,12 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 - 商品在对话框中打开，包含完整 BOOTH 图集、变体、标题翻译与原图下载。
 - 收藏夹、最近已看（在结果中标记“已看”）、记住常用模型，以及保存的搜索：可重命名，也可通过 RSS 订阅。
 
+<details>
+<summary>商品详情在结果上方打开</summary>
+
 ![商品对话框：图集、翻译后的标题与“在 Booth 购买”按钮](docs/screenshots/zh-CN/item.webp)
 
-商品详情在结果上方打开。
+</details>
 
 ### 外观与语言
 
@@ -52,17 +58,26 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 - 可选浅色、深色或跟随系统，以及 7 种 Astryx 风格：中性、岩石、抹茶、Y2K、哥特、巧克力与黄油。风格只在选中后加载；登录后，所选设置随账户同步。
 - 支持简体中文、英语、日语、韩语界面；商品标题支持原文或译文切换；支持货币换算，手机上同样可用。
 
+<details>
+<summary>在设置中选择颜色模式与风格</summary>
+
 ![设置中的外观页：主题模式与 7 种风格](docs/screenshots/zh-CN/settings.webp)
 
-在设置中选择颜色模式与风格。
+</details>
+
+<details>
+<summary>深色模式下的抹茶风格（英文界面）</summary>
 
 ![深色模式下抹茶风格的首页](docs/screenshots/matcha.webp)
 
-深色模式下的抹茶风格（英文界面）。
+</details>
 
-<img src="docs/screenshots/phone.webp" width="390" alt="手机上的首页，筛选条件收进 +8 按钮">
+<details>
+<summary>手机上的首页（英文界面）</summary>
 
-手机上的首页（英文界面）。
+<p align="center"><img src="docs/screenshots/phone.webp" width="390" alt="手机上的首页，筛选条件收进 +8 按钮"></p>
+
+</details>
 
 ### 抓取、AI 与图片
 
@@ -77,9 +92,12 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 - 配置 AI 服务，重置用户密码。
 - 管理后台支持简体中文、英语和日语。
 
+<details>
+<summary>管理后台概览</summary>
+
 ![管理后台概览：worker 状态、索引与活动卡片及下方的趋势图](docs/screenshots/zh-CN/admin.webp)
 
-管理后台概览。
+</details>
 
 不提供独立商品详情页、历史价格曲线、第三方社交登录及找回密码邮件（由管理员重置密码）。商品简介和变体名保留原文，仅翻译标题以服务跨语言检索。
 
