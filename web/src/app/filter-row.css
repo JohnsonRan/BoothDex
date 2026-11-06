@@ -17,6 +17,29 @@
   }
 }
 
+/* The clause list as the server renders it, before OverflowList has measured anything (catalog/filter-bar.tsx):
+   every clause at its own width, never squeezed, on one line; the ones that do not fit wrap onto a second line
+   the list clips. The empty first item lets even the first clause wrap away when it does not fit (a flex line
+   keeps at least one item), and its negative margin cancels its gap. While unfolded the list also keeps back the
+   fold trigger's place (`data-unfolded`), so the clauses left on the line are those the fold keeps, and the
+   trigger appears in that place. Once folded the clauses left fit on the one line, so this changes nothing. */
+.filter-clauses {
+  flex-wrap: wrap;
+  block-size: var(--size-element-sm);
+}
+.filter-clauses::before {
+  content: "";
+  margin-inline-end: calc(-1 * var(--spacing-2));
+}
+.filter-clauses > * {
+  flex-shrink: 0;
+}
+/* 2.75rem: the trigger's place, as the slot's floor counts it (catalog/filter-bar.tsx) */
+.filter-clauses[data-unfolded] {
+  inline-size: 100%;
+  padding-inline-end: 2.75rem;
+}
+
 /* searchSlot (:1500-1521): the search sits at the selectors' width and widens on focus; second to give way, after
    the clauses. 120 / 240 px in rem, so the field scales with the text. */
 .filter-search {

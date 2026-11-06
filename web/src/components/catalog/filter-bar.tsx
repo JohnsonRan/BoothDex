@@ -52,9 +52,10 @@ export function FilterBar({
   const { filters: f, apply } = useFilterUrl();
   const isCompactSurface = useMediaQuery(COMPACT_SURFACE_QUERY);
   const clauses = useClauses(useFacets(facets), names);
-  // The server's row holds every clause, so the readout first lands past them; the list folds them while
-  // hydrating, before that frame is painted. Until then the readout is laid out but not shown: appearing in place
-  // is not a layout shift, moving would be.
+  // The server cannot measure, so its row holds every clause; the list folds them while hydrating. Until then the
+  // list spans the slot, as a folded list does (OverflowList's fillParent), keeps back the fold trigger's place
+  // and wraps the clauses that do not fit out of sight (app/filter-row.css), so the clauses shown and the readout
+  // already sit where they will stay. The readout is laid out but not shown until the fold.
   const [isFolded, setIsFolded] = useState(false);
   useLayoutEffect(() => setIsFolded(true), []);
   // the template's hasFilters (:2958): any clause or a search
@@ -86,6 +87,8 @@ export function FilterBar({
         <OverflowList
           behavior="observeParent"
           gap={2}
+          className="filter-clauses"
+          data-unfolded={isFolded ? undefined : ""}
           // one clause stays where there is width for it; a phone folds the whole set behind the count (:3447-3452)
           minVisibleItems={isCompactSurface ? 0 : 1}
           overflowRenderer={(items) => (

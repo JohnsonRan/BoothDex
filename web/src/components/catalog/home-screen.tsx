@@ -173,25 +173,24 @@ async function Catalog({
                   {recent && <RecentCount />}
                   {(recent || filters.view === "favourites") && <ViewActions />}
                 </HStack>
-                {/* filters and sort do not apply to the recent view; the row is its own boundary, so a click on
-                    it before the page has hydrated hydrates the row at once, not the rest with it */}
+                {/* filters and sort do not apply to the recent view. The row and the avatar strip render with
+                    the frame, not as boundaries of their own: React streams a large finished boundary apart from
+                    its parent and reveals it later, and the grid below moved when it arrived. */}
                 {!recent && (
-                  <Suspense>
-                    <Toolbar
-                      title={title}
-                      facets={facets}
-                      names={names}
-                      count={
-                        <Suspense fallback={<CountSilhouette />}>
-                          <ResultCount
-                            outcome={outcome}
-                            settings={settings}
-                            hasQuery={!!filters.q}
-                          />
-                        </Suspense>
-                      }
-                    />
-                  </Suspense>
+                  <Toolbar
+                    title={title}
+                    facets={facets}
+                    names={names}
+                    count={
+                      <Suspense fallback={<CountSilhouette />}>
+                        <ResultCount
+                          outcome={outcome}
+                          settings={settings}
+                          hasQuery={!!filters.q}
+                        />
+                      </Suspense>
+                    }
+                  />
                 )}
               </VStack>
             </Section>
@@ -202,15 +201,13 @@ async function Catalog({
         <LayoutContent isScrollable={false}>
           <VStack gap={6}>
             {filters.view === "items" && (
-              <Suspense>
-                <AvatarStrip
-                  avatars={avatars.map((a) => ({
-                    slug: a.slug,
-                    en: avatarName(a, settings.ui),
-                    image_url: a.image_url,
-                  }))}
-                />
-              </Suspense>
+              <AvatarStrip
+                avatars={avatars.map((a) => ({
+                  slug: a.slug,
+                  en: avatarName(a, settings.ui),
+                  image_url: a.image_url,
+                }))}
+              />
             )}
             <Suspense
               fallback={<ResultsSilhouette label={t("list.loading")} />}
