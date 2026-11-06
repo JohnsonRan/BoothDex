@@ -72,7 +72,12 @@ export function AvatarStrip({ avatars }: { avatars: Avatar[] }) {
       ref={strip}
       aria-label={t("strip.label")}
     >
-      <Tile label={t("strip.all")} selected={!value} onSelect={() => pick("")}>
+      <Tile
+        label={t("strip.all")}
+        selected={!value}
+        onSelect={() => pick("")}
+        hasImage={false}
+      >
         <AllGlyph />
       </Tile>
       {(all ? avatars : avatars.slice(0, FIRST_CARDS - 1)).map((a) => (
@@ -81,6 +86,7 @@ export function AvatarStrip({ avatars }: { avatars: Avatar[] }) {
           label={avatarName(a, ui)}
           selected={a.slug === value}
           onSelect={() => pick(a.slug === value ? "" : a.slug)}
+          hasImage={!!a.image_url}
         >
           {a.image_url ? (
             <SkeletonImage
@@ -102,11 +108,14 @@ function Tile({
   label,
   selected,
   onSelect,
+  hasImage,
   children,
 }: {
   label: string;
   selected: boolean;
   onSelect: () => void;
+  /** a glyph instead of a picture sits on the muted card surface, so the card still reads as one */
+  hasImage: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -116,7 +125,7 @@ function Tile({
           label={label}
           isSelected={selected}
           onChange={onSelect}
-          variant="transparent"
+          variant={hasImage ? "transparent" : "muted"}
           padding={0.5}
           width="100%"
           height="100%"

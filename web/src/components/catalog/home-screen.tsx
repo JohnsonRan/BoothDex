@@ -198,10 +198,10 @@ async function Catalog({
         </LayoutHeader>
       }
       content={
-        // the header Section's step on every side, as the template states its content's (:4479); left to the
-        // default, a content area under a header starts 4 below it
-        <LayoutContent isScrollable={false} padding={6}>
-          <VStack gap={6}>
+        // the default padding: a content area under a header starts 4 below it (owner: the template's 6 left too
+        // much space above the strip), and the strip sits the same 4 above the grid
+        <LayoutContent isScrollable={false}>
+          <VStack gap={4}>
             {filters.view === "items" && (
               <AvatarStrip
                 avatars={avatars.map((a) => ({
