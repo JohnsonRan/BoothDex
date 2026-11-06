@@ -26,6 +26,7 @@ import {
   type Facets,
   FILTER_CHROME,
   FILTER_SURFACE,
+  OVERFLOW_WIDTH,
   READOUT_RESERVE,
   SHEET_TOP_INSET,
   useFacets,
@@ -221,7 +222,7 @@ function FilterOverflow({
     <Popover
       placement="below"
       alignment="end"
-      width={280}
+      width={OVERFLOW_WIDTH}
       label={label}
       hasAutoFocus={byKeyboard}
       content={body}

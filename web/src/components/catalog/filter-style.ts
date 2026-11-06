@@ -25,6 +25,11 @@ export const SHEET_TOP_INSET = 6;
  * with the text it reserves room for.
  */
 export const READOUT_RESERVE = "11.5rem";
+/** The panels' widths in rem, so they grow with the text they hold, as the controls beside them do (TEMPLATE-MAP
+ *  rule 4): the price and tag editors at quotePopover's 300 px (:1545-1547), the folded clauses at
+ *  FilterOverflow's 280 px (:2099). */
+export const EDITOR_WIDTH = "18.75rem";
+export const OVERFLOW_WIDTH = "17.5rem";
 
 // filterChrome + filterSurface (:1526-1534): ToggleButton is a ghost button, so unpressed it has no chrome; the
 // border puts it in the same family as the selectors beside it.

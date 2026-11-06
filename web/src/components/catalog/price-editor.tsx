@@ -13,6 +13,7 @@ import { TextInput } from "@astryxdesign/core/TextInput";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
 import { priceText } from "./clause-text";
+import { EDITOR_WIDTH } from "./filter-style";
 import type { Price } from "./price-clause";
 
 // presets in yen, matching how Booth items are usually priced
@@ -50,7 +51,7 @@ export function PriceEditor({
 
   return (
     // the popup floors its width at the trigger's; the presets and two inputs need this much
-    <VStack gap={4} style={{ width: 300 }}>
+    <VStack gap={4} style={{ width: EDITOR_WIDTH }}>
       <VStack gap={0}>
         <Text type="label">{t("filter.price")}</Text>
         <Text type="large" hasTabularNumbers>

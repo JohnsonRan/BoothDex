@@ -17,6 +17,7 @@ import { useUi } from "@/components/providers";
 import { tagName } from "@/lib/catalog";
 import { useTagSearch } from "@/lib/client-data";
 import { LOCALES } from "@/lib/settings-core";
+import { EDITOR_WIDTH } from "./filter-style";
 import type { TagSet } from "./tag-clause";
 
 export function TagPicker({
@@ -48,7 +49,7 @@ export function TagPicker({
 
   return (
     // the popup floors its width at the trigger's; tag rows need this much
-    <VStack gap={3} style={{ width: 300 }}>
+    <VStack gap={3} style={{ width: EDITOR_WIDTH }}>
       {tags.length + extags.length > 0 && (
         <HStack gap={1} wrap="wrap">
           {tags.map((name) => (
