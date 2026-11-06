@@ -170,6 +170,12 @@
 .filter-search .astryx-token {
   flex-shrink: 0;
 }
+/* The Tokenizer caps each token's wrapper at the field's width (core src/Tokenizer/Tokenizer.tsx:404-410), which
+   in a phone's 7.5rem field squeezed Matcha's and Y2K's roomier tokens down to their picture and ×. Uncapped, a
+   token keeps its words and the field scrolls them. The folded "+N more" list keeps the cap. */
+.filter-search .astryx-tokenizer > span:has(.astryx-token) {
+  max-width: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .filter-search {
     transition-duration: 0s;
