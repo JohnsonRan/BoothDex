@@ -69,13 +69,6 @@
     padding-inline-end: 0;
     min-width: 3rem;
   }
-  /* A theme with wider control padding draws "+8" wider than the 3rem place (Y2K and Matcha 56 px), which the
-     list clipped to "+". Once folded the list takes the trigger's width and may run past the slot's end, where
-     the row holds nothing; the slot keeps 3rem, so the fold still measures 3rem and folds every clause. */
-  .filter-toolbar .filter-clauses:not([data-unfolded]) {
-    flex-shrink: 0;
-    inline-size: max-content;
-  }
   .filter-toolbar .filter-readout {
     flex-basis: 100%;
     margin-inline-start: 0;
@@ -129,6 +122,14 @@
    clipped. */
 .filter-row .astryx-selector {
   block-size: var(--size-element-sm);
+}
+/* A theme with wider control padding draws "+8" wider than the slot's 3rem floor (Y2K and Matcha 56 px), which the
+   list clipped to "+" on a phone's own row and at 440 px, where the search and the reserve leave the slot its
+   floor. Once folded the list is never narrower than what it shows: the trigger may run past the slot's end, over
+   a phone's empty row or into the start of the reserve, before the readout's text. The slot keeps its floor, so the
+   fold still measures it and folds every clause. Elsewhere the fold leaves the list as wide as the slot already. */
+.filter-toolbar .filter-clauses:not([data-unfolded]) {
+  min-inline-size: max-content;
 }
 /* 3rem: the trigger's place, as the slot's floor counts it (.filter-slot). The template's 44 px is the
    trigger as the template draws it; "+8" is 19.8 px wide on a phone, which 44 px clips to "+…". */
