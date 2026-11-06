@@ -71,6 +71,9 @@ export async function Results({
   const o = await outcome;
   if (o.state !== "ok") return <KeepResults failure={o.state} />;
   const { result } = o;
+  // this page's search went without meaning-based matches, asked to or not: the rest of the page and the later
+  // pages are read the same way, so the result set stays the one the first tiles came from
+  const lexical = noSemantic || (!!filters.q && result.semantic !== "used");
   if (result.items.length === 0)
     return (
       <KeepResults>
@@ -88,8 +91,9 @@ export async function Results({
             settings={settings}
             rates={await rates}
             t={translator(settings.ui)}
-            // the request searchItems (lib/server-data) made, so the API answers it from its cache
-            search={`/api/search?${searchQuery(filters, page, result.pageSize)}&fields=card${noSemantic ? "&sem=0" : ""}`}
+            // the request searchItems (lib/server-data) made, so the API answers it from its cache; without
+            // meaning-based matches it asks for none, so a semantic search that comes back does not mix in
+            search={`/api/search?${searchQuery(filters, page, result.pageSize)}&fields=card${lexical ? "&sem=0" : ""}`}
           />
           {result.semantic === "unavailable" && (
             <SemanticNote
@@ -99,7 +103,7 @@ export async function Results({
           <LazyPager
             page={result.page}
             total={result.totalPages}
-            noSemantic={!!filters.q && result.semantic !== "used"}
+            noSemantic={lexical}
           />
         </VStack>
       </Swap>
