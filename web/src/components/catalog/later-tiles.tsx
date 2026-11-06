@@ -6,7 +6,7 @@
 // the browser has the items already and passes them in. They appear at once, without the entrance: they
 // are drawn below the first screen.
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { ItemResponse, SearchResponse } from "@/lib/api-types";
@@ -60,7 +60,11 @@ export function LaterTiles({
     api<SearchResponse>(source.path).then(
       (r) => {
         const skip = new Set(source.skip);
-        if (live) setItems(r.items.filter((i) => !skip.has(i.id)));
+        // a transition: drawing them yields to the page between tiles instead of holding it in one task
+        if (live)
+          startTransition(() =>
+            setItems(r.items.filter((i) => !skip.has(i.id))),
+          );
       },
       // tried again the next time the placeholder comes near
       () => live && setNear(false),
