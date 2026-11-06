@@ -23,12 +23,19 @@ test("stored settings win, invalid fields fall back", () => {
     theme: "light",
     content: "en",
     style: "neutral",
+    black: "off",
   });
   expect(
     parseSettings('{"ui":"fr","currency":"XYZ","theme":"neon"}', "ja-JP"),
   ).toEqual({ ...DEFAULT_SETTINGS, ui: "ja" });
   expect(parseSettings("not json")).toEqual(DEFAULT_SETTINGS);
   expect(parseSettings(undefined)).toEqual(DEFAULT_SETTINGS);
+});
+
+test("pure black is off unless turned on", () => {
+  expect(DEFAULT_SETTINGS.black).toBe("off");
+  expect(parseSettings('{"black":"on"}').black).toBe("on");
+  expect(parseSettings('{"black":true}').black).toBe("off");
 });
 
 test("item text follows the interface language unless a language is chosen", () => {

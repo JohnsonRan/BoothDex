@@ -230,6 +230,8 @@ export const zh = {
   "settings.styleDesc": "整个网站的配色、字体和形状。",
   "settings.darkOnly": "此风格仅提供深色模式。",
   "settings.styleFailed": "无法加载此风格",
+  "settings.black": "纯黑模式",
+  "settings.blackDesc": "深色模式下使用纯黑背景，适合 OLED 屏幕。",
   "style.neutral": "中性",
   "style.stone": "岩石",
   "style.matcha": "抹茶",

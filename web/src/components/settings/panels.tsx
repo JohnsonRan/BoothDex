@@ -8,6 +8,7 @@
 import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Selector } from "@astryxdesign/core/Selector";
+import { Switch } from "@astryxdesign/core/Switch";
 import { CURRENCY_SYMBOLS } from "@/components/frame/header-controls";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
@@ -100,6 +101,19 @@ function AppearancePanel() {
                   uniqueID: "settings.styleFailed",
                 });
             }}
+          />
+        }
+      />
+      <SettingsRow
+        title={t("settings.black")}
+        icon="site:dark"
+        description={t("settings.blackDesc")}
+        control={
+          <Switch
+            label={t("settings.black")}
+            isLabelHidden
+            value={settings.black === "on"}
+            onChange={(on) => update({ black: on ? "on" : "off" })}
           />
         }
       />

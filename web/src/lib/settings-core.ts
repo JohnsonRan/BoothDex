@@ -17,6 +17,9 @@ export type ItemTextSetting = (typeof ITEM_TEXT)[number];
 /** "system" follows the operating system; the other two pin a mode. */
 const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
+/** Pure black: in dark mode the page's backgrounds turn black (globals.css). */
+const BLACK = ["off", "on"] as const;
+export type Black = (typeof BLACK)[number];
 /** The Astryx themes, neutral first (the default, built into every page); the others load when chosen
  *  (themes/index.tsx). */
 export const STYLES = [
@@ -78,6 +81,7 @@ export type Settings = {
   currency: Currency;
   theme: Theme;
   style: Style;
+  black: Black;
 };
 
 export const SETTINGS_COOKIE = "settings";
@@ -87,6 +91,7 @@ export const DEFAULT_SETTINGS: Settings = {
   currency: "JPY",
   theme: "system",
   style: "neutral",
+  black: "off",
 };
 
 const pick = <T extends string>(
@@ -145,6 +150,7 @@ export function parseSettings(
     currency: pick(v.currency, CURRENCIES) ?? DEFAULT_SETTINGS.currency,
     theme: pick(v.theme, THEMES) ?? DEFAULT_SETTINGS.theme,
     style: pick(v.style, STYLES) ?? DEFAULT_SETTINGS.style,
+    black: pick(v.black, BLACK) ?? DEFAULT_SETTINGS.black,
   };
 }
 

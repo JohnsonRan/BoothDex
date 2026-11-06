@@ -48,7 +48,7 @@ const UiContext = createContext<Ui | null>(null);
 /** master's localStorage key for the settings, before they moved to the cookie */
 const LEGACY_SETTINGS = "settings";
 
-type Look = Pick<Settings, "theme" | "style">;
+type Look = Pick<Settings, "theme" | "style" | "black">;
 
 let onDemand: Promise<typeof import("@/themes") | null> | undefined;
 const importThemes = () => import("@/themes").catch(() => null);
@@ -69,8 +69,9 @@ const switchStyle = styleSwitch(async (style) => {
 
 /** Puts a colour mode and theme on <html> and the root Theme's element at once, ahead of the render that follows
  *  (globals.css lets these attributes alone set the colour scheme). */
-function showLook({ theme, style }: Look) {
+function showLook({ theme, style, black }: Look) {
   const html = document.documentElement;
+  html.toggleAttribute("data-black", black === "on");
   for (const el of [html, html.querySelector("body [data-astryx-theme]")]) {
     if (!el) continue;
     const mode = shownMode(theme, style);
@@ -109,6 +110,7 @@ export function Providers({
   const [look, setLook] = useState<Look>({
     theme: fromServer.theme,
     style: fromServer.style,
+    black: fromServer.black,
   });
   const lazy = look.style === "neutral" ? null : use(loadThemes());
   const loaded = lazy?.styleTheme(look.style);
@@ -128,8 +130,12 @@ export function Providers({
       document.cookie = `${SETTINGS_COOKIE}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=31536000; samesite=lax`;
       // signed in, the account keeps them too (lib/preferences.ts)
       savePreferences(patch);
-      if (patch.theme || patch.style) {
-        const shown = { theme: next.theme, style: next.style };
+      if (patch.theme || patch.style || patch.black) {
+        const shown = {
+          theme: next.theme,
+          style: next.style,
+          black: next.black,
+        };
         showLook(next.style === look.style ? { ...shown, style } : shown);
         // the new look then reaches every Icon and setting in a transition: an urgent update hydrated the page's
         // pending content (site-frame's Activity) in one long task, up to 1 s at 4x CPU
@@ -157,7 +163,7 @@ export function Providers({
   // a theme that failed to load: <html> and the root Theme's element can still carry it from the head script or
   // the server render, which hydration does not correct
   useEffect(() => {
-    if (style !== look.style) showLook({ theme: look.theme, style });
+    if (style !== look.style) showLook({ ...look, style });
   }, [look, style]);
 
   // the bar follows the look the page opened in (a pinned mode or theme, from the head script or the server) and

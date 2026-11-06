@@ -235,6 +235,9 @@ export const ko: Dict = {
   "settings.styleDesc": "사이트 전체의 색, 글꼴, 모양입니다.",
   "settings.darkOnly": "이 스타일은 다크 모드만 제공합니다.",
   "settings.styleFailed": "이 스타일을 불러오지 못했습니다",
+  "settings.black": "순수 검정 모드",
+  "settings.blackDesc":
+    "다크 모드에서 순수한 검은색 배경을 사용합니다. OLED 화면에 적합합니다.",
   "style.neutral": "뉴트럴",
   "style.stone": "스톤",
   "style.matcha": "말차",

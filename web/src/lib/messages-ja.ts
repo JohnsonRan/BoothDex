@@ -238,6 +238,9 @@ export const ja: Dict = {
   "settings.styleDesc": "サイト全体の配色、フォント、形です。",
   "settings.darkOnly": "このスタイルはダークモードのみです。",
   "settings.styleFailed": "このスタイルを読み込めませんでした",
+  "settings.black": "純黒モード",
+  "settings.blackDesc":
+    "ダークモードで純黒の背景を使います。OLED 画面に適しています。",
   "style.neutral": "ニュートラル",
   "style.stone": "ストーン",
   "style.matcha": "抹茶",

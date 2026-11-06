@@ -236,6 +236,9 @@ export const en: Dict = {
   "settings.styleDesc": "The colours, fonts and shapes of the whole site.",
   "settings.darkOnly": "This style is dark only.",
   "settings.styleFailed": "Couldn't load this style",
+  "settings.black": "Pure black",
+  "settings.blackDesc":
+    "Uses a pure black background in dark mode, suited to OLED screens.",
   "style.neutral": "Neutral",
   "style.stone": "Stone",
   "style.matcha": "Matcha",

@@ -32,6 +32,28 @@
   color-scheme: light dark;
 }
 
+/* Pure black (the setting, components/providers.tsx showLook): in dark mode, pinned or followed, the page's
+   backgrounds turn black and its raised ones (cards, popovers) near-black, in every theme. Only a token's dark
+   half is read there, so each is restated whole. Unlayered, so it wins over the themes' layer. */
+html[data-black][data-theme="dark"],
+html[data-black] [data-astryx-theme][data-theme="dark"] {
+  --color-background-surface: #000;
+  --color-background-body: #000;
+  --color-background-card: #111;
+  --color-background-muted: #111;
+  --color-background-popover: #111;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-black]:not([data-theme]),
+  html[data-black]:not([data-theme]) [data-astryx-theme]:not([data-theme]) {
+    --color-background-surface: #000;
+    --color-background-body: #000;
+    --color-background-card: #111;
+    --color-background-muted: #111;
+    --color-background-popover: #111;
+  }
+}
+
 @media (width > 768px) {
   html {
     font-size: 115%;
