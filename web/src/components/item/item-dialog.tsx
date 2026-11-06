@@ -12,6 +12,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Grid } from "@astryxdesign/core/Grid";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
+import { Icon } from "@astryxdesign/core/Icon";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
 import { VStack } from "@astryxdesign/core/Stack";
 import { use, useEffect, useRef, useState } from "react";
@@ -129,7 +130,9 @@ export default function ItemDialog({
                   tooltip={false}
                 />
               }
-              endContent={<ShopButton name={item.author_name} />}
+              endContent={
+                <ShopButton name={item.author_name} isIconOnly={phone} />
+              }
               onOpenChange={() => close()}
             />
           ) : (
@@ -191,7 +194,15 @@ export default function ItemDialog({
 }
 
 /** "All items from shop": searches the shop's name, as master did. */
-function ShopButton({ name }: { name: string }) {
+// On a phone the label took half the header and broke the shop's name mid-word; the glyph alone keeps the end
+// content small, as block DialogWithSubtitle's header has it, with the label as its tooltip.
+function ShopButton({
+  name,
+  isIconOnly,
+}: {
+  name: string;
+  isIconOnly: boolean;
+}) {
   const { t } = useUi();
   const { close } = useItemOpener();
   const { apply } = useFilterUrl();
@@ -200,6 +211,9 @@ function ShopButton({ name }: { name: string }) {
       label={t("detail.shopAll")}
       variant="secondary"
       size="sm"
+      icon={isIconOnly ? <Icon icon="site:shop" size="sm" /> : undefined}
+      isIconOnly={isIconOnly}
+      tooltip={isIconOnly ? t("detail.shopAll") : undefined}
       onClick={() => close(() => apply({ author: name, q: "", avatar: "" }))}
     />
   );

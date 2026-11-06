@@ -208,7 +208,7 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 | Save this search, saved views (pressed: filled by `fill`) | `site:save`, `site:saved` / `site:savedFilled` | BookmarkPlus, Bookmark |
 | Saved views: edit; saved-search form: feed | `site:edit`, `site:feed` (`lib/icons-on-demand.tsx`) | Pencil, Rss |
 | Tag editor: include, exclude | `site:add`, `site:remove` (`lib/icons-on-demand.tsx`) | Plus, Minus |
-| Item dialog: download, "More from" link | `site:download`, `site:arrowRight` (`item/item-icons.tsx`) | Download, ArrowRight |
+| Item dialog: download, "More from" link, "All items from shop" on a phone | `site:download`, `site:arrowRight`, `site:shop` (`item/item-icons.tsx`) | Download, ArrowRight, Store |
 | Component internals (chevrons, close, check, carousel arrows, pagination) | theme semantic names | ChevronDown/Left/Right, X, Check, ... |
 
 Sizes: `sm` in the top bar, tiles and menus (as shell-top-nav), `lg` for the strip's "All" glyph.
@@ -273,8 +273,8 @@ Deviations, all prop values or token-backed inline styles:
 - Title: `display-2` from lg; on a phone the page title's `Heading level={1}`, as display-2 took three or four
   lines of a 335 px column.
 - Header: `DialogHeader` names the shop (avatar as start content, host as subtitle, "All items from shop" as end
-  content); the dialog's accessible name is the item title. Master had the shop block at the top of the info
-  column.
+  content, icon-only on a phone so the name keeps the width); the dialog's accessible name is the item title.
+  Master had the shop block at the top of the info column.
 - Hero: a snapping `Carousel` of square `AspectRatio` slides instead of one image, so phones swipe; each slide is a muted `ClickableCard` opening the Lightbox, the image
   `contain`ed (a product photo is not cropped; the template's hero is `cover`). Download (`DropdownMenu`) and the
   counter sit in a row under it, the counter between previous and next ghost `IconButton`s: the Carousel's own
