@@ -140,6 +140,9 @@ function FilterOverflow({
   // focus enters the panel only when it was opened from the keyboard: a click leaves it on the trigger, so
   // the first clause does not light up as focused
   const [byKeyboard, setByKeyboard] = useState(false);
+  // the closed popover still renders its content: the clauses are drawn into it once the trigger is pressed or
+  // focused (before the click that opens it), not with the page's hydration (~40 ms at CPU 4x)
+  const [pressed, setPressed] = useState(false);
   const count = items.length;
   const label = t("filter.more", { n: count });
   useEffect(() => {
@@ -153,14 +156,15 @@ function FilterOverflow({
       padding={isCompactSurface ? 4 : 0}
       paddingBlockStart={isCompactSurface ? SHEET_TOP_INSET : 0}
     >
-      {items.map(({ child, index }) => (
-        <StackItem
-          key={index}
-          style={{ display: "flex", flexDirection: "column" }}
-        >
-          {child}
-        </StackItem>
-      ))}
+      {pressed &&
+        items.map(({ child, index }) => (
+          <StackItem
+            key={index}
+            style={{ display: "flex", flexDirection: "column" }}
+          >
+            {child}
+          </StackItem>
+        ))}
     </VStack>
   );
 
@@ -172,8 +176,12 @@ function FilterOverflow({
       variant="ghost"
       size={CONTROL_SIZE}
       style={{ ...FILTER_CHROME, ...FILTER_SURFACE }}
-      onPointerDown={() => setByKeyboard(false)}
+      onPointerDown={() => {
+        setByKeyboard(false);
+        setPressed(true);
+      }}
       onKeyDown={() => setByKeyboard(true)}
+      onFocus={() => setPressed(true)}
       onClick={
         isCompactSurface
           ? () => {
