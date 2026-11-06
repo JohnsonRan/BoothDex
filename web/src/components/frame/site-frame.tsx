@@ -8,7 +8,6 @@
 
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
-import { Suspense } from "react";
 import { Account } from "@/components/account/account-button";
 import { Favourites } from "@/components/account/favourites";
 import { AccountProvider } from "@/components/account/session";
