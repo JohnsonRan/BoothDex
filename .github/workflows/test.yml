@@ -3,7 +3,16 @@ name: test
 on:
   push:
     branches: [master]
+    paths: &paths
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "web/**"
+      - ".github/workflows/test.yml"
+      - "!**/*.md"
   pull_request:
+    paths: *paths
+  workflow_dispatch:
 
 jobs:
   rust:
