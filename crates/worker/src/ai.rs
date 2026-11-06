@@ -164,7 +164,8 @@ pub fn validate_enrichment(v: &Value, known_categories: &[String], existing: &Va
         .take(3)
         .collect();
     if categories.is_empty() {
-        bail!("missing or invalid categories in AI reply");
+        let got: String = v["categories"].to_string().chars().take(200).collect();
+        bail!("missing or invalid categories in AI reply: {got}");
     }
 
     let content_rating = pick("content_rating", &["SFW", "Suggestive", "NSFW"])
