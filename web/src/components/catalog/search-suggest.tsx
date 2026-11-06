@@ -48,6 +48,10 @@ const AVATAR_TOKEN = 16;
 const MAX_ROWS = 24;
 /** the quick search's debounce, which /api/palette's rate limit is set for (crates/api/src/limit.rs) */
 const DEBOUNCE_MS = 120;
+/** The selectors' height in every state. Typeahead's sm is a minimum height around its padded input, and a touch
+ *  screen's 16 px input outgrows it (32 px against 28 px, 40 against 35 at a larger font); TextInput and Selector
+ *  pin sm as a height. controlStyle styles the control box (Field/fieldParts.d.ts:34-46). */
+const FIELD_HEIGHT = { height: "var(--size-element-sm)" } as const;
 
 /**
  * Types `text` into the Typeahead's input as a person would: the component keeps the typed text to itself, so a
@@ -154,6 +158,7 @@ export function SearchSuggest({
       isLabelHidden
       placeholder={t("filter.search")}
       size={CONTROL_SIZE}
+      controlStyle={FIELD_HEIGHT}
       width="100%"
       startIcon="search"
       searchSource={source}
