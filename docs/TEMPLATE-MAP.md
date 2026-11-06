@@ -48,7 +48,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Grid | page `product-gallery` (page.tsx:149) at master's density (owner: 「太大了。為什麼一頁只有4張圖了」): `minWidth` 160 (10rem, `lib/grid.ts`), `gap={4}`: two columns on a 390 px phone (the floor is also at most half the row less one gap), six at 1280-1440 px, nine at 1920 px (115 % root) |
 | Density | `html { font-size: 115% }` in `globals.css`, only above 768 px (the template's compact-surface width, page.tsx:1129), is the one knob (110 / 115 / 125 %): every rem token follows it, a phone stays at 100 % as the template is drawn, and `--size-element-sm/md/lg` are restated as 1.75 / 2 / 2.25rem so controls scale with their text |
 | Control size | `sm` for the whole toolbar row, as the table-filter template: search, every filter clause, presets, sort, save and saved views |
-| Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="supporting"` (sm); price `Text type="body" weight="bold"` |
+| Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="body" color="secondary"` and price `Text type="large" weight="bold"`, as product-gallery's description and price (page.tsx:106-109) |
 | Colour | neutral theme tokens only, light and dark via `light-dark()`; no overrides |
 | Radius, elevation | component defaults |
 
