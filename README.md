@@ -22,7 +22,7 @@ they fit, category, tags, features, price and more. It started as a successor to
 2026-11-01) and keeps its search syntax. It is an independent project, not affiliated with pixiv, BOOTH or
 VRCatalogue. Item data and images belong to their creators; every item links back to its BOOTH page.
 
-![The home page: the filter row above a carousel of avatar bodies and the item grid](docs/screenshots/en/home.webp)
+![The home page filtered to the hair category: the filter row above a carousel of avatar bodies and the item grid](docs/screenshots/en/home.webp)
 
 ## Capabilities
 
