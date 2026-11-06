@@ -1,7 +1,8 @@
 # Template map
 
 Every route and surface of the site, the Astryx template it is built from, and the rules it follows. The web
-frontend (`web/`) is being rebuilt on Astryx with the neutral theme; phase 1 is the home page. Surfaces marked
+frontend (`web/`) is being rebuilt on Astryx with the neutral theme as the default (six more Astryx themes load
+on demand, rule 7); phase 1 is the home page. Surfaces marked
 *planned* do not exist on this branch yet.
 
 Template names are the ids from `bunx astryx template --list` (page templates) or block names under
@@ -35,7 +36,10 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
    no semantic name are registered once under `site:` (`lib/icons.tsx`, table below). No hand-drawn glyphs
    (the logo is the brand mark, not an icon).
 7. Appearance: System (default), Light, Dark from the settings cookie; a head script sets `data-theme` and
-   `lang` before first paint, and the root `Theme` gets the same mode from the server.
+   `lang` before first paint, and the root `Theme` gets the same mode from the server. The style is neutral (the
+   default, built into every page) or one of six Astryx themes (`lib/settings-core.ts` `STYLES`: Stone, Matcha,
+   Y2K, Gothic, Chocolate, Butter), each loaded only when chosen (`themes/index.tsx`; Gothic is dark-only). Pure
+   black (a `Switch` under the styles) applies in dark mode only; the same script marks it as `data-black`.
 8. This file lists every surface before it is built.
 9. Astryx is MIT: `web/THIRD-PARTY-NOTICES.md` names each adapted template and carries the licence.
 
@@ -49,7 +53,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Density | `html { font-size: 115% }` in `globals.css`, only above 768 px (the template's compact-surface width, page.tsx:1129), is the one knob (110 / 115 / 125 %): every rem token follows it, a phone stays at 100 % as the template is drawn, and `--size-element-sm/md/lg` are restated as 1.75 / 2 / 2.25rem so controls scale with their text |
 | Control size | `sm` for the whole toolbar row, as the table-filter template: search, every filter clause, presets, sort, save and saved views |
 | Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="body" color="secondary"` and price `Text type="large" weight="bold"`, as product-gallery's description and price (page.tsx:106-109) |
-| Colour | neutral theme tokens only, light and dark via `light-dark()`; no overrides |
+| Colour | the chosen theme's tokens, light and dark via `light-dark()`; the one override is pure black (Deviations after the style audit) |
 | Radius, elevation | component defaults |
 
 ## Surfaces
@@ -69,7 +73,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms) | checkpoint 1 |
 | Account menu | TopNav end, signed in | ghost `IconButton` with the user-circle glyph (template `shell-side-nav` account row, page.tsx:180), tooltip the display name; `DropdownMenu` with a header (display name, email) and two groups: favourites, recently viewed / settings, admin console (admins only), sign out | track D |
 | Language, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio group (interface language only); currency as a ghost DropdownMenu button of the same height | checkpoint 1 |
-| Settings (appearance, language, currency, item text) | TopNav end, account menu | page `settings-dialog`; synced to the account when signed in; item text defaults to the interface language | track D |
+| Settings (appearance, language, currency, item text) | TopNav end, account menu | page `settings-dialog` (appearance: colour mode, style cards, pure black `Switch`); synced to the account when signed in; item text defaults to the interface language | track D |
 | Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid; recently viewed is read in the browser) | track D |
 | Admin frame | `/admin/*` | page `shell-side-nav` (collapsible, resizable `SideNav`, two titled groups, footer: back to site, language, colour mode; phone drawer from `AppShell`) | track F |
 | Admin sign-in, not an admin, unreachable | `/admin/*` before the probe succeeds | `EmptyState` (or the checking `Spinner`) in place of the page's content, under the page's own title and tabs; sign-in opens the site's `login-card` dialog, sign-in only under the admin heading | track F |
@@ -212,7 +216,8 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 | Save this search, saved views (pressed: filled by `fill`) | `site:save`, `site:saved` / `site:savedFilled` | BookmarkPlus, Bookmark |
 | Saved views: edit; saved-search form: feed | `site:edit`, `site:feed` (`lib/icons-on-demand.tsx`) | Pencil, Rss |
 | Tag editor: include, exclude | `site:add`, `site:remove` (`lib/icons-on-demand.tsx`) | Plus, Minus |
-| Item dialog: download, "More from" link, "All items from shop" on a phone | `site:download`, `site:arrowRight`, `site:shop` (`item/item-icons.tsx`) | Download, ArrowRight, Store |
+| Item dialog: download, "More from" link | `site:download`, `site:arrowRight` (`item/item-icons.tsx`) | Download, ArrowRight |
+| Search token of a word read as a category | `site:category` (`lib/icons-on-demand.tsx`) | Shapes |
 | Component internals (chevrons, close, check, carousel arrows, pagination) | theme semantic names | ChevronDown/Left/Right, X, Check, ... |
 
 Sizes: `sm` in the top bar, tiles and menus (as shell-top-nav), `lg` for the strip's "All" glyph.
@@ -222,13 +227,18 @@ Sizes: `sm` in the top bar, tiles and menus (as shell-top-nav), `lg` for the str
 The header is the Filterable Table template's (`web/templates/pages/table-filter/page.tsx`): its default filter row,
 not its PowerSearch mode. A set clause is its own chip, the row folds into "+N" instead of wrapping, and phones get
 the folded set in a BottomSheet. The site search leads the row; there is no separate search field, tab row or
-command palette. The search is a `Typeahead` (block TypeaheadSearchField) carrying the old quick search's
-suggestions: recent searches on focus, then `/api/palette`'s groups as `TypeaheadItem` rows with a leading Avatar
-(the component's own example). Not 1:1: the applied query shows as the Typeahead's token (its value), and the list is
-36rem wide and up to 60vh tall instead of the field's width and 300 px (`app/filter-row.css`).
-With a text query, the readout's count is a link that opens the search trace (how the search was answered and the
-time of each step) in a `Popover` laid out as block PopoverKeyboardShortcuts; master showed it as a chip beside the
-count, which the readout's reserved width has no room for.
+command palette. The search is a `Tokenizer` with block TypeaheadSearchField's search icon and suggestions
+(`catalog/search-suggest.tsx`): recent searches on focus, then `/api/palette`'s groups as `TypeaheadItem` rows with
+a leading Avatar (the component's own example). Each word of the applied query is its own token, as on Mercari
+(a quoted phrase stays one): its × or Backspace searches the remaining words, Enter adds the typed words, a tag
+suggestion adds its name to them and a recent search replaces them. The words the search read as an avatar or a
+smart category (the API's `recognized`) join one token, led by the avatar's picture or the `site:category` glyph,
+its tooltip naming the reading ("Avatar: Mao", "Categories: Hair · Short"); removing it removes all its words. Not
+1:1: the list is 36rem wide and up to 60vh tall instead of the field's width and 300 px (`app/filter-row.css`).
+With a text query, the readout's count is a link reading "{n} · {ms}" (the search's latency) that opens the search
+trace (how the search was answered and the time of each step) in a `Popover` laid out as block
+PopoverKeyboardShortcuts; master showed it as a chip beside the count, which the readout's reserved width has no
+room for.
 
 | Master filter | Clause | Not 1:1 |
 |---|---|---|
@@ -281,9 +291,10 @@ Deviations, all prop values or token-backed inline styles:
   header, content and the phone footer share one edge; the template's page padding 6 set the body inside them.
 - Title: `display-2` from lg; on a phone the page title's `Heading level={1}`, as display-2 took three or four
   lines of a 335 px column.
-- Header: `DialogHeader` names the shop (avatar as start content, host as subtitle, "All items from shop" as end
-  content, icon-only on a phone so the name keeps the width); the dialog's accessible name is the item title.
-  Master had the shop block at the top of the info column.
+- Header: `DialogHeader` names the shop (avatar as start content; subtitle: the host, then "All items from shop"
+  as an inline `Link`, which DialogHeader allows in the subtitle, so it reads as part of the shop and not as
+  chrome beside the close button); the dialog's accessible name is the item title. Master had the shop block at
+  the top of the info column.
 - Hero: a snapping `Carousel` of square `AspectRatio` slides instead of one image, so phones swipe; each slide is a muted `ClickableCard` opening the Lightbox, the image
   `contain`ed (a product photo is not cropped; the template's hero is `cover`). Download (`DropdownMenu`) and the
   counter sit in a row under it, the counter between previous and next ghost `IconButton`s: the Carousel's own
@@ -292,8 +303,8 @@ Deviations, all prop values or token-backed inline styles:
   thumbnails on phones; a single column cannot stick); past about three rows the thumbnails scroll in place
   (master: max-h-40), and so does a long variation list from lg (phones show it whole).
 - Sticky: the template's `stickyInfo` is put on both columns, so whichever is shorter stays in view.
-- Description: inside the `CollapsibleGroup` (first section, open) instead of the template's large text above
-  the options: Booth descriptions run to hundreds of lines and would push the actions off screen. It is clamped
+- Description: inside the `CollapsibleGroup` (first section; every section starts closed, so the item's facts
+  above come first) instead of the template's large text above the options: Booth descriptions run to hundreds of lines and would push the actions off screen. It is clamped
   to 12 lines with Show more / Show less.
 - Options: the template's glaze/finish `SegmentedControl`s become the item-text language tabs (Original and the
   translated languages); quantity and Add to Cart have no counterpart. Rating row: likes with the favourite
@@ -330,6 +341,22 @@ Checked and kept as the template:
   label, as table-filter's `overflowItem` (page.tsx:1375) stretches its button-backed presets.
 - "API starting": a `Spinner size="xl"` against the empty and error states' `Icon size="lg"`; it is a loading
   state, not an empty one.
+
+## Deviations after the style audit
+
+- Search field width (`app/filter-row.css`): with a query it grows with its tokens (`--search-width`, reckoned in
+  `catalog/search-box.tsx` so the plain field before the tokens load is as wide) from 7.5rem up to 20rem, past
+  which the last words fold into "+N more"; focused, 6rem more for the typed words, up to 28rem. The tokens stay
+  on the row's one line at `--size-element-sm`, scrolling sideways (the Tokenizer wraps them). A marked token
+  reserves 1rem for its picture, so the field keeps its width when the search answers; marks apply only to the
+  query they answered. The list's 36rem rule skips `.astryx-tooltip`, so a token's tooltip keeps its own size.
+- Pure black (`app/globals.css`), the one colour override (rule 3): under `html[data-black]` in dark mode, pinned
+  or followed from the system, the surface and body backgrounds are restated as `#000` and card, muted and
+  popover as `#111`, unlayered so it wins over every theme's layer. Synced to the account as `black`.
+- iOS Safari 26 ignores `theme-color` and tints its bars from the page's background: `<html>` takes
+  `--color-background-surface`, the viewport is `viewport-fit=cover`, and `<body>` pads by the safe-area insets.
+- Avatar strip: no prev/next buttons on a touch screen (`(hover: none) and (pointer: coarse)`, `hasButtons`); it
+  swipes, and the buttons' always-open fixed top-layer popover made Safari 26 paint its toolbar solid.
 
 ## Remaining Tailwind or shadcn files
 
