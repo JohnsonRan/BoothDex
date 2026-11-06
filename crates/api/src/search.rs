@@ -42,6 +42,7 @@ pub(crate) struct SearchResponse {
 /// the models in query order, then the category.
 #[derive(serde::Serialize, Debug, PartialEq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Recognized {
     kind: RecognizedKind,
     slug: String,

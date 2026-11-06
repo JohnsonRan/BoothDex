@@ -184,7 +184,8 @@ test("the words of a mark make one token, where they stand together", () => {
     ["Mao", "m"],
     ["hair", undefined],
   ]);
-  // the previous query's marks, until the new one answers
+  // a mark whose words the query no longer holds marks nothing (the caller drops the earlier
+  // query's marks itself; this is the function's own guard)
   expect(tokens("Mao hair", [model, category])).toEqual([
     ["Mao", "m"],
     ["hair", undefined],

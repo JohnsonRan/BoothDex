@@ -220,8 +220,8 @@ export const queryWords = (q: string) => q.match(/"[^"]*"?|[^\s"]+/g) ?? [];
 /**
  * The search field's tokens for `words` (`queryWords`): a word each, but the words of a mark (a model or category
  * the search read them as) one token together, when they stand together in the query; a mark whose words do not
- * ("short mao hair": the category's "short hair") or that does not fit the words (the marks of the query before,
- * until the new one answers) marks nothing.
+ * ("short mao hair": the category's "short hair") marks nothing. The caller drops the marks of an earlier query
+ * before calling (filter-bar.tsx), so `marks` is empty or the current query's.
  */
 export function markTokens<M extends { words: string[] }>(
   words: string[],

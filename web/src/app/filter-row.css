@@ -178,8 +178,9 @@
 
 /* The search suggestions (catalog/search-suggest.tsx). The Typeahead's list takes the field's width and 300 px of
    height; its rows carry pictures, titles and prices, so it gets the old quick search's card instead: 36rem wide
-   (within the viewport, the whole width on a phone) and up to 60% of the viewport tall. */
-.filter-search [popover] {
+   (within the viewport, the whole width on a phone) and up to 60% of the viewport tall. Not a token's tooltip,
+   also a popover in the field, which keeps its own size. */
+.filter-search [popover]:not(.astryx-tooltip) {
   width: min(36rem, calc(100vw - 2rem));
 }
 .filter-search .astryx-typeahead-dropdown {

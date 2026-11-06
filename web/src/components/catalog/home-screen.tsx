@@ -173,8 +173,9 @@ async function Catalog({
             ),
             features: o.result.featureCounts,
             marks: marks(o.result, avatars, categories, settings.ui),
+            query: filters.q,
           }
-        : { count: 0, smart: {}, features: {}, marks: [] },
+        : { count: 0, smart: {}, features: {}, marks: [], query: "" },
   );
   const title = recent
     ? t("title.recent")

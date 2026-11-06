@@ -51,6 +51,10 @@ export function FilterBar({
   const isCompactSurface = useMediaQuery(COMPACT_SURFACE_QUERY);
   const answered = useFacets(facets);
   const clauses = useClauses(answered, names);
+  // the answer belongs to the query it was asked for: until the next one arrives, its marks would mark the
+  // words of another query ("short hair" answered, "short hair dress" typed) and show a reading that may not hold
+  const { filters } = useFilterUrl();
+  const marks = answered?.query === filters.q ? answered.marks : undefined;
   // The server cannot measure, so its row holds every clause; the list folds them while hydrating. Until then the
   // list spans the slot, as a folded list does (OverflowList's fillParent), keeps back the fold trigger's place
   // and wraps the clauses that do not fit out of sight (app/filter-row.css), so the clauses shown and the readout
@@ -68,7 +72,7 @@ export function FilterBar({
       minHeight={32}
       className="filter-row"
     >
-      <SearchBox marks={answered?.marks} />
+      <SearchBox marks={marks} />
       {/* filterOverflowSlot (:1350-1372): the slot, not the list, carries the sizing */}
       <StackItem className="filter-slot">
         <OverflowList

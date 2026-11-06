@@ -11,6 +11,8 @@ export type Facets = {
   features: Record<string, number>;
   /** what the search read the query's words as: their tokens show it (search-suggest.tsx) */
   marks: SearchMark[];
+  /** the query the search answered, `q` as the URL holds it: the marks belong to it alone */
+  query: string;
 };
 
 /** Query words the search took as a model or a smart category (the API's `recognized`), named for their token. */
