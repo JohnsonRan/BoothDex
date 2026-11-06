@@ -1,8 +1,10 @@
 "use client";
 // The Astryx themes besides neutral (lib/settings-core.ts STYLES), each loaded on demand. Astryx's pattern (the
 // generated astryx-themes.ts, `astryx theme add`) imports every theme into every page; here a neutral visitor
-// loads none of them, nor this module (components/providers.tsx imports it on demand). A theme's module (themes/<slug>.ts: its built object, theme.css and fonts) loads when it is
-// chosen or when Settings previews it.
+// loads none of them. This module is not in the page's code: components/providers.tsx imports it on demand, and
+// Settings' theme cards import it, so a neutral visitor gets it (about 0.7 kB gzipped) with Settings' code, which
+// loads when idle (components/account/account-button.tsx). A theme's module (themes/<slug>.ts: its built object,
+// theme.css and fonts) loads when it is chosen or when Settings previews it.
 // - A visitor who chose one gets it from the server render: the root renders ThemeSheet, a next/dynamic component,
 //   so the page carries the theme's stylesheet and React reveals the page only once it is in (stylesheet
 //   precedence); the root waits for the theme object before it renders (styleTheme).
