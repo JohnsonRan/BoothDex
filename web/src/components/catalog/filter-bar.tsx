@@ -27,7 +27,6 @@ import {
   FILTER_CHROME,
   FILTER_SURFACE,
   OVERFLOW_WIDTH,
-  READOUT_RESERVE,
   SHEET_TOP_INSET,
   useFacets,
 } from "./filter-style";
@@ -59,27 +58,18 @@ export function FilterBar({
   useLayoutEffect(() => setIsFolded(true), []);
 
   return (
-    // filterRow (:1329): one line at every width
+    // filterRow (:1329): one line at every width but a phone's, where the readout takes a line of its own; the
+    // row's, the slot's and the readout's sizing are in app/filter-row.css
     <HStack
       gap={2}
       vAlign="center"
       wrap="nowrap"
       minHeight={32}
-      style={{ rowGap: 6 }}
+      className="filter-row"
     >
       <SearchBox />
-      {/* filterOverflowSlot (:1350-1372): the slot, not the list, carries the sizing — the row's only grower, the
-          first to give (shrink 100 against the search's 1), floored at the "+N" trigger plus the reserve */}
-      <StackItem
-        style={{
-          display: "flex",
-          alignItems: "center",
-          flexGrow: 1,
-          flexShrink: 100,
-          paddingInlineEnd: READOUT_RESERVE,
-          minWidth: `calc(3rem + ${READOUT_RESERVE})`,
-        }}
-      >
+      {/* filterOverflowSlot (:1350-1372): the slot, not the list, carries the sizing */}
+      <StackItem className="filter-slot">
         <OverflowList
           behavior="observeParent"
           gap={2}
@@ -93,23 +83,19 @@ export function FilterBar({
         >
           {clauses}
         </OverflowList>
-        {/* filterMeta (:1406-1410): draws over the reserve, against the last clause; the count and "Clear all"
-            arrive together (results.tsx), so nothing in it moves when the count replaces its silhouette */}
-        <HStack
-          gap={2}
-          vAlign="center"
-          // the count's place, read by tools/lab.cjs
-          data-readout
-          style={{
-            flexShrink: 0,
-            marginInlineStart: 8,
-            marginInlineEnd: `calc(-1 * ${READOUT_RESERVE})`,
-            visibility: isFolded ? undefined : "hidden",
-          }}
-        >
-          {count}
-        </HStack>
       </StackItem>
+      {/* filterMeta (:1406-1410): drawn over the slot's reserve, against the last clause; the count and "Clear all"
+          arrive together (results.tsx), so nothing in it moves when the count replaces its silhouette */}
+      <HStack
+        gap={2}
+        vAlign="center"
+        // the count's place, read by tools/lab.cjs
+        data-readout
+        className="filter-readout"
+        style={{ visibility: isFolded ? undefined : "hidden" }}
+      >
+        {count}
+      </HStack>
     </HStack>
   );
 }

@@ -12,7 +12,7 @@ const [
   delay = "2500",
 ] = process.argv.slice(2);
 const ENTRANCE = ["page-enter", "row-enter"];
-// clicks the filter row's first preset toggle button, the view switch (the clause slot is the readout's parent;
+// clicks the filter row's first preset toggle button, the view switch (the filter row is the readout's parent;
 // the list's hidden measuring copies are skipped)
 const clickPreset = (p) =>
   p.evaluate(() =>

@@ -19,12 +19,6 @@ export const COMPACT_SURFACE_QUERY =
   "(max-width: 768px), (max-width: 1024px) and (pointer: coarse) and (hover: none)";
 /** Sheet content starts below the grab pill's band (SHEET_TOP_INSET, :1142). */
 export const SHEET_TOP_INSET = 6;
-/**
- * Width the clause slot holds back for the readout after the clauses (READOUT_RESERVE, :1160): paid as padding,
- * which the overflow measurement subtracts, and taken back by the readout's negative margin. In rem, so it grows
- * with the text it reserves room for.
- */
-export const READOUT_RESERVE = "11.5rem";
 /** The panels' widths in rem, so they grow with the text they hold, as the controls beside them do (TEMPLATE-MAP
  *  rule 4): the price and tag editors at quotePopover's 300 px (:1545-1547), the folded clauses at
  *  FilterOverflow's 280 px (:2099). */

@@ -254,10 +254,13 @@ Deviations, all prop values or token-backed inline styles:
 
 - The header `Section` keeps `padding={6}` (24 px) where the template has 16 px, so the title and the grid
   share one left edge (rule 5).
-- The template's StyleX rules (`filterChrome`, `filterSurface`, `filterFill`, slot and readout sizing) are
-  `style`/`controlStyle` objects of the same tokens (`catalog/filter-style.ts`); the ones that need a container
-  query or `:focus-within` (`toolbarContainer`, `toolbarPrimary`, `searchSlot`) are classes in
+- The template's StyleX rules (`filterChrome`, `filterSurface`, `filterFill`) are `style`/`controlStyle` objects
+  of the same tokens (`catalog/filter-style.ts`); the ones that need a container query or `:focus-within`
+  (`toolbarContainer`, `toolbarPrimary`, `searchSlot`, `filterRow`, slot and readout sizing) are classes in
   `app/filter-row.css`. The site has no StyleX compiler.
+- The readout is the slot's sibling, pulled back over the reserve, instead of its child: where a phone's toolbar
+  cannot hold the search, "+N" and the reserve (a toolbar below 25.5rem), it takes a line of its own under the row
+  (owner's request), and the search and "+N" keep their places.
 - The fold's Popover moves focus in only when opened by keyboard (`hasAutoFocus`); a click leaves focus on the
   trigger. Clause popups keep their own focus handling.
 - `BottomSheet`, the price and tag editors and the saved-views code load after the page (`lib/lazy`; the

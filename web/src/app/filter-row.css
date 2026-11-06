@@ -17,6 +17,51 @@
   }
 }
 
+/* filterRow, filterOverflowSlot and filterMeta (:1325-1331, :1350-1372, :1400-1410). The slot is the row's only
+   grower and the first to give (shrink 100 against the search's 1), floored at the "+N" trigger plus the reserve:
+   the width it holds back for the readout, paid as padding, which the overflow measurement subtracts. The readout
+   sits beside the slot, pulled back over the reserve so it draws against the last clause, and spans the reserve
+   less the gap before it, so its text never changes what the slot is given. The reserve is in rem, so it grows
+   with the text it holds room for. */
+.filter-row {
+  --readout-reserve: 11.5rem;
+  row-gap: var(--spacing-1-5);
+}
+.filter-slot {
+  display: flex;
+  align-items: center;
+  flex-grow: 1;
+  flex-shrink: 100;
+  padding-inline-end: var(--readout-reserve);
+  min-width: calc(3rem + var(--readout-reserve));
+}
+.filter-readout {
+  flex: 0 0 calc(var(--readout-reserve) - var(--spacing-2));
+  margin-inline-start: calc(-1 * var(--readout-reserve));
+}
+.filter-readout > * {
+  flex-shrink: 0;
+}
+
+/* A phone (owner's request; the template keeps one line): where the row cannot hold the search, the trigger and the
+   reserve (7.5 + 0.5 + 3 + 11.5 rem, inside the toolbar's own 2 x 1.5 rem inset), the readout takes a line of its
+   own under the row and the slot keeps just the trigger, so the search and "+N" stay as they were. Decided by the
+   toolbar's width, not by the readout's text, so the count arriving never moves the row. */
+@container toolbar (width < 25.5rem) {
+  .filter-toolbar .filter-row {
+    flex-wrap: wrap;
+  }
+  .filter-toolbar .filter-slot {
+    flex: 0 0 3rem;
+    padding-inline-end: 0;
+    min-width: 3rem;
+  }
+  .filter-toolbar .filter-readout {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+  }
+}
+
 /* The clause list as the server renders it, before OverflowList has measured anything (catalog/filter-bar.tsx):
    every clause at its own width, never squeezed, on one line; the ones that do not fit wrap onto a second line
    the list clips. The empty first item, a line tall, lets even the first clause wrap away when it does not fit (a
@@ -35,7 +80,7 @@
 .filter-clauses > * {
   flex-shrink: 0;
 }
-/* 3rem: the trigger's place, as the slot's floor counts it (catalog/filter-bar.tsx). The template's 44 px is the
+/* 3rem: the trigger's place, as the slot's floor counts it (.filter-slot). The template's 44 px is the
    trigger as the template draws it; "+8" is 19.8 px wide on a phone, which 44 px clips to "+…". */
 .filter-clauses[data-unfolded] {
   inline-size: 100%;
