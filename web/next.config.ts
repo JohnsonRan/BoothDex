@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
   // Keep default gzip for HTML/JS/CSS; the API's SSE uses Cache-Control: no-transform to bypass it.
   cacheComponents: true,
   partialPrefetching: false,
+  // The home page's metadata reads searchParams (searches are noindex), so Next streams it into <body> for any
+  // user agent outside its bot list, and Lighthouse and link previews found no description. It resolves at once
+  // (no fetch), so every request gets it in <head> at no cost (docs: next-config-js/htmlLimitedBots).
+  htmlLimitedBots: /.*/,
   // proxy.ts hands the home page its query string as sent; normalising re-encodes a "%20" as "+"
   skipProxyUrlNormalize: true,
   turbopack: {
