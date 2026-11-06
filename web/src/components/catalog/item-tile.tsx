@@ -66,9 +66,10 @@ export const tileOf = (
 });
 
 // Template product-gallery's Grid (page.tsx:148-149), with master's density (owner: 「太大了。為什麼一頁只有4張圖了」):
-// master's 160 px floor and gap 4, in rem so it follows the root scale.
-export const GRID = { gap: 4, ...remColumns("10rem") } as const;
-// Tiles in the server HTML: more than a first screen at every width (18 at 1920 px), and whole rows at 1 to 4 and 6
+// master's 160 px floor and gap 4, in rem so it follows the root scale, and always two columns on a phone.
+const GAP = 4;
+export const GRID = { gap: GAP, ...remColumns("10rem", "fill", GAP) } as const;
+// Tiles in the server HTML: more than a first screen at every width (18 at 1920 px), and whole rows at 2 to 4 and 6
 // columns (phones to 1440 px at the 115 % root); at 9 columns (1920 px) the third row, below the first screen, ends
 // early.
 export const FIRST_TILES = 24;

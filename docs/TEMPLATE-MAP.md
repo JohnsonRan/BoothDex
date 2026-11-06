@@ -41,7 +41,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 |---|---|
 | Page inset | `Layout padding={6}` on header and content |
 | Rhythm | `VStack gap={6}` between page sections, `gap={4}` within the control block, `gap={2}` between a tile's cover and text, `gap={1}` between text lines |
-| Grid | page `product-gallery` (page.tsx:149) at master's density (owner: 「太大了。為什麼一頁只有4張圖了」): `minWidth` 160 (10rem, `lib/grid.ts`), `gap={4}`: one column on a 390 px phone, six at 1280-1440 px, nine at 1920 px (115 % root) |
+| Grid | page `product-gallery` (page.tsx:149) at master's density (owner: 「太大了。為什麼一頁只有4張圖了」): `minWidth` 160 (10rem, `lib/grid.ts`), `gap={4}`: two columns on a 390 px phone (the floor is also at most half the row less one gap), six at 1280-1440 px, nine at 1920 px (115 % root) |
 | Density | `html { font-size: 115% }` in `globals.css` is the one knob (110 / 115 / 125 %): every rem token follows it, and `--size-element-sm/md/lg` are restated as 1.75 / 2 / 2.25rem so controls scale with their text |
 | Control size | `sm` for the whole toolbar row, as the table-filter template: search, every filter clause, presets, sort, save and saved views |
 | Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="supporting"` (sm); price `Text type="body" weight="bold"` |
@@ -175,7 +175,7 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   control heights are px in `astryx.css`, so `globals.css` restates them in rem. Viewport breakpoints stay px.
   Grid's `columns={{minWidth}}` takes px only, so `lib/grid.ts` passes the same track list with a rem floor as
   the `style` Grid merges (results grid, item dialog columns, gallery thumbnails).
-- Results grid: 24 server tiles (whole rows at 1 to 4 columns; at 5 columns the fifth row ends early, below the
+- Results grid: 24 server tiles (whole rows at 2 to 4 columns; at 5 columns the fifth row ends early, below the
   first screen): whole rows at 5 too would take 60 tiles, 19 KB of HTML over the size budget.
 - Image skeletons: each image is a `SkeletonImage` (`catalog/silhouette.tsx`), an `img` over a `Skeleton` in one
   grid cell, server markup with no handler; the image is positioned so it paints above the animated Skeleton.
