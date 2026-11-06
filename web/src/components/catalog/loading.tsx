@@ -13,8 +13,10 @@ import { TextSilhouette, TileSilhouette } from "./silhouette";
 /** The result count beside the title. */
 export function CountSilhouette() {
   return (
-    <VStack {...PLACEHOLDER} style={{ width: "6em" }}>
-      <TextSilhouette type="supporting" width="100%" />
+    // the bar, not the box, is 6em wide: in the filter row's readout the box takes the readout's free width and
+    // sets the bar at its end, as it does the count (app/filter-row.css)
+    <VStack {...PLACEHOLDER}>
+      <TextSilhouette type="supporting" width="6em" />
     </VStack>
   );
 }

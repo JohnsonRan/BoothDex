@@ -22,7 +22,7 @@
    the width it holds back for the readout, paid as padding, which the overflow measurement subtracts. The readout
    sits beside the slot, pulled back over the reserve so it draws against the last clause, and spans the reserve
    less the gap before it, so its text never changes what the slot is given. Its text sits at the reserve's end,
-   against the end cluster, as the template's readout does at desktop widths. The reserve is in rem, so it grows
+   against the end cluster, as the template's readout does at desktop widths (the count's box below). The reserve is in rem, so it grows
    with the text it holds room for. */
 .filter-row {
   --readout-reserve: 11.5rem;
@@ -43,9 +43,17 @@
 .filter-readout > * {
   flex-shrink: 0;
 }
-/* a margin, not justify-content, which the HStack's own alignment class sets */
+/* The count, or its silhouette (each a VStack), takes the readout's free width and sets its text at the end, so the
+   box starts at the readout's start whatever fills it: the silhouette, the count alone, or the count before
+   "Clear all" (tools/loading-layout.cjs). "Clear all" alone, after a failed search, is a button, set at the end by
+   a margin, not justify-content, which the HStack's own alignment class sets. */
 .filter-readout > :first-child {
   margin-inline-start: auto;
+}
+.filter-readout > div:first-child {
+  margin-inline-start: 0;
+  flex-grow: 1;
+  align-items: flex-end;
 }
 
 /* A phone (owner's request; the template keeps one line): where the row cannot hold the search, the trigger and the
@@ -67,6 +75,8 @@
   }
   .filter-toolbar .filter-readout > :first-child {
     margin-inline-start: 0;
+    flex-grow: 0;
+    align-items: flex-start;
   }
 }
 
