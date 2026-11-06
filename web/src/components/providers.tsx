@@ -78,6 +78,16 @@ function showLook({ theme, style }: Look) {
     else el.setAttribute("data-theme", mode);
     el.setAttribute("data-astryx-theme", style);
   }
+  showChrome();
+}
+
+/** Gives the browser's bar (theme-color, layout.tsx viewport) the background of the page's AppShell as now shown. */
+function showChrome() {
+  const shell = document.querySelector(".astryx-app-shell");
+  if (!shell) return;
+  const color = getComputedStyle(shell).backgroundColor;
+  for (const meta of document.querySelectorAll('meta[name="theme-color"]'))
+    meta.setAttribute("content", color);
 }
 
 export function Providers({
@@ -150,6 +160,18 @@ export function Providers({
     if (style !== look.style) showLook({ theme: look.theme, style });
   }, [look, style]);
 
+  // the bar follows the look the page opened in (a pinned mode or theme, from the head script or the server) and
+  // then the system's mode while that is followed
+  const mode = shownMode(look.theme, style);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: style changes the background read
+  useEffect(() => {
+    showChrome();
+    if (mode !== "system") return;
+    const dark = matchMedia("(prefers-color-scheme: dark)");
+    dark.addEventListener("change", showChrome);
+    return () => dark.removeEventListener("change", showChrome);
+  }, [mode, style]);
+
   // the language the page is rendered in, also when it came from Accept-Language rather than the cookie
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -179,7 +201,7 @@ export function Providers({
   }, [update]);
 
   return (
-    <Theme theme={theme} mode={shownMode(look.theme, style)}>
+    <Theme theme={theme} mode={mode}>
       {/* the theme shown: one that failed to load shows neutral, which needs none */}
       {lazy && <lazy.ThemeSheet name={theme.name} />}
       <InternationalizationProvider

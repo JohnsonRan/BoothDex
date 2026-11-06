@@ -18,9 +18,15 @@ export const metadata: Metadata = {
   description: "Search and filter VRChat assets on Booth",
 };
 
+// The phone browser's bar takes the page's background: neutral's --color-background-surface, the site AppShell's
+// (site-frame.tsx), for each system mode; a pinned mode or another theme rewrites it (providers.tsx showChrome).
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#262626" },
+  ],
 };
 
 // Applies the saved appearance and language before first paint (from the cookie, or master's localStorage copy
