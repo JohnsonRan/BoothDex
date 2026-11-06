@@ -142,7 +142,6 @@ export function Tags({ tags }: { tags: string[] }) {
         <Token
           key={tag}
           label={tag}
-          size="sm"
           onClick={() => close(() => apply({ q: tag }))}
         />
       ))}
