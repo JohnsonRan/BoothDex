@@ -19,8 +19,8 @@
 
 /* The clause list as the server renders it, before OverflowList has measured anything (catalog/filter-bar.tsx):
    every clause at its own width, never squeezed, on one line; the ones that do not fit wrap onto a second line
-   the list clips. The empty first item lets even the first clause wrap away when it does not fit (a flex line
-   keeps at least one item), and its negative margin cancels its gap. While unfolded the list also keeps back the
+   the list clips. The empty first item, a line tall, lets even the first clause wrap away when it does not fit (a
+   flex line keeps at least one item), and its negative margin cancels its gap. While unfolded the list also keeps back the
    fold trigger's place (`data-unfolded`), so the clauses left on the line are those the fold keeps, and the
    trigger appears in that place. Once folded the clauses left fit on the one line, so this changes nothing. */
 .filter-clauses {
@@ -29,6 +29,7 @@
 }
 .filter-clauses::before {
   content: "";
+  block-size: 100%;
   margin-inline-end: calc(-1 * var(--spacing-2));
 }
 .filter-clauses > * {
