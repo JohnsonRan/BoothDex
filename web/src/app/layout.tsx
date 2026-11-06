@@ -20,9 +20,12 @@ export const metadata: Metadata = {
 
 // The phone browser's bar takes the page's background: neutral's --color-background-surface, the site AppShell's
 // (site-frame.tsx), for each system mode; a pinned mode or another theme rewrites it (providers.tsx showChrome).
+// Safari 26 on iOS ignores theme-color: it tints its bars from <html>'s background (globals.css), and only with
+// viewport-fit=cover does the page run on under the bottom toolbar instead of leaving a solid bar there.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#262626" },

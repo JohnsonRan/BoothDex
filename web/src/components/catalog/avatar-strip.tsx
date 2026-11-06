@@ -11,6 +11,7 @@
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Carousel, type CarouselHandle } from "@astryxdesign/core/Carousel";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { VStack } from "@astryxdesign/core/Stack";
@@ -26,6 +27,11 @@ const CARD_WIDTH = "6.5rem";
 // cards rendered before the strip is used: more than fit across 1440 px (with the "all" card)
 const FIRST_CARDS = 14;
 const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
+// A touch screen swipes the strip, so it gets no prev/next buttons. They also break iOS Safari 26's toolbar: they
+// sit in an always-open fixed top-layer popover, which Safari's toolbar sampling finds at the bottom edge
+// (WebKit LocalFrameView::fixedContainerEdges), so it painted the toolbar solid instead of letting the page show
+// through. Without buttons the Carousel hides that layer (display: none), which the sampling skips.
+const TOUCH = "(hover: none) and (pointer: coarse)";
 
 const AllGlyph = () => (
   <VStack height="100%" hAlign="center" vAlign="center">
@@ -41,6 +47,7 @@ export function AvatarStrip({ avatars }: { avatars: Avatar[] }) {
   const carousel = useRef<CarouselHandle>(null);
   const strip = useRef<HTMLDivElement>(null);
   const pick = (slug: string) => apply({ avatar: slug });
+  const touch = useMediaQuery(TOUCH);
 
   // keep the chosen avatar in view, also when the page opens on one far down the list. The handle's scrollTo
   // brings a card to the start edge (CarouselHandle.scrollTo, Carousel.d.ts:41-46), where the "previous" button
@@ -89,6 +96,7 @@ export function AvatarStrip({ avatars }: { avatars: Avatar[] }) {
     <Carousel
       gap={2}
       hasSnap
+      hasButtons={!touch}
       handleRef={carousel}
       ref={strip}
       aria-label={t("strip.label")}

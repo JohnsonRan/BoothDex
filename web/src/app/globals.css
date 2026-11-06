@@ -32,6 +32,18 @@
   color-scheme: light dark;
 }
 
+/* iOS Safari 26 colours its status bar and bottom toolbar from the page's background, not theme-color
+   (layout.tsx viewport): without one it shows black or white there, so <html> takes the AppShell's surface,
+   pure black included. With viewport-fit=cover the page runs under the toolbar and a landscape notch; the
+   insets keep the content clear of them. */
+html {
+  background-color: var(--color-background-surface);
+}
+body {
+  padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  padding-block-end: env(safe-area-inset-bottom);
+}
+
 /* Pure black (the setting, components/providers.tsx showLook): in dark mode, pinned or followed, the page's
    backgrounds turn black and its raised ones (cards, popovers) near-black, in every theme. Only a token's dark
    half is read there, so each is restated whole. Unlayered, so it wins over the themes' layer. */
