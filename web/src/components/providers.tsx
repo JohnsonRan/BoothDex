@@ -118,6 +118,14 @@ export function Providers({
         messages={catalogue ? { [locale]: catalogue } : undefined}
       >
         <LinkProvider component={Link}>
+          {/* the static layout cannot know a language read from Accept-Language: set while the page is parsed,
+              not by the effect after hydration, whose change restyles the whole document */}
+          <script
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
+            dangerouslySetInnerHTML={{
+              __html: `document.documentElement.lang=${JSON.stringify(locale)}`,
+            }}
+          />
           <UiContext value={value}>
             <ToastHost>{children}</ToastHost>
           </UiContext>
