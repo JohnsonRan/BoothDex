@@ -185,7 +185,11 @@ async function Catalog({
                       names={names}
                       count={
                         <Suspense fallback={<CountSilhouette />}>
-                          <ResultCount outcome={outcome} settings={settings} />
+                          <ResultCount
+                            outcome={outcome}
+                            settings={settings}
+                            hasQuery={!!filters.q}
+                          />
                         </Suspense>
                       }
                     />

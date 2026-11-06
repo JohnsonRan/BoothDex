@@ -28,12 +28,16 @@ type Opener = {
   close: (then?: () => void) => void;
 };
 const Ctx = createContext<Opener | null>(null);
+const RatesCtx = createContext<Promise<Rates>>(Promise.resolve({}));
 
 export function useItemOpener(): Opener {
   const v = useContext(Ctx);
   if (!v) throw new Error("useItemOpener outside ItemHost");
   return v;
 }
+
+/** The exchange rates the page started, for item prices outside the dialog (the search suggestions). */
+export const useRates = (): Promise<Rates> => useContext(RatesCtx);
 
 export function ItemHost({
   rates,
@@ -109,7 +113,7 @@ export function ItemHost({
 
   return (
     <Ctx value={opener}>
-      {children}
+      <RatesCtx value={rates}>{children}</RatesCtx>
       {used && <ItemDialog id={id} rates={rates} />}
     </Ctx>
   );

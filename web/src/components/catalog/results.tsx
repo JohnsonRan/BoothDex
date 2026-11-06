@@ -12,24 +12,39 @@ import { LazyPager } from "./lazy-pager";
 import { KeepResults, Swap } from "./refresh";
 import { EmptyResults, SemanticNote } from "./result-states";
 import { ResultsGrid } from "./results-grid";
+import { SearchTrace } from "./search-trace";
 
 export async function ResultCount({
   outcome,
   settings,
+  hasQuery,
 }: {
   outcome: Promise<SearchOutcome>;
   settings: Settings;
+  /** a text search: the count opens how it was answered (search-trace.tsx) */
+  hasQuery: boolean;
 }) {
   const o = await outcome;
   if (o.state !== "ok") return null;
   const t = translator(settings.ui);
+  const count = t("title.count", {
+    n: o.result.count.toLocaleString(LOCALES[settings.ui]),
+  });
   return (
     <Swap inline>
-      <Text type="supporting" color="secondary" hasTabularNumbers>
-        {t("title.count", {
-          n: o.result.count.toLocaleString(LOCALES[settings.ui]),
-        })}
-      </Text>
+      {hasQuery ? (
+        <SearchTrace
+          count={count}
+          semantic={o.result.semantic}
+          steps={o.result.trace}
+          serverMs={o.result.timing.totalMs}
+          totalMs={o.ms}
+        />
+      ) : (
+        <Text type="supporting" color="secondary" hasTabularNumbers>
+          {count}
+        </Text>
+      )}
     </Swap>
   );
 }

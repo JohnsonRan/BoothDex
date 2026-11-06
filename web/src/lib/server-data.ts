@@ -43,7 +43,8 @@ export async function readSettings(): Promise<Settings> {
 
 /** "starting": the API is still loading after a restart (503) or unreachable; "error": it is up but failed. */
 export type SearchOutcome =
-  | { state: "ok"; result: SearchResponse }
+  /** `ms`: this server's request, the API's time included (the search trace's total) */
+  | { state: "ok"; result: SearchResponse; ms: number }
   | { state: "starting" | "error" };
 
 async function apiReady(): Promise<boolean> {
@@ -63,12 +64,13 @@ export async function searchItems(
   noSemantic: boolean,
 ): Promise<SearchOutcome> {
   const cookie = (await headers()).get("cookie");
+  const start = performance.now();
   try {
     const result = await getJson<SearchResponse>(
       `/api/search?${searchQuery(filters, page, PAGE_SIZE)}&fields=card${noSemantic ? "&sem=0" : ""}`,
       { cache: "no-store", headers: cookie ? { cookie } : undefined },
     );
-    return { state: "ok", result };
+    return { state: "ok", result, ms: performance.now() - start };
   } catch {
     return { state: (await apiReady()) ? "error" : "starting" };
   }
