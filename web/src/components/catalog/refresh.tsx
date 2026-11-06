@@ -1,10 +1,12 @@
 "use client";
 // Refreshing results after a filter, sort or page change. The current results stay on screen while the next
-// ones load; only a wait of 150 ms or more shows anything (lib/use-delayed): a small spinner beside the count,
-// held for at least 300 ms, and the new count and results then fade in. A failed refresh keeps the results with
-// an inline Banner to retry (doona apps/lite UI rules, Phase 1d of the rewrite).
+// ones load; only a wait of 150 ms or more shows anything (lib/use-delayed): the table-filter template's
+// indeterminate ProgressBar across the top of the header (page.tsx:4341-4347), held for at least 300 ms, and the
+// new count and results then fade in. A failed refresh keeps the results with an inline Banner to retry (doona
+// apps/lite UI rules, Phase 1d of the rewrite).
 
 import { Button } from "@astryxdesign/core/Button";
+import { ProgressBar } from "@astryxdesign/core/ProgressBar";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { VStack } from "@astryxdesign/core/Stack";
 import dynamic from "next/dynamic";
@@ -30,23 +32,27 @@ const Banner = dynamic(
 );
 
 /**
- * Beside the result count: its slot is always laid out, so nothing moves; the spinner is there only while a
- * refresh has been waiting (data-refresh), so nothing animates at rest.
+ * At the top edge of the header (the template's `progress` and `headerWrap`, :1452-1459: absolutely placed in a
+ * relative wrapper), so it takes no room. Its wrapper is always there and lays nothing out (`display: contents`),
+ * carrying the state (data-refresh, read by tools/lab.cjs); the bar is mounted only while a refresh has been
+ * waiting, so nothing animates at rest.
  */
-export function RefreshIndicator() {
+export function RefreshProgress() {
   const { t } = useUi();
   const { shown } = useRefresh();
   return (
     <VStack
       data-refresh={shown ? "shown" : "idle"}
-      role="status"
-      aria-label={shown ? t("list.loading") : undefined}
-      width={16}
-      height={16}
-      hAlign="center"
-      vAlign="center"
+      style={{ display: "contents" }}
     >
-      {shown && <Spinner size="sm" shade="subtle" />}
+      {shown && (
+        <ProgressBar
+          label={t("list.loading")}
+          isLabelHidden
+          isIndeterminate
+          style={{ position: "absolute", insetBlockStart: 0, insetInline: 0 }}
+        />
+      )}
     </VStack>
   );
 }
@@ -83,8 +89,11 @@ export function Swap({
     return cancelOnReducedMotion(swapIn(ref.current));
   }, [children]);
   return (
+    // inline (the count): as wide as its silhouette, so nothing after it moves when it arrives; the text ends
+    // against what follows, as the template's readout reads
     <VStack
       ref={ref}
+      hAlign={inline ? "end" : undefined}
       style={inline ? { display: "inline-flex", minWidth: "6em" } : undefined}
     >
       {children}

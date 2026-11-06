@@ -1,131 +1,196 @@
 "use client";
-// The Card Grid template's control row: filter tabs that narrow the grid in place (categories, or gender in
-// the avatar view), then the sort menu. The other filters are the clause row under it (filter-bar.tsx).
+// The toolbar row under the title, as the table-filter template's header (page.tsx:4373-4470): the filter row, or
+// the saved-views bar while that is toggled on, then one end cluster — the sort as the view control (:3999-4006,
+// a ghost `sm` menu), "Save this search" (bookmark-plus, :4439-4446) and the saved-views toggle (:4450-4468).
+// Saved searches belong to the account: signed out, both open the sign-in dialog. They are not offered in the
+// favourites view, whose list is the account's own.
 
 import { DropdownMenu } from "@astryxdesign/core/DropdownMenu";
-import { OverflowList } from "@astryxdesign/core/OverflowList";
-import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
-import {
-  ToggleButton,
-  ToggleButtonGroup,
-} from "@astryxdesign/core/ToggleButton";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { HStack, StackItem } from "@astryxdesign/core/Stack";
+import { ToggleButton } from "@astryxdesign/core/ToggleButton";
+import { Bookmark, BookmarkPlus, type LucideProps } from "lucide-react";
+import dynamic from "next/dynamic";
+import { type ReactNode, useEffect, useState } from "react";
+import { useAccount } from "@/components/account/session";
 import { useUi } from "@/components/providers";
-import type { Filters } from "@/lib/catalog";
-import type { MessageKey } from "@/lib/messages";
-import { LOCALES } from "@/lib/settings-core";
+import { FILTER_RESET, parseFilters } from "@/lib/catalog";
+import { preloadOn, preloadWhenIdle } from "@/lib/lazy";
+import { type ClauseNames, SORTS, sortLabel } from "./clause-text";
+import { FilterBar } from "./filter-bar";
 import {
+  COMPACT_SURFACE_QUERY,
   CONTROL_SIZE,
   type Facets,
-  FILTER_FILL,
-  useFacets,
 } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
+import {
+  isSavable,
+  type Saved,
+  savedQuery,
+  useSavedSearches,
+} from "./saved-searches";
 
-const SORTS = [
-  ["trending", "desc", "sort.trending"],
-  ["newest", "desc", "sort.newest"],
-  ["likes", "desc", "sort.likes"],
-  ["price", "asc", "sort.priceAsc"],
-  ["price", "desc", "sort.priceDesc"],
-] as const satisfies readonly [Filters["sort"], Filters["dir"], MessageKey][];
+const loadBar = () => import("./saved-views");
+const loadForms = () => import("./saved-view-forms");
+const SavedViewsBar = dynamic(() => loadBar().then((m) => m.SavedViewsBar), {
+  ssr: false,
+});
+const CreateSavedForm = dynamic(
+  () => loadForms().then((m) => m.CreateSavedForm),
+  { ssr: false },
+);
+const EditSavedForm = dynamic(() => loadForms().then((m) => m.EditSavedForm), {
+  ssr: false,
+});
+const loadSignIn = () => import("@/components/frame/sign-in");
+const SignInDialog = dynamic(() => loadSignIn().then((m) => m.SignInDialog), {
+  ssr: false,
+});
+
+// a pressed saved-views toggle shows the filled bookmark (the template's BookmarkFilled)
+const BookmarkFilled = (props: LucideProps) => (
+  <Bookmark {...props} fill="currentColor" />
+);
 
 export function Toolbar({
-  categoryTabs,
+  title,
   facets,
+  names,
+  count,
 }: {
-  /** the items view's category tabs: slug and name in the interface language */
-  categoryTabs: [string, string][];
-  /** the category counts arrive with the search; the tabs never wait for them */
+  /** the page heading, which a new saved search is named after */
+  title: string;
   facets: Promise<Facets>;
+  names: ClauseNames;
+  /** the result count, rendered on the server */
+  count: ReactNode;
 }) {
-  const { t, ui } = useUi();
+  const { t } = useUi();
   const { filters, apply } = useFilterUrl();
-  const smart = useFacets(facets)?.smart;
-  const avatars = filters.view === "avatars";
-  // the tabs' values; "" is the first tab, meaning no restriction
-  const tabs: [string, string][] = avatars
-    ? [
-        ["", t("filter.genderAny")],
-        ["female", t("filter.female")],
-        ["male", t("filter.male")],
-      ]
-    : [["", t("filter.all")], ...categoryTabs];
-  const tab = avatars ? filters.gender : filters.sc;
-  const pickTab = (v: string) =>
-    apply(avatars ? { gender: v as Filters["gender"] } : { sc: v });
-  // a category's item count for the current search, shown where it costs no layout: tooltip and menu
-  const count = (v: string) =>
-    !avatars && v && smart ? smart[v]?.toLocaleString(LOCALES[ui]) : undefined;
-  // a text search's default order is relevance (see searchQuery)
-  const sortLabel = (key: MessageKey) =>
-    t(key === "sort.trending" && filters.q ? "sort.relevant" : key);
-  const current =
-    SORTS.find(
-      ([s, d]) => s === filters.sort && (s !== "price" || d === filters.dir),
-    ) ?? SORTS[0];
+  const { me, reload } = useAccount();
+  const isCompactSurface = useMediaQuery(COMPACT_SURFACE_QUERY);
+  const store = useSavedSearches();
+  const [isBarOpen, setIsBarOpen] = useState(false);
+  // undefined: never opened, so that code is not loaded
+  const [creating, setCreating] = useState<boolean>();
+  const [editing, setEditing] = useState<Saved | null>();
+  const [signIn, setSignIn] = useState<boolean>();
+  const hasSaved = filters.view !== "favourites";
+  const query = savedQuery(filters);
+  const active = isBarOpen
+    ? store.items?.find((s) => savedQuery(parseFilters(s.query)) === query)
+    : undefined;
+  useEffect(() => {
+    if (me) preloadWhenIdle(loadBar, loadForms);
+  }, [me]);
+
+  // signed out, saving asks to sign in first
+  const signedIn = (run: () => void) => () => (me ? run() : setSignIn(true));
 
   return (
-    <HStack vAlign="center" gap={4}>
-      {/* the tabs take what the sort menu leaves: their overflow is measured in the browser, and the menu
-          must not move when it is (no layout shift on hydration) */}
-      <StackItem size="fill" style={{ minWidth: 0 }}>
-        <VStack>
-          <ToggleButtonGroup
-            label={avatars ? t("filter.gender") : t("filter.categories")}
-            value={tab}
-            onChange={(v) => pickTab(typeof v === "string" ? v : "")}
-          >
-            <OverflowList
-              gap={1}
-              behavior="observeParent"
-              overflowRenderer={(overflowItems) => {
-                // a folded selected tab names the overflow control, so the choice stays visible on a phone
-                const folded = overflowItems.find(
-                  ({ index }) => tab && tabs[index][0] === tab,
-                );
-                return (
-                  <DropdownMenu
-                    button={{
-                      label: folded
-                        ? tabs[folded.index][1]
-                        : `+${overflowItems.length}`,
-                      variant: "ghost",
-                      size: CONTROL_SIZE,
-                      style: folded ? FILTER_FILL : undefined,
-                    }}
-                    items={overflowItems.map(({ index }) => ({
-                      label: tabs[index][1],
-                      endContent: count(tabs[index][0]),
-                      onClick: () =>
-                        pickTab(tabs[index][0] === tab ? "" : tabs[index][0]),
-                    }))}
-                  />
-                );
+    <HStack gap={3} vAlign="center" wrap="wrap">
+      {/* toolbarPrimary (:1390-1395): takes the whole line below an 860 px header (app/filter-row.css) */}
+      <StackItem size="fill" className="filter-toolbar-primary">
+        {isBarOpen && hasSaved ? (
+          <SavedViewsBar
+            items={store.items}
+            active={active}
+            // the All chip drops the saved search's conditions; the sort stays, as the template keeps the view
+            onApply={(saved) =>
+              apply(
+                saved
+                  ? parseFilters(saved.query)
+                  : { ...FILTER_RESET, q: "", author: "", avatar: "" },
+              )
+            }
+            onEdit={setEditing}
+          />
+        ) : (
+          <FilterBar facets={facets} names={names} count={count} />
+        )}
+      </StackItem>
+      {/* toolbarEnd (:1398-1400): one flex item, so the cluster drops below the filter row together */}
+      <HStack gap={3} vAlign="center" style={{ marginInlineStart: "auto" }}>
+        {!(isBarOpen && hasSaved) && (
+          <>
+            <DropdownMenu
+              button={{
+                label: sortLabel(filters, t),
+                variant: "ghost",
+                size: CONTROL_SIZE,
               }}
-            >
-              {tabs.map(([value, label]) => (
-                <ToggleButton
-                  key={value || "all"}
-                  label={label}
-                  value={value}
-                  size={CONTROL_SIZE}
-                  tooltip={count(value)}
-                />
-              ))}
-            </OverflowList>
-          </ToggleButtonGroup>
-        </VStack>
-      </StackItem>
-      <StackItem size="static">
-        <DropdownMenu
-          button={{ label: sortLabel(current[2]), size: CONTROL_SIZE }}
-          alignment="end"
-          items={SORTS.map(([sort, dir, key]) => ({
-            label: sortLabel(key),
-            onClick: () => apply({ sort, dir }),
-          }))}
+              alignment="end"
+              items={SORTS.map(([sort, dir, key]) => ({
+                label: sortLabel(filters, t, key),
+                onClick: () => apply({ sort, dir }),
+              }))}
+            />
+            {hasSaved && (
+              <IconButton
+                label={t("saved.create")}
+                tooltip={t("saved.create")}
+                variant="ghost"
+                size={CONTROL_SIZE}
+                icon={<Icon icon={BookmarkPlus} size="sm" />}
+                isDisabled={!isSavable(filters)}
+                onClick={signedIn(() => setCreating(true))}
+                {...preloadOn(me ? loadForms : loadSignIn)}
+              />
+            )}
+          </>
+        )}
+        {hasSaved && (
+          <ToggleButton
+            label={t("saved.title")}
+            tooltip={t("saved.title")}
+            isIconOnly
+            size={CONTROL_SIZE}
+            isPressed={isBarOpen}
+            icon={<Icon icon={Bookmark} size="sm" />}
+            pressedIcon={<Icon icon={BookmarkFilled} size="sm" />}
+            onPressedChange={(next) =>
+              signedIn(() => {
+                setIsBarOpen(next);
+                if (next) store.load();
+              })()
+            }
+          />
+        )}
+      </HStack>
+      {creating !== undefined && (
+        <CreateSavedForm
+          isOpen={creating}
+          onOpenChange={setCreating}
+          isCompactSurface={isCompactSurface}
+          defaultName={title}
+          filters={filters}
+          query={query}
+          names={names}
+          store={store}
         />
-      </StackItem>
+      )}
+      {editing !== undefined && (
+        <EditSavedForm
+          saved={editing}
+          onClose={() => setEditing(null)}
+          isCompactSurface={isCompactSurface}
+          names={names}
+          store={store}
+        />
+      )}
+      {signIn !== undefined && (
+        <SignInDialog
+          isOpen={signIn}
+          onOpenChange={setSignIn}
+          onSignedIn={() => {
+            setSignIn(false);
+            reload();
+          }}
+        />
+      )}
     </HStack>
   );
 }

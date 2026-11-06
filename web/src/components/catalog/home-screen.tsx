@@ -1,10 +1,11 @@
-// Home page (Card Grid template): search, filter tabs and sort above a uniform card grid with a real empty
-// state. Everything here renders on the server; the controls it places are client components. The frame
-// (title, controls) streams first; the count and the results follow when the search answers, Skeleton
-// silhouettes holding their places (loading.tsx), and enter once if the visitor saw those (arrival.tsx).
+// Home page: the table-filter template's header (page.tsx:4339-4475: progress bar, title row, toolbar row of
+// filter row and end cluster) over the avatar strip and a uniform card grid with a real empty state. Everything
+// here renders on the server; the controls it places are client components. The frame (title, controls) streams
+// first; the count and the results follow when the search answers, Skeleton silhouettes holding their places
+// (loading.tsx), and enter once if the visitor saw those (arrival.tsx).
 
-import { Divider } from "@astryxdesign/core/Divider";
 import { Layout, LayoutContent, LayoutHeader } from "@astryxdesign/core/Layout";
+import { Section } from "@astryxdesign/core/Section";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Heading } from "@astryxdesign/core/Text";
 import { Suspense } from "react";
@@ -27,17 +28,17 @@ import {
   readSettings,
   type SearchOutcome,
   searchItems,
+  tagLabels,
 } from "@/lib/server-data";
 import type { Rates, Settings } from "@/lib/settings-core";
 import { Arrival } from "./arrival";
 import { AvatarStrip } from "./avatar-strip";
-import { FilterBar } from "./filter-bar";
+import type { ClauseNames } from "./clause-text";
 import type { Facets } from "./filter-style";
 import { FilterUrlProvider } from "./filter-url";
 import { CountSilhouette, ResultsSilhouette } from "./loading";
-import { RefreshIndicator } from "./refresh";
+import { RefreshProgress } from "./refresh";
 import { ResultCount, Results } from "./results";
-import { SearchBox } from "./search-box";
 import { Toolbar } from "./toolbar";
 
 type Params = Record<string, string | string[] | undefined>;
@@ -59,7 +60,7 @@ export async function HomeScreen({
   const [settings, params] = await Promise.all([readSettings(), searchParams]);
   const filters = filtersFrom(params);
   const page = Math.max(1, Number.parseInt(String(params.page), 10) || 1);
-  // started here: the palette (item prices) and the results use them; nothing waits for them
+  // started here: the item dialog (prices) and the results use them; nothing waits for them
   const rates =
     settings.currency === "JPY"
       ? Promise.resolve({} as Rates)
@@ -108,17 +109,23 @@ async function Catalog({
   const outcome: Promise<SearchOutcome> = recent
     ? Promise.resolve({ state: "error" })
     : searchItems(filters, page, noSemantic);
-  const [avatars, categories] = await Promise.all([
+  const [avatars, categories, tags] = await Promise.all([
     listAvatars().catch(() => []),
     listCategories().catch(() => []),
+    tagLabels([...filters.tags, ...filters.extags], settings.ui),
   ]);
   const avatar = avatars.find((a) => a.slug === filters.avatar);
   // only names cross to the browser, not the whole taxonomy in every language
-  const categoryTabs = categories
-    .filter((c) => c.mode === "items")
-    .map((c): [string, string] => [c.slug, localName(c, settings.ui)]);
-  // the tabs show only their own counts: the subcategories' are left on the server
-  const tabSlugs = new Set(categoryTabs.map(([slug]) => slug));
+  const names: ClauseNames = {
+    categories: categories
+      .filter((c) => c.mode === "items")
+      .map((c) => [c.slug, localName(c, settings.ui)]),
+    // one name per avatar, the visitor's (avatarName falls back to English)
+    avatars: avatars.map((a) => [a.slug, avatarName(a, settings.ui)]),
+    tags,
+  };
+  // the category clause shows only its own counts: the subcategories' are left on the server
+  const tabSlugs = new Set(names.categories.map(([slug]) => slug));
   const facets = outcome.then(
     (o): Facets =>
       o.state === "ok"
@@ -152,52 +159,57 @@ async function Catalog({
       height="auto"
       padding={6}
       header={
-        <LayoutHeader hasDivider>
-          <HStack gap={3} vAlign="center" wrap="wrap">
-            <Heading level={1}>{title}</Heading>
-            {recent ? (
-              <RecentCount />
-            ) : (
-              <Suspense fallback={<CountSilhouette />}>
-                <ResultCount outcome={outcome} settings={settings} />
-              </Suspense>
-            )}
-            <RefreshIndicator />
-            {(recent || filters.view === "favourites") && <ViewActions />}
-          </HStack>
+        // padding 0 and a Section inside, as the template (:4339-4353), so the progress bar runs along the header's
+        // top edge; the Section keeps the page inset (TEMPLATE-MAP rule 5) where the template has 16 px
+        <LayoutHeader hasDivider padding={0} label={t("filter.region")}>
+          <VStack gap={0} style={{ position: "relative" }}>
+            <RefreshProgress />
+            <Section
+              variant="transparent"
+              padding={6}
+              className="filter-toolbar"
+            >
+              <VStack gap={4}>
+                <HStack gap={3} vAlign="center" wrap="wrap">
+                  <Heading level={1}>{title}</Heading>
+                  {recent && <RecentCount />}
+                  {(recent || filters.view === "favourites") && <ViewActions />}
+                </HStack>
+                {/* filters and sort do not apply to the recent view; the row is its own boundary, so a click on
+                    it before the page has hydrated hydrates the row at once, not the rest with it */}
+                {!recent && (
+                  <Suspense>
+                    <Toolbar
+                      title={title}
+                      facets={facets}
+                      names={names}
+                      count={
+                        <Suspense fallback={<CountSilhouette />}>
+                          <ResultCount outcome={outcome} settings={settings} />
+                        </Suspense>
+                      }
+                    />
+                  </Suspense>
+                )}
+              </VStack>
+            </Section>
+          </VStack>
         </LayoutHeader>
       }
       content={
         <LayoutContent isScrollable={false}>
           <VStack gap={6}>
-            <VStack gap={4}>
-              <SearchBox />
-              {/* the avatar strip is a boundary of its own: a click before the page has hydrated makes React
-                  hydrate the boundary clicked at once (synchronously), so a click elsewhere does not wait for the
-                  strip, the heaviest part to hydrate. The tabs and the filter row hydrate with the page: their
-                  OverflowLists fold only once hydrated (counting each tab's tooltip layer as an item, and the
-                  filter row by a media query), so later they would fold visibly or wrongly */}
-              {filters.view === "items" && (
-                <Suspense>
-                  <AvatarStrip
-                    // one name per avatar, the visitor's, as `en` (avatarName falls back to it)
-                    avatars={avatars.map((a) => ({
-                      slug: a.slug,
-                      en: avatarName(a, settings.ui),
-                      image_url: a.image_url,
-                    }))}
-                  />
-                </Suspense>
-              )}
-              {/* filters and sort do not apply to the recent view */}
-              {!recent && (
-                <>
-                  <Toolbar categoryTabs={categoryTabs} facets={facets} />
-                  <FilterBar facets={facets} />
-                </>
-              )}
-            </VStack>
-            <Divider />
+            {filters.view === "items" && (
+              <Suspense>
+                <AvatarStrip
+                  avatars={avatars.map((a) => ({
+                    slug: a.slug,
+                    en: avatarName(a, settings.ui),
+                    image_url: a.image_url,
+                  }))}
+                />
+              </Suspense>
+            )}
             <Suspense
               fallback={<ResultsSilhouette label={t("list.loading")} />}
             >

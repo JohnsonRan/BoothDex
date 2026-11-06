@@ -1,5 +1,5 @@
 "use client";
-// Lazy surfaces (dialogs, the palette, filter editors) keep their code out of the first load. Once the page has
+// Lazy surfaces (dialogs, filter editors) keep their code out of the first load. Once the page has
 // loaded and the browser is idle, their code is fetched anyway, so a first open does not wait for the network;
 // pointing at or focusing a trigger starts it at once. A loaded surface renders directly: next/dynamic suspends
 // once even for code already loaded, and React holds a revealed Suspense boundary back for up to 300 ms.

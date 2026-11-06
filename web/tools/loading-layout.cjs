@@ -75,7 +75,7 @@ const settle = (p) =>
       `; ${tiles} tiles, ${ready.perRow} per row (loading ${loading.perRow})`,
     );
 
-    // page change: the current results stay, with the refresh indicator beside the count
+    // page change: the current results stay, with the progress bar along the header's top edge
     await lab(proxy, { delay });
     await (await nextPageButton(p)).click();
     await p.waitForSelector('[data-refresh="shown"]', { timeout: 3000 });

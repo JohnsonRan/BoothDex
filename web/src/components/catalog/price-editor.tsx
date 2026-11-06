@@ -12,7 +12,8 @@ import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
-import { type Price, priceText } from "./price-clause";
+import { priceText } from "./clause-text";
+import type { Price } from "./price-clause";
 
 // presets in yen, matching how Booth items are usually priced
 const PRESETS: [number, number][] = [
@@ -79,7 +80,7 @@ export function PriceEditor({
               <RadioListItem
                 key={key(p)}
                 value={key(p)}
-                label={priceText({ free: false, pmin: p[0], pmax: p[1] })}
+                label={priceText({ pmin: p[0], pmax: p[1] })}
               />
             ))}
           </RadioList>

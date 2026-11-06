@@ -17,9 +17,6 @@ const AccountMenu = dynamic(() => import("./menu"), { ssr: false });
 const SignInDialog = lazySurface(() =>
   import("@/components/frame/sign-in").then((m) => m.SignInDialog),
 );
-const SavedSearches = lazySurface(() =>
-  import("./saved-searches").then((m) => m.default),
-);
 const SettingsDialog = lazySurface(() =>
   import("@/components/settings/settings-dialog").then((m) => m.default),
 );
@@ -31,14 +28,13 @@ export function Account() {
   const { t } = useUi();
   const { me, reload } = useAccount();
   const [signIn, setSignIn] = useState<Open>();
-  const [saved, setSaved] = useState<Open>();
   const [settings, setSettings] = useState<Open>();
   const signedIn = !!me;
   useEffect(
     () =>
       preloadWhenIdle(
         SettingsDialog.preload,
-        signedIn ? SavedSearches.preload : SignInDialog.preload,
+        ...(signedIn ? [] : [SignInDialog.preload]),
       ),
     [signedIn],
   );
@@ -46,11 +42,7 @@ export function Account() {
   return (
     <>
       {me ? (
-        <AccountMenu
-          me={me}
-          onSavedSearches={() => setSaved(true)}
-          onSettings={() => setSettings(true)}
-        />
+        <AccountMenu me={me} onSettings={() => setSettings(true)} />
       ) : (
         <>
           <IconButton
@@ -79,9 +71,6 @@ export function Account() {
             reload();
           }}
         />
-      )}
-      {saved !== undefined && me && (
-        <Lazy surface={SavedSearches} isOpen={saved} onOpenChange={setSaved} />
       )}
       {settings !== undefined && (
         <Lazy

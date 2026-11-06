@@ -597,6 +597,11 @@ async fn list_searches(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Re
     Ok(Json(json!({ "items": items })).into_response())
 }
 
+/// A saved search's name: 1 to 100 characters once trimmed.
+fn valid_search_name(name: &str) -> bool {
+    (1..=100).contains(&name.trim().chars().count())
+}
+
 #[derive(Deserialize)]
 struct NewSearch {
     name: String,
@@ -609,7 +614,7 @@ async fn add_search(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b):
         Err(r) => return Ok(r),
     };
     let query = b.query.trim().trim_start_matches('?');
-    if !(1..=100).contains(&b.name.trim().chars().count()) || query.len() > 2000 || query.contains(char::is_whitespace) {
+    if !valid_search_name(&b.name) || query.len() > 2000 || query.contains(char::is_whitespace) {
         return Ok(err(StatusCode::BAD_REQUEST, "Invalid name or query."));
     }
     let id: Option<i64> = sqlx::query_scalar(
@@ -637,6 +642,23 @@ async fn remove_search(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(
     Ok(Json(json!({ "ok": true })).into_response())
 }
 
+#[derive(Deserialize)]
+struct SearchName {
+    name: String,
+}
+
+async fn rename_search(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>, Json(b): Json<SearchName>) -> Result<Response, ApiError> {
+    let u = match require_user(&s, &headers).await? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    if !valid_search_name(&b.name) {
+        return Ok(err(StatusCode::BAD_REQUEST, "Invalid name or query."));
+    }
+    sqlx::query("update saved_searches set name = $1 where id = $2 and user_id = $3").bind(b.name.trim()).bind(id).bind(u.id).execute(&s.pool).await?;
+    Ok(Json(json!({ "ok": true })).into_response())
+}
+
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/account/register", post(register))
@@ -650,7 +672,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/account/favourites/{id}", put(add_favourite).delete(remove_favourite))
         .route("/api/account/views", get(list_views).post(add_views).delete(clear_views))
         .route("/api/account/searches", get(list_searches).post(add_search))
-        .route("/api/account/searches/{id}", axum::routing::delete(remove_search))
+        .route("/api/account/searches/{id}", axum::routing::patch(rename_search).delete(remove_search))
 }
 
 /// Hash used to equalise login timing for unknown users.
@@ -798,5 +820,68 @@ mod tests {
         .await;
         assert!(returned.is_ok(), "permit must return after closure finishes");
         assert_eq!(ARGON2_SEMAPHORE.available_permits(), 4);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn renaming_a_saved_search_needs_its_owner_and_a_valid_name(pool: PgPool) {
+        let users: Vec<i64> = sqlx::query_scalar(
+            "insert into users (username, email, display_name, password_hash)
+             values ('a', 'a@example.test', 'A', 'x'), ('b', 'b@example.test', 'B', 'x') returning id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+            .bind(token_hash("tok-a"))
+            .bind(users[0])
+            .execute(&pool)
+            .await
+            .unwrap();
+        let ids: Vec<i64> = sqlx::query_scalar("insert into saved_searches (user_id, name, query) values ($1, 'mine', 'q=a'), ($2, 'theirs', 'q=b') returning id")
+            .bind(users[0])
+            .bind(users[1])
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        crate::install_tls();
+        let state = Arc::new(AppState::new(
+            pool.clone(),
+            crate::Snapshot {
+                catalog: crate::catalog::Catalog::build(Vec::new(), 0, None).unwrap(),
+                category_phrases: Default::default(),
+                avatars: crate::Lookup::new(Vec::new()),
+                authors: crate::Lookup::new(Vec::new()),
+                tags: crate::Lookup::new(Vec::new()),
+                booth_tags: crate::Lookup::new(Vec::new()),
+                categories: json!({ "categories": [] }),
+                version: 1,
+                loaded_at: chrono::Utc::now(),
+                build_secs: 0.0,
+            },
+            Default::default(),
+            "http://127.0.0.1:3000".into(),
+            None,
+            String::new(),
+            Some(Duration::from_secs(2)),
+        )
+        .unwrap());
+        let rename = |cookie: Option<&str>, id: i64, name: &str| {
+            let mut h = HeaderMap::new();
+            if let Some(c) = cookie {
+                h.insert(header::COOKIE, c.parse().unwrap());
+            }
+            rename_search(State(state.clone()), h, Path(id), Json(SearchName { name: name.into() }))
+        };
+        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let names = || sqlx::query_scalar::<_, String>("select name from saved_searches order by id").fetch_all(&pool);
+
+        assert_eq!(status(rename(None, ids[0], "x").await), StatusCode::UNAUTHORIZED);
+        assert_eq!(status(rename(Some("session=tok-a"), ids[0], "  ").await), StatusCode::BAD_REQUEST);
+        assert_eq!(status(rename(Some("session=tok-a"), ids[0], &"n".repeat(101)).await), StatusCode::BAD_REQUEST);
+        assert_eq!(status(rename(Some("session=tok-a"), ids[0], "  renamed ").await), StatusCode::OK);
+        // another account's search is left as it was
+        assert_eq!(status(rename(Some("session=tok-a"), ids[1], "stolen").await), StatusCode::OK);
+        assert_eq!(names().await.unwrap(), ["renamed", "theirs"]);
     }
 }

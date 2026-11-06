@@ -9,6 +9,7 @@ import {
   type Category,
   type Filters,
   searchQuery,
+  tagName,
 } from "./catalog";
 import {
   CURRENCIES,
@@ -85,6 +86,31 @@ export async function listCategories(): Promise<Category[]> {
   cacheLife("hours");
   return (await getJson<{ categories: Category[] }>("/api/categories"))
     .categories;
+}
+
+type SmartTag = { name: string; display: string; display_zh?: string | null };
+
+/** A smart tag named in a URL, read by its name (the tags lookup also matches names); null when there is none. */
+async function smartTag(name: string): Promise<SmartTag | null> {
+  "use cache";
+  cacheLife("hours");
+  const { items } = await getJson<{ items: SmartTag[] }>(
+    `/api/tags?q=${encodeURIComponent(name)}&limit=100`,
+  );
+  return items.find((x) => x.name === name) ?? null;
+}
+
+/** Display names of the tags in a URL, in the interface language; a tag that cannot be read keeps its name. */
+export async function tagLabels(
+  names: string[],
+  ui: string,
+): Promise<Record<string, string>> {
+  const found = await Promise.all(
+    names.map((n) => smartTag(n).catch(() => null)),
+  );
+  return Object.fromEntries(
+    names.map((n, i) => [n, found[i] ? tagName(found[i], ui) : n]),
+  );
 }
 
 /** Exchange rates for prices in another currency; none (plain yen) when the rate service fails or stalls. */
