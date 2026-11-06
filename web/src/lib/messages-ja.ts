@@ -236,6 +236,7 @@ export const ja: Dict = {
   "settings.system": "システム",
   "settings.style": "スタイル",
   "settings.styleDesc": "サイト全体の配色、フォント、形です。",
+  "settings.darkOnly": "このスタイルはダークモードのみです。",
   "settings.styleFailed": "このスタイルを読み込めませんでした",
   "style.neutral": "ニュートラル",
   "style.stone": "ストーン",

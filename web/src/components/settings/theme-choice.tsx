@@ -20,7 +20,13 @@ import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { defaultThemeSlug, themes } from "@/astryx-themes";
 import { useUi } from "@/components/providers";
 import type { MessageKey } from "@/lib/messages";
-import { STYLES, type Style, type Theme } from "@/lib/settings-core";
+import {
+  SINGLE_MODE,
+  STYLES,
+  type Style,
+  shownMode,
+  type Theme,
+} from "@/lib/settings-core";
 import { loadStyleTheme, styleTheme } from "@/themes";
 
 const bar: CSSProperties = {
@@ -109,6 +115,7 @@ function ChoiceCards<T extends string>({
   onChange,
   choices,
   max,
+  isDisabled,
 }: {
   label: string;
   value: T;
@@ -121,6 +128,7 @@ function ChoiceCards<T extends string>({
   }[];
   /** cards across */
   max: number;
+  isDisabled?: boolean;
 }) {
   return (
     <Grid
@@ -140,6 +148,7 @@ function ChoiceCards<T extends string>({
             key={choice.value}
             label={choice.label}
             isSelected={isSelected}
+            isDisabled={isDisabled}
             padding={2}
             // the selected card too: it cancels a choice still loading (Providers' update)
             onChange={() => onChange(choice.value)}
@@ -171,7 +180,9 @@ const MODES: { value: Theme; label: MessageKey; icon: `site:${string}` }[] = [
   { value: "system", label: "settings.system", icon: "site:system" },
 ];
 
-/** The colour mode's cards. */
+/** The colour mode's cards; a theme drawn in one mode (SINGLE_MODE) disables them and shows that mode, keeping the
+ *  setting for the next theme. A disabled control says why in supporting text (template table-filter
+ *  page.tsx:3918-3931, RadioList disabledMessage), in the template's supporting style (settings-dialog page.tsx:1261). */
 export function ThemeChoiceCards({
   value,
   onChange,
@@ -182,22 +193,39 @@ export function ThemeChoiceCards({
   const { t, settings } = useUi();
   // loaded already: it is the theme shown
   const theme = styleTheme(settings.style) ?? themes[defaultThemeSlug];
-  return (
+  const single = SINGLE_MODE[settings.style];
+  const cards = (
     <ChoiceCards
       label={t("settings.theme")}
-      value={value}
+      value={single ?? value}
       // the selected card is passed on too (ChoiceCards), so a choice of the same mode is not saved again
       onChange={(mode) => {
         if (mode !== value) onChange(mode);
       }}
       max={3}
+      isDisabled={!!single}
       choices={MODES.map((m) => ({
         value: m.value,
         label: t(m.label),
         icon: m.icon,
-        preview: <ThemePreviewMock theme={theme} scheme={m.value} />,
+        preview: (
+          <ThemePreviewMock
+            theme={theme}
+            scheme={shownMode(m.value, settings.style)}
+          />
+        ),
       }))}
     />
+  );
+  return single ? (
+    <VStack gap={2}>
+      {cards}
+      <Text type="supporting" color="secondary">
+        {t("settings.darkOnly")}
+      </Text>
+    </VStack>
+  ) : (
+    cards
   );
 }
 
