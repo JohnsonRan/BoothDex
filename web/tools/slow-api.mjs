@@ -12,7 +12,9 @@ import https from "node:https";
 
 const port = Number(process.argv[2] ?? 3298);
 const upstream = new URL(process.argv[3] ?? "https://boothdex.ihtw.moe");
-const agent = new https.Agent({ keepAlive: true, maxSockets: 32 });
+// a local lab API is plain http
+const client = upstream.protocol === "http:" ? http : https;
+const agent = new client.Agent({ keepAlive: true, maxSockets: 32 });
 const lab = { delay: 0, fail: false, cache: false };
 /** search answers by path, kept while `cache` is on */
 const answers = new Map();
@@ -48,9 +50,10 @@ http
           res.writeHead(500);
           return res.end();
         }
-        const up = https.request(
+        const up = client.request(
           {
-            host: upstream.host,
+            hostname: upstream.hostname,
+            port: upstream.port || undefined,
             path: req.url,
             method: "GET",
             agent,
