@@ -19,6 +19,19 @@
    (type, spacing, radius, icons) follows it. The one knob: 110 %, 115 % or 125 %. A phone stays at 100 %, as
    the template is drawn: its filter row has no room for the scale. Control heights are px in Astryx
    (28/32/36), so they are restated in rem to scale with the text they hold. Viewport breakpoints stay px. */
+/* The colour scheme of a Theme's element follows its data-theme alone, as Theme's own styles set it per mode, so a
+   mode or theme switch shows at once from the attributes (components/providers.tsx showLook) and React's render
+   of it follows in a transition. Unlayered, so it wins over those styles' layer. */
+[data-astryx-theme][data-theme="light"] {
+  color-scheme: light;
+}
+[data-astryx-theme][data-theme="dark"] {
+  color-scheme: dark;
+}
+[data-astryx-theme]:not([data-theme]) {
+  color-scheme: light dark;
+}
+
 @media (width > 768px) {
   html {
     font-size: 115%;

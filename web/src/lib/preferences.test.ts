@@ -11,17 +11,23 @@ test("the account's valid preferences replace the browser's settings that differ
   const current = { ...DEFAULT_SETTINGS, ui: "en" as const };
   expect(
     accountPatch(
-      { ui: "ja", language: "en", currency: "JPY", theme: "dark" },
+      {
+        ui: "ja",
+        language: "en",
+        currency: "JPY",
+        theme: "dark",
+        style: "gothic",
+      },
       current,
     ),
-  ).toEqual({ ui: "ja", content: "en", theme: "dark" });
+  ).toEqual({ ui: "ja", content: "en", theme: "dark", style: "gothic" });
 });
 
 test("missing or invalid preferences leave the browser's settings alone", () => {
   expect(accountPatch(undefined, DEFAULT_SETTINGS)).toEqual({});
   expect(
     accountPatch(
-      { ui: "fr", currency: "XYZ", theme: "sepia" },
+      { ui: "fr", currency: "XYZ", theme: "sepia", style: "charcoal" },
       DEFAULT_SETTINGS,
     ),
   ).toEqual({});
@@ -51,6 +57,12 @@ test("item text that follows the interface language is sent to the account as su
   ).toEqual([
     ["/api/account/preferences", "PUT", '{"language":"ui","ui":"ja"}'],
   ]);
+});
+
+test("the Astryx theme is sent to the account under its own name", () => {
+  expect(sentWhileSignedIn(() => savePreferences({ style: "matcha" }))).toEqual(
+    [["/api/account/preferences", "PUT", '{"style":"matcha"}']],
+  );
 });
 
 test("an account's item text that follows the interface language reaches another browser", () => {

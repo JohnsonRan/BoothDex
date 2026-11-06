@@ -1,6 +1,19 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": ["src/**/*.test.{ts,tsx}"],
-  "ignoreDependencies": ["@astryxdesign/cli"],
+  "ignoreDependencies": [
+    "@astryxdesign/cli",
+    "@fontsource-variable/albert-sans",
+    "@fontsource-variable/dm-sans",
+    "@fontsource-variable/fraunces",
+    "@fontsource-variable/fustat",
+    "@fontsource-variable/montserrat",
+    "@fontsource-variable/outfit",
+    "@fontsource-variable/playwrite-us-trad",
+    "@fontsource/crimson-text",
+    "@fontsource/manufacturing-consent",
+    "@fontsource/poppins",
+    "@fontsource/sarina"
+  ],
   "ignore": ["templates/**"]
 }

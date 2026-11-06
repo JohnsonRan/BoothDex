@@ -69,6 +69,13 @@
     padding-inline-end: 0;
     min-width: 3rem;
   }
+  /* A theme with wider control padding draws "+8" wider than the 3rem place (Y2K and Matcha 56 px), which the
+     list clipped to "+". Once folded the list takes the trigger's width and may run past the slot's end, where
+     the row holds nothing; the slot keeps 3rem, so the fold still measures 3rem and folds every clause. */
+  .filter-toolbar .filter-clauses:not([data-unfolded]) {
+    flex-shrink: 0;
+    inline-size: max-content;
+  }
   .filter-toolbar .filter-readout {
     flex-basis: 100%;
     margin-inline-start: 0;
@@ -107,6 +114,21 @@
 }
 .filter-clauses > * {
   flex-shrink: 0;
+}
+/* OverflowList fits the clauses with gap={2} counted as a fixed 8 px (core OverflowList.js:124-136, spacingToPx),
+   while the list draws var(--spacing-2): 9.2 px in neutral at 115%, 13.8 px in Matcha and Y2K, whose "+N" then
+   no longer fit and wrapped out of sight. Its hidden measuring copy (the slot's other child) gives every item
+   after the first, and the trigger, the difference as padding, so the widths it reads carry the gaps as drawn
+   (core hooks/computeOverflow.js:51-54 adds a gap before each of those). The copy is never shown. */
+.filter-slot > :not(.filter-clauses) > :not(:first-child) {
+  padding-inline-start: max(0px, var(--spacing-2) - 8px);
+}
+/* Every control in the row is `sm` (filter-style.ts CONTROL_SIZE), as tall as the row (.filter-clauses). A Selector
+   only has its size as a minimum, which a theme's own padding can pass (Butter's theme.css:732-735 pads it with
+   --spacing-2, 43 px): pinned to the size, as the search's TextInput is, its text stays centred and nothing is
+   clipped. */
+.filter-row .astryx-selector {
+  block-size: var(--size-element-sm);
 }
 /* 3rem: the trigger's place, as the slot's floor counts it (.filter-slot). The template's 44 px is the
    trigger as the template draws it; "+8" is 19.8 px wide on a phone, which 44 px clips to "+…". */

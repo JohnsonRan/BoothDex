@@ -17,6 +17,25 @@ export type ItemTextSetting = (typeof ITEM_TEXT)[number];
 /** "system" follows the operating system; the other two pin a mode. */
 const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
+/** The Astryx themes, neutral first (the default, built into every page); the others load when chosen
+ *  (themes/index.tsx). */
+export const STYLES = [
+  "neutral",
+  "stone",
+  "matcha",
+  "y2k",
+  "gothic",
+  "chocolate",
+  "butter",
+] as const;
+export type Style = (typeof STYLES)[number];
+/** Themes drawn in one mode whatever the setting: Gothic is dark-only (@astryxdesign/theme-gothic README.md:3-5). */
+export const SINGLE_MODE: Partial<Record<Style, "light" | "dark">> = {
+  gothic: "dark",
+};
+/** The mode a page is drawn in: a single-mode theme's own, otherwise the visitor's setting. */
+export const shownMode = (theme: Theme, style: Style): Theme =>
+  SINGLE_MODE[style] ?? theme;
 export const CURRENCIES = [
   "JPY",
   "USD",
@@ -37,6 +56,7 @@ export type Settings = {
   content: ItemTextSetting;
   currency: Currency;
   theme: Theme;
+  style: Style;
 };
 
 export const SETTINGS_COOKIE = "settings";
@@ -45,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   content: "ui",
   currency: "JPY",
   theme: "system",
+  style: "neutral",
 };
 
 const pick = <T extends string>(
@@ -102,6 +123,7 @@ export function parseSettings(
     content: pick(v.content, ITEM_TEXT) ?? DEFAULT_SETTINGS.content,
     currency: pick(v.currency, CURRENCIES) ?? DEFAULT_SETTINGS.currency,
     theme: pick(v.theme, THEMES) ?? DEFAULT_SETTINGS.theme,
+    style: pick(v.style, STYLES) ?? DEFAULT_SETTINGS.style,
   };
 }
 
