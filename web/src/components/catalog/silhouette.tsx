@@ -78,13 +78,13 @@ export function TileSilhouette({ ref }: { ref?: Ref<HTMLDivElement> }) {
 }
 
 /** An image filling and covering its box over a Skeleton, which shows until the image paints over it: no
- *  handler and no state, so server markup needs no script. `radius` rounds both. */
+ *  handler and no state, so server markup needs no script. `radius` rounds both. The image is positioned so it
+ *  paints above the Skeleton, whose animation makes it a layer of its own. */
 export function SkeletonImage({
   radius,
-  style,
   alt = "",
   ...img
-}: ComponentProps<"img"> & { radius?: string }) {
+}: Omit<ComponentProps<"img">, "style"> & { radius?: string }) {
   return (
     <span
       style={{
@@ -101,11 +101,11 @@ export function SkeletonImage({
         {...img}
         style={{
           gridArea: "1 / 1",
+          position: "relative",
           width: "100%",
           height: "100%",
           objectFit: "cover",
           display: "block",
-          ...style,
         }}
       />
     </span>
