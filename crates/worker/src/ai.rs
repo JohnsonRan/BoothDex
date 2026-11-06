@@ -143,6 +143,23 @@ pub struct Enrichment {
     pub translations: Value,
 }
 
+/// An exact slug, or one the model shortened at the front ("animations-…--dance-…" for "avatar-animations-…--dance-…")
+/// when exactly one known slug ends with it. The child part (after "--") must be there; anything else is dropped.
+fn resolve_category<'a>(s: &str, known: &'a [String]) -> Option<&'a str> {
+    if let Some(k) = known.iter().find(|k| *k == s) {
+        return Some(k);
+    }
+    if !s.contains("--") || s.starts_with('-') {
+        return None;
+    }
+    let suffix = format!("-{s}");
+    let mut hits = known.iter().filter(|k| k.ends_with(&suffix));
+    match (hits.next(), hits.next()) {
+        (Some(k), None) => Some(k),
+        _ => None,
+    }
+}
+
 /// Keeps only well-formed values; unknown category slugs are dropped rather than trusted.
 /// Requires the essentials (categories, rating, features, price, en/ja/ko titles); incomplete replies return Err.
 /// A missing zh title or original_language keeps the value from `existing` (the item's current translations).
@@ -153,7 +170,7 @@ pub fn validate_enrichment(v: &Value, known_categories: &[String], existing: &Va
         .into_iter()
         .flatten()
         .filter_map(Value::as_str)
-        .filter(|s| known_categories.iter().any(|k| k == s))
+        .filter_map(|s| resolve_category(s, known_categories))
         .fold(Vec::<String>::new(), |mut acc, s| {
             if !acc.iter().any(|x| x == s) {
                 acc.push(s.to_owned());
@@ -387,6 +404,23 @@ mod tests {
             &known,
             &json!({})
         ).is_err());
+    }
+
+    #[test]
+    fn category_with_dropped_leading_word_resolves() {
+        let known = vec![
+            "avatar-animations-physbones-gestures-and-gimmicks--dance-pose-and-emote-animations".to_owned(),
+            "avatar-accessories--other".to_owned(),
+            "avatar-props--other".to_owned(),
+        ];
+        let r = |s| resolve_category(s, &known);
+        assert_eq!(r("animations-physbones-gestures-and-gimmicks--dance-pose-and-emote-animations"), Some(known[0].as_str()));
+        assert_eq!(r("avatar-props--other"), Some(known[2].as_str()));
+        // parent alone, leaf alone, ambiguous, or a cut mid-word: still rejected
+        assert_eq!(r("animations-physbones-gestures-and-gimmicks"), None);
+        assert_eq!(r("dance-pose-and-emote-animations"), None);
+        assert_eq!(r("--other"), None);
+        assert_eq!(r("nimations-physbones-gestures-and-gimmicks--dance-pose-and-emote-animations"), None);
     }
 
     #[test]
