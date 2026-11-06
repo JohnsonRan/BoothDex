@@ -70,12 +70,20 @@ export function Toolbar({
   const { filters, apply } = useFilterUrl();
   const { me, reload } = useAccount();
   const isCompactSurface = useMediaQuery(COMPACT_SURFACE_QUERY);
-  const store = useSavedSearches();
+  const store = useSavedSearches(me?.id);
   const [isBarOpen, setIsBarOpen] = useState(false);
   // undefined: never opened, so that code is not loaded
   const [creating, setCreating] = useState<boolean>();
   const [editing, setEditing] = useState<Saved | null>();
   const [signIn, setSignIn] = useState<boolean>();
+  // signing out or into another account closes the saved views and their forms, which were the last account's
+  const [account, setAccount] = useState(me?.id);
+  if (account !== me?.id) {
+    setAccount(me?.id);
+    setIsBarOpen(false);
+    setCreating((c) => c && false);
+    setEditing((e) => e && null);
+  }
   const hasSaved = filters.view !== "favourites";
   const query = savedQuery(filters);
   const active = isBarOpen
@@ -92,7 +100,7 @@ export function Toolbar({
     <HStack gap={3} vAlign="center" wrap="wrap">
       {/* toolbarPrimary (:1390-1395): takes the whole line below an 860 px header (app/filter-row.css) */}
       <StackItem size="fill" className="filter-toolbar-primary">
-        {isBarOpen && hasSaved ? (
+        {isBarOpen && hasSaved && me ? (
           <SavedViewsBar
             items={store.items}
             active={active}

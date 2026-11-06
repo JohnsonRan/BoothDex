@@ -1,9 +1,10 @@
 "use client";
 // The account's saved searches (/api/account/searches): a saved search is a name and the page's URL query. Read
-// when the saved-views bar opens; every change reads the list again. Done actions confirm with an info toast,
-// failed ones raise an error toast.
+// when the saved-views bar opens; every change reads the list again. The list is the signed-in account's: an
+// answer for an account that is no longer signed in is dropped. Done actions confirm with an info toast, failed
+// ones raise an error toast.
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
@@ -22,11 +23,16 @@ export const isSavable = (f: Filters) =>
   savedQuery({ ...f, sort: DEFAULT_FILTERS.sort, dir: DEFAULT_FILTERS.dir }) !==
   "";
 
-export function useSavedSearches() {
+/** `account`: the signed-in account's id, none signed out (or before the session is read). */
+export function useSavedSearches(account: number | undefined) {
   const { t } = useUi();
   const toast = useToast();
-  // null until read
-  const [items, setItems] = useState<Saved[] | null>(null);
+  // the list as read, with the account it was read for
+  const [read, setRead] = useState<{ account: number; items: Saved[] }>();
+  // null until read for this account
+  const items = read && read.account === account ? read.items : null;
+  const current = useRef(account);
+  current.current = account;
 
   const fail = useCallback(
     (err: unknown, fallback: MessageKey) =>
@@ -37,14 +43,19 @@ export function useSavedSearches() {
       }),
     [t, toast],
   );
-  const load = useCallback(
-    () =>
-      api<{ items: Saved[] }>("/api/account/searches").then(
-        (r) => setItems(r.items),
-        (err) => fail(err, "saved.loadFailed"),
-      ),
-    [fail],
-  );
+  const load = useCallback(async () => {
+    const owner = current.current;
+    if (owner === undefined) return;
+    await api<{ items: Saved[] }>("/api/account/searches").then(
+      (r) => {
+        if (current.current === owner)
+          setRead({ account: owner, items: r.items });
+      },
+      (err) => {
+        if (current.current === owner) fail(err, "saved.loadFailed");
+      },
+    );
+  }, [fail]);
   /** Runs one change; true when it went through. */
   const change = async (
     run: () => Promise<unknown>,
