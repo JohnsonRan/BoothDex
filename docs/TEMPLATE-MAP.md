@@ -311,6 +311,15 @@ Deviations, all prop values or token-backed inline styles:
 - Settings theme cards: `columns={{minWidth: 80, max: 3}}` instead of settings-dialog's 96 (page.tsx:1179), so
   the three cards stay on one row in a phone's panel (264 px at 360, 294 px at 390).
 
+Checked and kept as the template:
+
+- Settings dialog close button: on the content pane's inset (`LayoutContent padding={4}`), as settings-dialog
+  (page.tsx:2364-2380), so it sits inside the card's edge.
+- A folded preset toggle ("Avatar bodies") among the folded selectors: a full-width `ToggleButton` with a centred
+  label, as table-filter's `overflowItem` (page.tsx:1375) stretches its button-backed presets.
+- "API starting": a `Spinner size="xl"` against the empty and error states' `Icon size="lg"`; it is a loading
+  state, not an empty one.
+
 ## Remaining Tailwind or shadcn files
 
 None. The rewrite removed Tailwind, shadcn and their dependencies.
