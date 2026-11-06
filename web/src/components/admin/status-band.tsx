@@ -1,8 +1,8 @@
 "use client";
 // The overview's first band: whether the site is working and what waits on the operator. The worker, what runs
 // now, the month's failed runs, Booth's answers since the worker started, the AI and image backlogs and the
-// search index, with the index rebuild in the band heading. Tiles asking for attention come first, errors
-// before warnings; the sort is stable, so the declared order breaks ties and a calm site keeps one order.
+// search index, with the index rebuild in the band heading. The order is fixed, so no tile moves when data
+// arrives; a tile asking for attention says so with its own status dot.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
@@ -18,9 +18,6 @@ import { formatBytes, formatNumber } from "./format";
 import { errorText, useAdminT } from "./messages";
 import { MetricCard } from "./metric-card";
 import type { Trends } from "./types";
-
-const rank = (attention?: "warning" | "error") =>
-  attention === "error" ? 0 : attention === "warning" ? 1 : 2;
 
 const ago = (v: string | null) =>
   v ? (
@@ -154,11 +151,9 @@ export function StatusBand({ trends }: { trends?: Trends }) {
       }
     >
       <Tiles>
-        {tiles
-          .sort((a, b) => rank(a.attention) - rank(b.attention))
-          .map(({ id, ...tile }) => (
-            <MetricCard key={id} {...tile} />
-          ))}
+        {tiles.map(({ id, ...tile }) => (
+          <MetricCard key={id} {...tile} />
+        ))}
       </Tiles>
     </Band>
   );
