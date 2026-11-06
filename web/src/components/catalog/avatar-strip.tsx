@@ -4,6 +4,8 @@
 // SelectableCard filling a square AspectRatio; its corner radius and selection ring are the card's own, the
 // image only fills and covers, inset by the ring's width so the ring shows); the name sits under it as the caption of the Top Nav template's
 // category tiles.
+// A mouse wheel over the strip scrolls it sideways while it can move that way, as on the old strip; the
+// Carousel maps only Shift + wheel itself (Carousel.d.ts:5-8).
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
 // focus or scroll in the strip, before any of them can come into view.
 
@@ -63,6 +65,25 @@ export function AvatarStrip({ avatars }: { avatars: Avatar[] }) {
       for (const e of WAKE) el.removeEventListener(e, wake, { capture: true });
     };
   }, [all]);
+  // non-passive, so the page stays put; trackpad sideways deltas and Shift + wheel stay the Carousel's. The
+  // Carousel exposes no scroller, only its edge queries, so the scroll goes to its documented scroll-area
+  // group, by the same scrollBy its Shift + wheel uses, which keeps the mandatory snap stepping a card at a time.
+  useEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const c = carousel.current;
+      if (e.shiftKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || !c) return;
+      if (!(e.deltaY > 0 ? c.canScrollNext() : c.canScrollPrev())) return;
+      e.preventDefault();
+      el.querySelector(':scope > [role="group"]')?.scrollBy({
+        left: e.deltaY,
+        behavior: "auto",
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   return (
     <Carousel
