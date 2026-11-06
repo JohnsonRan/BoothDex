@@ -42,7 +42,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Page inset | `Layout padding={6}` on header and content |
 | Rhythm | `VStack gap={6}` between page sections, `gap={4}` within the control block, `gap={2}` between a tile's cover and text, `gap={1}` between text lines |
 | Grid | page `product-gallery` (page.tsx:149) at master's density (owner: 「太大了。為什麼一頁只有4張圖了」): `minWidth` 160 (10rem, `lib/grid.ts`), `gap={4}`: two columns on a 390 px phone (the floor is also at most half the row less one gap), six at 1280-1440 px, nine at 1920 px (115 % root) |
-| Density | `html { font-size: 115% }` in `globals.css` is the one knob (110 / 115 / 125 %): every rem token follows it, and `--size-element-sm/md/lg` are restated as 1.75 / 2 / 2.25rem so controls scale with their text |
+| Density | `html { font-size: 115% }` in `globals.css`, only above 768 px (the template's compact-surface width, page.tsx:1129), is the one knob (110 / 115 / 125 %): every rem token follows it, a phone stays at 100 % as the template is drawn, and `--size-element-sm/md/lg` are restated as 1.75 / 2 / 2.25rem so controls scale with their text |
 | Control size | `sm` for the whole toolbar row, as the table-filter template: search, every filter clause, presets, sort, save and saved views |
 | Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="supporting"` (sm); price `Text type="body" weight="bold"` |
 | Colour | neutral theme tokens only, light and dark via `light-dark()`; no overrides |
@@ -97,10 +97,6 @@ The rest are prop values, not style overrides:
 - `AppShell mobileNav={false}`: the bar has no drawer content, and Astryx's phone bar (chosen by a media query
   in the browser only) remounted the end actions after hydration, dropping the clicks made before it.
 - Grid column floor 160 px instead of the template's 320 px: product tiles need two columns on a phone.
-- Search slot floor one control tall (`--size-element-sm`) instead of the template's resting 120 px: a phone's row
-  (335 px at 390) cannot seat the field, the "+N" trigger and the readout with "Clear all" at the 115 % root, so the
-  field gives down to its icon before the readout passes the page inset; it still widens to 240 px on focus where
-  the row has the room.
 - Tile title `Heading level={4}` instead of level 2: level 2 is xl, too large for a 160 px tile; the outline
   level stays 2 through `accessibilityLevel`.
 - The Card Grid template groups cards under per-category headings; BoothDex pages results instead, so there
@@ -175,7 +171,7 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 
 ## Deviations in the beautification batch
 
-- Density: the root font size (115 %) scales the page as the owner's 110-125 % browser zoom did; the Astryx
+- Density: the root font size (115 %, above 768 px only; phones stay at 100 %) scales the page as the owner's 110-125 % browser zoom did; the Astryx
   control heights are px in `astryx.css`, so `globals.css` restates them in rem. Viewport breakpoints stay px.
   Grid's `columns={{minWidth}}` takes px only, so `lib/grid.ts` passes the same track list with a rem floor as
   the `style` Grid merges (results grid, item dialog columns, gallery thumbnails).

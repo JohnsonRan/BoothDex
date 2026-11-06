@@ -14,11 +14,15 @@
 }
 
 /* Documented deviation (docs/TEMPLATE-MAP.md): the page density. The owner's best view was the neutral theme
-   at 110-125 % browser zoom, so the root font size carries that scale and every rem token (type, spacing,
-   radius, icons) follows it. The one knob: 110 %, 115 % or 125 %. Control heights are px in Astryx (28/32/36),
-   so they are restated in rem to scale with the text they hold. Viewport breakpoints stay px. */
-html {
-  font-size: 115%;
+   at 110-125 % browser zoom on the desktop page, so above the template's compact-surface width (768 px,
+   COMPACT_SURFACE_QUERY, table-filter page.tsx:1129) the root font size carries that scale and every rem token
+   (type, spacing, radius, icons) follows it. The one knob: 110 %, 115 % or 125 %. A phone stays at 100 %, as
+   the template is drawn: its filter row has no room for the scale. Control heights are px in Astryx
+   (28/32/36), so they are restated in rem to scale with the text they hold. Viewport breakpoints stay px. */
+@media (width > 768px) {
+  html {
+    font-size: 115%;
+  }
 }
 :root,
 [data-astryx-theme] {
