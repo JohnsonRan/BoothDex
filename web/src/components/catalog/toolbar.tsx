@@ -5,7 +5,11 @@
 // Saved searches belong to the account: signed out, both open the sign-in dialog. They are not offered in the
 // favourites view, whose list is the account's own.
 
-import { DropdownMenu } from "@astryxdesign/core/DropdownMenu";
+import {
+  DropdownMenu,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "@astryxdesign/core/DropdownMenu";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
@@ -17,7 +21,7 @@ import { useAccount } from "@/components/account/session";
 import { useUi } from "@/components/providers";
 import { FILTER_RESET, parseFilters } from "@/lib/catalog";
 import { preloadOn, preloadWhenIdle } from "@/lib/lazy";
-import { type ClauseNames, SORTS, sortLabel } from "./clause-text";
+import { type ClauseNames, SORTS, sortKey, sortLabel } from "./clause-text";
 import { FilterBar } from "./filter-bar";
 import {
   COMPACT_SURFACE_QUERY,
@@ -110,6 +114,7 @@ export function Toolbar({
       <HStack gap={3} vAlign="center" style={{ marginInlineStart: "auto" }}>
         {!(isBarOpen && hasSaved) && (
           <>
+            {/* a radio group, as the top bar's language and currency menus (frame/header-controls.tsx) */}
             <DropdownMenu
               button={{
                 label: sortLabel(filters, t),
@@ -117,11 +122,24 @@ export function Toolbar({
                 size: CONTROL_SIZE,
               }}
               alignment="end"
-              items={SORTS.map(([sort, dir, key]) => ({
-                label: sortLabel(filters, t, key),
-                onClick: () => apply({ sort, dir }),
-              }))}
-            />
+            >
+              <DropdownMenuRadioGroup
+                label={t("sort.label")}
+                value={sortKey(filters)}
+                onChange={(v) => {
+                  const picked = SORTS.find(([, , key]) => key === v);
+                  if (picked) apply({ sort: picked[0], dir: picked[1] });
+                }}
+              >
+                {SORTS.map(([, , key]) => (
+                  <DropdownMenuRadioItem
+                    key={key}
+                    value={key}
+                    label={sortLabel(filters, t, key)}
+                  />
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenu>
             {hasSaved && (
               <IconButton
                 label={t("saved.create")}

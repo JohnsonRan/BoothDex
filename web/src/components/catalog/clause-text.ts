@@ -36,10 +36,11 @@ export const SORTS = [
 ] as const satisfies readonly [Filters["sort"], Filters["dir"], MessageKey][];
 
 /** The sort's label; a text search's default order is relevance (see searchQuery). */
-export const sortLabel = (f: Filters, t: Translate, key = currentSort(f)) =>
+export const sortLabel = (f: Filters, t: Translate, key = sortKey(f)) =>
   t(key === "sort.trending" && f.q ? "sort.relevant" : key);
 
-const currentSort = (f: Filters) =>
+/** The current sort's message key, which also names it in the sort menu. */
+export const sortKey = (f: Filters) =>
   (SORTS.find(([s, d]) => s === f.sort && (s !== "price" || d === f.dir)) ??
     SORTS[0])[2];
 
