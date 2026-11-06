@@ -77,6 +77,13 @@ export function TileSilhouette({ ref }: { ref?: Ref<HTMLDivElement> }) {
   );
 }
 
+// Product Detail's thumbImage in a selectable card (avatar strip, item gallery), inset by the card's padding 0.5:
+// the card draws its selection ring as an inset shadow, which an edge-to-edge image covers, so the image leaves
+// the ring a frame. The padding is the ring's width (2 px), so the ring meets the image with no band of card
+// between them; the corner stays concentric with the card: its radius minus that padding.
+export const THUMB_RADIUS =
+  "calc(var(--radius-container) - var(--spacing-0-5))";
+
 /** An image filling and covering its box over a Skeleton, which shows until the image paints over it: no
  *  handler and no state, so server markup needs no script. `radius` rounds both. The image is positioned so it
  *  paints above the Skeleton, whose animation makes it a layer of its own. */

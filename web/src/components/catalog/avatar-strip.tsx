@@ -17,18 +17,13 @@ import { useEffect, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
 import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
 import { useFilterUrl } from "./filter-url";
-import { SkeletonImage } from "./silhouette";
+import { SkeletonImage, THUMB_RADIUS } from "./silhouette";
 
 // structural width of one card (104 px at a 16 px root); Booth's avatar thumbnails are square
 const CARD_WIDTH = "6.5rem";
 // cards rendered before the strip is used: more than fit across 1440 px (with the "all" card)
 const FIRST_CARDS = 14;
 const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
-// Product Detail's thumbImage, inset by the card's padding: the card draws its selection ring as an inset
-// shadow, which an edge-to-edge image covers, so the image leaves the ring a frame. The padding is the ring's
-// width (2 px), so the ring meets the image with no band of card between them; the corner stays concentric
-// with the card: its radius minus that padding.
-const THUMB_RADIUS = "calc(var(--radius-container) - var(--spacing-0-5))";
 
 const AllGlyph = () => (
   <VStack height="100%" hAlign="center" vAlign="center">

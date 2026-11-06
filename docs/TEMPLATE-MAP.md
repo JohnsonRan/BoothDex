@@ -187,8 +187,9 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   grid cell, server markup with no handler; the image is positioned so it paints above the animated Skeleton.
 - Top bar account: both variants are server markup in `[data-account-slot]` wrappers (`display: contents`), and
   `globals.css` shows one by `<html data-account>`, set before the first paint from `lib/session-hint.ts`.
-- Avatar cards: `padding={0.5}` (the selection ring's width) and an image radius of `--radius-container` minus
-  that padding, instead of product-detail's padding 0, so no band of card shows between ring and image.
+- Avatar cards and the item gallery's thumbnails: `padding={0.5}` (the selection ring's width) and an image
+  radius of `--radius-container` minus that padding, instead of product-detail's padding 0, so no band of card
+  shows between ring and image.
 - Tab icon: `app/icon.svg` is the logo's mark in black, white under `prefers-color-scheme: dark` inside the SVG.
 
 ## Icons
