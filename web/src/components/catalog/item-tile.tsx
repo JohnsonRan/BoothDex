@@ -4,8 +4,8 @@
 // and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration; only a viewed tile mounts one (viewed-mark.tsx).
 // No directive: the server builds the tiles' data (tileOf) and Tiles (tiles.tsx) draws them, from the server's
 // first screen and the browser's later tiles. The favourite button carries no handler of its own: one listener
-// answers every one (account/favourites.tsx). The viewed mark is the tile's only client part; the shop icon is
-// server markup rather than a client Avatar.
+// answers every one (account/favourites.tsx). The viewed mark is the tile's only stateful part; the shop icon is
+// plain markup rather than an Avatar.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Badge } from "@astryxdesign/core/Badge";
