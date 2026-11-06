@@ -29,6 +29,13 @@ export const STYLES = [
   "butter",
 ] as const;
 export type Style = (typeof STYLES)[number];
+/** Themes drawn in one mode whatever the setting: Gothic is dark-only (@astryxdesign/theme-gothic README.md:3-5). */
+export const SINGLE_MODE: Partial<Record<Style, "light" | "dark">> = {
+  gothic: "dark",
+};
+/** The mode a page is drawn in: a single-mode theme's own, otherwise the visitor's setting. */
+export const shownMode = (theme: Theme, style: Style): Theme =>
+  SINGLE_MODE[style] ?? theme;
 export const CURRENCIES = [
   "JPY",
   "USD",

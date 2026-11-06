@@ -6,6 +6,7 @@ import {
   formatPrice,
   itemText,
   parseSettings,
+  shownMode,
   uiFromAcceptLanguage,
 } from "./settings-core";
 
@@ -60,6 +61,13 @@ test("the Astryx theme defaults to neutral; an unknown one falls back to it", ()
   expect(parseSettings('{"style":"matcha"}').style).toBe("matcha");
   expect(parseSettings('{"style":"charcoal"}').style).toBe("neutral");
   expect(parseSettings('{"style":7}').style).toBe("neutral");
+});
+
+test("a dark-only theme is drawn dark whatever the mode setting", () => {
+  expect(shownMode("light", "gothic")).toBe("dark");
+  expect(shownMode("system", "gothic")).toBe("dark");
+  expect(shownMode("light", "matcha")).toBe("light");
+  expect(shownMode("system", "neutral")).toBe("system");
 });
 
 test("translations fill variables", () => {

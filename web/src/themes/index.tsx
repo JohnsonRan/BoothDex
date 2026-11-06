@@ -70,7 +70,8 @@ export function loadStyleTheme(
     : loader.load(style).then((m) => m?.theme);
 }
 
-/** Loads a theme and its faces before a switch shows it; false if it cannot load. */
+/** Loads a theme and its faces before a switch shows it; false if it cannot load.
+ *  @public used through providers.tsx's dynamic import, which knip does not follow */
 export async function prepareStyle(style: Style): Promise<boolean> {
   if (style === "neutral") return true;
   const m = await loader.load(style);
@@ -89,7 +90,8 @@ const SHEETS: Record<OnDemand, React.ComponentType> = {
   butter: dynamic(() => import("./butter")),
 };
 
-/** The stylesheet of the theme shown (its `name`), in the server render too; neutral's is in globals.css. */
+/** The stylesheet of the theme shown (its `name`), in the server render too; neutral's is in globals.css.
+ *  @public as prepareStyle */
 export function ThemeSheet({ name }: { name: string }) {
   const Sheet = SHEETS[name as OnDemand];
   return Sheet ? <Sheet /> : null;

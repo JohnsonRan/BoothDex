@@ -64,10 +64,16 @@
   .filter-toolbar .filter-row {
     flex-wrap: wrap;
   }
+  /* the slot is as wide as the trigger, at least its 3rem place: a theme with wider control padding draws "+8"
+     wider than 3rem (Y2K and Matcha 56 px), and a 3rem slot clipped it to "+". Before the fold the list keeps
+     to that place, so the clauses it holds still wrap out of sight. */
   .filter-toolbar .filter-slot {
-    flex: 0 0 3rem;
+    flex: 0 0 auto;
     padding-inline-end: 0;
     min-width: 3rem;
+  }
+  .filter-toolbar .filter-clauses[data-unfolded] {
+    inline-size: 3rem;
   }
   .filter-toolbar .filter-readout {
     flex-basis: 100%;

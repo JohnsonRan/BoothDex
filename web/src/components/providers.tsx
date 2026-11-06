@@ -28,6 +28,7 @@ import {
   SETTINGS_COOKIE,
   type Settings,
   type Style,
+  shownMode,
   type Translate,
   translate,
 } from "@/lib/settings-core";
@@ -57,8 +58,9 @@ function showLook({ theme, style }: Look) {
   const html = document.documentElement;
   for (const el of [html, html.querySelector("body [data-astryx-theme]")]) {
     if (!el) continue;
-    if (theme === "system") el.removeAttribute("data-theme");
-    else el.setAttribute("data-theme", theme);
+    const mode = shownMode(theme, style);
+    if (mode === "system") el.removeAttribute("data-theme");
+    else el.setAttribute("data-theme", mode);
     el.setAttribute("data-astryx-theme", style);
   }
 }
@@ -157,7 +159,7 @@ export function Providers({
   }, [update]);
 
   return (
-    <Theme theme={theme} mode={look.theme}>
+    <Theme theme={theme} mode={shownMode(look.theme, look.style)}>
       {/* the theme shown: one that failed to load shows neutral, which needs none */}
       {lazy && <lazy.ThemeSheet name={theme.name} />}
       <InternationalizationProvider
