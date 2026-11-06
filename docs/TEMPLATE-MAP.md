@@ -41,7 +41,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 |---|---|
 | Page inset | `Layout padding={6}` on header and content |
 | Rhythm | `VStack gap={6}` between page sections, `gap={4}` within the control block, `gap={2}` between a tile's cover and text, `gap={1}` between text lines |
-| Grid | page `product-gallery` (page.tsx:149): `minWidth` 300 (18.75rem, `lib/grid.ts`), `gap={6}`: one column on a 390 px phone, three at 1280-1440 px, five at 1920 px |
+| Grid | page `product-gallery` (page.tsx:149) at master's density (owner: 「太大了。為什麼一頁只有4張圖了」): `minWidth` 160 (10rem, `lib/grid.ts`), `gap={4}`: one column on a 390 px phone, six at 1280-1440 px, nine at 1920 px (115 % root) |
 | Density | `html { font-size: 115% }` in `globals.css` is the one knob (110 / 115 / 125 %): every rem token follows it, and `--size-element-sm/md/lg` are restated as 1.75 / 2 / 2.25rem so controls scale with their text |
 | Control size | `sm` for the whole toolbar row, as the table-filter template: search, every filter clause, presets, sort, save and saved views |
 | Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="supporting"` (sm); price `Text type="body" weight="bold"` |

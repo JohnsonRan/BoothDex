@@ -65,19 +65,18 @@ export const tileOf = (
   ],
 });
 
-// Template product-gallery (page.tsx:148-149): `<Grid columns={{minWidth: 300}} gap={6}>`, "reflows 3 -> 2 -> 1",
-// with the floor in rem (300 px at a 16 px root).
-export const GRID = { gap: 6, ...remColumns("18.75rem") } as const;
-// Tiles in the server HTML: more than a first screen at every width, and whole rows at 1 to 4 columns (phones
-// to 1900 px at the 115 % root); at 5 columns (1920 px) the fifth row, below the first screen, ends early. Whole
-// rows at 5 too would take 60 tiles: 19 KB more HTML (gzip) than the size budget allows, and the control rows
-// streamed after them moved the grid after the first paint.
+// Template product-gallery's Grid (page.tsx:148-149), with master's density (owner: 「太大了。為什麼一頁只有4張圖了」):
+// master's 160 px floor and gap 4, in rem so it follows the root scale.
+export const GRID = { gap: 4, ...remColumns("10rem") } as const;
+// Tiles in the server HTML: more than a first screen at every width (18 at 1920 px), and whole rows at 1 to 4 and 6
+// columns (phones to 1440 px at the 115 % root); at 9 columns (1920 px) the third row, below the first screen, ends
+// early.
 export const FIRST_TILES = 24;
 
-// The first screen: two rows at five columns load at once, the first row at three columns (1280-1440 px) with
-// high priority, since one of them is the likely LCP image.
-const EAGER = 10;
-const HIGH = 3;
+// The first screen: two rows at nine columns (1920 px) load at once, the first row at six columns (1280-1440 px)
+// with high priority, since one of them is the likely LCP image.
+const EAGER = 18;
+const HIGH = 6;
 
 /** The shop's icon at Avatar's xsm size (20 px at a 16 px root): a round crop, a muted disc when the shop has none. */
 function ShopIcon({ src }: { src: string }) {
