@@ -37,12 +37,21 @@ export function JobLog({ id, onClose }: { id: number; onClose: () => void }) {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     let stopped = false;
+    // a failed read is shown and tried again on the same beat; the next good one clears it
     const load = () =>
-      api<Job>(`/api/admin/jobs/${id}`).then((j) => {
-        if (stopped) return;
-        setJob(j);
-        if (!finished(j)) timer = setTimeout(load, POLL_MS);
-      }, setError);
+      api<Job>(`/api/admin/jobs/${id}`).then(
+        (j) => {
+          if (stopped) return;
+          setJob(j);
+          setError(undefined);
+          if (!finished(j)) timer = setTimeout(load, POLL_MS);
+        },
+        (err) => {
+          if (stopped) return;
+          setError(err);
+          timer = setTimeout(load, POLL_MS);
+        },
+      );
     load();
     return () => {
       stopped = true;
