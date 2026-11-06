@@ -1,7 +1,7 @@
 "use client";
 // The signed-in account menu, master's (account-menu.tsx:95-137) in Astryx: the trigger is the bar's account
-// IconButton (trigger.tsx; DropdownMenu `renderTrigger`, as the bar's other menus); the menu's header names the
-// account (display name and email), and its data-driven rows form two groups: the account's lists, then
+// IconButton (trigger.tsx; DropdownMenu `renderTrigger`, as the bar's other menus); its data-driven rows form two groups: the account's lists, titled with the
+// display name, then
 // settings, the console (admins only) and Sign out. Saved searches live in the filter row
 // (catalog/toolbar.tsx), as the table-filter template's saved views.
 
@@ -10,8 +10,6 @@ import {
   type DropdownMenuOption,
 } from "@astryxdesign/core/DropdownMenu";
 import { Icon } from "@astryxdesign/core/Icon";
-import { VStack } from "@astryxdesign/core/Stack";
-import { Text } from "@astryxdesign/core/Text";
 import { useFilterUrl } from "@/components/catalog/filter-url";
 import { useUi } from "@/components/providers";
 import { type Me, useAccount } from "./session";
@@ -31,7 +29,8 @@ export default function AccountMenu({
   const { signOut } = useAccount();
   const { apply } = useFilterUrl();
   const name = me.display_name || me.username;
-  const items: DropdownMenuOption[] = [
+  // a section title sits on the rows' inset; the menu's `header` is for controls and has none
+  const lists: DropdownMenuOption[] = [
     {
       label: t("account.myFavourites"),
       icon: icon("site:favourite"),
@@ -52,6 +51,13 @@ export default function AccountMenu({
       // keeps the avatar, so going back to all shows it again
       onClick: () =>
         apply({ view: "recent", q: "", author: "", sc: "", features: [] }),
+    },
+  ];
+  const items: DropdownMenuOption[] = [
+    {
+      type: "section",
+      title: name,
+      items: lists,
     },
     { type: "divider" },
     {
@@ -79,16 +85,6 @@ export default function AccountMenu({
       placement="below"
       alignment="end"
       items={items}
-      header={
-        <VStack gap={0.5}>
-          <Text weight="semibold" maxLines={1}>
-            {name}
-          </Text>
-          <Text type="supporting" color="secondary" maxLines={1}>
-            {me.email}
-          </Text>
-        </VStack>
-      }
       renderTrigger={(props) => <AccountTrigger {...props} name={name} />}
     />
   );
