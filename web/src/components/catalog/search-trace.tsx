@@ -111,8 +111,9 @@ export function SearchTrace({
         </VStack>
       }
     >
+      {/* the latency stays on the trigger, so the time shows without opening the trace */}
       <Link type="supporting" color="secondary">
-        {count}
+        {count} · {ms(totalMs)}
       </Link>
     </Popover>
   );
