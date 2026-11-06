@@ -8,6 +8,7 @@
 
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
+import { Activity } from "react";
 import { Account } from "@/components/account/account-button";
 import { Favourites } from "@/components/account/favourites";
 import { AccountProvider } from "@/components/account/session";
@@ -63,7 +64,9 @@ export function SiteFrame({
             />
           }
         >
-          {children}
+          {/* hydrated on its own (a visible Activity is a hydration boundary, streamed inline unlike a Suspense
+              boundary): the bar responds once its own code is in, without waiting for the page's */}
+          <Activity>{children}</Activity>
         </AppShell>
       </ItemHost>
       <Favourites />

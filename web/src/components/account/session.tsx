@@ -7,6 +7,7 @@
 import { useRouter } from "next/navigation";
 import {
   createContext,
+  startTransition,
   useCallback,
   useContext,
   useEffect,
@@ -79,14 +80,18 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     // the first read shares the request other callers make on load; later ones (sign-in, sign-out) start fresh
     const user = await fetchAccount<Me>({ fresh: gen > 1 }).catch(() => null);
     if (gen !== loads.current) return;
-    setMe(user);
+    // in transitions: the page's boundaries that have not hydrated yet wait for their code instead of being
+    // drawn again from nothing
+    startTransition(() => {
+      setMe(user);
+      if (!user) {
+        setFavs(null);
+        setViewed(loadViewed().map(([id]) => id));
+      }
+    });
     keepSessionHint(!!user);
     setPreferenceSync(false);
-    if (!user) {
-      setFavs(null);
-      setViewed(loadViewed().map(([id]) => id));
-      return;
-    }
+    if (!user) return;
     // the account's settings replace this browser's; changes from now on are sent back
     const patch = accountPatch(user.preferences, ui.current.settings);
     if (Object.keys(patch).length) ui.current.update(patch);
@@ -106,8 +111,10 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
       ),
     );
     if (gen !== loads.current) return;
-    setViewed(views.ids);
-    setFavs(new Set(favourites.ids));
+    startTransition(() => {
+      setViewed(views.ids);
+      setFavs(new Set(favourites.ids));
+    });
   }, []);
   useEffect(() => {
     load();
