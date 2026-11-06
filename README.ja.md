@@ -166,7 +166,6 @@ VRCatalogue との違い: 機能 (Features) のファセット件数が選択中
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs): 絞り込み用ビットマップ
 - [foyer](https://github.com/foyer-rs/foyer): ハイブリッド画像キャッシュ
 - [shadcn/ui](https://ui.shadcn.com): UI コンポーネント
-- [MiSans](https://hyperos.mi.com/font/): Xiaomi 製インターフェイスフォント
 
 ## ライセンス
 

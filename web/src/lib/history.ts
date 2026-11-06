@@ -1,7 +1,7 @@
 // Recent searches, kept in this browser only (like the remembered avatar for signed-out visitors).
 
 const KEY = "searchHistory";
-export const HISTORY_MAX = 10;
+const HISTORY_MAX = 10;
 
 /** Newest first; the same query typed again moves to the top instead of repeating. */
 export function addQuery(
@@ -33,4 +33,9 @@ export function saveHistory(list: string[]) {
   } catch {
     // storage full or blocked (private mode): history just isn't kept
   }
+}
+
+/** A search made: newest first in the recent searches. */
+export function recordQuery(q: string) {
+  saveHistory(addQuery(loadHistory(), q));
 }

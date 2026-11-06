@@ -1,0 +1,43 @@
+// Glyphs only the surfaces that load on demand use (account menu, recent view, viewed mark, settings, search
+// suggestions, saved views and their forms, tag editor), registered with the first of them rather than with the
+// page (lib/icons.tsx holds the page's).
+// lucide, as the neutral theme's own set.
+
+import { registerIcons } from "@astryxdesign/core/Icon";
+import {
+  Code,
+  Coins,
+  Eye,
+  Hash,
+  History,
+  LayoutDashboard,
+  LogOut,
+  Minus,
+  Monitor,
+  Palette,
+  Pencil,
+  Plus,
+  Rss,
+  SwatchBook,
+  Type,
+} from "lucide-react";
+import { glyph } from "./icons";
+
+registerIcons({
+  "site:viewed": <Eye {...glyph} />,
+  "site:recent": <History {...glyph} />,
+  "site:admin": <LayoutDashboard {...glyph} />,
+  "site:signOut": <LogOut {...glyph} />,
+  "site:appearance": <Palette {...glyph} />,
+  // the Astryx theme's row: the template's accent row icon (settings-dialog page.tsx:1288, SwatchIcon)
+  "site:style": <SwatchBook {...glyph} />,
+  "site:system": <Monitor {...glyph} />,
+  "site:itemText": <Type {...glyph} />,
+  "site:currency": <Coins {...glyph} />,
+  "site:code": <Code {...glyph} />,
+  "site:tag": <Hash {...glyph} />,
+  "site:edit": <Pencil {...glyph} />,
+  "site:feed": <Rss {...glyph} />,
+  "site:add": <Plus {...glyph} />,
+  "site:remove": <Minus {...glyph} />,
+});

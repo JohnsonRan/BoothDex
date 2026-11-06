@@ -1,9 +1,62 @@
-// Settings parsing shared by the server (cookie -> first render) and the client. No React here, so server
-// components can import it.
-import { UI_LANGS, type UiLang } from "./messages";
+// Settings parsing and the formatters built from them, shared by the server (cookie -> first render) and the
+// client. No React here, so server components can import it.
+import type { ItemResponse } from "./api-types";
+import {
+  type Dict,
+  format,
+  type MessageKey,
+  UI_LANGS,
+  type UiLang,
+} from "./messages";
 
-export type ContentLang = "original" | "zh" | "en" | "ja" | "ko";
-export type Theme = "dark" | "light";
+const CONTENT_LANGS = ["original", "zh", "en", "ja", "ko"] as const;
+export type ContentLang = (typeof CONTENT_LANGS)[number];
+/** The item-text setting: a language, or "ui" to follow the interface language. */
+export const ITEM_TEXT = ["ui", ...CONTENT_LANGS] as const;
+export type ItemTextSetting = (typeof ITEM_TEXT)[number];
+/** "system" follows the operating system; the other two pin a mode. */
+const THEMES = ["system", "light", "dark"] as const;
+export type Theme = (typeof THEMES)[number];
+/** The Astryx themes, neutral first (the default, built into every page); the others load when chosen
+ *  (themes/index.tsx). */
+export const STYLES = [
+  "neutral",
+  "stone",
+  "matcha",
+  "y2k",
+  "gothic",
+  "chocolate",
+  "butter",
+] as const;
+export type Style = (typeof STYLES)[number];
+/** Themes drawn in one mode whatever the setting: Gothic is dark-only (@astryxdesign/theme-gothic README.md:3-5). */
+export const SINGLE_MODE: Partial<Record<Style, "light" | "dark">> = {
+  gothic: "dark",
+};
+/** The mode a page is drawn in: a single-mode theme's own, otherwise the visitor's setting. */
+export const shownMode = (theme: Theme, style: Style): Theme =>
+  SINGLE_MODE[style] ?? theme;
+/** Switches of style, each shown once `prepare` has loaded it. The last one asked for wins, also one of the style
+ *  already shown (it cancels a switch still loading), and one asked for before a change of account
+ *  (`session`, lib/preferences.ts) is dropped. Settles as "failed" when the last one cannot load. */
+export function styleSwitch(
+  prepare: (style: Style) => Promise<boolean>,
+  session: () => number,
+) {
+  let last = 0;
+  return async (
+    style: Style,
+    show: () => void,
+  ): Promise<"shown" | "failed" | "replaced"> => {
+    const ask = ++last;
+    const at = session();
+    const ok = await prepare(style);
+    if (ask !== last || session() !== at) return "replaced";
+    if (!ok) return "failed";
+    show();
+    return "shown";
+  };
+}
 export const CURRENCIES = [
   "JPY",
   "USD",
@@ -21,17 +74,19 @@ export const CURRENCIES = [
 export type Currency = (typeof CURRENCIES)[number];
 export type Settings = {
   ui: UiLang;
-  content: ContentLang;
+  content: ItemTextSetting;
   currency: Currency;
   theme: Theme;
+  style: Style;
 };
 
 export const SETTINGS_COOKIE = "settings";
 export const DEFAULT_SETTINGS: Settings = {
   ui: "zh",
-  content: "original",
+  content: "ui",
   currency: "JPY",
-  theme: "dark",
+  theme: "system",
+  style: "neutral",
 };
 
 const pick = <T extends string>(
@@ -86,10 +141,93 @@ export function parseSettings(
       pick(v.ui, UI_LANGS) ??
       uiFromAcceptLanguage(acceptLanguage) ??
       DEFAULT_SETTINGS.ui,
-    content:
-      pick(v.content, ["original", "zh", "en", "ja", "ko"] as const) ??
-      DEFAULT_SETTINGS.content,
+    content: pick(v.content, ITEM_TEXT) ?? DEFAULT_SETTINGS.content,
     currency: pick(v.currency, CURRENCIES) ?? DEFAULT_SETTINGS.currency,
-    theme: pick(v.theme, ["dark", "light"] as const) ?? DEFAULT_SETTINGS.theme,
+    theme: pick(v.theme, THEMES) ?? DEFAULT_SETTINGS.theme,
+    style: pick(v.style, STYLES) ?? DEFAULT_SETTINGS.style,
   };
+}
+
+/** BCP 47 tag of an interface language, for `<html lang>`, Intl and the component library's catalogue. */
+export const LOCALES = {
+  zh: "zh-CN",
+  en: "en-US",
+  ja: "ja-JP",
+  ko: "ko-KR",
+} as const satisfies Record<UiLang, string>;
+
+export type Translate = (
+  key: MessageKey,
+  vars?: Record<string, string | number>,
+) => string;
+
+/** Message lookup in one language's dictionary (every dictionary has every key). */
+export const translate =
+  (dict: Dict): Translate =>
+  (key, vars) =>
+    format(dict[key], vars);
+
+/** Yen per unit of each other currency (frankfurter.dev, base JPY). */
+export type Rates = Partial<Record<Currency, number>>;
+
+/** Number formats by locale and currency ("" for plain numbers): building one costs as much as formatting
+ *  forty prices with it, and a page formats a hundred. */
+const numberFormats = new Map<string, Intl.NumberFormat>();
+
+function numberFormat(
+  locale: string,
+  currency: Currency | "",
+): Intl.NumberFormat {
+  const key = `${locale} ${currency}`;
+  let format = numberFormats.get(key);
+  if (!format) {
+    format = new Intl.NumberFormat(
+      locale,
+      currency
+        ? {
+            style: "currency",
+            currency,
+            maximumFractionDigits:
+              currency === "KRW" || currency === "TWD" ? 0 : 2,
+          }
+        : undefined,
+    );
+    numberFormats.set(key, format);
+  }
+  return format;
+}
+
+/** Price in the chosen currency; converted amounts are prefixed with ≈, plain ¥ until a rate is known. */
+export function formatPrice(
+  jpy: number | null | undefined,
+  s: Pick<Settings, "ui" | "currency">,
+  rates: Rates,
+  t: Translate,
+): string {
+  if (jpy == null) return "—";
+  if (jpy === 0) return t("price.free");
+  const locale = LOCALES[s.ui];
+  const rate = s.currency === "JPY" ? 1 : rates[s.currency];
+  // plain ¥ for yen (Intl writes "JP¥" in zh-CN)
+  if (s.currency === "JPY" || !rate)
+    return `¥${numberFormat(locale, "").format(jpy)}`;
+  return `≈${numberFormat(locale, s.currency).format(jpy * rate)}`;
+}
+
+/** The item-text language the settings ask for. */
+export const contentLang = (
+  s: Pick<Settings, "ui" | "content">,
+): ContentLang => (s.content === "ui" ? s.ui : s.content);
+
+/** Title or bio in the chosen item-text language, falling back to the original. */
+export function itemText(
+  it: Pick<ItemResponse, "title" | "bio" | "translations">,
+  field: "title" | "bio",
+  content: ContentLang,
+): string {
+  return (
+    (content === "original"
+      ? it[field]
+      : it.translations?.[content]?.[field]) || it[field]
+  );
 }

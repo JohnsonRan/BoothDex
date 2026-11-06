@@ -1,0 +1,165 @@
+/* Documented deviation (docs/TEMPLATE-MAP.md): the table-filter template's StyleX rules that need a container query
+   or a pseudo-class (templates/pages/table-filter/page.tsx), written as plain classes because this app does not
+   compile StyleX. The rest of the row's rules are token-backed inline styles (components/catalog/filter-style.ts). */
+
+/* toolbarContainer (:1382-1385): the header is the toolbar's container, so the row responds to the width it has. */
+.filter-toolbar {
+  container: toolbar / inline-size;
+}
+
+/* toolbarPrimary (:1390-1395): below 860 px the filter row takes the whole line and the end cluster drops below. */
+.filter-toolbar-primary {
+  flex-basis: 0;
+}
+@container toolbar (max-width: 860px) {
+  .filter-toolbar-primary {
+    flex-basis: 100%;
+  }
+}
+
+/* filterRow, filterOverflowSlot and filterMeta (:1325-1331, :1350-1372, :1400-1410). The slot is the row's only
+   grower and the first to give (shrink 100 against the search's 1), floored at the "+N" trigger plus the reserve:
+   the width it holds back for the readout, paid as padding, which the overflow measurement subtracts. The readout
+   sits beside the slot, pulled back over the reserve so it draws against the last clause, and spans the reserve
+   less the gap before it, so its text never changes what the slot is given. Its text sits at the reserve's end,
+   against the end cluster, as the template's readout does at desktop widths (the count's box below). The reserve is in rem, so it grows
+   with the text it holds room for. */
+.filter-row {
+  --readout-reserve: 11.5rem;
+  row-gap: var(--spacing-1-5);
+}
+.filter-slot {
+  display: flex;
+  align-items: center;
+  flex-grow: 1;
+  flex-shrink: 100;
+  padding-inline-end: var(--readout-reserve);
+  min-width: calc(3rem + var(--readout-reserve));
+}
+.filter-readout {
+  flex: 0 0 calc(var(--readout-reserve) - var(--spacing-2));
+  margin-inline-start: calc(-1 * var(--readout-reserve));
+}
+.filter-readout > * {
+  flex-shrink: 0;
+}
+/* The count, or its silhouette (each a VStack), takes the readout's free width and sets its text at the end, so the
+   box starts at the readout's start whatever fills it: the silhouette, the count alone, or the count before
+   "Clear all" (tools/loading-layout.cjs). "Clear all" alone, after a failed search, is a button, set at the end by
+   a margin, not justify-content, which the HStack's own alignment class sets. */
+.filter-readout > :first-child {
+  margin-inline-start: auto;
+}
+.filter-readout > div:first-child {
+  margin-inline-start: 0;
+  flex-grow: 1;
+  align-items: flex-end;
+}
+
+/* A phone (owner's request; the template keeps one line): where the row cannot hold the search, the trigger and the
+   reserve (7.5 + 0.5 + 3 + 11.5 rem, inside the toolbar's own 2 x 1.5 rem inset), the readout takes a line of its
+   own under the row and the slot keeps just the trigger, so the search and "+N" stay as they were. Decided by the
+   toolbar's width, not by the readout's text, so the count arriving never moves the row. */
+@container toolbar (width < 25.5rem) {
+  .filter-toolbar .filter-row {
+    flex-wrap: wrap;
+  }
+  .filter-toolbar .filter-slot {
+    flex: 0 0 3rem;
+    padding-inline-end: 0;
+    min-width: 3rem;
+  }
+  /* A theme with wider control padding draws "+8" wider than the 3rem place (Y2K and Matcha 56 px), which the
+     list clipped to "+". Once folded the list takes the trigger's width and may run past the slot's end, where
+     the row holds nothing; the slot keeps 3rem, so the fold still measures 3rem and folds every clause. */
+  .filter-toolbar .filter-clauses:not([data-unfolded]) {
+    flex-shrink: 0;
+    inline-size: max-content;
+  }
+  .filter-toolbar .filter-readout {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+  }
+  .filter-toolbar .filter-readout > :first-child {
+    margin-inline-start: 0;
+    flex-grow: 0;
+    align-items: flex-start;
+  }
+}
+
+/* The favourites and recent views' actions sit at the end of the title row, as the template's title-row action
+   (:4358-4372). Where the row is too narrow for that, the toolbar's end cluster drops below (toolbarPrimary
+   above), and the actions follow the title on its edge instead of hanging off the far side of a line of their
+   own (account/view-actions.tsx). */
+@container toolbar (max-width: 860px) {
+  .filter-toolbar .view-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* The clause list as the server renders it, before OverflowList has measured anything (catalog/filter-bar.tsx):
+   every clause at its own width, never squeezed, on one line; the ones that do not fit wrap onto a second line
+   the list clips. The empty first item, a line tall, lets even the first clause wrap away when it does not fit (a
+   flex line keeps at least one item), and its negative margin cancels its gap. While unfolded the list also keeps back the
+   fold trigger's place (`data-unfolded`), so the clauses left on the line are those the fold keeps, and the
+   trigger appears in that place. Once folded the clauses left fit on the one line, so this changes nothing. */
+.filter-clauses {
+  flex-wrap: wrap;
+  block-size: var(--size-element-sm);
+}
+.filter-clauses::before {
+  content: "";
+  block-size: 100%;
+  margin-inline-end: calc(-1 * var(--spacing-2));
+}
+.filter-clauses > * {
+  flex-shrink: 0;
+}
+/* OverflowList fits the clauses with gap={2} counted as a fixed 8 px (core OverflowList.js:124-136, spacingToPx),
+   while the list draws var(--spacing-2): 9.2 px in neutral at 115%, 13.8 px in Matcha and Y2K, whose "+N" then
+   no longer fit and wrapped out of sight. Its hidden measuring copy (the slot's other child) gives every item
+   after the first, and the trigger, the difference as padding, so the widths it reads carry the gaps as drawn
+   (core hooks/computeOverflow.js:51-54 adds a gap before each of those). The copy is never shown. */
+.filter-slot > :not(.filter-clauses) > :not(:first-child) {
+  padding-inline-start: max(0px, var(--spacing-2) - 8px);
+}
+/* Every control in the row is `sm` (filter-style.ts CONTROL_SIZE), as tall as the row (.filter-clauses). A Selector
+   only has its size as a minimum, which a theme's own padding can pass (Butter's theme.css:732-735 pads it with
+   --spacing-2, 43 px): pinned to the size, as the search's TextInput is, its text stays centred and nothing is
+   clipped. */
+.filter-row .astryx-selector {
+  block-size: var(--size-element-sm);
+}
+/* 3rem: the trigger's place, as the slot's floor counts it (.filter-slot). The template's 44 px is the
+   trigger as the template draws it; "+8" is 19.8 px wide on a phone, which 44 px clips to "+…". */
+.filter-clauses[data-unfolded] {
+  inline-size: 100%;
+  padding-inline-end: 3rem;
+}
+
+/* searchSlot (:1500-1521): the search sits at the selectors' width and widens on focus; second to give way, after
+   the clauses. 120 / 240 px in rem, so the field scales with the text. */
+.filter-search {
+  flex-shrink: 1;
+  min-width: 7.5rem;
+  width: 7.5rem;
+  transition: width var(--duration-fast) var(--ease-standard);
+}
+.filter-search:focus-within {
+  width: 15rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .filter-search {
+    transition-duration: 0s;
+  }
+}
+
+/* The search suggestions (catalog/search-suggest.tsx). The Typeahead's list takes the field's width and 300 px of
+   height; its rows carry pictures, titles and prices, so it gets the old quick search's card instead: 36rem wide
+   (within the viewport, the whole width on a phone) and up to 60% of the viewport tall. */
+.filter-search [popover] {
+  width: min(36rem, calc(100vw - 2rem));
+}
+.filter-search .astryx-typeahead-dropdown {
+  max-height: 60vh;
+}

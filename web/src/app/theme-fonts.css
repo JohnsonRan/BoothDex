@@ -1,0 +1,3 @@
+/* Stands in for @astryxdesign/theme-neutral/fonts.css (next.config.ts, turbopack.resolveAlias): that file
+   @imports Figtree from Google Fonts, a render-blocking request chain. Figtree comes from next/font instead
+   (app/layout.tsx), so the generated astryx-themes.ts keeps its import unchanged. */

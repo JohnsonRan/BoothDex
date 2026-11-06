@@ -1,19 +1,16 @@
 "use client";
+// How a text search was answered (words, meaning, a cached query embedding) and where its time went. The readout's
+// count opens it; the popover follows block PopoverKeyboardShortcuts (a heading, a divider, then a row of text
+// columns per entry: PopoverKeyboardShortcuts.tsx:18-37).
 
-import { Activity } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import type { SearchResult } from "@/lib/catalog";
+import { Divider } from "@astryxdesign/core/Divider";
+import { Link } from "@astryxdesign/core/Link";
+import { Popover } from "@astryxdesign/core/Popover";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { Heading, Text } from "@astryxdesign/core/Text";
+import { useUi } from "@/components/providers";
+import type { SemanticStatus, TraceStep } from "@/lib/api-types";
 import type { MessageKey } from "@/lib/messages";
-import { useSettings } from "@/lib/settings";
-
-export type TraceMeta = Pick<SearchResult, "semantic" | "trace" | "timing"> & {
-  /** request time measured in the browser */
-  clientMs?: number;
-};
 
 const STEPS = new Set([
   "favourites",
@@ -27,83 +24,96 @@ const STEPS = new Set([
   "search",
   "items",
 ]);
+const FAILED = new Set(["embed_timeout", "embed_failed"]);
 
-/** How the search was answered (words, meaning, cache) and where the time went. */
-export function SearchTrace({ meta }: { meta: TraceMeta }) {
-  const { t } = useSettings();
-  const steps = meta.trace ?? [];
+const ms = (n: number) => `${Math.round(n)} ms`;
+
+export function SearchTrace({
+  count,
+  semantic,
+  steps,
+  serverMs,
+  totalMs,
+}: {
+  /** the readout's text, which becomes the trigger */
+  count: string;
+  semantic: SemanticStatus;
+  steps: TraceStep[];
+  /** the API's own time */
+  serverMs: number;
+  /** the page server's request, API included */
+  totalMs: number;
+}) {
+  const { t } = useUi();
   const cached = steps.some(
     (s) => s.step === "embed_memory" || s.step === "embed_db",
   );
-  const mode =
-    meta.semantic === "used"
+  const mode: MessageKey =
+    semantic === "used"
       ? cached
         ? "trace.mode.cached"
         : "trace.mode.semantic"
-      : meta.semantic === "unavailable"
+      : semantic === "unavailable"
         ? "trace.mode.unavailable"
         : "trace.mode.words";
-  const server = meta.timing?.totalMs ?? 0;
-  const ms = (n: number) => `${Math.round(n)} ms`;
   let sum = 0;
-
   return (
-    <Popover>
-      <PopoverTrigger
-        className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-muted-foreground text-xs tabular-nums hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
-        aria-label={`${t(mode)}, ${ms(meta.clientMs ?? server)}. ${t("trace.title")}`}
-      >
-        <Activity className="size-3" aria-hidden />
-        {t(mode)} · {ms(meta.clientMs ?? server)}
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="w-max min-w-72 max-w-[calc(100vw-2rem)] p-0 text-sm"
-      >
-        <p className="border-b px-4 py-2 font-semibold text-muted-foreground text-xs uppercase tracking-wide">
-          {t("trace.title")}
-        </p>
-        <table className="w-full tabular-nums">
-          <tbody>
-            {steps.map((s, i) => {
-              sum += s.ms;
-              const key = (
-                STEPS.has(s.step) ? `trace.step.${s.step}` : null
-              ) as MessageKey | null;
-              return (
-                <tr
-                  // steps can repeat in principle; the position keeps keys unique
-                  // biome-ignore lint/suspicious/noArrayIndexKey: steps have no id
-                  key={i}
-                  className={
-                    s.step === "embed_timeout" || s.step === "embed_failed"
-                      ? "text-destructive"
-                      : undefined
-                  }
-                >
-                  <td className="px-4 py-1">{key ? t(key) : s.step}</td>
-                  <td className="whitespace-nowrap py-1 text-right">
-                    +{ms(s.ms)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-1 text-right text-muted-foreground">
-                    {ms(sum)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        <p className="flex justify-between gap-4 whitespace-nowrap border-t px-4 py-2 text-muted-foreground text-xs">
-          <span>
-            {t("trace.server")} {ms(server)}
-          </span>
-          {meta.clientMs != null && (
-            <span>
-              {t("trace.total")} {ms(meta.clientMs)}
-            </span>
-          )}
-        </p>
-      </PopoverContent>
+    <Popover
+      placement="below"
+      label={t("trace.title")}
+      width={320}
+      content={
+        <VStack gap={2}>
+          <VStack gap={0}>
+            <Heading level={4}>{t("trace.title")}</Heading>
+            <Text type="supporting" color="secondary">
+              {t(mode)}
+            </Text>
+          </VStack>
+          <Divider />
+          {steps.map((s, i) => {
+            sum += s.ms;
+            return (
+              <HStack
+                // steps can repeat in principle; the position keeps keys unique
+                // biome-ignore lint/suspicious/noArrayIndexKey: steps have no id
+                key={i}
+                gap={3}
+                style={
+                  FAILED.has(s.step)
+                    ? { color: "var(--color-text-error)" }
+                    : undefined
+                }
+              >
+                <Text type="body" color="inherit" style={{ flex: 1 }}>
+                  {STEPS.has(s.step)
+                    ? t(`trace.step.${s.step}` as MessageKey)
+                    : s.step}
+                </Text>
+                <Text type="body" color="inherit" hasTabularNumbers>
+                  +{ms(s.ms)}
+                </Text>
+                <Text type="body" color="secondary" hasTabularNumbers>
+                  {ms(sum)}
+                </Text>
+              </HStack>
+            );
+          })}
+          <Divider />
+          <HStack gap={4} style={{ justifyContent: "space-between" }}>
+            <Text type="supporting" color="secondary" hasTabularNumbers>
+              {t("trace.server")} {ms(serverMs)}
+            </Text>
+            <Text type="supporting" color="secondary" hasTabularNumbers>
+              {t("trace.total")} {ms(totalMs)}
+            </Text>
+          </HStack>
+        </VStack>
+      }
+    >
+      <Link type="supporting" color="secondary">
+        {count}
+      </Link>
     </Popover>
   );
 }

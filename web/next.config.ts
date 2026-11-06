@@ -11,13 +11,13 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Keep default gzip for HTML/JS/CSS; the API's SSE uses Cache-Control: no-transform to bypass it.
   cacheComponents: true,
-  partialPrefetching: true,
+  partialPrefetching: false,
+  // proxy.ts hands the home page its query string as sent; normalising re-encodes a "%20" as "+"
+  skipProxyUrlNormalize: true,
   turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
+    // the theme's font stylesheet is a render-blocking Google Fonts @import; Figtree comes from next/font
+    resolveAlias: {
+      "@astryxdesign/theme-neutral/fonts.css": "./src/app/theme-fonts.css",
     },
   },
   async rewrites() {

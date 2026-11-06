@@ -1,0 +1,247 @@
+"use client";
+// Settings, template settings-dialog (page.tsx:2271-2603) as is: a 1120 px Dialog of fixed height; on a laptop
+// a SideNav rail (title, sections of panels) beside the scrolling panel with its sticky close button, below
+// 640 px a title row, a tab strip of the panels and the panel under it. Filled with BoothDex's three panels
+// (panels.tsx). The template's settings search is left out: three panels of six rows are read at a glance.
+
+import { Button } from "@astryxdesign/core/Button";
+import { Dialog } from "@astryxdesign/core/Dialog";
+import { Divider } from "@astryxdesign/core/Divider";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
+import {
+  SideNav,
+  SideNavItem,
+  SideNavSection,
+} from "@astryxdesign/core/SideNav";
+import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
+import { Heading, Text } from "@astryxdesign/core/Text";
+import { useId, useState } from "react";
+import { useUi } from "@/components/providers";
+import { PANEL_GROUPS, type PanelId, SettingsPanelBody } from "./panels";
+import "@/lib/icons-on-demand";
+
+const NARROW_VIEWPORT = "(max-width: 640px)";
+const PANELS = PANEL_GROUPS.flatMap((group) => group.panels);
+const panelConfig = (id: PanelId) =>
+  PANELS.find((panel) => panel.id === id) ?? PANELS[0];
+
+function SettingsPanelHeading({ panel }: { panel: PanelId }) {
+  const { t } = useUi();
+  const config = panelConfig(panel);
+  return (
+    <VStack gap={0.5}>
+      <Heading level={2}>{t(config.label)}</Heading>
+      <Text type="supporting" color="secondary">
+        {t(config.description)}
+      </Text>
+    </VStack>
+  );
+}
+
+function CloseButton({ onClose }: { onClose: () => void }) {
+  const { t } = useUi();
+  return (
+    <IconButton
+      label={t("common.close")}
+      variant="ghost"
+      size="sm"
+      icon={<Icon icon="close" size="sm" />}
+      onClick={onClose}
+    />
+  );
+}
+
+function SettingsSideNav({
+  titleId,
+  activePanel,
+  onSelectPanel,
+}: {
+  titleId: string;
+  activePanel: PanelId;
+  onSelectPanel: (panel: PanelId) => void;
+}) {
+  const { t } = useUi();
+  return (
+    <SideNav
+      aria-label={t("settings.sections")}
+      style={{ flexShrink: 0 }}
+      header={
+        <HStack gap={2} vAlign="center" paddingInline={2} minHeight={32}>
+          <Heading level={4} id={titleId}>
+            {t("settings.title")}
+          </Heading>
+        </HStack>
+      }
+    >
+      {PANEL_GROUPS.map((group) => (
+        <SideNavSection
+          key={group.label}
+          title={t(group.label)}
+          style={{ paddingBlock: "var(--spacing-2)" }}
+        >
+          {group.panels.map((panel) => (
+            <SideNavItem
+              key={panel.id}
+              label={t(panel.label)}
+              icon={<Icon icon={panel.icon} size="sm" color="primary" />}
+              isSelected={panel.id === activePanel}
+              onClick={() => onSelectPanel(panel.id)}
+            />
+          ))}
+        </SideNavSection>
+      ))}
+    </SideNav>
+  );
+}
+
+function SettingsContentPane({
+  panel,
+  onClose,
+}: {
+  panel: PanelId;
+  onClose: () => void;
+}) {
+  return (
+    <LayoutContent isScrollable padding={4}>
+      {/* the close button stays at the pane's top-right corner while the panel scrolls (page.tsx:2366-2380) */}
+      <HStack
+        width="100%"
+        hAlign="end"
+        style={{ position: "sticky", insetBlockStart: 0, zIndex: 1, height: 0 }}
+      >
+        <HStack
+          style={{
+            display: "flex",
+            backgroundColor: "var(--color-background-surface)",
+            borderRadius: "var(--radius-element)",
+          }}
+        >
+          <CloseButton onClose={onClose} />
+        </HStack>
+      </HStack>
+      <VStack gap={4} className="settings-panel">
+        <HStack gap={2} vAlign="start">
+          <StackItem size="fill">
+            <SettingsPanelHeading panel={panel} />
+          </StackItem>
+          {/* the column the pinned close button floats over */}
+          <VStack aria-hidden="true" width="var(--size-element-md)" />
+        </HStack>
+        <SettingsPanelBody panel={panel} />
+      </VStack>
+    </LayoutContent>
+  );
+}
+
+function SettingsNarrowShell({
+  titleId,
+  activePanel,
+  onSelectPanel,
+  onClose,
+}: {
+  titleId: string;
+  activePanel: PanelId;
+  onSelectPanel: (panel: PanelId) => void;
+  onClose: () => void;
+}) {
+  const { t } = useUi();
+  return (
+    <VStack gap={0} height="100%">
+      <HStack gap={2} vAlign="center" paddingInline={3} paddingBlock={3}>
+        <StackItem size="fill">
+          <Text type="label" id={titleId}>
+            {t("settings.title")}
+          </Text>
+        </StackItem>
+        <CloseButton onClose={onClose} />
+      </HStack>
+      <Divider />
+      <HStack
+        as="nav"
+        aria-label={t("settings.sections")}
+        gap={1}
+        wrap="nowrap"
+        isScrollable
+        paddingInline={3}
+        paddingBlock={2}
+      >
+        {PANELS.map((panel) => (
+          <Button
+            key={panel.id}
+            label={t(panel.label)}
+            icon={<Icon icon={panel.icon} size="sm" />}
+            variant={panel.id === activePanel ? "secondary" : "ghost"}
+            size="sm"
+            // the strip scrolls; its tabs keep their whole names
+            style={{ flexShrink: 0 }}
+            onClick={() => onSelectPanel(panel.id)}
+          />
+        ))}
+      </HStack>
+      <Divider />
+      <StackItem size="fill">
+        <VStack
+          gap={4}
+          padding={4}
+          isScrollable
+          height="100%"
+          className="settings-panel"
+        >
+          <SettingsPanelHeading panel={activePanel} />
+          <SettingsPanelBody panel={activePanel} />
+        </VStack>
+      </StackItem>
+    </VStack>
+  );
+}
+
+export default function SettingsDialog({
+  isOpen,
+  onOpenChange,
+}: {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [activePanel, setActivePanel] = useState<PanelId>("appearance");
+  const titleId = useId();
+  const isNarrow = useMediaQuery(NARROW_VIEWPORT);
+  const close = () => onOpenChange(false);
+  return (
+    <Dialog
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      purpose="form"
+      width="70rem"
+      maxHeight="min(50rem, calc(100dvh - 2rem))"
+      padding={0}
+      aria-labelledby={titleId}
+    >
+      <VStack style={{ height: "min(50rem, calc(100dvh - 2rem))" }}>
+        {isNarrow ? (
+          <SettingsNarrowShell
+            titleId={titleId}
+            activePanel={activePanel}
+            onSelectPanel={setActivePanel}
+            onClose={close}
+          />
+        ) : (
+          <Layout
+            start={
+              <SettingsSideNav
+                titleId={titleId}
+                activePanel={activePanel}
+                onSelectPanel={setActivePanel}
+              />
+            }
+            content={
+              <SettingsContentPane panel={activePanel} onClose={close} />
+            }
+          />
+        )}
+      </VStack>
+    </Dialog>
+  );
+}

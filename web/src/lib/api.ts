@@ -9,6 +9,29 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The API errors a catalogue explains in its own words. The API identifies an error only by its English
+ * message, so `messages` matches that exactly; `statuses` covers the rest by HTTP status.
+ */
+export type ApiErrors<K extends string> = {
+  messages: Readonly<Record<string, K>>;
+  statuses: Readonly<Partial<Record<number, K>>>;
+};
+
+/** The message key for a failed call: what `known` names its error, else `fallback` (a network failure too). */
+export function errorKey<K extends string>(
+  e: unknown,
+  known: ApiErrors<K>,
+  fallback: K,
+): K {
+  if (!(e instanceof ApiError)) return fallback;
+  return (
+    (Object.hasOwn(known.messages, e.message)
+      ? known.messages[e.message]
+      : known.statuses[e.status]) ?? fallback
+  );
+}
+
 /** False while the API is still loading the catalogue (it answers 503) or not reachable at all. */
 export const apiReady = () =>
   fetch("/api/health", { cache: "no-store" }).then(
@@ -49,36 +72,3 @@ export function fetchAccount<T>(options?: { fresh?: boolean }): Promise<T> {
   }
   return accountRequest as Promise<T>;
 }
-
-export const fmt = {
-  num: (n: number | null | undefined) =>
-    n == null ? "—" : n.toLocaleString("zh-CN"),
-  bytes(n: number | null | undefined) {
-    if (n == null) return "—";
-    const u = ["B", "KB", "MB", "GB", "TB"];
-    let i = 0;
-    let v = n;
-    while (v >= 1024 && i < u.length - 1) {
-      v /= 1024;
-      i++;
-    }
-    return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${u[i]}`;
-  },
-  ago(iso: string | null | undefined, now = Date.now()) {
-    if (!iso) return "—";
-    const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
-    if (s < 60) return `${s} 秒前`;
-    if (s < 3600) return `${Math.floor(s / 60)} 分钟前`;
-    if (s < 86400) return `${Math.floor(s / 3600)} 小时前`;
-    return `${Math.floor(s / 86400)} 天前`;
-  },
-  duration(fromIso: string | null | undefined, toIso?: string | null) {
-    if (!fromIso) return "—";
-    const s = Math.round(
-      ((toIso ? Date.parse(toIso) : Date.now()) - Date.parse(fromIso)) / 1000,
-    );
-    if (s < 60) return `${s} 秒`;
-    if (s < 3600) return `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
-    return `${Math.floor(s / 3600)} 小时 ${Math.floor((s % 3600) / 60)} 分`;
-  },
-};

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fetchAccount } from "./api";
+import { ApiError, type ApiErrors, errorKey, fetchAccount } from "./api";
 
 test("fetchAccount shares startup requests, allows fresh bypass and starts anew once settled", async () => {
   const originalFetch = globalThis.fetch;
@@ -123,4 +123,19 @@ test("superseded request settling does not clear newer pending fresh request", a
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("a failed call's message key: a known API error, else its status, else the fallback", () => {
+  const known: ApiErrors<string> = {
+    messages: { "Saved search limit reached.": "saved.limit" },
+    statuses: { 401: "error.signIn" },
+  };
+  const key = (e: unknown) => errorKey(e, known, "error.failed");
+  expect(key(new ApiError(409, "Saved search limit reached."))).toBe(
+    "saved.limit",
+  );
+  expect(key(new ApiError(401, "Sign in required"))).toBe("error.signIn");
+  expect(key(new ApiError(409, "Something else"))).toBe("error.failed");
+  expect(key(new ApiError(500, "constructor"))).toBe("error.failed");
+  expect(key(new TypeError("Failed to fetch"))).toBe("error.failed");
 });

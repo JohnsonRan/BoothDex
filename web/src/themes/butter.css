@@ -1,0 +1,29 @@
+/* The faces Butter's theme.css names, self-hosted (themes/index.tsx: why `optional`, Latin only). */
+
+@font-face {
+  font-family: "Outfit";
+  font-weight: 100 900;
+  font-display: optional;
+  src: url("../../node_modules/@fontsource-variable/outfit/files/outfit-latin-wght-normal.woff2")
+    format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Sarina";
+  font-weight: 400;
+  font-display: optional;
+  src: url("../../node_modules/@fontsource/sarina/files/sarina-latin-400-normal.woff2")
+    format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Butter 0.7.8 sets every Card variant's text from its light palette (src/butterTheme.ts:470-529), for fills that
+   stay light in both modes; the muted fill turns dark in dark mode (:194), which left a muted card's text dark on
+   dark (Settings' panels). A muted card keeps the page's text colours, as in the other themes. */
+[data-astryx-theme="butter"] .astryx-card[data-variant="muted"] {
+  --color-text-primary: inherit;
+  --color-text-secondary: inherit;
+}

@@ -14,7 +14,8 @@ RUN bun run build \
 FROM docker.io/library/node:26-trixie-slim
 WORKDIR /app
 COPY --from=build /web/.next/standalone ./
-ENV NODE_ENV=production PORT=3100 HOSTNAME=0.0.0.0
+# the home page also reads the API on the server at request time
+ENV NODE_ENV=production PORT=3100 HOSTNAME=0.0.0.0 API_ORIGIN=http://api:3000
 USER node
 EXPOSE 3100
 CMD ["node", "server.js"]

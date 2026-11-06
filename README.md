@@ -198,7 +198,6 @@ booth_images/media at most 2; default response unchanged; fetch full records via
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs): filter bitmaps
 - [foyer](https://github.com/foyer-rs/foyer): hybrid image cache
 - [shadcn/ui](https://ui.shadcn.com): interface components
-- [MiSans](https://hyperos.mi.com/font/): interface font by Xiaomi
 
 ## License
 
