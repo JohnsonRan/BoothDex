@@ -72,6 +72,6 @@ test("typed text asks /api/palette with the adult setting and groups its answer"
     ],
     ["Items", "Coat", "Free", { kind: "item", value: 7 }],
     ["Shops", "Shop", "2 items", { kind: "shop", value: "Shop" }],
-    ["Tags", "ドレス", "9", { kind: "query", value: "ドレス" }],
+    ["Tags", "ドレス", "9", { kind: "word", value: "ドレス" }],
   ]);
 });

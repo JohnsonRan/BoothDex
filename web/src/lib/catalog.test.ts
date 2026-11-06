@@ -8,7 +8,9 @@ import {
   imgUrl,
   parseFilters,
   priceOf,
+  queryWords,
   searchQuery,
+  searchWidth,
 } from "./catalog";
 
 test("filters round-trip through the API's + list format", () => {
@@ -145,4 +147,23 @@ test("clearing filters keeps the view, query, shop, avatar and sort", () => {
   expect(filtersToQuery(cleared)).toBe(
     "v=avatars&q=hat&avatars=rusk&authors=Shop&sort=newest",
   );
+});
+
+test("the query splits into words, a quoted phrase staying one", () => {
+  expect(queryWords("  mao short  hair ")).toEqual(["mao", "short", "hair"]);
+  expect(queryWords('mao "short hair" 3.0')).toEqual([
+    "mao",
+    '"short hair"',
+    "3.0",
+  ]);
+  expect(queryWords('mao "short hair')).toEqual(["mao", '"short hair']);
+  expect(queryWords("")).toEqual([]);
+});
+
+test("the search field's width follows the query's words", () => {
+  expect(searchWidth("")).toBe(5);
+  expect(searchWidth("mao")).toBeCloseTo(8.1);
+  // kana are about twice a Latin letter
+  expect(searchWidth("ショート")).toBeGreaterThan(searchWidth("short"));
+  expect(searchWidth("mao short")).toBeGreaterThan(searchWidth("maoshort"));
 });

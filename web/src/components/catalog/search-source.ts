@@ -43,9 +43,12 @@ type PaletteResult = {
   }[];
 };
 
-/** What picking a row does. `search`: the typed text, as Enter does. */
+/**
+ * What picking a row does. `search`: the typed text, as Enter does; `word`: a tag's name; both join the query's
+ * words. `query`: a recent search, which replaces them.
+ */
 type Pick =
-  | { kind: "search" | "query" | "avatar" | "shop"; value: string }
+  | { kind: "search" | "word" | "query" | "avatar" | "shop"; value: string }
   | { kind: "item"; value: number }
   | { kind: "clear" };
 
@@ -177,7 +180,7 @@ export function searchSource({
             label: tagName(tag, ui),
             auxiliaryData: {
               group: t("suggest.tags"),
-              pick: { kind: "query", value: tag.display },
+              pick: { kind: "word", value: tag.display },
               icon: "tag",
               note: count(tag.item_count),
             },

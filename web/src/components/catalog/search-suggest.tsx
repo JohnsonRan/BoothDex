@@ -1,19 +1,22 @@
 "use client";
-// The site search once its code has loaded (search-box.tsx shows a plain field until then): an Astryx Typeahead as
-// block TypeaheadSearchField (search icon, suggestions on focus: TypeaheadSearchField.tsx:33-41) at the filter
-// row's `sm` size. An empty field offers the recent searches; typing offers /api/palette's groups, each row a
+// The site search once its code has loaded (search-box.tsx shows a plain field until then): an Astryx Tokenizer
+// with block TypeaheadSearchField's search icon and suggestions on focus (TypeaheadSearchField.tsx:33-41) at the
+// filter row's `sm` size. An empty field offers the recent searches; typing offers /api/palette's groups, each row a
 // TypeaheadItem with a leading picture and a muted second line (the component's own example, TypeaheadItem.tsx
-// :112-122). The applied query is the field's value, so it shows as the Typeahead's token: a click edits it, its
-// clear button drops it. Enter with no row highlighted searches the typed text.
+// :112-122). Each word of the applied query is a token, as on Mercari: its × (or Backspace) searches without it.
+// Enter with no row highlighted adds the typed words and searches; the API matches every word either way.
+// shortcut: tokens are plain words; marking the ones the API read as a model or category needs it to report them.
 
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { VStack } from "@astryxdesign/core/Stack";
-import { Typeahead, TypeaheadItem } from "@astryxdesign/core/Typeahead";
+import { Tokenizer } from "@astryxdesign/core/Tokenizer";
+import { TypeaheadItem } from "@astryxdesign/core/Typeahead";
 import { type RefObject, useEffect, useMemo, useRef } from "react";
 import { useItemOpener, useRates } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
+import { queryWords } from "@/lib/catalog";
 import { loadHistory, saveHistory } from "@/lib/history";
 import { CONTROL_SIZE } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
@@ -69,13 +72,20 @@ export function SearchSuggest({
     [t, settings, rates, filters.adult],
   );
 
-  const value = useMemo(
-    () => (filters.q ? { id: "q", label: filters.q } : null),
+  // the position keeps a repeated word its own token, and the ids clear of the rows' (search-source.ts)
+  const tokens = useMemo(
+    () =>
+      queryWords(filters.q).map(
+        (w, i): Row => ({ id: `w${i}:${w}`, label: w }),
+      ),
     [filters.q],
   );
+  /** the query's words with `more` after them */
+  const plus = (more: string) =>
+    [...tokens.map((w) => w.label), ...queryWords(more)].join(" ");
 
-  // takes over from the plain field once, where the person left it: a click on the field opens the query for
-  // editing (or focuses the empty input), then any text typed meanwhile replaces it
+  // takes over from the plain field once, where the person left it: focused, with the words typed after the
+  // query's in the input (text edited inside the query is typed in whole, after its tokens)
   const taken = useRef(false);
   useEffect(() => {
     const input = inputRef.current;
@@ -83,17 +93,30 @@ export function SearchSuggest({
     taken.current = true;
     if (!handover.isFocused) return;
     input.click();
-    if (handover.text.trim() !== filters.q) type(input, handover.text);
+    const typed = handover.text.trim();
+    if (typed !== filters.q)
+      type(
+        input,
+        typed.startsWith(filters.q) ? typed.slice(filters.q.length) : typed,
+      );
   }, [handover, inputRef, filters.q]);
 
-  const pick = (row: Row | null) => {
-    // the token's clear button
-    if (!row) return apply({ q: "" });
+  // a removed word searches the rest in a new field (its `key`): the focus stays, so Backspace goes on removing
+  const refocus = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once the new query's field is in
+  useEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    inputRef.current?.focus();
+  }, [filters.q]);
+
+  const pick = (row: Row) => {
     const p = row.auxiliaryData?.pick;
     if (!p) return;
     if (p.kind === "search")
       // the typed text: a fast Enter may land on the row of the text before the last keystrokes
-      return search(inputRef.current?.value || p.value);
+      return search(plus(inputRef.current?.value || p.value));
+    if (p.kind === "word") return search(plus(p.value));
     if (p.kind === "query") return search(p.value);
     if (p.kind === "avatar") return apply({ avatar: p.value });
     if (p.kind === "shop") return apply({ author: p.value, q: "", avatar: "" });
@@ -112,8 +135,8 @@ export function SearchSuggest({
   };
 
   return (
-    <Typeahead<Row>
-      // a new query starts a new field, so no text typed for the previous one is left behind its token
+    <Tokenizer<Row>
+      // a new query starts a new field, so no text typed for the previous one is left behind its tokens
       key={filters.q}
       ref={inputRef}
       label={t("nav.search")}
@@ -123,14 +146,24 @@ export function SearchSuggest({
       width="100%"
       startIcon="search"
       searchSource={source}
-      value={value}
-      onChange={pick}
+      value={tokens}
+      // a picked row acts and is never kept as a token; a removed token (or Clear all) searches the rest
+      onChange={(words, change) => {
+        if (change.type === "add") return pick(change.item);
+        refocus.current = true;
+        apply({ q: words.map((w) => w.label).join(" ") });
+      }}
+      hasClear
+      // the unfocused field is the selectors' width: its tokens stay on one line there
+      tokenOverflowBehavior="unfocusedInline"
+      // the inline list on phones too, as the Typeahead had: its rows act at once, where the sheet saves a draft
+      presentation="popover"
       hasEntriesOnFocus
       maxMenuItems={MAX_ROWS}
       debounceMs={DEBOUNCE_MS}
       emptySearchText={t("suggest.empty")}
       onKeyDown={(e) => {
-        // Enter on a highlighted row picks it (the Typeahead's own handling); keys on the token are its own
+        // Enter on a highlighted row picks it (the Tokenizer's own handling); keys on the tokens are their own
         const input = e.currentTarget;
         if (
           e.key !== "Enter" ||
@@ -145,7 +178,7 @@ export function SearchSuggest({
           return;
         // the list closes with the focus; a new query starts a new field anyway
         input.blur();
-        search(input.value);
+        search(plus(input.value));
       }}
       renderItem={(row) => {
         const d = row.auxiliaryData;

@@ -148,6 +148,28 @@
 .filter-search:focus-within {
   width: 15rem;
 }
+/* A query's words are tokens (catalog/search-suggest.tsx): the field grows with them (--search-width, their width
+   as catalog/search-box.tsx reckons it, so the plain field before them is as wide already), up to 20rem, past
+   which the last words fold into "+N more"; editing, it keeps 6rem more for the words typed, up to 28rem. The
+   tokens keep the row's one line, scrolling sideways instead of wrapping (the Tokenizer wraps them), as tall as
+   the row's other controls (its padding around a token is 4 px more). */
+.filter-search[data-query] {
+  width: clamp(7.5rem, var(--search-width), 20rem);
+}
+.filter-search[data-query]:focus-within {
+  width: clamp(15rem, var(--search-width) + 6rem, 28rem);
+}
+.filter-search .astryx-tokenizer {
+  block-size: var(--size-element-sm);
+  padding-block: 0;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.filter-search .astryx-token {
+  flex-shrink: 0;
+}
 @media (prefers-reduced-motion: reduce) {
   .filter-search {
     transition-duration: 0s;

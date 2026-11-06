@@ -2,13 +2,15 @@
 // The site search, leading the filter row as the table-filter template's search (page.tsx:3419-3430): an `sm`
 // field in its own slot, which sits at the selectors' width and widens on focus (`searchSlot`, :1500-1521;
 // app/filter-row.css). Its suggestions are a Typeahead (search-suggest.tsx) whose code loads when the page is idle
-// or on the first focus; until then the field is a plain TextInput, where Enter applies the query. Ctrl/Cmd+K
+// or on the first focus, and is shown once loaded when there is a query, so its words show as tokens; until then
+// the field is a plain TextInput, where Enter applies the query. Ctrl/Cmd+K
 // focuses the field; in the recent view, which has no filter row, it goes to the items view first.
 
 import { StackItem } from "@astryxdesign/core/Stack";
 import { TextInput } from "@astryxdesign/core/TextInput";
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
+import { searchWidth } from "@/lib/catalog";
 import { recordQuery } from "@/lib/history";
 import { preloadWhenIdle } from "@/lib/lazy";
 import { CONTROL_SIZE } from "./filter-style";
@@ -73,24 +75,6 @@ export function SearchBox() {
     setText(filters.q);
   }
 
-  useEffect(() => preloadWhenIdle(loadSuggest), []);
-  useEffect(() => {
-    if (!focusOnMount) return;
-    focusOnMount = false;
-    input.current?.focus();
-  }, []);
-  // a click is how the Typeahead is entered: it opens an applied query for editing
-  useShortcut(() =>
-    suggest ? input.current?.click() : input.current?.focus(),
-  );
-
-  if (suggest)
-    return (
-      <StackItem className="filter-search">
-        <suggest.Field inputRef={input} handover={suggest.handover} />
-      </StackItem>
-    );
-
   const activate = () =>
     loadSuggest().then(({ SearchSuggest }) =>
       setSuggest({
@@ -103,8 +87,46 @@ export function SearchBox() {
       }),
     );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, on the first render's field
+  useEffect(
+    () =>
+      preloadWhenIdle(() =>
+        loadSuggest().then(() => {
+          // read then: Clear all may have emptied the field meanwhile
+          if (input.current?.value.trim()) activate();
+        }),
+      ),
+    [],
+  );
+  useEffect(() => {
+    if (!focusOnMount) return;
+    focusOnMount = false;
+    input.current?.focus();
+  }, []);
+  // a click is how the Typeahead is entered: it opens an applied query for editing
+  useShortcut(() =>
+    suggest ? input.current?.click() : input.current?.focus(),
+  );
+
+  // the slot, the same before and after the tokens' code is here: with a query it is as wide as its tokens
+  // (app/filter-row.css)
+  const slot = {
+    className: "filter-search",
+    "data-query": filters.q ? "" : undefined,
+    style: {
+      "--search-width": `${searchWidth(filters.q)}rem`,
+    } as CSSProperties,
+  };
+
+  if (suggest)
+    return (
+      <StackItem {...slot}>
+        <suggest.Field inputRef={input} handover={suggest.handover} />
+      </StackItem>
+    );
+
   return (
-    <StackItem className="filter-search">
+    <StackItem {...slot}>
       <TextInput
         ref={input}
         type="search"

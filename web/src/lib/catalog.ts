@@ -214,6 +214,24 @@ export function searchQuery(f: Filters, page: number, pageSize = 30) {
   );
 }
 
+/** The query's words, each a token in the search field: a quoted phrase stays one word. */
+export const queryWords = (q: string) => q.match(/"[^"]*"?|[^\s"]+/g) ?? [];
+
+/**
+ * The width in rem the search field's tokens take for `q` (catalog/search-suggest.tsx), so the field grows with
+ * the query, the plain field before them as wide already. Measured on the field's `sm` tokens: a token is 1.85rem
+ * besides its text, 0.25rem apart; a Latin letter about 0.32rem, a kana or kanji 0.75rem. 5rem: the search
+ * icon, the clear button and the paddings.
+ */
+export function searchWidth(q: string) {
+  let rem = 5;
+  for (const w of queryWords(q)) {
+    rem += 2.1;
+    for (const c of w) rem += (c.codePointAt(0) ?? 0) >= 0x2e80 ? 0.75 : 0.32;
+  }
+  return Math.round(rem * 10) / 10;
+}
+
 /** What "clear" resets: every filter, while the view, query, shop, avatar and sort stay. */
 export const FILTER_RESET: Partial<Filters> = {
   sc: "",
