@@ -1,9 +1,15 @@
 "use client";
 // One crawler job kind as a row of the Astryx template incident-console's list
 // (templates/pages/incident-console/page.tsx:347-380): name and status Token on the first line, then the kind's
-// description, its progress or next run, and its controls (schedule Switch, interval Selector, Run or Log and
-// Stop, and a MoreMenu with the run options); the schedule and the actions wrap as two groups on a phone.
+// description and its progress or next run; the controls sit in the row's end slot, centred on the row, as the
+// template puts its Token and Timestamp there. Every row ends the same way, so the buttons line up: the schedule
+// Switch and interval Selector where the kind has a schedule, one small secondary button (Run, or Stop while a
+// job is live) and the MoreMenu (run options, or the live job's log); a menu with nothing to offer stays in
+// place, disabled. On a phone, where AppShell turns the nav into a drawer, the controls move under the
+// description as one line: the Switch drops its visible label (the interval beside it says what it schedules)
+// so the schedule and the buttons fit side by side.
 
+import { useAppShellMobile } from "@astryxdesign/core/AppShell";
 import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Layout";
@@ -29,6 +35,9 @@ import {
 } from "./types";
 import type { useJobs } from "./use-jobs";
 
+/** one width for every row's interval Selector on a desktop, so the schedule controls form a column */
+const INTERVAL_WIDTH = "7.5rem";
+
 export function TaskRow({
   kind,
   job,
@@ -51,26 +60,99 @@ export function TaskRow({
 }) {
   const t = useAdminT();
   const locale = LOCALES[useUi().ui];
+  const isMobile = useAppShellMobile().isMobile;
   const name = t(`kind.${kind}`);
   const put = (json: object, ok: string) =>
     act(`/api/admin/schedules/${kind}`, { method: "PUT", json }, ok);
   const active = job?.status === "running" || job?.status === "cancelling";
   const eta = job && jobEta(job, t);
 
-  const more = [
-    ...(RUN_PARAMS[kind]
-      ? [{ label: t("jobs.runOptions"), onClick: () => onRunOptions(kind) }]
-      : []),
-    ...(schedule
-      ? [
-          {
-            label: t("jobs.runSchedule"),
-            onClick: () =>
-              put({ run_now: true }, t("toast.queued", { kind: name })),
-          },
-        ]
-      : []),
-  ];
+  const more = job
+    ? [{ label: t("jobs.log"), onClick: () => onLog(job.id) }]
+    : [
+        ...(RUN_PARAMS[kind]
+          ? [{ label: t("jobs.runOptions"), onClick: () => onRunOptions(kind) }]
+          : []),
+        ...(schedule
+          ? [
+              {
+                label: t("jobs.runSchedule"),
+                onClick: () =>
+                  put({ run_now: true }, t("toast.queued", { kind: name })),
+              },
+            ]
+          : []),
+      ];
+
+  const controls = (
+    <HStack gap={2} vAlign="center" wrap="wrap">
+      {schedule && (
+        <HStack gap={2} vAlign="center" wrap="nowrap">
+          <Switch
+            label={t("jobs.schedule")}
+            isLabelHidden={isMobile}
+            size="sm"
+            value={schedule.enabled}
+            changeAction={(v) =>
+              put(
+                { enabled: v },
+                t(v ? "toast.scheduleOn" : "toast.scheduleOff"),
+              ).then(() => {})
+            }
+          />
+          <Selector
+            label={t("jobs.interval")}
+            isLabelHidden
+            size="sm"
+            width={isMobile ? undefined : INTERVAL_WIDTH}
+            value={String(schedule.interval_minutes)}
+            options={INTERVALS.map((m) => ({
+              value: String(m),
+              label: intervalLabel(m, t),
+            }))}
+            changeAction={(v) =>
+              put({ interval_minutes: Number(v) }, t("toast.interval")).then(
+                () => {},
+              )
+            }
+          />
+        </HStack>
+      )}
+      {isMobile && <StackItem size="fill" />}
+      <HStack gap={1} vAlign="center" wrap="nowrap">
+        {job ? (
+          <Button
+            label={t("jobs.stop")}
+            variant="secondary"
+            size="sm"
+            icon={<Icon icon="admin:stop" size="sm" />}
+            isDisabled={job.status === "cancelling"}
+            onClick={() => onStop(job)}
+          />
+        ) : (
+          <Button
+            label={t("jobs.run")}
+            variant="secondary"
+            size="sm"
+            icon={<Icon icon="admin:run" size="sm" />}
+            onClick={() =>
+              act(
+                "/api/admin/jobs",
+                { method: "POST", json: { kind, params: {} } },
+                t("toast.queued", { kind: name }),
+              )
+            }
+          />
+        )}
+        <MoreMenu
+          size="sm"
+          label={t("jobs.more")}
+          items={more}
+          isDisabled={more.length === 0}
+        />
+      </HStack>
+    </HStack>
+  );
 
   return (
     <ListItem
@@ -117,80 +199,10 @@ export function TaskRow({
               />
             </Text>
           )}
-          <HStack gap={2} vAlign="center" wrap="wrap">
-            {schedule && (
-              <HStack gap={2} vAlign="center">
-                <Switch
-                  label={t("jobs.schedule")}
-                  size="sm"
-                  value={schedule.enabled}
-                  changeAction={(v) =>
-                    put(
-                      { enabled: v },
-                      t(v ? "toast.scheduleOn" : "toast.scheduleOff"),
-                    ).then(() => {})
-                  }
-                />
-                <Selector
-                  label={t("jobs.interval")}
-                  isLabelHidden
-                  size="sm"
-                  value={String(schedule.interval_minutes)}
-                  options={INTERVALS.map((m) => ({
-                    value: String(m),
-                    label: intervalLabel(m, t),
-                  }))}
-                  changeAction={(v) =>
-                    put(
-                      { interval_minutes: Number(v) },
-                      t("toast.interval"),
-                    ).then(() => {})
-                  }
-                />
-              </HStack>
-            )}
-            <StackItem size="fill" />
-            <HStack gap={2} vAlign="center">
-              {job ? (
-                <>
-                  <Button
-                    label={t("jobs.log")}
-                    variant="secondary"
-                    size="sm"
-                    icon={<Icon icon="admin:log" size="sm" />}
-                    onClick={() => onLog(job.id)}
-                  />
-                  <Button
-                    label={t("jobs.stop")}
-                    variant="destructive"
-                    size="sm"
-                    icon={<Icon icon="admin:stop" size="sm" />}
-                    isDisabled={job.status === "cancelling"}
-                    onClick={() => onStop(job)}
-                  />
-                </>
-              ) : (
-                <Button
-                  label={t("jobs.run")}
-                  variant="primary"
-                  size="sm"
-                  icon={<Icon icon="admin:run" size="sm" />}
-                  onClick={() =>
-                    act(
-                      "/api/admin/jobs",
-                      { method: "POST", json: { kind, params: {} } },
-                      t("toast.queued", { kind: name }),
-                    )
-                  }
-                />
-              )}
-              {!job && more.length > 0 && (
-                <MoreMenu size="sm" label={t("jobs.more")} items={more} />
-              )}
-            </HStack>
-          </HStack>
+          {isMobile && controls}
         </VStack>
       }
+      endContent={isMobile ? undefined : controls}
     />
   );
 }

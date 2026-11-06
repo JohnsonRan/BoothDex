@@ -25,7 +25,7 @@ import { useJobs } from "./use-jobs";
 
 const ALL = "all";
 
-export function History() {
+function JobList() {
   const t = useAdminT();
   const router = useRouter();
   const path = usePathname();
@@ -51,7 +51,7 @@ export function History() {
   const all = { value: ALL, label: t("history.all") };
 
   return (
-    <JobsFrame tab="history">
+    <>
       <HStack gap={2} vAlign="end" wrap="wrap">
         <Selector
           label={t("history.kind")}
@@ -92,7 +92,7 @@ export function History() {
           icon={<Icon icon="admin:empty" size="lg" />}
         />
       ) : (
-        <List density="compact" hasDividers>
+        <List density="compact" hasDividers edge="outset">
           {rows.map((j) => (
             <ListItem
               key={j.id}
@@ -122,6 +122,14 @@ export function History() {
       {logId !== undefined && (
         <JobLog id={logId} onClose={() => setLogId(undefined)} />
       )}
+    </>
+  );
+}
+
+export function History() {
+  return (
+    <JobsFrame tab="history">
+      <JobList />
     </JobsFrame>
   );
 }

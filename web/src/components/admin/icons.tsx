@@ -24,7 +24,6 @@ import {
   Play,
   RefreshCcw,
   RefreshCw,
-  ScrollText,
   Search,
   Settings,
   ShieldAlert,
@@ -46,7 +45,6 @@ registerIcons({
   "admin:empty": <Inbox {...glyph} />,
   "admin:run": <Play {...glyph} />,
   "admin:stop": <Square {...glyph} />,
-  "admin:log": <ScrollText {...glyph} />,
   "admin:reload": <RefreshCw {...glyph} />,
   "admin:copy": <Copy {...glyph} />,
   "admin:items": <Package {...glyph} />,
@@ -65,6 +63,4 @@ registerIcons({
   "admin:memory": <MemoryStick {...glyph} />,
   "admin:disk": <HardDrive {...glyph} />,
   "admin:cache": <Images {...glyph} />,
-  // a chart legend's swatch: filled, in the series colour
-  "admin:swatch": <Square {...glyph} fill="currentColor" stroke="none" />,
 });

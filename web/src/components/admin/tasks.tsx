@@ -16,7 +16,7 @@ import { TaskRow } from "./task-row";
 import { type Job, KINDS, type Kind } from "./types";
 import { useJobs } from "./use-jobs";
 
-export function Tasks() {
+function TaskList() {
   const t = useAdminT();
   const { overview } = useLive();
   const { jobs, schedules, act } = useJobs();
@@ -37,8 +37,8 @@ export function Tasks() {
   };
 
   return (
-    <JobsFrame tab="tasks">
-      <List density="compact" hasDividers>
+    <>
+      <List density="compact" hasDividers edge="outset">
         {KINDS.map((kind) => (
           <TaskRow
             key={kind}
@@ -85,6 +85,14 @@ export function Tasks() {
         isActionLoading={busy}
         onAction={() => stopping && stop(stopping)}
       />
+    </>
+  );
+}
+
+export function Tasks() {
+  return (
+    <JobsFrame tab="tasks">
+      <TaskList />
     </JobsFrame>
   );
 }

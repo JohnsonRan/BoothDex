@@ -3,7 +3,8 @@
 // AppShell with a collapsible, resizable SideNav, its heading on top, the menu sections, and an account section
 // in the footer. The template's conversation list becomes two titled groups (Operate, System); the footer holds
 // the way back to the site and the site's own language and colour-mode controls. On phones AppShell turns the
-// nav into a drawer behind its own top bar.
+// nav into a drawer behind its own top bar; the server renders that phone shell when the request comes from a
+// phone, so the first paint does not show the desktop nav first.
 
 import { AppShell } from "@astryxdesign/core/AppShell";
 import {
@@ -49,12 +50,19 @@ const isCurrent = (path: string, href: string) =>
     ? path === href
     : path === href || path.startsWith(`${href}/`);
 
-export function AdminShell({ children }: { children: React.ReactNode }) {
+export function AdminShell({
+  mobile,
+  children,
+}: {
+  mobile: boolean;
+  children: React.ReactNode;
+}) {
   const t = useAdminT();
   const path = usePathname();
   return (
     <AppShell
       contentPadding={0}
+      mobileNav={{ defaultIsMobile: mobile }}
       sideNav={
         <SideNav
           collapsible

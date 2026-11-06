@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Suspense } from "react";
 import { AdminConsole } from "@/components/admin/admin-console";
 import { Providers } from "@/components/providers";
@@ -10,6 +11,15 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+/** A phone by its client hint (Chromium) or its user agent (Safari sends no hints). */
+async function isPhone() {
+  const h = await headers();
+  return (
+    h.get("sec-ch-ua-mobile") === "?1" ||
+    /\b(iPhone|Mobile)\b/.test(h.get("user-agent") ?? "")
+  );
+}
+
 async function AdminRoot({ children }: { children: React.ReactNode }) {
   const settings = await readSettings();
   return (
@@ -18,7 +28,7 @@ async function AdminRoot({ children }: { children: React.ReactNode }) {
       messages={MESSAGES[settings.ui]}
       catalogue={await componentCatalogue(settings.ui)}
     >
-      <AdminConsole>{children}</AdminConsole>
+      <AdminConsole mobile={await isPhone()}>{children}</AdminConsole>
     </Providers>
   );
 }
