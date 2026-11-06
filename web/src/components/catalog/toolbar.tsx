@@ -18,7 +18,6 @@ import { useAccount } from "@/components/account/session";
 import { useUi } from "@/components/providers";
 import { FILTER_RESET, parseFilters } from "@/lib/catalog";
 import { preloadOn, preloadWhenIdle } from "@/lib/preload";
-import type { Rates } from "@/lib/settings-core";
 import { type ClauseNames, SORTS, sortLabel } from "./clause-text";
 import { FilterBar } from "./filter-bar";
 import {
@@ -61,7 +60,6 @@ export function Toolbar({
   facets,
   names,
   count,
-  rates,
 }: {
   /** the page heading, which a new saved search is named after */
   title: string;
@@ -69,8 +67,6 @@ export function Toolbar({
   names: ClauseNames;
   /** the result count, rendered on the server */
   count: ReactNode;
-  /** for the search suggestions' prices */
-  rates: Promise<Rates>;
 }) {
   const { t } = useUi();
   const { filters, apply } = useFilterUrl();
@@ -113,12 +109,7 @@ export function Toolbar({
             onEdit={setEditing}
           />
         ) : (
-          <FilterBar
-            facets={facets}
-            names={names}
-            count={count}
-            rates={rates}
-          />
+          <FilterBar facets={facets} names={names} count={count} />
         )}
       </StackItem>
       {/* toolbarEnd (:1398-1400): one flex item, so the cluster drops below the filter row together */}

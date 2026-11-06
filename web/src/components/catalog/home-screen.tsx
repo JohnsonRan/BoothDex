@@ -39,7 +39,6 @@ import { FilterUrlProvider } from "./filter-url";
 import { CountSilhouette, ResultsSilhouette } from "./loading";
 import { RefreshProgress } from "./refresh";
 import { ResultCount, Results } from "./results";
-import { SearchShortcut } from "./search-box";
 import { Toolbar } from "./toolbar";
 
 type Params = Record<string, string | string[] | undefined>;
@@ -176,8 +175,6 @@ async function Catalog({
                   {recent && <RecentCount />}
                   {(recent || filters.view === "favourites") && <ViewActions />}
                 </HStack>
-                {/* Ctrl/Cmd+K goes to the items view's search */}
-                {recent && <SearchShortcut />}
                 {/* filters and sort do not apply to the recent view; the row is its own boundary, so a click on
                     it before the page has hydrated hydrates the row at once, not the rest with it */}
                 {!recent && (
@@ -186,10 +183,13 @@ async function Catalog({
                       title={title}
                       facets={facets}
                       names={names}
-                      rates={rates}
                       count={
                         <Suspense fallback={<CountSilhouette />}>
-                          <ResultCount outcome={outcome} settings={settings} />
+                          <ResultCount
+                            outcome={outcome}
+                            settings={settings}
+                            hasQuery={!!filters.q}
+                          />
                         </Suspense>
                       }
                     />

@@ -19,7 +19,6 @@ import { type ReactNode, useEffect, useLayoutEffect, useState } from "react";
 import { useUi } from "@/components/providers";
 import { activeFilterCount, FILTER_RESET } from "@/lib/catalog";
 import { preloadWhenIdle } from "@/lib/preload";
-import type { Rates } from "@/lib/settings-core";
 import type { ClauseNames } from "./clause-text";
 import { useClauses } from "./filter-clauses";
 import {
@@ -45,14 +44,11 @@ export function FilterBar({
   facets,
   names,
   count,
-  rates,
 }: {
   facets: Promise<Facets>;
   names: ClauseNames;
   /** the result count, rendered on the server when the search answers */
   count: ReactNode;
-  /** for the search suggestions' prices */
-  rates: Promise<Rates>;
 }) {
   const { t } = useUi();
   const { filters: f, apply } = useFilterUrl();
@@ -76,7 +72,7 @@ export function FilterBar({
       minHeight={32}
       style={{ rowGap: 6 }}
     >
-      <SearchBox rates={rates} />
+      <SearchBox />
       {/* filterOverflowSlot (:1350-1372): the slot, not the list, carries the sizing — the row's only grower, the
           first to give (shrink 100 against the search's 1), floored at the "+N" trigger plus the reserve */}
       <StackItem

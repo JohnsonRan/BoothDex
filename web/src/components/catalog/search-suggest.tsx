@@ -11,10 +11,9 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Typeahead, TypeaheadItem } from "@astryxdesign/core/Typeahead";
 import { type RefObject, useEffect, useMemo, useRef } from "react";
-import { useItemOpener } from "@/components/item/item-host";
+import { useItemOpener, useRates } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
 import { loadHistory, saveHistory } from "@/lib/history";
-import type { Rates } from "@/lib/settings-core";
 import { CONTROL_SIZE } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
 import { useSearch } from "./search-box";
@@ -48,17 +47,16 @@ function type(input: HTMLInputElement, text: string) {
 
 export function SearchSuggest({
   inputRef,
-  rates,
   handover,
 }: {
   inputRef: RefObject<HTMLInputElement | null>;
-  rates: Promise<Rates>;
   /** the plain field's state when this one replaced it: focused, and the text typed into it */
   handover: { isFocused: boolean; text: string };
 }) {
   const { t, settings } = useUi();
   const { filters, apply } = useFilterUrl();
   const { open: openItem } = useItemOpener();
+  const rates = useRates();
   const search = useSearch();
   const source = useMemo(
     () => searchSource({ t, settings, rates, adult: filters.adult }),

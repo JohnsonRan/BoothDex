@@ -11,7 +11,6 @@ import { useEffect, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
 import { recordQuery } from "@/lib/history";
 import { preloadWhenIdle } from "@/lib/preload";
-import type { Rates } from "@/lib/settings-core";
 import { CONTROL_SIZE } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
 
@@ -57,7 +56,7 @@ export function SearchShortcut() {
   return null;
 }
 
-export function SearchBox({ rates }: { rates: Promise<Rates> }) {
+export function SearchBox() {
   const { t } = useUi();
   const { filters } = useFilterUrl();
   const search = useSearch();
@@ -88,11 +87,7 @@ export function SearchBox({ rates }: { rates: Promise<Rates> }) {
   if (suggest)
     return (
       <StackItem className="filter-search">
-        <suggest.Field
-          inputRef={input}
-          rates={rates}
-          handover={suggest.handover}
-        />
+        <suggest.Field inputRef={input} handover={suggest.handover} />
       </StackItem>
     );
 

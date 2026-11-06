@@ -191,6 +191,9 @@ command palette. The search is a `Typeahead` (block TypeaheadSearchField) carryi
 suggestions: recent searches on focus, then `/api/palette`'s groups as `TypeaheadItem` rows with a leading Avatar
 (the component's own example). Not 1:1: the applied query shows as the Typeahead's token (its value), and the list is
 36rem wide and up to 60vh tall instead of the field's width and 300 px (`app/filter-row.css`).
+With a text query, the readout's count is a link that opens the search trace (how the search was answered and the
+time of each step) in a `Popover` laid out as block PopoverKeyboardShortcuts; master showed it as a chip beside the
+count, which the readout's reserved width has no room for.
 
 | Master filter | Clause | Not 1:1 |
 |---|---|---|
