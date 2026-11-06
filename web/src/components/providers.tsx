@@ -21,7 +21,7 @@ import {
 import { defaultThemeSlug, themes } from "@/astryx-themes";
 import "@/lib/icons";
 import type { Dict, UiLang } from "@/lib/messages";
-import { savePreferences } from "@/lib/preferences";
+import { preferenceSession, savePreferences } from "@/lib/preferences";
 import {
   LOCALES,
   parseSettings,
@@ -29,6 +29,7 @@ import {
   type Settings,
   type Style,
   shownMode,
+  styleSwitch,
   type Translate,
   translate,
 } from "@/lib/settings-core";
@@ -38,8 +39,9 @@ type Ui = {
   ui: UiLang;
   t: Translate;
   settings: Settings;
-  /** saves a change in the cookie for a year and applies it without a reload */
-  update: (patch: Partial<Settings>) => void;
+  /** saves a change in the cookie for a year and applies it without a reload; false when the style asked for
+   *  cannot load (the page stays as it is) */
+  update: (patch: Partial<Settings>) => Promise<boolean>;
 };
 const UiContext = createContext<Ui | null>(null);
 
@@ -49,8 +51,21 @@ const LEGACY_SETTINGS = "settings";
 type Look = Pick<Settings, "theme" | "style">;
 
 let onDemand: Promise<typeof import("@/themes") | null> | undefined;
+const importThemes = () => import("@/themes").catch(() => null);
 /** The other themes' code (themes/index.tsx), loaded once a page shows or chooses one; null if it cannot load. */
-const loadThemes = () => (onDemand ??= import("@/themes").catch(() => null));
+const loadThemes = () => (onDemand ??= importThemes());
+
+/** Switches of style: each is shown once its stylesheet, object and fonts are in; a choice made after the themes'
+ *  code failed to load tries it again. */
+const switchStyle = styleSwitch(async (style) => {
+  if (style === "neutral") return true;
+  let m = await loadThemes();
+  if (!m) {
+    onDemand = importThemes();
+    m = await onDemand;
+  }
+  return m?.prepareStyle(style) ?? false;
+}, preferenceSession);
 
 /** Puts a colour mode and theme on <html> and the root Theme's element at once, ahead of the render that follows
  *  (globals.css lets these attributes alone set the colour scheme). */
@@ -86,14 +101,16 @@ export function Providers({
     style: fromServer.style,
   });
   const lazy = look.style === "neutral" ? null : use(loadThemes());
-  const theme = lazy?.styleTheme(look.style) ?? themes[defaultThemeSlug];
+  const loaded = lazy?.styleTheme(look.style);
+  // a theme that cannot load shows neutral in the visitor's own mode, here and in Settings; the cookie keeps it, so
+  // a later visit tries it again
+  const style: Style = loaded ? look.style : "neutral";
+  const theme = loaded ?? themes[defaultThemeSlug];
   const locale = LOCALES[fromServer.ui];
   // what the cookie holds: a second change made before the first one's render arrives builds on it
   const written = useRef(fromServer);
-  // the theme last asked for: an earlier one that finishes loading later is not shown
-  const asked = useRef<Style>(fromServer.style);
   const value = useMemo<Ui>(() => {
-    const settings = { ...fromServer, ...look };
+    const settings = { ...fromServer, ...look, style };
     const save = (patch: Partial<Settings>) => {
       const next = { ...written.current, ...patch };
       written.current = next;
@@ -103,7 +120,7 @@ export function Providers({
       savePreferences(patch);
       if (patch.theme || patch.style) {
         const shown = { theme: next.theme, style: next.style };
-        showLook(shown);
+        showLook(next.style === look.style ? { ...shown, style } : shown);
         // the new look then reaches every Icon and setting in a transition: an urgent update hydrated the page's
         // pending content (site-frame's Activity) in one long task, up to 1 s at 4x CPU
         startTransition(() => setLook(shown));
@@ -115,20 +132,23 @@ export function Providers({
       ui: settings.ui,
       t: translate(messages),
       settings,
-      update: ({ style, ...patch }) => {
+      update: async ({ style: asked, ...patch }) => {
         if (Object.keys(patch).length) save(patch);
-        if (!style) return;
-        asked.current = style;
-        // shown once its stylesheet, object and fonts are in; one that cannot load leaves the page as it is
-        (style === "neutral"
-          ? Promise.resolve(true)
-          : loadThemes().then((m) => m?.prepareStyle(style) ?? false)
-        ).then((ok) => {
-          if (ok && asked.current === style) save({ style });
+        if (!asked) return true;
+        // one that cannot load leaves the page as it is
+        const done = await switchStyle(asked, () => {
+          if (asked !== written.current.style) save({ style: asked });
         });
+        return done !== "failed";
       },
     };
-  }, [fromServer, messages, look, router]);
+  }, [fromServer, messages, look, style, router]);
+
+  // a theme that failed to load: <html> and the root Theme's element can still carry it from the head script or
+  // the server render, which hydration does not correct
+  useEffect(() => {
+    if (style !== look.style) showLook({ theme: look.theme, style });
+  }, [look, style]);
 
   // the language the page is rendered in, also when it came from Accept-Language rather than the cookie
   useEffect(() => {
@@ -159,7 +179,7 @@ export function Providers({
   }, [update]);
 
   return (
-    <Theme theme={theme} mode={shownMode(look.theme, look.style)}>
+    <Theme theme={theme} mode={shownMode(look.theme, style)}>
       {/* the theme shown: one that failed to load shows neutral, which needs none */}
       {lazy && <lazy.ThemeSheet name={theme.name} />}
       <InternationalizationProvider

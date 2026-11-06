@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import {
   accountPatch,
+  preferenceSession,
   saveAvatar,
   savePreferences,
+  setPreferenceAccount,
   setPreferenceSync,
 } from "./preferences";
 import { DEFAULT_SETTINGS } from "./settings-core";
@@ -88,4 +90,15 @@ test("my avatar goes to the account only while signed in", () => {
   expect(sent).toEqual([
     ["/api/account/preferences", "PUT", '{"avatar":"manuka"}'],
   ]);
+});
+
+test("the preference session changes on a sign-in or sign-out, not when the session is first read or read again", () => {
+  const start = preferenceSession();
+  setPreferenceAccount(7);
+  setPreferenceAccount(7);
+  expect(preferenceSession()).toBe(start);
+  setPreferenceAccount(null);
+  expect(preferenceSession()).toBe(start + 1);
+  setPreferenceAccount(8);
+  expect(preferenceSession()).toBe(start + 2);
 });

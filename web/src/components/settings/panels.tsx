@@ -10,6 +10,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Selector } from "@astryxdesign/core/Selector";
 import { CURRENCY_SYMBOLS } from "@/components/frame/header-controls";
 import { useUi } from "@/components/providers";
+import { useToast } from "@/components/toasts";
 import {
   LANG_NAMES,
   type MessageKey,
@@ -70,6 +71,7 @@ export const PANEL_GROUPS: {
 
 function AppearancePanel() {
   const { t, settings, update } = useUi();
+  const toast = useToast();
   return (
     <SettingsCard>
       <SettingsRow
@@ -90,7 +92,14 @@ function AppearancePanel() {
         detail={
           <StyleChoiceCards
             value={settings.style}
-            onChange={(style) => update({ style })}
+            onChange={async (style) => {
+              if (!(await update({ style })))
+                toast({
+                  body: t("settings.styleFailed"),
+                  type: "error",
+                  uniqueID: "settings.styleFailed",
+                });
+            }}
           />
         }
       />

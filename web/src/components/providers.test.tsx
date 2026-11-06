@@ -20,7 +20,7 @@ afterEach(() => {
   globalThis.document = realDocument;
 });
 
-let update: ReturnType<typeof useUi>["update"] = () => {};
+let update: ReturnType<typeof useUi>["update"] = async () => true;
 function Grab() {
   update = useUi().update;
   return null;

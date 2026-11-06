@@ -6,7 +6,9 @@ import {
   formatPrice,
   itemText,
   parseSettings,
+  type Style,
   shownMode,
+  styleSwitch,
   uiFromAcceptLanguage,
 } from "./settings-core";
 
@@ -110,4 +112,66 @@ test("item text uses the chosen translation, else the original", () => {
   expect(itemText(it, "title", "en")).toBe("Title");
   expect(itemText(it, "title", "ko")).toBe("原題");
   expect(itemText(it, "title", "original")).toBe("原題");
+});
+
+/** A switch whose loads the test settles by hand. */
+function switcher() {
+  const pending = new Map<Style, (ok: boolean) => void>();
+  const shown: Style[] = [];
+  let session = 0;
+  const ask = styleSwitch(
+    (style) => new Promise((settle) => pending.set(style, settle)),
+    () => session,
+  );
+  return {
+    ask: (style: Style) => ask(style, () => shown.push(style)),
+    settle: (style: Style, ok: boolean) => pending.get(style)?.(ok),
+    signIn: () => session++,
+    shown,
+  };
+}
+
+test("a style switch shows the last style asked for, also when an earlier one loads later", async () => {
+  const s = switcher();
+  const matcha = s.ask("matcha");
+  const stone = s.ask("stone");
+  s.settle("stone", true);
+  s.settle("matcha", true);
+  expect(await stone).toBe("shown");
+  expect(await matcha).toBe("replaced");
+  expect(s.shown).toEqual(["stone"]);
+});
+
+test("asking for the style shown cancels a switch still loading", async () => {
+  const s = switcher();
+  const matcha = s.ask("matcha");
+  const back = s.ask("neutral");
+  s.settle("neutral", true);
+  s.settle("matcha", true);
+  expect(await back).toBe("shown");
+  expect(await matcha).toBe("replaced");
+  expect(s.shown).toEqual(["neutral"]);
+});
+
+test("a switch that finishes after a sign-in or sign-out is dropped", async () => {
+  const s = switcher();
+  const matcha = s.ask("matcha");
+  s.signIn();
+  s.settle("matcha", true);
+  expect(await matcha).toBe("replaced");
+  expect(s.shown).toEqual([]);
+});
+
+test("a style that cannot load fails only when it is still the last asked for", async () => {
+  const s = switcher();
+  const first = s.ask("gothic");
+  s.settle("gothic", false);
+  expect(await first).toBe("failed");
+  const again = s.ask("gothic");
+  const stone = s.ask("stone");
+  s.settle("gothic", false);
+  s.settle("stone", true);
+  expect(await again).toBe("replaced");
+  expect(await stone).toBe("shown");
+  expect(s.shown).toEqual(["stone"]);
 });

@@ -36,6 +36,27 @@ export const SINGLE_MODE: Partial<Record<Style, "light" | "dark">> = {
 /** The mode a page is drawn in: a single-mode theme's own, otherwise the visitor's setting. */
 export const shownMode = (theme: Theme, style: Style): Theme =>
   SINGLE_MODE[style] ?? theme;
+/** Switches of style, each shown once `prepare` has loaded it. The last one asked for wins, also one of the style
+ *  already shown (it cancels a switch still loading), and one asked for before a change of account
+ *  (`session`, lib/preferences.ts) is dropped. Settles as "failed" when the last one cannot load. */
+export function styleSwitch(
+  prepare: (style: Style) => Promise<boolean>,
+  session: () => number,
+) {
+  let last = 0;
+  return async (
+    style: Style,
+    show: () => void,
+  ): Promise<"shown" | "failed" | "replaced"> => {
+    const ask = ++last;
+    const at = session();
+    const ok = await prepare(style);
+    if (ask !== last || session() !== at) return "replaced";
+    if (!ok) return "failed";
+    show();
+    return "shown";
+  };
+}
 export const CURRENCIES = [
   "JPY",
   "USD",

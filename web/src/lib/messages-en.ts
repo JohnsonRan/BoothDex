@@ -234,6 +234,7 @@ export const en: Dict = {
   "settings.system": "System",
   "settings.style": "Style",
   "settings.styleDesc": "The colours, fonts and shapes of the whole site.",
+  "settings.styleFailed": "Couldn't load this style",
   "style.neutral": "Neutral",
   "style.stone": "Stone",
   "style.matcha": "Matcha",

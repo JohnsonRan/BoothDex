@@ -19,17 +19,20 @@ test("a theme loads once and is kept", async () => {
   expect(calls).toBe(1);
 });
 
-test("a theme that fails to load, or is unknown, settles as null and is not retried", async () => {
+test("a theme that fails to load, or is unknown, settles as null and the next load tries again", async () => {
   let calls = 0;
   const loader = themeLoader({
     matcha: () => {
       calls++;
-      return Promise.reject(new Error("ChunkLoadError"));
+      return calls === 1
+        ? Promise.reject(new Error("ChunkLoadError"))
+        : Promise.resolve(matcha);
     },
   });
   expect(await loader.load("matcha")).toBeNull();
-  expect(await loader.load("matcha")).toBeNull();
-  expect(calls).toBe(1);
   expect(loader.settled("matcha")).toBeNull();
+  expect(await loader.load("matcha")).toBe(matcha);
+  expect(loader.settled("matcha")).toBe(matcha);
+  expect(calls).toBe(2);
   expect(await loader.load("charcoal")).toBeNull();
 });

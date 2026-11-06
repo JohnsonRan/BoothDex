@@ -233,6 +233,7 @@ export const ko: Dict = {
   "settings.system": "시스템 설정",
   "settings.style": "스타일",
   "settings.styleDesc": "사이트 전체의 색, 글꼴, 모양입니다.",
+  "settings.styleFailed": "이 스타일을 불러오지 못했습니다",
   "style.neutral": "뉴트럴",
   "style.stone": "스톤",
   "style.matcha": "말차",

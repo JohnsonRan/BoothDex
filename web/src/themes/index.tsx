@@ -19,7 +19,8 @@ import type { Style } from "@/lib/settings-core";
 type ThemeModule = { theme: DefinedTheme; fonts: string[] };
 type OnDemand = Exclude<Style, "neutral">;
 
-/** One load per theme; a failed one settles as null, which shows neutral (no error is reported). */
+/** One load per theme; a failed one settles as null, which shows neutral, and the next load tries again (a choice
+ *  in Settings: the page shown keeps the result it rendered with). */
 export function themeLoader(
   modules: Record<string, () => Promise<ThemeModule>>,
 ) {
@@ -34,7 +35,10 @@ export function themeLoader(
           (m) => m,
           () => null,
         );
-        load.then((m) => settled.set(style, m));
+        load.then((m) => {
+          settled.set(style, m);
+          if (!m) loads.delete(style);
+        });
         loads.set(style, load);
       }
       return load;

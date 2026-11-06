@@ -141,9 +141,8 @@ function ChoiceCards<T extends string>({
             label={choice.label}
             isSelected={isSelected}
             padding={2}
-            onChange={() => {
-              if (!isSelected) onChange(choice.value);
-            }}
+            // the selected card too: it cancels a choice still loading (Providers' update)
+            onChange={() => onChange(choice.value)}
           >
             <VStack gap={1.5}>
               {choice.preview}
@@ -187,7 +186,10 @@ export function ThemeChoiceCards({
     <ChoiceCards
       label={t("settings.theme")}
       value={value}
-      onChange={onChange}
+      // the selected card is passed on too (ChoiceCards), so a choice of the same mode is not saved again
+      onChange={(mode) => {
+        if (mode !== value) onChange(mode);
+      }}
       max={3}
       choices={MODES.map((m) => ({
         value: m.value,

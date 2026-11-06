@@ -19,7 +19,11 @@ import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { ApiError, api, fetchAccount } from "@/lib/api";
 import type { MessageKey } from "@/lib/messages";
-import { accountPatch, setPreferenceSync } from "@/lib/preferences";
+import {
+  accountPatch,
+  setPreferenceAccount,
+  setPreferenceSync,
+} from "@/lib/preferences";
 import { keepSessionHint } from "@/lib/session-hint";
 import {
   addViewed,
@@ -94,6 +98,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     });
     keepSessionHint(!!user);
     setPreferenceSync(false);
+    setPreferenceAccount(user?.id ?? null);
     if (!user) {
       openedDuringLoad.current = null;
       return;

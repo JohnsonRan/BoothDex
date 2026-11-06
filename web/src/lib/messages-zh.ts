@@ -228,6 +228,7 @@ export const zh = {
   "settings.system": "跟随系统",
   "settings.style": "风格",
   "settings.styleDesc": "整个网站的配色、字体和形状。",
+  "settings.styleFailed": "无法加载此风格",
   "style.neutral": "中性",
   "style.stone": "岩石",
   "style.matcha": "抹茶",
