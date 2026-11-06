@@ -2,7 +2,8 @@
 // The signed-in account menu, master's (account-menu.tsx:95-137) in Astryx: the trigger is a ghost IconButton
 // holding an Avatar with the display name's initial (DropdownMenu `renderTrigger`, as the bar's other menus);
 // the rows are data-driven DropdownMenu items in a section titled with the display name (block
-// DropdownMenuWithSections), dividers between the account's lists, the console and settings, and Sign out.
+// DropdownMenuWithSections), dividers between the account's lists, the console and settings, and Sign out. Saved
+// searches live in the filter row (catalog/toolbar.tsx), as the table-filter template's saved views.
 
 import { Avatar } from "@astryxdesign/core/Avatar";
 import {
@@ -20,11 +21,9 @@ const icon = (name: `site:${string}`) => <Icon icon={name} size="sm" />;
 
 export default function AccountMenu({
   me,
-  onSavedSearches,
   onSettings,
 }: {
   me: Me;
-  onSavedSearches: () => void;
   onSettings: () => void;
 }) {
   const { t } = useUi();
@@ -56,11 +55,6 @@ export default function AccountMenu({
           // keeps the avatar, so going back to all shows it again
           onClick: () =>
             apply({ view: "recent", q: "", author: "", sc: "", features: [] }),
-        },
-        {
-          label: t("account.savedSearches"),
-          icon: icon("site:savedSearch"),
-          onClick: onSavedSearches,
         },
       ],
     },

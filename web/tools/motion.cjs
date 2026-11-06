@@ -12,6 +12,18 @@ const [
   delay = "2500",
 ] = process.argv.slice(2);
 const ENTRANCE = ["page-enter", "row-enter"];
+// clicks the filter row's first preset toggle button, the view switch (the clause slot is the readout's parent;
+// the list's hidden measuring copies are skipped)
+const clickPreset = (p) =>
+  p.evaluate(() =>
+    [
+      ...document
+        .querySelector("[data-readout]")
+        .parentElement.querySelectorAll("button[aria-pressed]"),
+    ]
+      .find((b) => b.checkVisibility())
+      .click(),
+  );
 
 (async () => {
   const browser = await launch();
@@ -47,7 +59,8 @@ const ENTRANCE = ["page-enter", "row-enter"];
     });
     await p.waitForTimeout(800);
   };
-  // clicks the next category tab and reports the indicator's intervals (ms after the click) and fades
+  // switches the view (the filter row's first preset) and reports the indicator's intervals (ms after the click)
+  // and fades
   const timedRefresh = async (p) => {
     const at = await p.evaluate(() => {
       window.__refresh = [];
@@ -65,7 +78,7 @@ const ENTRANCE = ["page-enter", "row-enter"];
       };
       requestAnimationFrame(look);
     });
-    await p.locator('button[aria-pressed="false"]:visible').first().click();
+    await clickPreset(p);
     await p.waitForURL((u) => u.toString() !== before, { timeout: 20000 });
     await p.waitForSelector('[data-refresh="idle"]', {
       state: "attached",
@@ -139,11 +152,11 @@ const ENTRANCE = ["page-enter", "row-enter"];
     await p.waitForTimeout(1200);
 
     if (!reduced) {
-      // a quick refresh: the search for the next tab is asked once, then answered from the proxy's memory
+      // a quick refresh: the search for the other view is asked once, then answered from the proxy's memory
       await lab(proxy, { delay: 0, cache: 1 });
-      await timedRefresh(p); // to the next tab
-      await timedRefresh(p); // back to the first (tabs replace the URL, so not Back)
-      const quick = await timedRefresh(p); // to the next tab again, answered from memory
+      await timedRefresh(p); // to the avatar view
+      await timedRefresh(p); // back to items (filters replace the URL, so not Back)
+      const quick = await timedRefresh(p); // to the avatar view again, answered from memory
       await lab(proxy, { cache: 0 });
       // under 150 ms nothing may show; a slower answer may show the indicator, but only from 150 ms and only
       // while it is still awaited (never first drawn as the results arrive)
@@ -167,8 +180,8 @@ const ENTRANCE = ["page-enter", "row-enter"];
     }
 
     await lab(proxy, { delay: 1200 });
-    // the next category tab (toggle buttons carry aria-pressed)
-    await p.locator('button[aria-pressed="false"]:visible').first().click();
+    // the view preset (the filter row's first toggle button: they carry aria-pressed)
+    await clickPreset(p);
     await refreshed(p);
     check(
       (await entrances(p)).length === first.length,
@@ -192,7 +205,7 @@ const ENTRANCE = ["page-enter", "row-enter"];
     if (!reduced) {
       // a failed refresh keeps the results and offers a retry
       await lab(proxy, { delay: 0, fail: 1 });
-      await p.locator('button[aria-pressed="false"]:visible').first().click();
+      await clickPreset(p);
       const banner = p.getByText("Couldn't load items");
       await banner.waitFor({ timeout: 10000 }).catch(() => {});
       const kept = await p.locator(".astryx-grid img").count();

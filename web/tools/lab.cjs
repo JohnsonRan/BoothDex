@@ -40,7 +40,7 @@ const RECORDER = () => {
         ),
       });
   }).observe({ type: "layout-shift", buffered: true });
-  // the refresh indicator's state changes (catalog/refresh.tsx data-refresh), with their times
+  // the refresh progress bar's state changes (catalog/refresh.tsx data-refresh), with their times
   window.__refresh = [];
   addEventListener("DOMContentLoaded", () =>
     new MutationObserver((list) => {
@@ -67,8 +67,8 @@ const RECORDER = () => {
 
 /**
  * Boxes (document coordinates) of the frame and of the tiles on the first screen: the header, the title row,
- * the count, the search field, the avatar strip, every control button above the grid, and per tile its cover,
- * title, shop, price and badge row.
+ * the count (in the filter row's readout), the search field, the avatar strip, every control button above the
+ * grid, and per tile its cover, title, shop, price and badge row.
  */
 const GEOMETRY = () => {
   const box = (el) => {
@@ -89,7 +89,7 @@ const GEOMETRY = () => {
   // streaming leaves <template> markers beside a pending boundary's fallback
   const elements = (el) =>
     [...(el?.children ?? [])].filter((c) => c.tagName !== "TEMPLATE");
-  out.count = box(elements(h1?.parentElement)[1]);
+  out.count = box(elements(main.querySelector("[data-readout]"))[0]);
   out.search = box(main.querySelector("input"));
   out.avatars = box(main.querySelector('[aria-roledescription="carousel"]'));
   const top = grid ? grid.getBoundingClientRect().top : Infinity;

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
 import { EARLY_CLICKS } from "@/lib/early-clicks";
 import "./globals.css";
+import "./filter-row.css";
 
 // The neutral theme's Latin face, self-hosted and preloaded; globals.css points the theme's font tokens at it.
 const figtree = Figtree({

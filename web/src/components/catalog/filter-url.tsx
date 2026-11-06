@@ -16,7 +16,6 @@ import {
 } from "react";
 import { fetchAccount } from "@/lib/api";
 import { DEFAULT_FILTERS, type Filters, filtersToQuery } from "@/lib/catalog";
-import { addQuery, loadHistory, saveHistory } from "@/lib/history";
 import { saveAvatar } from "@/lib/preferences";
 import { useDelayed } from "@/lib/use-delayed";
 
@@ -107,7 +106,6 @@ export function FilterUrlProvider({
           !patch.view && { view: "items" as const };
         const next = { ...current, ...view, ...patch };
         go(filtersToQuery(next), false, next);
-        if (patch.q) saveHistory(addQuery(loadHistory(), patch.q));
         if (patch.avatar !== undefined) {
           remember(patch.avatar);
           saveAvatar(patch.avatar);

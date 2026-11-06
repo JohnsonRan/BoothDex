@@ -1,0 +1,35 @@
+/* Documented deviation (docs/TEMPLATE-MAP.md): the table-filter template's StyleX rules that need a container query
+   or a pseudo-class (templates/pages/table-filter/page.tsx), written as plain classes because this app does not
+   compile StyleX. The rest of the row's rules are token-backed inline styles (components/catalog/filter-style.ts). */
+
+/* toolbarContainer (:1382-1385): the header is the toolbar's container, so the row responds to the width it has. */
+.filter-toolbar {
+  container: toolbar / inline-size;
+}
+
+/* toolbarPrimary (:1390-1395): below 860 px the filter row takes the whole line and the end cluster drops below. */
+.filter-toolbar-primary {
+  flex-basis: 0;
+}
+@container toolbar (max-width: 860px) {
+  .filter-toolbar-primary {
+    flex-basis: 100%;
+  }
+}
+
+/* searchSlot (:1500-1521): the search sits at the selectors' width and widens on focus; second to give way, after
+   the clauses. 120 / 240 px in rem, so the field scales with the text. */
+.filter-search {
+  flex-shrink: 1;
+  min-width: 7.5rem;
+  width: 7.5rem;
+  transition: width var(--duration-fast) var(--ease-standard);
+}
+.filter-search:focus-within {
+  width: 15rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .filter-search {
+    transition-duration: 0s;
+  }
+}

@@ -15,12 +15,10 @@ import { useAccount } from "./session";
 
 const AccountMenu = dynamic(() => import("./menu"), { ssr: false });
 const loadSignIn = () => import("@/components/frame/sign-in");
-const loadSaved = () => import("./saved-searches");
 const loadSettings = () => import("@/components/settings/settings-dialog");
 const SignInDialog = dynamic(() => loadSignIn().then((m) => m.SignInDialog), {
   ssr: false,
 });
-const SavedSearches = dynamic(loadSaved, { ssr: false });
 const SettingsDialog = dynamic(loadSettings, { ssr: false });
 
 // undefined: never opened, so that dialog's code is not loaded
@@ -30,22 +28,17 @@ export function Account() {
   const { t } = useUi();
   const { me, reload } = useAccount();
   const [signIn, setSignIn] = useState<Open>();
-  const [saved, setSaved] = useState<Open>();
   const [settings, setSettings] = useState<Open>();
   const signedIn = !!me;
   useEffect(
-    () => preloadWhenIdle(loadSettings, signedIn ? loadSaved : loadSignIn),
+    () => preloadWhenIdle(loadSettings, ...(signedIn ? [] : [loadSignIn])),
     [signedIn],
   );
 
   return (
     <>
       {me ? (
-        <AccountMenu
-          me={me}
-          onSavedSearches={() => setSaved(true)}
-          onSettings={() => setSettings(true)}
-        />
+        <AccountMenu me={me} onSettings={() => setSettings(true)} />
       ) : (
         <>
           <IconButton
@@ -73,9 +66,6 @@ export function Account() {
             reload();
           }}
         />
-      )}
-      {saved !== undefined && me && (
-        <SavedSearches isOpen={saved} onOpenChange={setSaved} />
       )}
       {settings !== undefined && (
         <SettingsDialog isOpen={settings} onOpenChange={setSettings} />

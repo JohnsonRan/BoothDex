@@ -1,4 +1,4 @@
-// Lazy surfaces (dialogs, the palette) keep their code out of the first load. Once the page has loaded and the
+// Lazy surfaces (dialogs, editors) keep their code out of the first load. Once the page has loaded and the
 // browser is idle, their code is fetched anyway, so a first open does not wait for the network; pointing at or
 // focusing a trigger starts it at once. The bundler loads each chunk once, so repeated calls cost nothing.
 

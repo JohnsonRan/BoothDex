@@ -1,5 +1,5 @@
-// The parts of the home page that wait for the search: the result count beside the title and the results
-// region. Both read the same pending search, each behind its own Suspense boundary (home-screen.tsx), so the
+// The parts of the home page that wait for the search: the result count in the filter row's readout and the
+// results region. Both read the same pending search, each behind its own Suspense boundary (home-screen.tsx), so the
 // frame around them is painted first.
 
 import { VStack } from "@astryxdesign/core/Stack";
@@ -25,7 +25,7 @@ export async function ResultCount({
   const t = translator(settings.ui);
   return (
     <Swap inline>
-      <Text type="supporting" hasTabularNumbers>
+      <Text type="supporting" color="secondary" hasTabularNumbers>
         {t("title.count", {
           n: o.result.count.toLocaleString(LOCALES[settings.ui]),
         })}

@@ -42,7 +42,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Page inset | `Layout padding={6}` on header and content |
 | Rhythm | `VStack gap={6}` between page sections, `gap={4}` within the control block, `gap={2}` between a tile's cover and text, `gap={1}` between text lines |
 | Grid | `Grid columns={{minWidth: 160}} gap={4}`: two columns on a 390 px phone, six to seven at 1440 px |
-| Control size | `lg` (36 px) for the whole control block: search, tabs, sort and every filter clause; `sm` for the buttons inside a clause's editor |
+| Control size | `sm` for the whole toolbar row, as the table-filter template: search, every filter clause, presets, sort, save and saved views |
 | Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="supporting"` (sm); price `Text type="body" weight="bold"` |
 | Colour | neutral theme tokens only, light and dark via `light-dark()`; no overrides |
 | Radius, elevation | component defaults |
@@ -51,20 +51,18 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 
 | Surface | Route / trigger | Astryx template | Status |
 |---|---|---|---|
-| Page frame | every route | page `shell-top-nav` (AppShell + TopNav, heading with master's logo; end actions: magnifier, language menu, currency menu, colour mode, account) | checkpoint 1 |
-| Home grid | `/` | page `library` (Card Grid): header with title, search, filter tabs + sort row, card grid, empty state | phase 1 |
+| Page frame | every route | page `shell-top-nav` (AppShell + TopNav, heading with master's logo; end actions: language menu, currency menu, colour mode, account) | checkpoint 1 |
+| Home grid | `/` | header: page `table-filter` (`LayoutHeader hasDivider` > indeterminate `ProgressBar` > `Section` > title row + toolbar row, page.tsx:4335-4500); body: page `library` (Card Grid) card grid, empty state | phase 1 |
 | Result tile | home grid | page `product-gallery`, `ProductCard` (square media; title, secondary line = shop icon and name, price `large` bold with a favourite `IconButton`); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`). The server renders the first 24 tiles; the rest of the page's 100 are drawn in the browser near the viewport, a tile silhouette holding their place | phase 1 |
-| Search | home, top of content | page `library` search `TextInput` (block `TextInputSearch`) | phase 1 |
-| Category / gender tabs, sort | home control row | page `library` (`ToggleButtonGroup` + `OverflowList`, `DropdownMenu`); a folded selected tab names the overflow menu | phase 1 |
-| Filter clauses | under the tabs | page `table-filter` filter row (block `ToolbarTableFilter`): one closed trigger per filter that doubles as its chip, folding from the end into "+N" (`Popover`; `BottomSheet` on phones), then Clear all. Editors: the template's Quote popup with block `PopoverFilterPanel`'s staged Apply | checkpoint 1 |
+| Search | home, leading the filter row | page `table-filter` search `TextInput size="sm"` (:3419-3430, `searchSlot`); Enter or a pause applies `q`, Ctrl/Cmd+K focuses it | phase 1 |
+| Filter clauses, sort, saved searches | the toolbar row | page `table-filter` `filterBar` (:3408-3494): one closed trigger per filter that doubles as its chip, folding from the end into "+N" (`FilterOverflow`, :2034-2121: `Popover`; `BottomSheet` on a compact surface), then the readout "{n} items • Clear all". End cluster: sort `DropdownMenu`, save (`IconButton`, `AdaptiveSavedViewForm` :2122), saved-views toggle swapping the row for `savedViewsBar` (:3495) | checkpoint 1 |
 | Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar exactly as page `product-detail`'s image thumbnails, lines 117-150: square `AspectRatio` > `SelectableCard variant="transparent" padding={0}` filling it > image filling and covering; name as caption below); the first 14 cards until the strip is touched, focused or scrolled | phase 1 |
-| Item detail | `?item=<id>`, tile click, palette item | page `product-detail` inside a `Dialog` (blocks `DialogAdaptivePresentation`, `DialogFullscreenDialog`, `DialogWithSubtitle`): gallery (block `CarouselSnap` hero, `SelectableCard` thumbnails, block `LightboxGallery` zoom), info column (SegmentedControl language tabs, display-2 title, rating row as likes, price row, `Badge` marks, `Banner` avatar fit, two lg actions, `CollapsibleGroup` sections with blocks `ListBasicList` and `MetadataListBasicMetadata`, `Token` chips), "More from" `Carousel` strip; full screen with a `LayoutFooter` bar below lg | phase 2 |
+| Item detail | `?item=<id>`, tile click | page `product-detail` inside a `Dialog` (blocks `DialogAdaptivePresentation`, `DialogFullscreenDialog`, `DialogWithSubtitle`): gallery (block `CarouselSnap` hero, `SelectableCard` thumbnails, block `LightboxGallery` zoom), info column (SegmentedControl language tabs, display-2 title, rating row as likes, price row, `Badge` marks, `Banner` avatar fit, two lg actions, `CollapsibleGroup` sections with blocks `ListBasicList` and `MetadataListBasicMetadata`, `Token` chips), "More from" `Carousel` strip; full screen with a `LayoutFooter` bar below lg | phase 2 |
 | Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
-| Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); refresh: nothing for 150 ms, then a `Spinner size="sm"` beside the count held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
-| Command palette | Ctrl/Cmd+K, top-bar magnifier | page `shell-nav` wiring + blocks `CommandPaletteAsyncSearch`, `CommandPaletteRichItems` | checkpoint 1 |
+| Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); refresh: nothing for 150 ms, then the template's indeterminate `ProgressBar` along the header's top edge (:4341-4347) held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
 | Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms) | checkpoint 1 |
-| Account menu | TopNav end, signed in | `DropdownMenu` with sections (block `DropdownMenuWithSections`): favourites, recently viewed, saved searches (block `DialogFormDialog`), admin console, settings, sign out | track D |
+| Account menu | TopNav end, signed in | `DropdownMenu` with sections (block `DropdownMenuWithSections`): favourites, recently viewed, admin console, settings, sign out | track D |
 | Language, item text, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio groups; currency as a ghost DropdownMenu button | checkpoint 1 |
 | Settings (appearance, language, currency, item text) | TopNav end, account menu | page `settings-dialog`; synced to the account when signed in | track D |
 | Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid; recently viewed is read in the browser) | track D |
@@ -144,14 +142,9 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 - Logo: master's SVG mark at 28 px instead of the template's `NavIcon` (the mark is itself a filled shape). On
   phones (< 640 px) the wordmark is visually hidden by a documented rule in `globals.css` (`.site-heading`), as on
   master: TopNavHeading has no prop for it, and five end actions do not fit beside a truncated name at 390 px.
-- End actions: the template's magnifier opens the palette instead of an inline search; the catalogue query keeps
-  the library template's full-width TextInput in the page. Both record recent searches in one list.
+- End actions: no magnifier or palette; the site search is the home page's filter row (Filter area below).
 - Currency: a ghost `DropdownMenu` button showing symbol and code ("¥ JPY") instead of an icon (owner: the coin
   icon was not understood); rows show symbol, code and the localised name.
-- Palette: Astryx renders it as a centred dialog on phones too (master: full screen with a back arrow); Back,
-  Esc and the backdrop close it. Removing a single recent search is not offered: palette rows may not contain
-  buttons (CommandPalette rule); "Clear recent searches" stays. Picking an item opens it on Booth until the item
-  dialog exists.
 - Sign-in: the login card's centring frame and Card are dropped inside the Dialog (as the reference board
   notes); no provider buttons or divider (no third-party sign-in). Tabs (TabList) switch sign-in and register.
 - Tile: secondary line is the shop (icon + name) instead of a two-line description; the price row ends
@@ -191,42 +184,47 @@ and menus (as shell-top-nav), `lg` for the strip's "All" glyph.
 
 ## Filter area (checkpoint 1, track A)
 
-Chosen structure: the Filterable Table template's default filter row, not its PowerSearch mode. The template
-itself keeps PowerSearch behind a toggle as the expert query bar (typed `field operator value` tokens); its
-default for a large filter set is the row of clause triggers, where a set clause is its own chip, so the
-tokens and the controls are one control at one height, nothing wraps (the row folds into "+N"), and phones
-get the folded set in a BottomSheet. The library template's search field and tabs stay above it (approved).
-Copies: `web/templates/pages/table-filter/page.tsx`, `blocks/ToolbarTableFilter.tsx`,
-`blocks/PopoverFilterPanel.tsx`; `blocks/PowerSearchPresetFilters.tsx` kept as the rejected alternative.
+The header is the Filterable Table template's (`web/templates/pages/table-filter/page.tsx`): its default filter row,
+not its PowerSearch mode. A set clause is its own chip, the row folds into "+N" instead of wrapping, and phones get
+the folded set in a BottomSheet. The site search leads the row; there is no separate search field, tab row or
+command palette.
 
 | Master filter | Clause | Not 1:1 |
 |---|---|---|
 | View: Items / Avatar bodies | preset `ToggleButton` "Avatar bodies" (hidden in favourites) | a toggle, not a two-way switch |
-| Content rating | `Selector` (All ages / All) with `hasClear`; All ages is the unset default | - |
-| Known avatars only (avatar view) | preset `ToggleButton`, pressed by default | - |
-| Gender (avatar view) | the tabs row, as before | - |
-| Category, smart counts | the tabs row; counts in each tab's tooltip and in the folded tabs' menu rows | counts are not printed on visible tabs: they arrive after the tabs and would widen them (layout shift) |
-| Price: free, presets, min/max, swap | `ComplexSelector` (the template's Quote shell) with `CheckboxInput`, `RadioList`, two `TextInput`s, Clear / Apply | a preset is cleared by choosing "Any", not by clicking it again (RadioList); no × on the trigger (ComplexSelector has no `hasClear`, as the template's Quote) |
+| Category, smart counts (items view) | `Selector`, counts as the option description | - |
+| Gender (avatar view) | `Selector` in the category's place | - |
+| Avatar | `Selector` with search (items view) | the avatar strip still sets it too |
+| Content rating | `Selector` (All ages / Everything) with `hasClear`; All ages is the unset default | - |
+| Known avatars only (avatar view) | preset `ToggleButton` | - |
+| Price: free, presets, min/max, swap | `ComplexSelector` (the template's Quote shell) with `CheckboxInput`, `RadioList`, two `TextInput`s, Clear / Apply | a preset is cleared by choosing "Any" (RadioList); no × on the trigger (ComplexSelector has no `hasClear`, as the template's Quote) |
 | Published range | `Selector` with `hasClear` | - |
 | Features with counts | `MultiSelector`; counts as the option description | - |
-| Include / exclude tags, search, counts | `ComplexSelector` whose editor is the tag picker; staged, Clear / Apply | the trigger shows tag names as stored (Japanese), not the display names |
-| Shop (palette pick) | `Selector` holding the one shop, × removes it | master showed it as a token |
-| Active-filter tokens | gone: each set clause is its chip; query, avatar and category are shown by the search field, the strip and the tabs | - |
-| Mobile drawer, Clear, "Show {n} items" | the "+N" BottomSheet (`height="hug"`) ends with Clear and "Show {n} items" | on phones the row keeps whatever fits before "+N" |
-| Sort | unchanged (library `DropdownMenu`) | - |
+| Include / exclude tags, search, counts | `ComplexSelector` whose editor is the tag picker; staged, Clear / Apply; the trigger shows display names | - |
+| Shop (the item dialog's "All items from shop") | `Selector` holding the one shop, × removes it | master showed it as a token |
+| Active-filter tokens | gone: each set clause is its chip; the query is in the search field | - |
+| Mobile drawer | the "+N" BottomSheet (`height="hug"`); on a compact surface every clause folds (`minVisibleItems={0}`) | - |
+| Sort | `DropdownMenu`, ghost `sm`, in the end cluster | - |
+| Saved searches (account menu dialog) | the template's saved views: save `IconButton` (bookmark-plus) opens `AdaptiveSavedViewForm` (name starts as the heading, at most 100 characters); the saved-views `ToggleButton` swaps the row for the bar of chips; the pencil on the active chip opens the edit form (rename, Copy RSS, delete). Signed out, both open sign-in; disabled with no filter; not offered in the favourites or recent views | delete has no confirmation step, as the template's edit form |
+
+Set clauses read as the template's triggers: a selector "field is value" (`renderValue`, :3250-3252), a
+multi-selector its first value and a count (:3315-3319), the price as the Quote range (`quoteLabel`, :2493-2499,
+with ≥ / ≤ as `OPERATOR_LABELS`). Chinese and Japanese write "is" as a full-width colon, Korean as ": ", the
+form those interfaces use for a field and its value. The saved search's summary uses the same words
+(`catalog/clause-text.ts`).
 
 Deviations, all prop values or token-backed inline styles:
 
-- Size `lg` instead of the template's `sm`: one size with the library row above (measured 36 px for search,
-  tabs, sort, presets, selectors, "+N" at 1440 and 390).
-- The template's StyleX rules (`filterChrome`, `filterSurface`, `filterFill`, the slot and readout sizing) are
-  `style`/`controlStyle` objects of the same tokens (`catalog/filter-style.ts`): the site has no StyleX
-  compiler. Popup editors are 300 px (the template's `quotePopover`). `READOUT_RESERVE` is 88 px (only Clear all; the count stays in the page header).
+- The header `Section` keeps `padding={6}` (24 px) where the template has 16 px, so the title and the grid
+  share one left edge (rule 5).
+- The template's StyleX rules (`filterChrome`, `filterSurface`, `filterFill`, slot and readout sizing) are
+  `style`/`controlStyle` objects of the same tokens (`catalog/filter-style.ts`); the ones that need a container
+  query or `:focus-within` (`toolbarContainer`, `toolbarPrimary`, `searchSlot`) are classes in
+  `app/filter-row.css`. The site has no StyleX compiler.
 - The fold's Popover moves focus in only when opened by keyboard (`hasAutoFocus`); a click leaves focus on the
-  trigger, so the first clause is not drawn focused. Clause popups keep their own focus handling.
-- `BottomSheet` and the price and tag editors load on first open (`next/dynamic`), as the old filter panel did.
-- Icons: all through the theme registry (`chevronDown`, `close`, `search`, lucide in the neutral theme);
-  include/exclude in the tag editor are lucide `Plus`/`Minus` passed to `Icon`; checkmarks are CSS, no SVG.
+  trigger. Clause popups keep their own focus handling.
+- `BottomSheet`, the price and tag editors and the saved-views code load after the page (`next/dynamic`,
+  `lib/preload`).
 
 ## Deviations in phase 2 (item detail)
 
