@@ -85,6 +85,9 @@ export default function AccountMenu({
     <DropdownMenu
       placement="below"
       alignment="end"
+      // the default 300 px cap scrolled the admin's six rows in themes with tall rows (Matcha's are 55 px); a
+      // short menu should show whole, and the viewport still bounds it (DropdownMenu.js: menuMaxHeight)
+      menuMaxHeight={480}
       items={items}
       renderTrigger={(props) => <AccountTrigger {...props} name={name} />}
     />
