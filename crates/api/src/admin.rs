@@ -1,4 +1,4 @@
-//! Admin console API: overview metrics, job queue control, schedules, catalogue reload, live SSE stream.
+//! Admin console API: overview metrics and daily trends, job queue control, schedules, catalogue reload, live SSE stream.
 //! Access: users.is_admin. `ADMIN_USERNAMES` (comma-separated) sets exactly who is admin at startup.
 
 use std::convert::Infallible;
@@ -89,6 +89,8 @@ macro_rules! admin {
         }
     };
 }
+
+mod trends;
 
 async fn overview_json(s: &AppState) -> Result<Value, ApiError> {
     let data: Value = sqlx::query_scalar(
@@ -433,6 +435,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/admin/settings/ai", put(put_ai))
         .route("/api/admin/settings/ai/test", post(test_ai))
         .route("/api/admin/overview", get(overview))
+        .route("/api/admin/trends", get(trends::trends))
         .route("/api/admin/stream", get(stream))
         .route("/api/admin/jobs", get(list_jobs).post(create_job))
         .route("/api/admin/jobs/{id}", get(get_job))

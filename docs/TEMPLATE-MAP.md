@@ -70,9 +70,9 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid; recently viewed is read in the browser) | track D |
 | Admin frame | `/admin/*` | page `shell-side-nav` (collapsible, resizable `SideNav`, two titled groups, footer: back to site, language, colour mode; phone drawer from `AppShell`) | track F |
 | Admin sign-in, not an admin, unreachable | `/admin/*` before the probe succeeds | `EmptyState` inside the frame; sign-in opens the site's `login-card` dialog, sign-in only under the admin heading | track F |
-| Admin overview | `/admin` | page `dashboard` (`MetricCard` grid, `Divider`, titled section of meters with `ProgressBar`); header `StatusDot` + text as page `incident-console` | track F |
-| Crawler tasks | `/admin/jobs` | page `incident-console` list rows (`List` compact with dividers, status `Token`); stop and run options through blocks `AlertDialogAsyncAction` and `DialogFormDialog` | track F |
-| Crawler history | `/admin/jobs/history` | page `incident-console` rows and `EmptyState`; kind and status `Selector`s in the URL; details in a `Dialog` with the inspector's `MetadataList` | track F |
+| Admin overview | `/admin` | page `dashboard-scorecard`: titled bands (catalogue, crawler, system) 40 px apart, each a tight tile grid (gap 8 px, four across, two on a phone) with the daily `TrendChart` cards under the tiles they explain (recharts, loaded on first use, admin only); usage tiles keep page `dashboard`'s `ProgressBar` (warning from 80 %, error from 90 %); tiles use padding 16 px, not 20, for density; header `StatusDot` + text as page `incident-console` | track F |
+| Crawler tasks | `/admin/jobs` | header as page `detail-page` (title row, then `TabList size="lg" isFullBleed` on the header divider); page `incident-console` list rows (`List` compact with dividers, status `Token`); stop and run options through blocks `AlertDialogAsyncAction` and `DialogFormDialog` | track F |
+| Crawler history | `/admin/jobs/history` | the tasks page's header and tabs; page `incident-console` rows and `EmptyState`; kind and status `Selector`s in the URL; details in a `Dialog` with the inspector's `MetadataList` | track F |
 | Admin settings (AI provider, reset password) | `/admin/settings` | page `settings` (two-column sections with `Divider`); key overwrite and reset behind `AlertDialog` | track F |
 
 ## Deviations from the templates in phase 1

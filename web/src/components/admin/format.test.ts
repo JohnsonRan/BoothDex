@@ -1,16 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { format } from "@/lib/messages";
 import { formatBytes, formatSeconds, intervalLabel, jobEta } from "./format";
-import type { AdminT } from "./messages";
+import type { AdminKey, AdminT } from "./messages";
 import { adminEn } from "./messages-en";
+import { adminJa } from "./messages-ja";
 import { adminZh } from "./messages-zh";
 import type { Job } from "./types";
 
 const t: AdminT = (key, vars) => format(adminEn[key], vars);
 
 describe("admin format", () => {
-  test("every Chinese key has an English string", () => {
-    expect(Object.keys(adminEn).sort()).toEqual(Object.keys(adminZh).sort());
+  test("every Chinese key has an English and a Japanese string with the same placeholders", () => {
+    const slots = (s: string) =>
+      [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+    for (const dict of [adminEn, adminJa]) {
+      expect(Object.keys(dict).sort()).toEqual(Object.keys(adminZh).sort());
+      for (const [key, zh] of Object.entries(adminZh))
+        expect([key, slots(dict[key as AdminKey])]).toEqual([key, slots(zh)]);
+    }
   });
 
   test("bytes step by 1024 and keep one decimal below 100", () => {

@@ -1,6 +1,6 @@
 "use client";
-// The crawler's two pages share one title with an underline tab row of links (Tasks, History), as the reference
-// admin puts sub-pages under their title.
+// The crawler's two pages share one title with a tab row of links (Tasks, History) in the header, as the
+// Astryx template detail-page lays out its tabs (templates/pages/detail-page/page.tsx:252-260: size lg, full bleed).
 
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { useAdminT } from "./messages";
@@ -21,7 +21,7 @@ export function JobsFrame({
       title={t("nav.jobs")}
       tabs={
         // the tabs are links: navigation selects them, so there is no state to change
-        <TabList value={TABS[tab]} onChange={() => {}}>
+        <TabList value={TABS[tab]} onChange={() => {}} size="lg" isFullBleed>
           <Tab value={TABS.tasks} href={TABS.tasks} label={t("jobs.tasks")} />
           <Tab
             value={TABS.history}
