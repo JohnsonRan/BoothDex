@@ -6,6 +6,7 @@ import {
   filtersToQuery,
   imageSrc,
   imgUrl,
+  markTokens,
   parseFilters,
   priceOf,
   queryWords,
@@ -161,9 +162,37 @@ test("the query splits into words, a quoted phrase staying one", () => {
 });
 
 test("the search field's width follows the query's words", () => {
-  expect(searchWidth("")).toBe(5);
-  expect(searchWidth("mao")).toBeCloseTo(8.1);
+  expect(searchWidth("")).toBe(6);
+  expect(searchWidth("mao")).toBeCloseTo(9.1);
   // kana are about twice a Latin letter
   expect(searchWidth("ショート")).toBeGreaterThan(searchWidth("short"));
   expect(searchWidth("mao short")).toBeGreaterThan(searchWidth("maoshort"));
+});
+
+test("the words of a mark make one token, where they stand together", () => {
+  const model = { words: ["Mao"], id: "m" };
+  const category = { words: ["short", "hair"], id: "c" };
+  const tokens = (q: string, marks: (typeof model)[]) =>
+    markTokens(queryWords(q), marks).map((t) => [t.label, t.mark?.id]);
+  expect(tokens("Mao short hair", [model, category])).toEqual([
+    ["Mao", "m"],
+    ["short hair", "c"],
+  ]);
+  // apart in the query: the category marks nothing
+  expect(tokens("short Mao hair", [model, category])).toEqual([
+    ["short", undefined],
+    ["Mao", "m"],
+    ["hair", undefined],
+  ]);
+  // the previous query's marks, until the new one answers
+  expect(tokens("Mao hair", [model, category])).toEqual([
+    ["Mao", "m"],
+    ["hair", undefined],
+  ]);
+  // a word marked once
+  expect(tokens("Mao Mao", [model])).toEqual([
+    ["Mao", "m"],
+    ["Mao", undefined],
+  ]);
+  expect(tokens("", [model])).toEqual([]);
 });

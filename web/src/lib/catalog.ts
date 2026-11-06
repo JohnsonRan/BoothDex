@@ -218,13 +218,47 @@ export function searchQuery(f: Filters, page: number, pageSize = 30) {
 export const queryWords = (q: string) => q.match(/"[^"]*"?|[^\s"]+/g) ?? [];
 
 /**
+ * The search field's tokens for `words` (`queryWords`): a word each, but the words of a mark (a model or category
+ * the search read them as) one token together, when they stand together in the query; a mark whose words do not
+ * ("short mao hair": the category's "short hair") or that does not fit the words (the marks of the query before,
+ * until the new one answers) marks nothing.
+ */
+export function markTokens<M extends { words: string[] }>(
+  words: string[],
+  marks: M[],
+) {
+  const starts = new Map<number, M>();
+  const taken = new Set<number>();
+  for (const m of marks) {
+    const n = m.words.length;
+    const at = words.findIndex(
+      (_, i) =>
+        n > 0 &&
+        m.words.every((w, k) => words[i + k] === w && !taken.has(i + k)),
+    );
+    if (at < 0) continue;
+    starts.set(at, m);
+    for (let k = 0; k < n; k++) taken.add(at + k);
+  }
+  const out: { label: string; mark?: M }[] = [];
+  for (let i = 0; i < words.length; ) {
+    const mark = starts.get(i);
+    const n = mark?.words.length ?? 1;
+    out.push({ label: words.slice(i, i + n).join(" "), mark });
+    i += n;
+  }
+  return out;
+}
+
+/**
  * The width in rem the search field's tokens take for `q` (catalog/search-suggest.tsx), so the field grows with
  * the query, the plain field before them as wide already. Measured on the field's `sm` tokens: a token is 1.85rem
- * besides its text, 0.25rem apart; a Latin letter about 0.32rem, a kana or kanji 0.75rem. 5rem: the search
- * icon, the clear button and the paddings.
+ * besides its text, 0.25rem apart; a Latin letter about 0.32rem, a kana or kanji 0.75rem. 6rem: the search
+ * icon, the clear button and the paddings, and 1rem for a mark's picture (`markTokens`), which arrives with the
+ * answer: the field keeps its width then (a model's token is 1rem wider, a category's words one token, narrower).
  */
 export function searchWidth(q: string) {
-  let rem = 5;
+  let rem = 6;
   for (const w of queryWords(q)) {
     rem += 2.1;
     for (const c of w) rem += (c.codePointAt(0) ?? 0) >= 0x2e80 ? 0.75 : 0.32;

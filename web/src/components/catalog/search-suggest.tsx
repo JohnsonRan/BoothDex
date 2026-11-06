@@ -4,21 +4,24 @@
 // filter row's `sm` size. An empty field offers the recent searches; typing offers /api/palette's groups, each row a
 // TypeaheadItem with a leading picture and a muted second line (the component's own example, TypeaheadItem.tsx
 // :112-122). Each word of the applied query is a token, as on Mercari: its × (or Backspace) searches without it.
-// Enter with no row highlighted adds the typed words and searches; the API matches every word either way.
-// shortcut: tokens are plain words; marking the ones the API read as a model or category needs it to report them.
+// Enter with no row highlighted adds the typed words and searches; the API matches every word either way. Once the
+// search answers, the words it read as a model or a smart category (its `recognized`) are one token, led by the
+// model's picture or a category glyph and described as what they were read as.
 
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { VStack } from "@astryxdesign/core/Stack";
+import { Token } from "@astryxdesign/core/Token";
 import { Tokenizer } from "@astryxdesign/core/Tokenizer";
+import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { TypeaheadItem } from "@astryxdesign/core/Typeahead";
 import { type RefObject, useEffect, useMemo, useRef } from "react";
 import { useItemOpener, useRates } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
-import { queryWords } from "@/lib/catalog";
+import { markTokens, queryWords } from "@/lib/catalog";
 import { loadHistory, saveHistory } from "@/lib/history";
-import { CONTROL_SIZE } from "./filter-style";
+import { CONTROL_SIZE, type SearchMark } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
 import { useSearch } from "./search-box";
 import { type Row, searchSource } from "./search-source";
@@ -35,7 +38,11 @@ const ICONS = {
   search: "search",
   tag: "site:tag",
   clear: "site:clear",
+  category: "site:category",
 } as const;
+
+/** Avatar's box in an `sm` token, the size of the token's own glyphs */
+const AVATAR_TOKEN = 16;
 
 /** 1 search row + /api/palette's 5 avatars, 8 items, 5 shops and 5 tags (crates/api/src/main.rs `palette`) */
 const MAX_ROWS = 24;
@@ -57,10 +64,13 @@ function type(input: HTMLInputElement, text: string) {
 export function SearchSuggest({
   inputRef,
   handover,
+  marks,
 }: {
   inputRef: RefObject<HTMLInputElement | null>;
   /** the plain field's state when this one replaced it: focused, and the text typed into it */
   handover: { isFocused: boolean; text: string };
+  /** what the search read the query's words as, once it answers */
+  marks?: SearchMark[];
 }) {
   const { t, settings } = useUi();
   const { filters, apply } = useFilterUrl();
@@ -73,13 +83,14 @@ export function SearchSuggest({
   );
 
   // the position keeps a repeated word its own token, and the ids clear of the rows' (search-source.ts)
-  const tokens = useMemo(
-    () =>
-      queryWords(filters.q).map(
-        (w, i): Row => ({ id: `w${i}:${w}`, label: w }),
-      ),
-    [filters.q],
-  );
+  const [tokens, markOf] = useMemo(() => {
+    const words = markTokens(queryWords(filters.q), marks ?? []);
+    const ids = words.map((w, i) => `w${i}:${w.label}`);
+    return [
+      words.map((w, i): Row => ({ id: ids[i], label: w.label })),
+      new Map(words.flatMap((w, i) => (w.mark ? [[ids[i], w.mark]] : []))),
+    ] as const;
+  }, [filters.q, marks]);
   /** the query's words with `more` after them */
   const plus = (more: string) =>
     [...tokens.map((w) => w.label), ...queryWords(more)].join(" ");
@@ -162,6 +173,42 @@ export function SearchSuggest({
       maxMenuItems={MAX_ROWS}
       debounceMs={DEBOUNCE_MS}
       emptySearchText={t("suggest.empty")}
+      renderToken={(word, remove) => {
+        const mark = markOf.get(word.id);
+        const token = (
+          <Token label={word.label} size={CONTROL_SIZE} onRemove={remove} />
+        );
+        if (!mark) return token;
+        // what the search read the words as: "Avatar: Mao", "Categories: Hair · Short"
+        const read = t("filter.clause", {
+          field: t(
+            mark.kind === "model" ? "filter.avatar" : "filter.categories",
+          ),
+          value: mark.name,
+        });
+        return (
+          <Tooltip content={read}>
+            <Token
+              label={word.label}
+              size={CONTROL_SIZE}
+              onRemove={remove}
+              description={read}
+              icon={
+                mark.kind === "model" ? (
+                  <Avatar
+                    src={mark.image}
+                    name={mark.name}
+                    size={AVATAR_TOKEN}
+                    tooltip={false}
+                  />
+                ) : (
+                  <Icon icon={ICONS.category} size="sm" color="secondary" />
+                )
+              }
+            />
+          </Tooltip>
+        );
+      }}
       onKeyDown={(e) => {
         // Enter on a highlighted row picks it (the Tokenizer's own handling); keys on the tokens are their own
         const input = e.currentTarget;

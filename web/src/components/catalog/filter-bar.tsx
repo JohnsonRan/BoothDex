@@ -49,7 +49,8 @@ export function FilterBar({
   count: ReactNode;
 }) {
   const isCompactSurface = useMediaQuery(COMPACT_SURFACE_QUERY);
-  const clauses = useClauses(useFacets(facets), names);
+  const answered = useFacets(facets);
+  const clauses = useClauses(answered, names);
   // The server cannot measure, so its row holds every clause; the list folds them while hydrating. Until then the
   // list spans the slot, as a folded list does (OverflowList's fillParent), keeps back the fold trigger's place
   // and wraps the clauses that do not fit out of sight (app/filter-row.css), so the clauses shown and the readout
@@ -67,7 +68,7 @@ export function FilterBar({
       minHeight={32}
       className="filter-row"
     >
-      <SearchBox />
+      <SearchBox marks={answered?.marks} />
       {/* filterOverflowSlot (:1350-1372): the slot, not the list, carries the sizing */}
       <StackItem className="filter-slot">
         <OverflowList

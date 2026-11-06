@@ -14,9 +14,13 @@ import { RecentCount, RecentResults } from "@/components/account/recent-view";
 import { ViewActions } from "@/components/account/view-actions";
 import { SiteFrame } from "@/components/frame/site-frame";
 import { Providers } from "@/components/providers";
+import type { SearchResponse } from "@/lib/api-types";
 import {
+  type Avatar,
   avatarName,
+  type Category,
   type Filters,
+  imageSrc,
   localName,
   parseFilters,
   RAW_QUERY_HEADER,
@@ -36,7 +40,7 @@ import type { Rates, Settings } from "@/lib/settings-core";
 import { Arrival } from "./arrival";
 import { AvatarStrip } from "./avatar-strip";
 import type { ClauseNames } from "./clause-text";
-import type { Facets } from "./filter-style";
+import type { Facets, SearchMark } from "./filter-style";
 import { FilterUrlProvider } from "./filter-url";
 import { CountSilhouette, ResultsSilhouette } from "./loading";
 import { RefreshProgress } from "./refresh";
@@ -87,6 +91,39 @@ export async function HomeScreen({
   );
 }
 
+/**
+ * The search's `recognized`, each named for its token: a model by the avatar list (a model outside it keeps its
+ * slug, and no picture), a category by the taxonomy, a subcategory after its parent ("Hair · Braids").
+ */
+function marks(
+  r: SearchResponse,
+  avatars: Avatar[],
+  categories: Category[],
+  ui: string,
+): SearchMark[] {
+  const names = new Map(
+    categories.flatMap((p) => [
+      [p.slug, localName(p, ui)],
+      ...p.children.map(
+        (c) => [c.slug, `${localName(p, ui)} · ${localName(c, ui)}`] as const,
+      ),
+    ]),
+  );
+  // an API from before `recognized` leaves it out
+  return (r.recognized ?? []).map(({ kind, slug, words }) => {
+    if (kind === "model") {
+      const a = avatars.find((a) => a.slug === slug);
+      return {
+        kind,
+        words,
+        name: a ? avatarName(a, ui) : slug,
+        image: imageSrc(a?.image_url) || undefined,
+      };
+    }
+    return { kind, words, name: names.get(slug) ?? slug };
+  });
+}
+
 async function Catalog({
   settings,
   filters,
@@ -135,8 +172,9 @@ async function Catalog({
               ),
             ),
             features: o.result.featureCounts,
+            marks: marks(o.result, avatars, categories, settings.ui),
           }
-        : { count: 0, smart: {}, features: {} },
+        : { count: 0, smart: {}, features: {}, marks: [] },
   );
   const title = recent
     ? t("title.recent")

@@ -9,6 +9,19 @@ export type Facets = {
   count: number;
   smart: Record<string, number>;
   features: Record<string, number>;
+  /** what the search read the query's words as: their tokens show it (search-suggest.tsx) */
+  marks: SearchMark[];
+};
+
+/** Query words the search took as a model or a smart category (the API's `recognized`), named for their token. */
+export type SearchMark = {
+  kind: "model" | "category";
+  /** as typed */
+  words: string[];
+  /** in the visitor's language */
+  name: string;
+  /** a model's picture */
+  image?: string;
 };
 
 /** Every control of the toolbar row is the template's `sm`. */

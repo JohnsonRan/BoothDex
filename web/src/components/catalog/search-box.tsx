@@ -13,7 +13,7 @@ import { useUi } from "@/components/providers";
 import { searchWidth } from "@/lib/catalog";
 import { recordQuery } from "@/lib/history";
 import { preloadWhenIdle } from "@/lib/lazy";
-import { CONTROL_SIZE } from "./filter-style";
+import { CONTROL_SIZE, type SearchMark } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
 
 const loadSuggest = () => import("./search-suggest");
@@ -58,7 +58,12 @@ export function SearchShortcut() {
   return null;
 }
 
-export function SearchBox() {
+export function SearchBox({
+  marks,
+}: {
+  /** the search's reading of the query's words, once it answers (search-suggest.tsx) */
+  marks?: SearchMark[];
+}) {
   const { t } = useUi();
   const { filters } = useFilterUrl();
   const search = useSearch();
@@ -121,7 +126,11 @@ export function SearchBox() {
   if (suggest)
     return (
       <StackItem {...slot}>
-        <suggest.Field inputRef={input} handover={suggest.handover} />
+        <suggest.Field
+          inputRef={input}
+          handover={suggest.handover}
+          marks={marks}
+        />
       </StackItem>
     );
 

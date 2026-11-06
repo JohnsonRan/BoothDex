@@ -18,6 +18,7 @@ import {
   Pencil,
   Plus,
   Rss,
+  Shapes,
   SwatchBook,
   Type,
 } from "lucide-react";
@@ -36,6 +37,8 @@ registerIcons({
   "site:currency": <Coins {...glyph} />,
   "site:code": <Code {...glyph} />,
   "site:tag": <Hash {...glyph} />,
+  // a search word read as a category (catalog/search-suggest.tsx)
+  "site:category": <Shapes {...glyph} />,
   "site:edit": <Pencil {...glyph} />,
   "site:feed": <Rss {...glyph} />,
   "site:add": <Plus {...glyph} />,
