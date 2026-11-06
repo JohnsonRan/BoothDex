@@ -48,8 +48,6 @@ export function FilterBar({
   /** the result count, rendered on the server when the search answers */
   count: ReactNode;
 }) {
-  const { t } = useUi();
-  const { filters: f, apply } = useFilterUrl();
   const isCompactSurface = useMediaQuery(COMPACT_SURFACE_QUERY);
   const clauses = useClauses(useFacets(facets), names);
   // The server cannot measure, so its row holds every clause; the list folds them while hydrating. Until then the
@@ -58,9 +56,6 @@ export function FilterBar({
   // already sit where they will stay. The readout is laid out but not shown until the fold.
   const [isFolded, setIsFolded] = useState(false);
   useLayoutEffect(() => setIsFolded(true), []);
-  // the template's hasFilters (:2958): any clause or a search
-  const hasFilters =
-    activeFilterCount(f) > 0 || !!f.q || !!f.author || !!f.avatar;
 
   return (
     // filterRow (:1329): one line at every width
@@ -97,7 +92,8 @@ export function FilterBar({
         >
           {clauses}
         </OverflowList>
-        {/* filterMeta (:1406-1410): draws over the reserve, against the last clause */}
+        {/* filterMeta (:1406-1410): draws over the reserve, against the last clause; the count and "Clear all"
+            arrive together (results.tsx), so nothing in it moves when the count replaces its silhouette */}
         <HStack
           gap={2}
           vAlign="center"
@@ -111,25 +107,35 @@ export function FilterBar({
           }}
         >
           {count}
-          {hasFilters && (
-            <>
-              <Text type="supporting" color="secondary">
-                •
-              </Text>
-              {/* href-less, so Link renders a button: this resets the filters, it does not navigate */}
-              <Link
-                type="supporting"
-                onClick={() =>
-                  apply({ ...FILTER_RESET, q: "", author: "", avatar: "" })
-                }
-              >
-                {t("filter.clearAll")}
-              </Link>
-            </>
-          )}
         </HStack>
       </StackItem>
     </HStack>
+  );
+}
+
+/** The readout's "• Clear all" (:3478-3491), after the count; with no count (a failed search), "Clear all" alone. */
+export function ClearAll({ afterCount }: { afterCount: boolean }) {
+  const { t } = useUi();
+  const { filters: f, apply } = useFilterUrl();
+  // the template's hasFilters (:2958): any clause or a search
+  if (!(activeFilterCount(f) > 0 || f.q || f.author || f.avatar)) return null;
+  return (
+    <>
+      {afterCount && (
+        <Text type="supporting" color="secondary">
+          •
+        </Text>
+      )}
+      {/* href-less, so Link renders a button: this resets the filters, it does not navigate */}
+      <Link
+        type="supporting"
+        onClick={() =>
+          apply({ ...FILTER_RESET, q: "", author: "", avatar: "" })
+        }
+      >
+        {t("filter.clearAll")}
+      </Link>
+    </>
   );
 }
 

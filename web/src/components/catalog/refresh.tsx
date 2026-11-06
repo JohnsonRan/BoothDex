@@ -61,13 +61,7 @@ export function RefreshProgress() {
  * Content a refresh replaces (the count, the results). When the replacement comes after the indicator showed,
  * it fades in; a quick one replaces the old content as is, so nothing appears to happen but the change itself.
  */
-export function Swap({
-  inline = false,
-  children,
-}: {
-  inline?: boolean;
-  children: ReactNode;
-}) {
+export function Swap({ children }: { children: ReactNode }) {
   const { shown } = useRefresh();
   const ref = useRef<HTMLDivElement>(null);
   const armed = useRef(false);
@@ -88,17 +82,7 @@ export function Swap({
     armed.current = false;
     return cancelOnReducedMotion(swapIn(ref.current));
   }, [children]);
-  return (
-    // inline (the count): as wide as its silhouette, so nothing after it moves when it arrives; the text ends
-    // against what follows, as the template's readout reads
-    <VStack
-      ref={ref}
-      hAlign={inline ? "end" : undefined}
-      style={inline ? { display: "inline-flex", minWidth: "6em" } : undefined}
-    >
-      {children}
-    </VStack>
-  );
+  return <VStack ref={ref}>{children}</VStack>;
 }
 
 /**

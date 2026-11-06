@@ -1,6 +1,6 @@
-// The parts of the home page that wait for the search: the result count in the filter row's readout and the
-// results region. Both read the same pending search, each behind its own Suspense boundary (home-screen.tsx), so the
-// frame around them is painted first.
+// The parts of the home page that wait for the search: the result count in the filter row's readout, with the
+// readout's "Clear all" so the two arrive together, and the results region. Both read the same pending search,
+// each behind its own Suspense boundary (home-screen.tsx), so the frame around them is painted first.
 
 import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
@@ -8,6 +8,7 @@ import { type Filters, searchQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
 import type { SearchOutcome } from "@/lib/server-data";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
+import { ClearAll } from "./filter-bar";
 import { LazyPager } from "./lazy-pager";
 import { KeepResults, Swap } from "./refresh";
 import { EmptyResults, SemanticNote } from "./result-states";
@@ -25,27 +26,30 @@ export async function ResultCount({
   hasQuery: boolean;
 }) {
   const o = await outcome;
-  if (o.state !== "ok") return null;
+  if (o.state !== "ok") return <ClearAll afterCount={false} />;
   const t = translator(settings.ui);
   const count = t("title.count", {
     n: o.result.count.toLocaleString(LOCALES[settings.ui]),
   });
   return (
-    <Swap inline>
-      {hasQuery ? (
-        <SearchTrace
-          count={count}
-          semantic={o.result.semantic}
-          steps={o.result.trace}
-          serverMs={o.result.timing.totalMs}
-          totalMs={o.ms}
-        />
-      ) : (
-        <Text type="supporting" color="secondary" hasTabularNumbers>
-          {count}
-        </Text>
-      )}
-    </Swap>
+    <>
+      <Swap>
+        {hasQuery ? (
+          <SearchTrace
+            count={count}
+            semantic={o.result.semantic}
+            steps={o.result.trace}
+            serverMs={o.result.timing.totalMs}
+            totalMs={o.ms}
+          />
+        ) : (
+          <Text type="supporting" color="secondary" hasTabularNumbers>
+            {count}
+          </Text>
+        )}
+      </Swap>
+      <ClearAll afterCount />
+    </>
   );
 }
 
