@@ -319,6 +319,8 @@ Deviations, all prop values or token-backed inline styles:
   the viewport still bounds them.
 - Search tokens: the Tokenizer's cap of a token's wrapper at the field's width is lifted (`app/filter-row.css`),
   so a token in a phone's narrow field keeps its words and the field scrolls them sideways.
+- Matcha and Y2K popups: a Selector's 300 px list cap and a ComplexSelector's 480 px panel cap grow by the themes'
+  1.5 times spacing (`themes/matcha.css`, `themes/y2k.css`), so an 8-row list and the price panel show whole.
 
 Checked and kept as the template:
 
