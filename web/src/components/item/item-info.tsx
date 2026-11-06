@@ -1,7 +1,8 @@
 "use client";
 // The info column, from the product-detail template's ProductInfo (page.tsx:156-273), in its order: a VStack
-// gap 5 holding the title block (gap 2: title as display-2, the rating row, the price row with its Badge),
-// option controls, the two large action buttons, then the CollapsibleGroup of sections (item-sections.tsx).
+// gap 5 holding the title block (gap 2: title as display-2, on a phone as the site's page title; the rating row,
+// the price row with its Badge), option controls, the two large action buttons, then the CollapsibleGroup of
+// sections (item-sections.tsx).
 // BoothDex fills it with master's details: the language tabs as the template's SegmentedControl, likes in the
 // rating row, "listed at … why different?" in the price row, rating, features, Quest, Delisted and Relisted as
 // Badges, the avatar-fit Banner, and Buy on Booth / favourite / copy link as the actions. Phones get the
@@ -15,7 +16,7 @@ import {
   SegmentedControlItem,
 } from "@astryxdesign/core/SegmentedControl";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
-import { Text } from "@astryxdesign/core/Text";
+import { Heading, Text } from "@astryxdesign/core/Text";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
@@ -88,9 +89,14 @@ export function ItemInfo({
             </SegmentedControl>
           </VStack>
         )}
-        <Text type="display-2" as="h1">
-          {itemText(item, "title", lang)}
-        </Text>
+        {/* display-2 (page.tsx:167) is drawn for a 1200 px page; a phone's column takes the page title's type */}
+        {isWide ? (
+          <Text type="display-2" as="h1">
+            {itemText(item, "title", lang)}
+          </Text>
+        ) : (
+          <Heading level={1}>{itemText(item, "title", lang)}</Heading>
+        )}
         {/* the template's rating row (StarRating, page.tsx:55-72) */}
         <HStack gap={1} vAlign="center">
           <Icon icon="site:favourite" size="sm" color="secondary" />

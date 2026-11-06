@@ -268,6 +268,10 @@ Deviations, all prop values or token-backed inline styles:
 - Container: the template is a page; here it is a `Dialog` 1200 px wide (the template's `contentWidth`) and 92dvh
   tall (master), the fullscreen variant below 1024 px (master's lg). On phones the actions move to a
   `LayoutFooter` bar (price, favourite, Buy on Booth), as master's sticky bar.
+- Inset: the dialog blocks' default (`LayoutContent` without padding, block DialogFullscreenDialog.tsx:71), so
+  header, content and the phone footer share one edge; the template's page padding 6 set the body inside them.
+- Title: `display-2` from lg; on a phone the page title's `Heading level={1}`, as display-2 took three or four
+  lines of a 335 px column.
 - Header: `DialogHeader` names the shop (avatar as start content, host as subtitle, "All items from shop" as end
   content); the dialog's accessible name is the item title. Master had the shop block at the top of the info
   column.

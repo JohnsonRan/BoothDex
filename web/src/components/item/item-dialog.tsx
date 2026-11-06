@@ -143,8 +143,9 @@ export default function ItemDialog({
           )
         }
         content={
-          // template: LayoutContent padding={6}
-          <LayoutContent padding={6}>
+          // the dialog blocks' default inset (DialogFullscreenDialog.tsx:71), the header's and the footer's: one
+          // edge for all three, where the page template's padding 6 put the body inside them
+          <LayoutContent>
             {item ? (
               <VStack gap={6}>
                 <Grid {...COLUMNS} gap={5}>

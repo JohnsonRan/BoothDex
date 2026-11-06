@@ -16,7 +16,7 @@ import type { remColumns } from "@/lib/grid";
 // (master used 92 %, which put the dialog against the top bar)
 export const MAX_HEIGHT = "75dvh";
 
-type TextType = "display-2" | "body" | "large" | "supporting";
+type TextType = "display-2" | "heading-1" | "body" | "large" | "supporting";
 
 function Line({ type, width }: { type: TextType; width: string }) {
   return (
@@ -80,6 +80,8 @@ export function DetailSilhouette({
   columns: ReturnType<typeof remColumns>;
 }) {
   const { t } = useUi();
+  // the title's type (item-info.tsx)
+  const title = isWide ? "display-2" : "heading-1";
   return (
     <Grid
       gap={5}
@@ -104,8 +106,8 @@ export function DetailSilhouette({
         <VStack gap={2}>
           <Control size="sm" width="12rem" />
           <VStack>
-            <Line type="display-2" width="100%" />
-            <Line type="display-2" width="55%" />
+            <Line type={title} width="100%" />
+            <Line type={title} width="55%" />
           </VStack>
           <Line type="body" width="3rem" />
           <Line type="large" width="6rem" />
