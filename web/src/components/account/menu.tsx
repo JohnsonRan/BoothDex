@@ -16,6 +16,7 @@ import { useUi } from "@/components/providers";
 import { type Me, useAccount } from "./session";
 import { AccountTrigger } from "./trigger";
 import "@/lib/icons-on-demand";
+import { MENU_MAX_HEIGHT } from "@/lib/menu-height";
 
 const icon = (name: `site:${string}`) => <Icon icon={name} size="sm" />;
 
@@ -85,9 +86,9 @@ export default function AccountMenu({
     <DropdownMenu
       placement="below"
       alignment="end"
-      // the default 300 px cap scrolled the admin's six rows in themes with tall rows (Matcha's are 55 px); a
-      // short menu should show whole, and the viewport still bounds it (DropdownMenu.js: menuMaxHeight)
-      menuMaxHeight={480}
+      // the default 300 px cap scrolled the admin's six rows in themes with tall rows (Matcha's are 55 px) and at the
+      // page's 115 % scale; a short menu should show whole, and the viewport still bounds it (lib/menu-height)
+      menuMaxHeight={MENU_MAX_HEIGHT}
       items={items}
       renderTrigger={(props) => <AccountTrigger {...props} name={name} />}
     />

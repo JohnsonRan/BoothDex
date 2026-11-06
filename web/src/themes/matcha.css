@@ -17,3 +17,14 @@
   src: url("../../node_modules/@fontsource-variable/playwrite-us-trad/files/playwrite-us-trad-fallback-wght-normal.woff2")
     format("woff2");
 }
+
+/* Matcha's spacing is 1.5 times the other themes' (--spacing-2 12 px against 8), and so are a popup's rows and gaps,
+   while Astryx caps a Selector's list at 300 px (core src/Selector/Selector.tsx:354) and a ComplexSelector's panel
+   at 480 px (ComplexSelector.tsx:79) in every theme: an 8-row admin list and the price panel scrolled for a few
+   pixels. The caps grow by the same 1.5; the panel stays within the viewport, as Astryx's cap keeps it. */
+[data-astryx-theme="matcha"] .astryx-selector-popup [role="listbox"] {
+  max-height: 450px;
+}
+[data-astryx-theme="matcha"] .astryx-complex-selector-popup > div {
+  max-height: min(720px, calc(100dvh - 2 * var(--spacing-4)));
+}

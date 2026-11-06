@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="web/src/app/icon.svg" width="104" alt="BoothDex">
+
 # BoothDex
 
 **自托管的 BOOTH VRChat 素材搜索引擎，使用 Rust 和 Next.js 编写。**
@@ -18,18 +20,66 @@ BoothDex 收录 [BOOTH](https://booth.pm) 上出售的 VRChat 商品，支持按
 项目起初作为 VRCatalogue（已于 2026-11-01 关闭）的后继方案开发，保留了兼容的搜索语法。本项目为独立开源项目，与
 pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者所有，每件商品均直接链接回其 BOOTH 页面。
 
+![首页（分类：头发）：筛选栏、模型本体轮播与商品网格](docs/screenshots/zh-CN/home.webp)
+
 ## 功能
 
-- **搜索**：在约 20 万件商品中按适配模型、智能分类、BOOTH 分类、标签（包含与排除）、功能（MA、lilToon、Poiyomi、
-  VRCFury）、价格、上架时间、免费商品及内容分级进行多维筛选，耗时仅数毫秒。日文全文检索基于 Lindera（IPADIC）；可选的语义搜索支持跨语言按语义查找（如搜索“哥特裙”即可匹配ゴスロリ连衣裙），并与关键词结果融合排序。
-- **浏览**：按性别分组的模型本体视图；内置完整 BOOTH 图集、变体、多语言标题与原图下载的商品详情面板；支持 `Ctrl+K`
-  全局检索商品、模型、店铺与标签。
-- **账户**：收藏夹、最近已看（在结果中自动变暗标记）、保存搜索条件、记住常用模型，以及任意筛选条件的 RSS 订阅。
-- **界面**：支持简体中文、英语、日语、韩语界面；商品标题支持原文或译文切换；支持货币换算、浅色/深色主题及移动端优先布局。
-- **抓取**：`worker` 每小时增量获取 BOOTH 新上架商品，每日全量巡检价格与下架状态，并定期刷新热门商品。
-- **AI 增强**（可选，兼容任意 OpenAI API，可配置思考强度）：自动为新商品提取智能分类、内容分级、支持功能及四语标题翻译（中/英/日/韩），通过名称匹配关联适配模型，并翻译分类与标签名称；语义搜索所需的向量同样由同一接口生成。
-- **图片**：内置代理将 BOOTH 图片实时转码为 WebP 并多级缓存；已下架商品自动回退至存档图片。
-- **管理**：通过 SSE 实时查看任务进度，管理定时计划、资源占用、AI 配置及重置用户密码。
+### 搜索
+
+- 在约 20 万件商品中按适配模型、智能分类、BOOTH 分类、标签（包含与排除）、功能（MA、lilToon、Poiyomi、VRCFury）、价格、上架时间、免费商品及内容分级筛选，耗时仅数毫秒。
+- 筛选栏包含搜索框和每个筛选条件的选择器；放不下的筛选条件收进“+N”按钮。
+- 输入时，搜索框给出最近搜索、模型、商品、店铺与标签建议。按 `Ctrl+K`（macOS 上为 `Cmd+K`）可聚焦搜索框。
+- 搜索框把每个搜索词显示为可单独删除的词条；识别为模型或分类的词合为一个词条，前面显示模型图片或分类图标。
+- 日文全文检索基于 Lindera（IPADIC）。可选的语义搜索支持跨语言按语义查找（如搜索“哥特裙”即可匹配ゴスロリ连衣裙），并与关键词结果融合排序。
+
+![搜索框下方按模型和商品分组的搜索建议](docs/screenshots/zh-CN/search.webp)
+
+输入“manuka”时的建议：先列出模型本体，再列出匹配的商品。
+
+### 浏览与账户
+
+- 在结果上方的模型轮播中选择模型本体，即可列出适配该模型的商品；“模型本体”视图列出模型本身，并可按性别筛选。
+- 商品在对话框中打开，包含完整 BOOTH 图集、变体、标题翻译与原图下载。
+- 收藏夹、最近已看（在结果中标记“已看”）、记住常用模型，以及保存的搜索：可重命名，也可通过 RSS 订阅。
+
+![商品对话框：图集、翻译后的标题与“在 Booth 购买”按钮](docs/screenshots/zh-CN/item.webp)
+
+商品详情在结果上方打开。
+
+### 外观与语言
+
+- 界面基于 Meta 的 [Astryx](https://github.com/meta/astryx) 设计系统构建。
+- 可选浅色、深色或跟随系统，以及 7 种 Astryx 风格：中性、岩石、抹茶、Y2K、哥特、巧克力与黄油。风格只在选中后加载；登录后，所选设置随账户同步。
+- 支持简体中文、英语、日语、韩语界面；商品标题支持原文或译文切换；支持货币换算，手机上同样可用。
+
+![设置中的外观页：主题模式与 7 种风格](docs/screenshots/zh-CN/settings.webp)
+
+在设置中选择颜色模式与风格。
+
+![深色模式下抹茶风格的首页](docs/screenshots/matcha.webp)
+
+深色模式下的抹茶风格（英文界面）。
+
+<img src="docs/screenshots/phone.webp" width="390" alt="手机上的首页，筛选条件收进 +8 按钮">
+
+手机上的首页（英文界面）。
+
+### 抓取、AI 与图片
+
+- `worker` 每小时增量获取 BOOTH 新上架商品，每日全量巡检价格与下架状态，并定期刷新热门商品。
+- AI 增强（可选，兼容任意 OpenAI API，可配置思考强度）：自动为新商品提取智能分类、内容分级、支持功能及四语标题翻译（中/英/日/韩），通过名称匹配关联适配模型，并翻译分类与标签名称；语义搜索所需的向量同样由同一接口生成。
+- 内置代理将 BOOTH 图片转码为 WebP 并缓存；已下架商品自动回退至存档图片。
+
+### 管理后台
+
+- `/admin` 管理后台的概览页通过 SSE 实时显示运行状态，并提供 30 天趋势图。
+- 运行与停止任务并查看每个任务的实时日志，开关定时计划，浏览任务历史。
+- 配置 AI 服务，重置用户密码。
+- 管理后台支持简体中文、英语和日语。
+
+![管理后台概览：worker 状态、索引与活动卡片及下方的趋势图](docs/screenshots/zh-CN/admin.webp)
+
+管理后台概览。
 
 不提供独立商品详情页、历史价格曲线、第三方社交登录及找回密码邮件（由管理员重置密码）。商品简介和变体名保留原文，仅翻译标题以服务跨语言检索。
 
@@ -154,7 +204,7 @@ target/release/worker once incremental '{"max_pages": 3, "full": true}'
 
 ```sh
 cargo test
-cd web && bun test src/lib && bunx tsc --noEmit && bunx biome check src
+cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check src
 ```
 
 ## API
@@ -173,7 +223,7 @@ btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。�
 - [Tantivy](https://github.com/quickwit-oss/tantivy) 与 [Lindera](https://github.com/lindera/lindera)：全文检索引擎与日文分词
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs)：内存筛选位图
 - [foyer](https://github.com/foyer-rs/foyer)：混合图片缓存
-- [shadcn/ui](https://ui.shadcn.com)：前端界面组件
+- [Astryx](https://github.com/meta/astryx)：设计系统、界面组件与风格
 
 ## 许可证
 

@@ -12,6 +12,7 @@ import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { useUi } from "@/components/providers";
+import { MENU_MAX_HEIGHT } from "@/lib/menu-height";
 import { LANG_NAMES, UI_LANGS, type UiLang } from "@/lib/messages";
 import {
   CURRENCIES,
@@ -44,6 +45,7 @@ export function LanguageMenu() {
     <DropdownMenu
       placement="below"
       alignment="end"
+      menuMaxHeight={MENU_MAX_HEIGHT}
       renderTrigger={(props) => (
         <IconButton
           {...props}

@@ -314,6 +314,13 @@ Deviations, all prop values or token-backed inline styles:
 
 - Settings theme cards: `columns={{minWidth: 80, max: 3}}` instead of settings-dialog's 96 (page.tsx:1179), so
   the three cards stay on one row in a phone's panel (264 px at 360, 294 px at 390).
+- Height caps: DropdownMenu's 300 px cap is lifted to `menuMaxHeight` 480 px (`lib/menu-height.ts`) on the
+  language, sort, download and account menus, whose rem rows outgrow it at the page scale or in a roomier theme;
+  the viewport still bounds them.
+- Search tokens: the Tokenizer's cap of a token's wrapper at the field's width is lifted (`app/filter-row.css`),
+  so a token in a phone's narrow field keeps its words and the field scrolls them sideways.
+- Matcha and Y2K popups: a Selector's 300 px list cap and a ComplexSelector's 480 px panel cap grow by the themes'
+  1.5 times spacing (`themes/matcha.css`, `themes/y2k.css`), so an 8-row list and the price panel show whole.
 
 Checked and kept as the template:
 

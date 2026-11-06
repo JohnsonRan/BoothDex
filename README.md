@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="web/src/app/icon.svg" width="104" alt="BoothDex">
+
 # BoothDex
 
 **A self-hosted search engine for VRChat assets on BOOTH, written in Rust and Next.js.**
@@ -20,26 +22,79 @@ they fit, category, tags, features, price and more. It started as a successor to
 2026-11-01) and keeps its search syntax. It is an independent project, not affiliated with pixiv, BOOTH or
 VRCatalogue. Item data and images belong to their creators; every item links back to its BOOTH page.
 
+![The home page filtered to the hair category: the filter row above a carousel of avatar bodies and the item grid](docs/screenshots/en/home.webp)
+
 ## Capabilities
 
-- **Search**: faceted filtering over ~200k items in a few milliseconds by avatar fit, smart category, BOOTH
-  category, tags (include and exclude), features (MA, lilToon, Poiyomi, VRCFury), price, release date, free
-  items and content rating. Japanese text search uses Lindera (IPADIC); optional semantic search finds items by
-  meaning across languages ("哥特裙" finds ゴスロリ dresses) and merges both rankings.
-- **Browsing**: an avatar view grouped by gender, an item detail panel with the full BOOTH gallery, variations,
-  translations and image download, and a `Ctrl+K` palette across items, avatars, shops and tags.
-- **Accounts**: favourites, recently viewed items (dimmed in results), saved searches, a remembered avatar, and
-  RSS feeds for any search.
-- **Interface**: Chinese, English, Japanese and Korean; item titles in the original language or translated;
-  currency conversion; light and dark themes; mobile-first layout.
-- **Crawling**: a worker checks BOOTH hourly for new items, sweeps the full listing daily, re-checks popular
-  items and marks delisted ones.
-- **AI enrichment** *(optional, any OpenAI-compatible API, configurable reasoning effort)*: smart categories,
-  content rating, features and title translations (Chinese, English, Japanese, Korean) for new items, avatar
-  links by name matching, and localized names for categories and tags. Embeddings for semantic search come from
-  the same provider.
-- **Images**: a proxy re-encodes BOOTH images to WebP and caches them; archived copies cover delisted items.
-- **Administration**: live job progress (SSE), schedules, resource usage, AI settings and password resets.
+### Search
+
+- Filter ~200k items in a few milliseconds by avatar fit, smart category, BOOTH category, tags (include and
+  exclude), features (MA, lilToon, Poiyomi, VRCFury), price, release date, free items and content rating.
+- The filter row holds the search field and one selector per filter; the filters that do not fit fold behind a
+  "+N" button.
+- The search field suggests recent searches, avatars, items, shops and tags as you type. `Ctrl+K` (`Cmd+K` on
+  macOS) focuses it.
+- Each search word is its own token, removable on its own; the words read as an avatar or a category join one
+  token, led by the avatar's picture or a category icon.
+- Japanese text search uses Lindera (IPADIC). Optional semantic search finds items by meaning across languages
+  ("哥特裙" finds ゴスロリ dresses) and merges both rankings.
+
+![Search suggestions grouped into avatars and items under the search field](docs/screenshots/en/search.webp)
+
+Suggestions for "manuka": the avatar body, then matching items.
+
+### Browsing and accounts
+
+- Pick an avatar body from the carousel above the results to list the items that fit it; the avatar-body view
+  lists the bodies themselves, filterable by gender.
+- An item opens in a dialog with the full BOOTH gallery, variations, title translations and image download.
+- Favourites, recently viewed items (marked "Viewed" in results), a remembered avatar, and saved searches as
+  saved views that you can rename and follow by RSS.
+
+![The item dialog with the gallery, translated title and Buy on Booth button](docs/screenshots/en/item.webp)
+
+An item's details open over the results.
+
+### Appearance and languages
+
+- The interface is built on Meta's [Astryx](https://github.com/meta/astryx) design system.
+- Choose light, dark or system mode and one of 7 Astryx styles: Neutral, Stone, Matcha, Y2K, Gothic, Chocolate
+  and Butter. A style loads only when chosen, and the choice follows your account when you are signed in.
+- Chinese, English, Japanese and Korean; item titles in the original language or translated; currency
+  conversion; a layout that works on phones.
+
+![Settings, Appearance: the theme modes and the 7 styles](docs/screenshots/en/settings.webp)
+
+Choose the colour mode and the style in Settings.
+
+![The home page in the Matcha style, dark mode](docs/screenshots/matcha.webp)
+
+The Matcha style in dark mode.
+
+<img src="docs/screenshots/phone.webp" width="390" alt="The home page on a phone, with the filters folded behind +8">
+
+The home page on a phone.
+
+### Crawling, AI and images
+
+- A worker checks BOOTH hourly for new items, sweeps the full listing daily, re-checks popular items and marks
+  delisted ones.
+- AI enrichment *(optional, any OpenAI-compatible API, configurable reasoning effort)* adds smart categories,
+  content rating, features and title translations (Chinese, English, Japanese, Korean) to new items, links
+  avatars by name, and localizes category and tag names. Embeddings for semantic search come from the same
+  provider.
+- A proxy re-encodes BOOTH images to WebP and caches them; archived copies cover delisted items.
+
+### Administration
+
+- The admin console at `/admin` shows an overview with live status (SSE) and 30-day trend charts.
+- Run and stop jobs and follow each job's live log; turn schedules on and off; browse the job history.
+- Configure the AI provider and reset user passwords.
+- The console is available in Chinese, English and Japanese.
+
+![The admin overview: worker status, index and activity cards above the trend charts](docs/screenshots/en/admin.webp)
+
+The admin overview.
 
 Standalone item pages, price history, social logins and password-reset emails are intentionally omitted
 (administrators reset passwords). Item descriptions and variation names are kept in the original language; only
@@ -175,7 +230,7 @@ Tests and checks:
 
 ```sh
 cargo test
-cd web && bun test src/lib && bunx tsc --noEmit && bunx biome check src
+cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check src
 ```
 
 ## API
@@ -197,7 +252,7 @@ booth_images/media at most 2; default response unchanged; fetch full records via
 - [Tantivy](https://github.com/quickwit-oss/tantivy) and [Lindera](https://github.com/lindera/lindera): text search
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs): filter bitmaps
 - [foyer](https://github.com/foyer-rs/foyer): hybrid image cache
-- [shadcn/ui](https://ui.shadcn.com): interface components
+- [Astryx](https://github.com/meta/astryx): design system, components and styles
 
 ## License
 
