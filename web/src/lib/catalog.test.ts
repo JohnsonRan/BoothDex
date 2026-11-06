@@ -27,6 +27,16 @@ test("filters round-trip through the API's + list format", () => {
   expect(parseFilters(`?${q}`)).toEqual(f);
 });
 
+test("a tag with a space stays one tag, two tags stay two", () => {
+  const f = { ...DEFAULT_FILTERS, tags: ["long hair", "short"] };
+  const q = filtersToQuery(f);
+  expect(q).toBe("tags=long%20hair+short");
+  // the raw query string as proxy.ts hands it to the page
+  expect(parseFilters(`?${q}`)).toEqual(f);
+  expect(parseFilters("?tags=long%20hair").tags).toEqual(["long hair"]);
+  expect(parseFilters("?tags=long+hair").tags).toEqual(["long", "hair"]);
+});
+
 test("new filters round-trip", () => {
   const f = {
     ...DEFAULT_FILTERS,

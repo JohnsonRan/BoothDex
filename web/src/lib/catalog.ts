@@ -134,6 +134,9 @@ export const DEFAULT_FILTERS: Filters = {
   dir: "desc",
 };
 
+/** Request header carrying the home page's raw query string (proxy.ts), the only form `parseFilters` can read. */
+export const RAW_QUERY_HEADER = "x-raw-query";
+
 /** Reads filters from a query string, splitting list values on a literal "+" like the API does. */
 export function parseFilters(search: string): Filters {
   const raw = new Map<string, string[]>();

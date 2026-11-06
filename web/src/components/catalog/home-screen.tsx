@@ -8,6 +8,7 @@ import { Layout, LayoutContent, LayoutHeader } from "@astryxdesign/core/Layout";
 import { Section } from "@astryxdesign/core/Section";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Heading } from "@astryxdesign/core/Text";
+import { headers } from "next/headers";
 import { Suspense } from "react";
 import { RecentCount, RecentResults } from "@/components/account/recent-view";
 import { ViewActions } from "@/components/account/view-actions";
@@ -18,6 +19,7 @@ import {
   type Filters,
   localName,
   parseFilters,
+  RAW_QUERY_HEADER,
 } from "@/lib/catalog";
 import { MESSAGES, translator } from "@/lib/dictionaries";
 import {
@@ -43,22 +45,18 @@ import { Toolbar } from "./toolbar";
 
 type Params = Record<string, string | string[] | undefined>;
 
-/** The search part of the URL; `page`, `sem` and `item` are read separately. */
-function filtersFrom(params: Params): Filters {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(params))
-    for (const one of [v ?? []].flat()) p.append(k, one);
-  for (const k of ["page", "sem", "item"]) p.delete(k);
-  return parseFilters(p.toString());
-}
-
 export async function HomeScreen({
   searchParams,
 }: {
   searchParams: Promise<Params>;
 }) {
-  const [settings, params] = await Promise.all([readSettings(), searchParams]);
-  const filters = filtersFrom(params);
+  const [settings, params, request] = await Promise.all([
+    readSettings(),
+    searchParams,
+    headers(),
+  ]);
+  // the filters from the raw query: decoded `searchParams` lose the "+" that separates list values (proxy.ts)
+  const filters = parseFilters(request.get(RAW_QUERY_HEADER) ?? "");
   const page = Math.max(1, Number.parseInt(String(params.page), 10) || 1);
   // started here: the item dialog (prices) and the results use them; nothing waits for them
   const rates =
