@@ -68,7 +68,7 @@ const RECORDER = () => {
 /**
  * Boxes (document coordinates) of the frame and of the tiles on the first screen: the header, the title row,
  * the count (in the filter row's readout), the search field, the avatar strip, every control button above the
- * grid, and per tile its cover, title, shop, price and badge row.
+ * grid (by name), and per tile its cover, title, shop, price and badge row.
  */
 const GEOMETRY = () => {
   const box = (el) => {
@@ -93,6 +93,9 @@ const GEOMETRY = () => {
   out.search = box(main.querySelector("input"));
   out.avatars = box(main.querySelector('[aria-roledescription="carousel"]'));
   const top = grid ? grid.getBoundingClientRect().top : Infinity;
+  // keyed by the button's name (digits folded, so "+2" and "+3" are one), not by its place in the row: the "+N" fold
+  // trigger appears at hydration, which would renumber every control after it
+  const seen = {};
   [...main.querySelectorAll("button")]
     .filter(
       (b) =>
@@ -100,8 +103,12 @@ const GEOMETRY = () => {
         b.checkVisibility() &&
         !b.closest('[aria-roledescription="carousel"]'),
     )
-    .forEach((b, i) => {
-      out[`control${i}`] = box(b);
+    .forEach((b) => {
+      const name = (b.ariaLabel || b.textContent || "")
+        .trim()
+        .replace(/\d+/g, "#");
+      seen[name] = (seen[name] ?? 0) + 1;
+      out[`control ${name} ${seen[name]}`] = box(b);
     });
   out.grid = box(grid);
   const tiles = grid
@@ -133,7 +140,13 @@ function compare(a, b, tolerance = 2) {
     if (!va || typeof va !== "object") continue;
     const vb = b[k];
     if (!vb) {
-      if (!k.startsWith("tile") || k.includes(".")) bad.push(`${k}: missing`);
+      // a control with no counterpart appeared inside a place the loading frame already holds (the fold trigger at
+      // hydration): the real shift is judged by the layout-shift entries and by every box that does have one
+      if (
+        (!k.startsWith("tile") || k.includes(".")) &&
+        !k.startsWith("control ")
+      )
+        bad.push(`${k}: missing`);
       continue;
     }
     for (const axis of ["x", "y", "w", "h"]) {

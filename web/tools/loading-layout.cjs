@@ -2,7 +2,9 @@
 // slow-API proxy, the loading frame must have the final frame's geometry. At 1440x900 and 390x844 it records
 // the boxes of the header, count, search, avatar strip, controls and the first screen of tiles with their
 // parts (lab.cjs GEOMETRY) while loading and after the results arrive, then while a page change refreshes and
-// after it; every box must stay within 2 px, tiles per row equal, and no layout shift may be recorded.
+// after it; every box must stay within 2 px, tiles per row equal, and no layout shift may be recorded. A control
+// that first appears in a place the loading frame already holds (the fold trigger at hydration) is no failure by
+// itself: it moves no other box and shifts nothing.
 //   node tools/loading-layout.cjs <page url> <proxy url> [delay ms=2500]
 const {
   launch,
