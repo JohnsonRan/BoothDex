@@ -4,14 +4,16 @@
 // all (as data they were ~11 KB gzip, the difference between FCP 1.81 and 1.66 s): the browser repeats the
 // page's search, which the API answers from its cache, and draws what the server did not. In the recent view
 // the browser has the items already and passes them in. They appear at once, without the entrance: they
-// are drawn below the first screen.
+// are drawn below the first screen. A failed read leaves the site's inline retry notice in their place.
 
+import { GridSpan } from "@astryxdesign/core/Grid";
 import { startTransition, useEffect, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { ItemResponse, SearchResponse } from "@/lib/api-types";
 import type { Rates, Settings } from "@/lib/settings-core";
 import { ItemTile, type Tile, tileOf } from "./item-tile";
+import { RefreshFailed } from "./refresh";
 import { TileSilhouette } from "./silhouette";
 
 /** Where the browser gets the later tiles: the page's search and what the server already drew. */
@@ -41,6 +43,7 @@ export function LaterTiles({
   const { t } = useUi();
   const [near, setNear] = useState(false);
   const [items, setItems] = useState<ItemResponse[] | null>(null);
+  const [failed, setFailed] = useState(false);
   const marker = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = marker.current;
@@ -55,7 +58,7 @@ export function LaterTiles({
     return () => seen.disconnect();
   }, []);
   useEffect(() => {
-    if (!near || !source || items) return;
+    if (!near || !source || items || failed) return;
     let live = true;
     api<SearchResponse>(source.path).then(
       (r) => {
@@ -66,13 +69,12 @@ export function LaterTiles({
             setItems(r.items.filter((i) => !skip.has(i.id))),
           );
       },
-      // tried again the next time the placeholder comes near
-      () => live && setNear(false),
+      () => live && setFailed(true),
     );
     return () => {
       live = false;
     };
-  }, [near, source, items]);
+  }, [near, source, items, failed]);
 
   const shown =
     tiles ??
@@ -87,5 +89,11 @@ export function LaterTiles({
         favLabel={favLabel}
       />
     ));
+  if (failed)
+    return (
+      <GridSpan columns="full">
+        <RefreshFailed starting={false} onRetry={() => setFailed(false)} />
+      </GridSpan>
+    );
   return <TileSilhouette ref={marker} />;
 }

@@ -108,7 +108,15 @@ export function KeepResults({
   );
 }
 
-function RefreshFailed({ starting }: { starting: boolean }) {
+/** The inline notice of a failed load over results that stay; retry reads the page again, or runs `onRetry`. */
+export function RefreshFailed({
+  starting,
+  onRetry,
+}: {
+  starting: boolean;
+  /** for results read in the browser (the later tiles) */
+  onRetry?: () => void;
+}) {
   const { t } = useUi();
   const router = useRouter();
   useApiRecovery(starting, useAccount().reload);
@@ -124,7 +132,7 @@ function RefreshFailed({ starting }: { starting: boolean }) {
             label={t("list.retry")}
             variant="secondary"
             size="sm"
-            onClick={() => router.refresh()}
+            onClick={onRetry ?? (() => router.refresh())}
           />
         )
       }
