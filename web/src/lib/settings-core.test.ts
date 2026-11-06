@@ -63,6 +63,23 @@ test("prices: yen as is, free by name, other currencies once a rate is known", (
   expect(formatPrice(1500, s, { USD: 0.0066 }, t)).toBe("≈$9.90");
 });
 
+test("prices keep each language's and currency's format after another was used", () => {
+  const t = translator("en");
+  const rates = { USD: 0.0066, KRW: 9.1 };
+  expect(formatPrice(1500, { ui: "en", currency: "USD" }, rates, t)).toBe(
+    "≈$9.90",
+  );
+  expect(formatPrice(1500, { ui: "en", currency: "KRW" }, rates, t)).toBe(
+    "≈₩13,650",
+  );
+  expect(formatPrice(1234567, { ui: "ja", currency: "JPY" }, rates, t)).toBe(
+    "¥1,234,567",
+  );
+  expect(formatPrice(1500, { ui: "en", currency: "USD" }, rates, t)).toBe(
+    "≈$9.90",
+  );
+});
+
 test("item text uses the chosen translation, else the original", () => {
   const it = {
     title: "原題",

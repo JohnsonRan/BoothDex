@@ -127,6 +127,33 @@ export const translate =
 /** Yen per unit of each other currency (frankfurter.dev, base JPY). */
 export type Rates = Partial<Record<Currency, number>>;
 
+/** Number formats by locale and currency ("" for plain numbers): building one costs as much as formatting
+ *  forty prices with it, and a page formats a hundred. */
+const numberFormats = new Map<string, Intl.NumberFormat>();
+
+function numberFormat(
+  locale: string,
+  currency: Currency | "",
+): Intl.NumberFormat {
+  const key = `${locale} ${currency}`;
+  let format = numberFormats.get(key);
+  if (!format) {
+    format = new Intl.NumberFormat(
+      locale,
+      currency
+        ? {
+            style: "currency",
+            currency,
+            maximumFractionDigits:
+              currency === "KRW" || currency === "TWD" ? 0 : 2,
+          }
+        : undefined,
+    );
+    numberFormats.set(key, format);
+  }
+  return format;
+}
+
 /** Price in the chosen currency; converted amounts are prefixed with ≈, plain ¥ until a rate is known. */
 export function formatPrice(
   jpy: number | null | undefined,
@@ -139,13 +166,9 @@ export function formatPrice(
   const locale = LOCALES[s.ui];
   const rate = s.currency === "JPY" ? 1 : rates[s.currency];
   // plain ¥ for yen (Intl writes "JP¥" in zh-CN)
-  if (s.currency === "JPY" || !rate) return `¥${jpy.toLocaleString(locale)}`;
-  const v = new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: s.currency,
-    maximumFractionDigits: s.currency === "KRW" || s.currency === "TWD" ? 0 : 2,
-  }).format(jpy * rate);
-  return `≈${v}`;
+  if (s.currency === "JPY" || !rate)
+    return `¥${numberFormat(locale, "").format(jpy)}`;
+  return `≈${numberFormat(locale, s.currency).format(jpy * rate)}`;
 }
 
 /** The item-text language the settings ask for. */
