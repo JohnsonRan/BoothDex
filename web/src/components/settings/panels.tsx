@@ -1,6 +1,6 @@
 "use client";
 // The settings dialog's panels, filled into template settings-dialog's: Appearance as its AppearancePanel's
-// first row (page.tsx:1269-1289, the colour theme cards), Language & region as its LanguagePanel
+// card (page.tsx:1269-1306: the colour theme cards, then a second row, here the Astryx theme's cards), Language & region as its LanguagePanel
 // (page.tsx:1797-1885, a Selector per row; more than three choices each), and About with master's credits
 // (settings-menu.tsx:128-157) as rows whose control opens the link (a Button: an action, not a value). The
 // values are the same settings the top-bar menus change (Providers' `update`), so both always agree.
@@ -24,7 +24,7 @@ import {
   LOCALES,
 } from "@/lib/settings-core";
 import { CONTROL_WIDTH, SettingsCard, SettingsRow } from "./rows";
-import { ThemeChoiceCards } from "./theme-choice";
+import { StyleChoiceCards, ThemeChoiceCards } from "./theme-choice";
 
 export type PanelId = "appearance" | "language" | "about";
 
@@ -80,6 +80,17 @@ function AppearancePanel() {
           <ThemeChoiceCards
             value={settings.theme}
             onChange={(theme) => update({ theme })}
+          />
+        }
+      />
+      <SettingsRow
+        title={t("settings.style")}
+        icon="site:style"
+        description={t("settings.styleDesc")}
+        detail={
+          <StyleChoiceCards
+            value={settings.style}
+            onChange={(style) => update({ style })}
           />
         }
       />

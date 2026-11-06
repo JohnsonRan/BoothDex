@@ -11,6 +11,7 @@ const NAMES = {
   content: "language",
   currency: "currency",
   theme: "theme",
+  style: "style",
 } as const satisfies Record<keyof Settings, string>;
 
 let signedIn = false;

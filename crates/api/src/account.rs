@@ -216,7 +216,7 @@ pub fn validate_preferences(v: &Value) -> Result<(), &'static str> {
     for (k, val) in obj {
         let s = val.as_str().ok_or("preference values must be strings")?;
         // "" removes a known key
-        let ok = s.is_empty() && ["ui", "language", "currency", "theme", "avatar", "adult"].contains(&k.as_str())
+        let ok = s.is_empty() && ["ui", "language", "currency", "theme", "style", "avatar", "adult"].contains(&k.as_str())
             || match k.as_str() {
             // interface language
             "ui" => ["zh", "en", "ja", "ko"].contains(&s),
@@ -224,6 +224,8 @@ pub fn validate_preferences(v: &Value) -> Result<(), &'static str> {
             "language" => ["ui", "original", "zh", "en", "ja", "ko"].contains(&s),
             "currency" => s.len() == 3 && s.chars().all(|c| c.is_ascii_uppercase()),
             "theme" => (1..=20).contains(&s.len()) && s.chars().all(|c| c.is_ascii_lowercase()),
+            // the Astryx theme (web lib/settings-core.ts STYLES); the site ignores a name it does not know
+            "style" => (1..=20).contains(&s.len()) && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
             // "my avatar" for the avatar-fit view; empty clears it
             "avatar" => s.len() <= 100 && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
             "adult" => ["safe", "suggestive", "include", "adult_only"].contains(&s),
@@ -696,6 +698,9 @@ mod tests {
     fn preferences_whitelist() {
         assert!(validate_preferences(&json!({"language": "ja", "currency": "USD", "theme": "charcoal", "avatar": "manuka"})).is_ok());
         assert!(validate_preferences(&json!({"avatar": "", "language": ""})).is_ok());
+        assert!(validate_preferences(&json!({"style": "y2k"})).is_ok());
+        assert!(validate_preferences(&json!({"style": ""})).is_ok());
+        assert!(validate_preferences(&json!({"style": "Y2K"})).is_err());
         assert!(validate_preferences(&json!({"evil": ""})).is_err());
         assert!(validate_preferences(&json!({"language": "fr"})).is_err());
         assert!(validate_preferences(&json!({"language": "zh"})).is_ok());

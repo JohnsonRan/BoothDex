@@ -14,7 +14,13 @@ test("stored settings win, invalid fields fall back", () => {
     parseSettings(
       '{"ui":"ko","currency":"USD","theme":"light","content":"en"}',
     ),
-  ).toEqual({ ui: "ko", currency: "USD", theme: "light", content: "en" });
+  ).toEqual({
+    ui: "ko",
+    currency: "USD",
+    theme: "light",
+    content: "en",
+    style: "neutral",
+  });
   expect(
     parseSettings('{"ui":"fr","currency":"XYZ","theme":"neon"}', "ja-JP"),
   ).toEqual({ ...DEFAULT_SETTINGS, ui: "ja" });
@@ -47,6 +53,13 @@ test("the theme defaults to following the system", () => {
   expect(DEFAULT_SETTINGS.theme).toBe("system");
   expect(parseSettings('{"theme":"dark"}').theme).toBe("dark");
   expect(parseSettings('{"theme":"system"}').theme).toBe("system");
+});
+
+test("the Astryx theme defaults to neutral; an unknown one falls back to it", () => {
+  expect(DEFAULT_SETTINGS.style).toBe("neutral");
+  expect(parseSettings('{"style":"matcha"}').style).toBe("matcha");
+  expect(parseSettings('{"style":"charcoal"}').style).toBe("neutral");
+  expect(parseSettings('{"style":7}').style).toBe("neutral");
 });
 
 test("translations fill variables", () => {

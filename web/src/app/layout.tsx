@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
 import { EARLY_CLICKS } from "@/lib/early-clicks";
 import { SESSION_HINT_SCRIPT } from "@/lib/session-hint";
+import { STYLES } from "@/lib/settings-core";
 import "./globals.css";
 import "./filter-row.css";
 
@@ -24,15 +25,18 @@ export const viewport: Viewport = {
 
 // Applies the saved appearance and language before first paint (from the cookie, or master's localStorage copy
 // until providers.tsx moves it over). Without a saved mode the page follows the system (no data-theme), so only a
-// pinned light or dark mode needs the attribute. SESSION_HINT_SCRIPT marks the last session's sign-in the same way.
+// pinned light or dark mode needs the attribute; a theme other than neutral marks <html> for the page's background
+// (the server renders the page itself in it, themes/index.tsx). SESSION_HINT_SCRIPT marks the last session's
+// sign-in the same way.
 const preferences = `try{var m=document.cookie.match(/(?:^|; )settings=([^;]*)/);
 var s=JSON.parse(m?decodeURIComponent(m[1]):localStorage.getItem("settings")||"{}");var d=document.documentElement;
 if(s.theme==="light"||s.theme==="dark")d.setAttribute("data-theme",s.theme);
+if(/^(${STYLES.join("|")})$/.test(s.style))d.setAttribute("data-astryx-theme",s.style);
 var l={zh:"zh-CN",en:"en-US",ja:"ja-JP",ko:"ko-KR"}[s.ui];if(l)d.lang=l}catch(e){}`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    // data-theme, data-account and lang may be changed by the script below before hydration
+    // data-theme, data-astryx-theme, data-account and lang may be changed by the script below before hydration
     <html
       lang="zh-CN"
       data-astryx-theme="neutral"
