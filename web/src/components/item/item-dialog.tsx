@@ -3,17 +3,16 @@
 // Dialog, as blocks DialogFullscreenDialog and DialogAdaptivePresentation compose one: a Layout with a
 // DialogHeader, a LayoutContent and a LayoutFooter. A wide standard dialog from lg up, the fullscreen variant
 // below it (master: full screen on phones), where the footer carries price, favourite and Buy on Booth.
-// The header names the shop (block DialogWithSubtitle: title and subtitle, avatar as start content); the
-// dialog itself is labelled by the item's title. Inside, the template's two columns (gallery, info), then
+// The header names the shop (block DialogWithSubtitle: title and subtitle, avatar as start content), with the
+// link to the shop's other items in the subtitle beside its host, not by the close button; the dialog itself is labelled by the item's title. Inside, the template's two columns (gallery, info), then
 // the "More from" strip across both.
 
 import { Avatar } from "@astryxdesign/core/Avatar";
-import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Grid } from "@astryxdesign/core/Grid";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
-import { Icon } from "@astryxdesign/core/Icon";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
+import { Link } from "@astryxdesign/core/Link";
 import { VStack } from "@astryxdesign/core/Stack";
 import { use, useEffect, useRef, useState } from "react";
 import { useAccount } from "@/components/account/session";
@@ -121,7 +120,13 @@ export default function ItemDialog({
           item ? (
             <DialogHeader
               title={item.author_name}
-              subtitle={shopHost(item.author_uri)}
+              subtitle={
+                <>
+                  {shopHost(item.author_uri)}
+                  {" · "}
+                  <ShopLink name={item.author_name} />
+                </>
+              }
               startContent={
                 <Avatar
                   src={imageSrc(item.author_icon) || undefined}
@@ -129,9 +134,6 @@ export default function ItemDialog({
                   size="md"
                   tooltip={false}
                 />
-              }
-              endContent={
-                <ShopButton name={item.author_name} isIconOnly={phone} />
               }
               onOpenChange={() => close()}
             />
@@ -194,27 +196,17 @@ export default function ItemDialog({
 }
 
 /** "All items from shop": searches the shop's name, as master did. */
-// On a phone the label took half the header and broke the shop's name mid-word; the glyph alone keeps the end
-// content small, as block DialogWithSubtitle's header has it, with the label as its tooltip.
-function ShopButton({
-  name,
-  isIconOnly,
-}: {
-  name: string;
-  isIconOnly: boolean;
-}) {
+// A link in the subtitle (DialogHeader allows inline links there; the title must stay non-interactive), so it
+// reads as part of the shop's name, not as dialog chrome beside the close button.
+function ShopLink({ name }: { name: string }) {
   const { t } = useUi();
   const { close } = useItemOpener();
   const { apply } = useFilterUrl();
   return (
-    <Button
-      label={t("detail.shopAll")}
-      variant="secondary"
-      size="sm"
-      icon={isIconOnly ? <Icon icon="site:shop" size="sm" /> : undefined}
-      isIconOnly={isIconOnly}
-      tooltip={isIconOnly ? t("detail.shopAll") : undefined}
+    <Link
       onClick={() => close(() => apply({ author: name, q: "", avatar: "" }))}
-    />
+    >
+      {t("detail.shopAll")}
+    </Link>
   );
 }

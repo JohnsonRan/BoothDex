@@ -1,7 +1,7 @@
 "use client";
 // The info column's sections, as the product-detail template ends it (page.tsx:248-270): a CollapsibleGroup
-// of type multiple, a Divider before and after every Collapsible, each trigger a level-3 Heading, the first
-// open by default. BoothDex's sections, in master's order: description (show more / less), variations (block
+// of type multiple, a Divider before and after every Collapsible, each trigger a level-3 Heading. All start
+// closed, so the item's facts above them come first. BoothDex's sections, in master's order: description (show more / less), variations (block
 // ListBasicList), fitting avatars (Tokens, first 12 then show all), Booth tags (Tokens) and the info list
 // (block MetadataListBasicMetadata).
 
@@ -100,13 +100,12 @@ export function ItemSections({
   ].filter((s) => !!s);
 
   return (
-    <CollapsibleGroup type="multiple" defaultValue={["bio"]}>
+    <CollapsibleGroup type="multiple">
       <Divider />
       {sections.map((s) => (
         <Fragment key={s.value}>
           <Collapsible
             value={s.value}
-            defaultIsOpen={s.value === "bio"}
             trigger={<Heading level={3}>{s.title}</Heading>}
           >
             {s.body}

@@ -3,11 +3,10 @@
 // (chevronLeft, chevronRight, copy, externalLink).
 
 import { registerIcons } from "@astryxdesign/core/Icon";
-import { ArrowRight, Download, Store } from "lucide-react";
+import { ArrowRight, Download } from "lucide-react";
 import { glyph } from "@/lib/icons";
 
 registerIcons({
   "site:download": <Download {...glyph} />,
   "site:arrowRight": <ArrowRight {...glyph} />,
-  "site:shop": <Store {...glyph} />,
 });
