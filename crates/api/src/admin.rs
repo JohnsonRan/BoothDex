@@ -241,8 +241,6 @@ struct ScheduleUpdate {
     enabled: Option<bool>,
     interval_minutes: Option<i32>,
     params: Option<Value>,
-    /// run as soon as possible
-    run_now: Option<bool>,
 }
 
 async fn update_schedule(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(kind): Path<String>, Json(b): Json<ScheduleUpdate>) -> Result<Response, ApiError> {
@@ -252,14 +250,13 @@ async fn update_schedule(State(s): State<Arc<AppState>>, headers: HeaderMap, Pat
     }
     let row: Option<Value> = sqlx::query_scalar(
         "update job_schedules set enabled = coalesce($2, enabled), interval_minutes = coalesce($3, interval_minutes),
-                params = coalesce($4, params), next_run_at = case when $5 then now() else next_run_at end
+                params = coalesce($4, params)
          where kind = $1 returning to_jsonb(job_schedules)",
     )
     .bind(&kind)
     .bind(b.enabled)
     .bind(b.interval_minutes)
     .bind(&b.params)
-    .bind(b.run_now.unwrap_or(false))
     .fetch_optional(&s.pool)
     .await?;
     Ok(match row {

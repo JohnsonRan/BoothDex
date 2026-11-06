@@ -73,12 +73,17 @@ export function TaskRow({
         ...(RUN_PARAMS[kind]
           ? [{ label: t("jobs.runOptions"), onClick: () => onRunOptions(kind) }]
           : []),
+        // a one-off job with the schedule's settings, whether the schedule is on or off
         ...(schedule
           ? [
               {
                 label: t("jobs.runSchedule"),
                 onClick: () =>
-                  put({ run_now: true }, t("toast.queued", { kind: name })),
+                  act(
+                    "/api/admin/jobs",
+                    { method: "POST", json: { kind, params: schedule.params } },
+                    t("toast.queued", { kind: name }),
+                  ),
               },
             ]
           : []),
