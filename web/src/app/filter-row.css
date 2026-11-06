@@ -42,10 +42,12 @@
 }
 
 /* searchSlot (:1500-1521): the search sits at the selectors' width and widens on focus; second to give way, after
-   the clauses. 120 / 240 px in rem, so the field scales with the text. */
+   the clauses. 120 / 240 px in rem, so the field scales with the text. The template's floor is its resting width,
+   but its row has the room; here a phone's row seats the trigger and the readout first, so the field gives down to
+   a square the height of a control, its icon, rather than pushing the readout past the page's inset. */
 .filter-search {
   flex-shrink: 1;
-  min-width: 7.5rem;
+  min-width: var(--size-element-sm);
   width: 7.5rem;
   transition: width var(--duration-fast) var(--ease-standard);
 }
