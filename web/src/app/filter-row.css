@@ -21,7 +21,8 @@
    grower and the first to give (shrink 100 against the search's 1), floored at the "+N" trigger plus the reserve:
    the width it holds back for the readout, paid as padding, which the overflow measurement subtracts. The readout
    sits beside the slot, pulled back over the reserve so it draws against the last clause, and spans the reserve
-   less the gap before it, so its text never changes what the slot is given. The reserve is in rem, so it grows
+   less the gap before it, so its text never changes what the slot is given. Its text sits at the reserve's end,
+   against the end cluster, as the template's readout does at desktop widths. The reserve is in rem, so it grows
    with the text it holds room for. */
 .filter-row {
   --readout-reserve: 11.5rem;
@@ -42,6 +43,10 @@
 .filter-readout > * {
   flex-shrink: 0;
 }
+/* a margin, not justify-content, which the HStack's own alignment class sets */
+.filter-readout > :first-child {
+  margin-inline-start: auto;
+}
 
 /* A phone (owner's request; the template keeps one line): where the row cannot hold the search, the trigger and the
    reserve (7.5 + 0.5 + 3 + 11.5 rem, inside the toolbar's own 2 x 1.5 rem inset), the readout takes a line of its
@@ -58,6 +63,9 @@
   }
   .filter-toolbar .filter-readout {
     flex-basis: 100%;
+    margin-inline-start: 0;
+  }
+  .filter-toolbar .filter-readout > :first-child {
     margin-inline-start: 0;
   }
 }
