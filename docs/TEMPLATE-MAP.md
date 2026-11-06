@@ -301,6 +301,11 @@ Deviations, all prop values or token-backed inline styles:
   not render the page again on the server.
 
 
+## Deviations in the style audit
+
+- Settings theme cards: `columns={{minWidth: 80, max: 3}}` instead of settings-dialog's 96 (page.tsx:1179), so
+  the three cards stay on one row in a phone's panel (264 px at 360, 294 px at 390).
+
 ## Remaining Tailwind or shadcn files
 
 None. The rewrite removed Tailwind, shadcn and their dependencies.

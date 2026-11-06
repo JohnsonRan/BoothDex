@@ -102,7 +102,9 @@ export function ThemeChoiceCards({
     <Grid
       role="radiogroup"
       aria-label={t("settings.theme")}
-      columns={{ minWidth: 96, max: 3 }}
+      // the template's 96 px floor (page.tsx:1179) wraps System onto a row of its own in a phone's 264-294 px
+      // panel; 80 keeps the three across down to a 360 px screen
+      columns={{ minWidth: 80, max: 3 }}
       gap={2}
       maxWidth="30rem"
     >
