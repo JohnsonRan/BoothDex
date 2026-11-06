@@ -35,10 +35,11 @@
 .filter-clauses > * {
   flex-shrink: 0;
 }
-/* 2.75rem: the trigger's place, as the slot's floor counts it (catalog/filter-bar.tsx) */
+/* 3rem: the trigger's place, as the slot's floor counts it (catalog/filter-bar.tsx). The template's 44 px is the
+   trigger as the template draws it; "+8" is 19.8 px wide on a phone, which 44 px clips to "+…". */
 .filter-clauses[data-unfolded] {
   inline-size: 100%;
-  padding-inline-end: 2.75rem;
+  padding-inline-end: 3rem;
 }
 
 /* searchSlot (:1500-1521): the search sits at the selectors' width and widens on focus; second to give way, after

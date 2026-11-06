@@ -76,7 +76,7 @@ export function FilterBar({
           flexGrow: 1,
           flexShrink: 100,
           paddingInlineEnd: READOUT_RESERVE,
-          minWidth: `calc(2.75rem + ${READOUT_RESERVE})`,
+          minWidth: `calc(3rem + ${READOUT_RESERVE})`,
         }}
       >
         <OverflowList

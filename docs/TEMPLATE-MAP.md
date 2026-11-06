@@ -101,6 +101,8 @@ The rest are prop values, not style overrides:
 - `AppShell mobileNav={false}`: the bar has no drawer content, and Astryx's phone bar (chosen by a media query
   in the browser only) remounted the end actions after hydration, dropping the clicks made before it.
 - Grid column floor 160 px instead of the template's 320 px: product tiles need two columns on a phone.
+- Fold trigger place 3rem instead of the template's 44 px (slot floor and unfolded padding, `filter-bar.tsx`,
+  `filter-row.css`): "+8" is 19.8 px wide on a phone, so 44 px clipped it to "+…".
 - Tile title `Heading level={4}` instead of level 2: level 2 is xl, too large for a 160 px tile; the outline
   level stays 2 through `accessibilityLevel`.
 - The Card Grid template groups cards under per-category headings; BoothDex pages results instead, so there
