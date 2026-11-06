@@ -181,7 +181,7 @@ export const en: Dict = {
   "account.login": "Username or email",
   "account.password": "Password",
   "account.displayName": "Display name",
-  "account.username": "Username (3–24 letters, digits, underscores)",
+  "account.username": "Username",
   "account.email": "Email",
   "account.newPassword": "Password (at least 10 characters)",
   "account.required": "Required",

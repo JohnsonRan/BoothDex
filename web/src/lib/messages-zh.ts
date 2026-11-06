@@ -177,7 +177,7 @@ export const zh = {
   "account.login": "用户名或邮箱",
   "account.password": "密码",
   "account.displayName": "显示名称",
-  "account.username": "用户名(3–24 位字母、数字、下划线)",
+  "account.username": "用户名",
   "account.email": "邮箱",
   "account.newPassword": "密码(至少 10 位)",
   "account.required": "请填写此项",

@@ -183,7 +183,7 @@ export const ja: Dict = {
   "account.login": "ユーザー名またはメール",
   "account.password": "パスワード",
   "account.displayName": "表示名",
-  "account.username": "ユーザー名(英数字と _ で 3～24 文字)",
+  "account.username": "ユーザー名",
   "account.email": "メールアドレス",
   "account.newPassword": "パスワード(10 文字以上)",
   "account.required": "入力してください",

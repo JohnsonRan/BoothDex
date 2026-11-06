@@ -110,7 +110,8 @@ export function SignInDialog({
       <VStack gap={4} hAlign="stretch">
         <VStack gap={1} hAlign="center">
           <Heading level={2}>{gate?.title ?? t("account.title")}</Heading>
-          <Text type="body" color="secondary" size="sm">
+          {/* centred as the title, as login-card's wrapping footnote (page.tsx:198) */}
+          <Text type="body" color="secondary" size="sm" justify="center">
             {gate?.description ?? t("account.desc")}
           </Text>
         </VStack>
@@ -150,6 +151,12 @@ export function SignInDialog({
                       f === "password" && mode === "register"
                         ? t("account.newPassword")
                         : t(name)
+                    }
+                    // the rule stays readable while typing (template form-wizard, page.tsx:453)
+                    description={
+                      f === "username" && mode === "register"
+                        ? t("account.usernameRule")
+                        : undefined
                     }
                     type={type}
                     autoComplete={
