@@ -1,31 +1,33 @@
-// A chart series' swatch and name, as the Astryx dashboard templates draw their legends
-// (templates/pages/dashboard-scorecard/page.tsx:383-395): a small square in the series colour, the name in
-// supporting text. The colour is inline because Icon's `color` takes only semantic names.
+// A chart series' key and name: a short 2 px bar in the series colour, the same weight as its line, beside the
+// name in supporting text; Legend sets a chart's keys in one wrapping row. The colour is inline because no
+// Astryx component takes an arbitrary data colour.
 
-import { Icon } from "@astryxdesign/core/Icon";
-import { HStack } from "@astryxdesign/core/Layout";
+import { HStack, VStack } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
 
-export function LegendDot({
-  color,
-  label,
-  value,
-}: {
-  color: string;
-  label: string;
-  value?: string;
-}) {
+const KEY = { width: "0.75rem", height: "0.125rem", flexShrink: 0 } as const;
+
+export function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <HStack gap={2} vAlign="center" wrap="nowrap">
-      <Icon icon="admin:swatch" size="xsm" style={{ color }} />
+      <VStack aria-hidden style={{ ...KEY, backgroundColor: color }} />
       <Text type="supporting" color="secondary">
         {label}
       </Text>
-      {value !== undefined && (
-        <Text type="supporting" weight="semibold" hasTabularNumbers>
-          {value}
-        </Text>
-      )}
+    </HStack>
+  );
+}
+
+export function Legend({
+  items,
+}: {
+  items: { key: string; color: string; label: string }[];
+}) {
+  return (
+    <HStack gap={4} vAlign="center" wrap="wrap">
+      {items.map((s) => (
+        <LegendDot key={s.key} color={s.color} label={s.label} />
+      ))}
     </HStack>
   );
 }
