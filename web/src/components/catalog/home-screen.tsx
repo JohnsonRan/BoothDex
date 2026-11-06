@@ -198,7 +198,9 @@ async function Catalog({
         </LayoutHeader>
       }
       content={
-        <LayoutContent isScrollable={false}>
+        // the header Section's step on every side, as the template states its content's (:4479); left to the
+        // default, a content area under a header starts 4 below it
+        <LayoutContent isScrollable={false} padding={6}>
           <VStack gap={6}>
             {filters.view === "items" && (
               <AvatarStrip
