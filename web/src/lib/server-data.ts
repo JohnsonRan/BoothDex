@@ -54,8 +54,27 @@ async function apiReady(): Promise<boolean> {
   );
 }
 
+/** The visitor's request headers a per-visitor API call carries: the cookie (the session) and the address headers
+ * the front proxy set, so the API's per-IP rate limits (crates/api/src/limit.rs, client_ip) count the visitor,
+ * not this server, which every visitor's request would otherwise share. */
+const VISITOR_HEADERS = [
+  "cookie",
+  "x-forwarded-for",
+  "x-real-ip",
+  "cf-connecting-ip",
+] as const;
+
+export function visitorHeaders(from: Headers): Record<string, string> {
+  return Object.fromEntries(
+    VISITOR_HEADERS.flatMap((name) => {
+      const value = from.get(name);
+      return value ? [[name, value]] : [];
+    }),
+  );
+}
+
 /**
- * One page of card-sized results. Sent with the visitor's cookie: the favourites view belongs to the session.
+ * One page of card-sized results. Sent with the visitor's headers: the favourites view belongs to the session.
  * `noSemantic` keeps later pages of a search that went without meaning-based matches on the same result set.
  */
 export async function searchItems(
@@ -63,12 +82,12 @@ export async function searchItems(
   page: number,
   noSemantic: boolean,
 ): Promise<SearchOutcome> {
-  const cookie = (await headers()).get("cookie");
+  const forwarded = visitorHeaders(await headers());
   const start = performance.now();
   try {
     const result = await getJson<SearchResponse>(
       `/api/search?${searchQuery(filters, page, PAGE_SIZE)}&fields=card${noSemantic ? "&sem=0" : ""}`,
-      { cache: "no-store", headers: cookie ? { cookie } : undefined },
+      { cache: "no-store", headers: forwarded },
     );
     return { state: "ok", result, ms: performance.now() - start };
   } catch {
