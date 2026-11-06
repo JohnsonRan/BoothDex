@@ -8,8 +8,8 @@ import { IconButton } from "@astryxdesign/core/IconButton";
 import { HStack, StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
-import { Bookmark, Pencil } from "lucide-react";
 import { useUi } from "@/components/providers";
+import "@/lib/icons-on-demand";
 import { CONTROL_SIZE, toggleStyle } from "./filter-style";
 import type { Saved } from "./saved-searches";
 
@@ -70,7 +70,7 @@ export function SavedViewsBar({
                 label={saved.name}
                 size={CONTROL_SIZE}
                 isPressed={isPressed}
-                icon={<Icon icon={Bookmark} size="sm" />}
+                icon={<Icon icon="site:saved" size="sm" />}
                 style={{ ...CHIP, ...toggleStyle(isPressed) }}
                 onPressedChange={(next) => onApply(next ? saved : null)}
               />
@@ -82,7 +82,7 @@ export function SavedViewsBar({
               tooltip={t("saved.edit")}
               variant="ghost"
               size={CONTROL_SIZE}
-              icon={<Icon icon={Pencil} size="sm" />}
+              icon={<Icon icon="site:edit" size="sm" />}
               style={CHIP}
               onClick={() => onEdit(active)}
             />

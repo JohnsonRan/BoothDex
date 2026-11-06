@@ -11,7 +11,6 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { HStack, StackItem } from "@astryxdesign/core/Stack";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
-import { Bookmark, BookmarkPlus, type LucideProps } from "lucide-react";
 import dynamic from "next/dynamic";
 import { type ReactNode, useEffect, useState } from "react";
 import { useAccount } from "@/components/account/session";
@@ -49,11 +48,6 @@ const loadSignIn = () => import("@/components/frame/sign-in");
 const SignInDialog = dynamic(() => loadSignIn().then((m) => m.SignInDialog), {
   ssr: false,
 });
-
-// a pressed saved-views toggle shows the filled bookmark (the template's BookmarkFilled)
-const BookmarkFilled = (props: LucideProps) => (
-  <Bookmark {...props} fill="currentColor" />
-);
 
 export function Toolbar({
   title,
@@ -134,7 +128,7 @@ export function Toolbar({
                 tooltip={t("saved.create")}
                 variant="ghost"
                 size={CONTROL_SIZE}
-                icon={<Icon icon={BookmarkPlus} size="sm" />}
+                icon={<Icon icon="site:save" size="sm" />}
                 isDisabled={!isSavable(filters)}
                 onClick={signedIn(() => setCreating(true))}
                 {...preloadOn(me ? loadForms : loadSignIn)}
@@ -149,8 +143,8 @@ export function Toolbar({
             isIconOnly
             size={CONTROL_SIZE}
             isPressed={isBarOpen}
-            icon={<Icon icon={Bookmark} size="sm" />}
-            pressedIcon={<Icon icon={BookmarkFilled} size="sm" />}
+            icon={<Icon icon="site:saved" size="sm" />}
+            pressedIcon={<Icon icon="site:savedFilled" size="sm" />}
             onPressedChange={(next) =>
               signedIn(() => {
                 setIsBarOpen(next);

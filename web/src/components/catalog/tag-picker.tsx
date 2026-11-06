@@ -11,12 +11,12 @@ import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Token } from "@astryxdesign/core/Token";
-import { Minus, Plus } from "lucide-react";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
 import { tagName } from "@/lib/catalog";
 import { useTagSearch } from "@/lib/client-data";
 import { LOCALES } from "@/lib/settings-core";
+import "@/lib/icons-on-demand";
 import { EDITOR_WIDTH } from "./filter-style";
 import type { TagSet } from "./tag-clause";
 
@@ -92,14 +92,14 @@ export function TagPicker({
               </Text>
               <IconButton
                 label={`${t("filter.include")} ${tagName(x, ui)}`}
-                icon={<Icon icon={Plus} size="sm" />}
+                icon={<Icon icon="site:add" size="sm" />}
                 variant="ghost"
                 size="sm"
                 onClick={() => include(x.name)}
               />
               <IconButton
                 label={`${t("filter.exclude")} ${tagName(x, ui)}`}
-                icon={<Icon icon={Minus} size="sm" />}
+                icon={<Icon icon="site:remove" size="sm" />}
                 variant="ghost"
                 size="sm"
                 onClick={() => exclude(x.name)}

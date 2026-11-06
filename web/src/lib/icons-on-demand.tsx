@@ -1,5 +1,6 @@
 // Glyphs only the surfaces that load on demand use (account menu, recent view, viewed mark, settings, search
-// suggestions), registered with the first of them rather than with the page (lib/icons.tsx holds the page's).
+// suggestions, saved views and their forms, tag editor), registered with the first of them rather than with the
+// page (lib/icons.tsx holds the page's).
 // lucide, as the neutral theme's own set.
 
 import { registerIcons } from "@astryxdesign/core/Icon";
@@ -11,8 +12,12 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  Minus,
   Monitor,
   Palette,
+  Pencil,
+  Plus,
+  Rss,
   Type,
 } from "lucide-react";
 import { glyph } from "./icons";
@@ -28,4 +33,8 @@ registerIcons({
   "site:currency": <Coins {...glyph} />,
   "site:code": <Code {...glyph} />,
   "site:tag": <Hash {...glyph} />,
+  "site:edit": <Pencil {...glyph} />,
+  "site:feed": <Rss {...glyph} />,
+  "site:add": <Plus {...glyph} />,
+  "site:remove": <Minus {...glyph} />,
 });

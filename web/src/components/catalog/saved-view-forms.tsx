@@ -12,10 +12,10 @@ import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Token } from "@astryxdesign/core/Token";
-import { Rss } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUi } from "@/components/providers";
 import { type Filters, parseFilters } from "@/lib/catalog";
+import "@/lib/icons-on-demand";
 import { type ClauseNames, sortLabel, summaryTokens } from "./clause-text";
 import type { Saved, useSavedSearches } from "./saved-searches";
 import { AdaptiveSavedViewForm } from "./saved-view-host";
@@ -141,7 +141,7 @@ export function EditSavedForm({
             <Button
               label={t("saved.copy")}
               variant="secondary"
-              icon={<Icon icon={Rss} size="sm" />}
+              icon={<Icon icon="site:feed" size="sm" />}
               onClick={() => saved && store.copyFeed(saved)}
             />
             <Button

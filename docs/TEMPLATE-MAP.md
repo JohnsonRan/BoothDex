@@ -204,10 +204,13 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 | Colour mode | `site:dark` / `site:light` | Moon / Sun |
 | Avatar strip "All", avatar without image | `site:allAvatars` | LayoutGrid |
 | Suggestions: tag row, clear recent | `site:tag`, `site:clear` | Hash, Trash2 |
+| Save this search, saved views (pressed: filled by `fill`) | `site:save`, `site:saved` / `site:savedFilled` | BookmarkPlus, Bookmark |
+| Saved views: edit; saved-search form: feed | `site:edit`, `site:feed` (`lib/icons-on-demand.tsx`) | Pencil, Rss |
+| Tag editor: include, exclude | `site:add`, `site:remove` (`lib/icons-on-demand.tsx`) | Plus, Minus |
+| Item dialog: download, "More from" link | `site:download`, `site:arrowRight` (`item/item-icons.tsx`) | Download, ArrowRight |
 | Component internals (chevrons, close, check, carousel arrows, pagination) | theme semantic names | ChevronDown/Left/Right, X, Check, ... |
 
-The tag editor passes lucide `Plus`/`Minus` to `Icon` (filter area below). Sizes: `sm` in the top bar, tiles
-and menus (as shell-top-nav), `lg` for the strip's "All" glyph.
+Sizes: `sm` in the top bar, tiles and menus (as shell-top-nav), `lg` for the strip's "All" glyph.
 
 ## Filter area (checkpoint 1, track A)
 

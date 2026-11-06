@@ -7,6 +7,8 @@
 
 import { registerIcons } from "@astryxdesign/core/Icon";
 import {
+  Bookmark,
+  BookmarkPlus,
   CircleUser,
   Heart,
   Languages,
@@ -29,6 +31,10 @@ const SITE_ICONS = {
   "site:dark": <Moon {...glyph} />,
   "site:light": <Sun {...glyph} />,
   "site:clear": <Trash2 {...glyph} />,
+  "site:save": <BookmarkPlus {...glyph} />,
+  "site:saved": <Bookmark {...glyph} />,
+  // a pressed saved-views toggle (the template's BookmarkFilled)
+  "site:savedFilled": <Bookmark {...glyph} fill="currentColor" />,
 };
 
 registerIcons(SITE_ICONS);
