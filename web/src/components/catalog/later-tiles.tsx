@@ -12,9 +12,10 @@ import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { ItemResponse, SearchResponse } from "@/lib/api-types";
 import type { Rates, Settings } from "@/lib/settings-core";
-import { ItemTile, type Tile, tileOf } from "./item-tile";
+import { type Tile, tileOf } from "./item-tile";
 import { RefreshFailed } from "./refresh";
 import { TileSilhouette } from "./silhouette";
+import { Tiles } from "./tiles";
 
 /** Where the browser gets the later tiles: the page's search and what the server already drew. */
 type LaterSource = {
@@ -80,15 +81,14 @@ export function LaterTiles({
     tiles ??
     (source && items?.map((i) => tileOf(i, source.settings, source.rates, t)));
   if (near && shown)
-    return shown.map((tile, i) => (
-      <ItemTile
-        key={tile.id}
-        tile={tile}
-        index={from + i}
+    return (
+      <Tiles
+        tiles={shown}
+        from={from}
         markViewed={markViewed}
         favLabel={favLabel}
       />
-    ));
+    );
   if (failed)
     return (
       <GridSpan columns="full">
