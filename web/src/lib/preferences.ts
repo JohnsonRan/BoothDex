@@ -26,15 +26,11 @@ function send(json: Record<string, string>) {
   api("/api/account/preferences", { method: "PUT", json }).catch(() => {});
 }
 
-/** Sends changed settings to the account. The API has no value for item text that follows the interface
- *  language, so that choice clears the account's ("" removes a preference). */
+/** Sends changed settings to the account; item text that follows the interface language is sent as "ui". */
 export function savePreferences(patch: Partial<Settings>) {
   send(
     Object.fromEntries(
-      Object.entries(patch).map(([k, v]) => [
-        NAMES[k as keyof Settings],
-        k === "content" && v === "ui" ? "" : v,
-      ]),
+      Object.entries(patch).map(([k, v]) => [NAMES[k as keyof Settings], v]),
     ),
   );
 }
@@ -44,7 +40,8 @@ export function saveAvatar(avatar: string) {
   send({ avatar });
 }
 
-/** The settings the account sets differently from `current` (invalid or missing values are ignored). */
+/** The settings the account sets differently from `current` (invalid or missing values are ignored: an account
+ *  saved before item text could be stored as "ui" has no "language" when it follows the interface). */
 export function accountPatch(
   preferences: Record<string, string> | undefined,
   current: Settings,

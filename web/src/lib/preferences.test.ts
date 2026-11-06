@@ -45,10 +45,17 @@ function sentWhileSignedIn(run: () => void) {
   return sent;
 }
 
-test("item text that follows the interface language clears the account's item-text language", () => {
+test("item text that follows the interface language is sent to the account as such", () => {
   expect(
     sentWhileSignedIn(() => savePreferences({ content: "ui", ui: "ja" })),
-  ).toEqual([["/api/account/preferences", "PUT", '{"language":"","ui":"ja"}']]);
+  ).toEqual([
+    ["/api/account/preferences", "PUT", '{"language":"ui","ui":"ja"}'],
+  ]);
+});
+
+test("an account's item text that follows the interface language reaches another browser", () => {
+  const current = { ...DEFAULT_SETTINGS, content: "en" as const };
+  expect(accountPatch({ language: "ui" }, current)).toEqual({ content: "ui" });
 });
 
 test("my avatar goes to the account only while signed in", () => {
