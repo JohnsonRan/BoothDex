@@ -19,8 +19,10 @@ pub(crate) struct Lookup(Vec<(Vec<String>, Value, u64)>);
 
 impl Lookup {
     /// Splits model names out of a search ("shinano short hair" -> "short hair" + [shinano]); a name is a whole
-    /// word (or two) equal to a model's slug or name in any language, at least 3 characters.
-    pub(crate) fn split_names(&self, q: &str) -> (String, Vec<String>) {
+    /// word (or two) equal to a model's slug or name in any language, at least 3 characters. Each slug comes with
+    /// the query words it was read from, as typed (the site marks those tokens); a name repeated in a row is one
+    /// entry, with the first one's words.
+    pub(crate) fn split_names<'q>(&self, q: &'q str) -> (String, Vec<(String, Vec<&'q str>)>) {
         let words: Vec<&str> = q.split_whitespace().collect();
         let slug_of = |w: &str| {
             let w = w.to_lowercase();
@@ -29,17 +31,17 @@ impl Lookup {
         let (mut rest, mut slugs, mut i) = (Vec::new(), Vec::new(), 0);
         while i < words.len() {
             if let Some(slug) = words.get(i + 1).and_then(|next| slug_of(&format!("{} {next}", words[i]))) {
-                slugs.push(slug);
+                slugs.push((slug, words[i..i + 2].to_vec()));
                 i += 2;
             } else if let Some(slug) = slug_of(words[i]) {
-                slugs.push(slug);
+                slugs.push((slug, vec![words[i]]));
                 i += 1;
             } else {
                 rest.push(words[i]);
                 i += 1;
             }
         }
-        slugs.dedup();
+        slugs.dedup_by(|b, a| a.0 == b.0);
         (rest.join(" "), slugs)
     }
 
@@ -233,11 +235,24 @@ mod name_tests {
             (names.iter().map(|n| n.to_string()).chain([slug.to_string()]).collect(), json!({ "slug": slug }), 10u64)
         };
         let l = Lookup::new(vec![entry("shinano", &["Shinano", "しなの"]), entry("rusk", &["Rusk Dragon"]), entry("io", &["IO"])]);
-        assert_eq!(l.split_names("Shinano short hair"), ("short hair".into(), vec!["shinano".into()]));
-        assert_eq!(l.split_names("しなの ボブ"), ("ボブ".into(), vec!["shinano".into()]));
-        assert_eq!(l.split_names("rusk dragon wings"), ("wings".into(), vec!["rusk".into()]));
+        let split = |q| {
+            let (rest, names) = l.split_names(q);
+            (rest, names.into_iter().map(|(slug, _)| slug).collect::<Vec<String>>())
+        };
+        assert_eq!(split("Shinano short hair"), ("short hair".into(), vec!["shinano".into()]));
+        assert_eq!(split("しなの ボブ"), ("ボブ".into(), vec!["shinano".into()]));
+        assert_eq!(split("rusk dragon wings"), ("wings".into(), vec!["rusk".into()]));
         // too short to be taken as a name
-        assert_eq!(l.split_names("io hair"), ("io hair".into(), vec![]));
-        assert_eq!(l.split_names("short hair"), ("short hair".into(), vec![]));
+        assert_eq!(split("io hair"), ("io hair".into(), vec![]));
+        assert_eq!(split("short hair"), ("short hair".into(), vec![]));
+        // a name repeated in a row is one
+        assert_eq!(split("shinano Shinano bob"), ("bob".into(), vec!["shinano".into()]));
+
+        // each name with the words it was read from, as typed; a repeated one with the first one's
+        let words = |q| l.split_names(q).1;
+        assert_eq!(words("Shinano short hair"), vec![("shinano".into(), vec!["Shinano"])]);
+        assert_eq!(words("しなの ボブ"), vec![("shinano".into(), vec!["しなの"])]);
+        assert_eq!(words("Rusk Dragon wings"), vec![("rusk".into(), vec!["Rusk", "Dragon"])]);
+        assert_eq!(words("shinano Shinano bob"), vec![("shinano".into(), vec!["shinano"])]);
     }
 }

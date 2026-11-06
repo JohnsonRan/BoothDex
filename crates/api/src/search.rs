@@ -32,8 +32,36 @@ pub(crate) struct SearchResponse {
     feature_counts: BTreeMap<String, u64>,
     items: Vec<db::ItemResponse>,
     semantic: SemanticStatus,
+    /// what the search read the query's words as: the site marks those tokens
+    recognized: Vec<Recognized>,
     trace: Vec<TraceStep>,
     timing: Timing,
+}
+
+/// Query words the search took as a model (matching what fits it) or a smart category (matching what is in it):
+/// the models in query order, then the category.
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub(crate) struct Recognized {
+    kind: RecognizedKind,
+    slug: String,
+    /// as typed
+    words: Vec<String>,
+}
+
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum RecognizedKind {
+    Model,
+    Category,
+}
+
+/// `models`: as `split_names` returns them; `category`: the smart category `meaning` names as a whole, all its words.
+fn recognized(models: &[(String, Vec<&str>)], category: Option<&String>, meaning: &str) -> Vec<Recognized> {
+    let entry = |kind, slug: &String, words: Vec<&str>| Recognized { kind, slug: slug.clone(), words: words.into_iter().map(str::to_owned).collect() };
+    let models = models.iter().map(|(slug, words)| entry(RecognizedKind::Model, slug, words.clone()));
+    models.chain(category.map(|c| entry(RecognizedKind::Category, c, meaning.split_whitespace().collect()))).collect()
 }
 
 /// Whether meaning-based matches were used for this search.
@@ -119,7 +147,9 @@ pub(crate) async fn search(
     // weren't, so the result set can't change between pages if the provider answers late
     // model names in the query become a requirement for meaning-based matches and are left out of the
     // embedding, so "shinano short hair" adds short hair that fits Shinano, not other Shinano items
-    let (meaning, models) = s.snap().avatars.split_names(&p.get("q").unwrap_or_default());
+    let q = p.get("q").unwrap_or_default();
+    let (meaning, named) = s.snap().avatars.split_names(&q);
+    let models: Vec<String> = named.iter().map(|(slug, _)| slug.clone()).collect();
     let embed_plan = match p.get("q").filter(|q| !q.trim().is_empty()) {
         Some(_) if p.get("sem").as_deref() == Some("0") => EmbedPlan::Skipped,
         Some(_) if meaning.is_empty() => EmbedPlan::Skipped,
@@ -147,6 +177,7 @@ pub(crate) async fn search(
     // spellings of one meaning end up with the same results
     let categories: Vec<String> =
         s.snap().category_phrases.get(&meaning.split_whitespace().collect::<String>().to_lowercase()).cloned().into_iter().collect();
+    let recognized = recognized(&named, categories.first(), &meaning);
     let catalog_now = chrono::Utc::now().timestamp();
     let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
         .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models, rest: &meaning });
@@ -171,6 +202,7 @@ pub(crate) async fn search(
         feature_counts: r.facets.features,
         items,
         semantic: semantic_status,
+        recognized,
         trace: trace.steps,
         timing: Timing { search_ms, total_ms: t0.elapsed().as_secs_f64() * 1e3 },
     })
@@ -364,4 +396,23 @@ pub(crate) fn semantic_cutoff(best: f64, scoped: bool) -> f64 {
     const FLOOR: f64 = 0.72;
     let margin = if scoped { 0.10 } else { 0.06 };
     FLOOR.max(best - margin)
+}
+
+#[cfg(test)]
+mod recognized_tests {
+    use super::*;
+
+    #[test]
+    fn models_then_the_category_with_their_words() {
+        let named = vec![("mao".to_owned(), vec!["Mao"])];
+        let r = serde_json::to_value(recognized(&named, Some(&"hair--short".to_owned()), "short hair")).unwrap();
+        assert_eq!(
+            r,
+            json!([
+                { "kind": "model", "slug": "mao", "words": ["Mao"] },
+                { "kind": "category", "slug": "hair--short", "words": ["short", "hair"] },
+            ])
+        );
+        assert_eq!(recognized(&[], None, "dress"), vec![]);
+    }
 }

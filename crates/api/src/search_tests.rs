@@ -60,16 +60,18 @@ async fn check_semantic_search(pool: PgPool) {
         )
         .unwrap(),
     );
-    for (query, expected, semantic) in [
-        ("q=silky%20strands", vec![1, 3], "used"),
-        ("q=shinano%20silky%20strands", vec![1], "used"),
-        ("q=silky%20strands&sem=0", vec![], "skipped"),
+    let shinano = json!([{ "kind": "model", "slug": "shinano", "words": ["Shinano"] }]);
+    for (query, expected, semantic, recognized) in [
+        ("q=silky%20strands", vec![1, 3], "used", json!([])),
+        ("q=Shinano%20silky%20strands", vec![1], "used", shinano),
+        ("q=silky%20strands&sem=0", vec![], "skipped", json!([])),
     ] {
         let response = search(State(state.clone()), limit::ClientIp("203.0.113.20".parse().unwrap()), HeaderMap::new(), RawQuery(Some(query.into())))
             .await.unwrap_or_else(IntoResponse::into_response);
         assert_eq!(response.status(), StatusCode::OK);
         let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
         assert_eq!(body["semantic"], semantic, "{body}");
+        assert_eq!(body["recognized"], recognized, "{body}");
         let ids: Vec<i64> = body["items"].as_array().unwrap().iter().map(|item| item["id"].as_i64().unwrap()).collect();
         assert_eq!(ids, expected, "query {query}");
         assert_eq!(body["count"], expected.len());

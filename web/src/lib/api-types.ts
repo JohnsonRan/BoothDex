@@ -34,9 +34,21 @@ export type Translation = { title?: string, bio?: string,
  */
 variations?: { [key in string]: string | null }, };
 
-export type SearchResponse = { count: number, page: number, totalPages: number, pageSize: number, sort: string, dir: string, boothCounts: { [key in string]: number }, smartCounts: { [key in string]: number }, featureCounts: { [key in string]: number }, items: Array<ItemResponse>, semantic: SemanticStatus, trace: Array<TraceStep>, timing: Timing, };
+export type SearchResponse = { count: number, page: number, totalPages: number, pageSize: number, sort: string, dir: string, boothCounts: { [key in string]: number }, smartCounts: { [key in string]: number }, featureCounts: { [key in string]: number }, items: Array<ItemResponse>, semantic: SemanticStatus, 
+/**
+ * what the search read the query's words as: the site marks those tokens
+ */
+recognized: Array<Recognized>, trace: Array<TraceStep>, timing: Timing, };
 
 export type SemanticStatus = "used" | "off" | "unavailable" | "skipped";
+
+export type Recognized = { kind: RecognizedKind, slug: string, 
+/**
+ * as typed
+ */
+words: Array<string>, };
+
+export type RecognizedKind = "model" | "category";
 
 export type TraceStep = { step: string, ms: number, };
 

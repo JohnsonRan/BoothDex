@@ -25,6 +25,8 @@ fn generate() -> String {
         db::Translation::decl(&cfg),
         search::SearchResponse::decl(&cfg),
         search::SemanticStatus::decl(&cfg),
+        search::Recognized::decl(&cfg),
+        search::RecognizedKind::decl(&cfg),
         search::TraceStep::decl(&cfg),
         search::Timing::decl(&cfg),
     ];
