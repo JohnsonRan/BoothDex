@@ -45,12 +45,14 @@ export function AvatarStrip({ avatars }: { avatars: Avatar[] }) {
   const strip = useRef<HTMLDivElement>(null);
   const pick = (slug: string) => apply({ avatar: slug });
 
-  // keep the chosen avatar in view, also when the page opens on one far down the list
+  // keep the chosen avatar in view, also when the page opens on one far down the list. The handle's scrollTo
+  // brings a card to the start edge (CarouselHandle.scrollTo, Carousel.d.ts:41-46), where the "previous" button
+  // covers it, so the card before it goes there and the chosen one sits whole beside the button.
   const index = avatars.findIndex((a) => a.slug === value) + 1;
   const [used, setUsed] = useState(false);
   const all = used || index >= FIRST_CARDS;
   useEffect(() => {
-    if (index > 0) carousel.current?.scrollTo(index);
+    if (index > 0) carousel.current?.scrollTo(index - 1);
   }, [index]);
   useEffect(() => {
     const el = strip.current;
