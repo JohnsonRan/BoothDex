@@ -314,6 +314,11 @@ Deviations, all prop values or token-backed inline styles:
 
 - Settings theme cards: `columns={{minWidth: 80, max: 3}}` instead of settings-dialog's 96 (page.tsx:1179), so
   the three cards stay on one row in a phone's panel (264 px at 360, 294 px at 390).
+- Height caps: DropdownMenu's 300 px cap is lifted to `menuMaxHeight` 480 px (`lib/menu-height.ts`) on the
+  language, sort, download and account menus, whose rem rows outgrow it at the page scale or in a roomier theme;
+  the viewport still bounds them. The search Typeahead pins its control at the `sm` height through
+  `controlStyle`, as TextInput and Selector do; its own `sm` is a minimum height that a touch screen's 16 px input
+  outgrows.
 
 Checked and kept as the template:
 
