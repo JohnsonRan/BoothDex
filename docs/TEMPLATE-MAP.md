@@ -169,14 +169,14 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 
 | Use | Name | lucide glyph |
 |---|---|---|
-| Quick search, search field | `search` (theme) | Search |
+| Search field, suggestion "Search “q”" row | `search` (theme) | Search |
 | Filters | `funnel` (theme) | Filter |
-| Palette: recent search | `clock` (theme) | Clock |
+| Suggestions: recent search (remove: `close`) | `clock` (theme) | Clock |
 | Favourite (tiles, item dialog; saved: filled by CSS on `aria-pressed`) | `site:favourite` | Heart |
 | Language menu | `site:language` | Languages |
 | Colour mode | `site:dark` / `site:light` | Moon / Sun |
 | Avatar strip "All", avatar without image | `site:allAvatars` | LayoutGrid |
-| Palette: tag row, clear recent | `site:tag`, `site:clear` | Hash, Trash2 |
+| Suggestions: tag row, clear recent | `site:tag`, `site:clear` | Hash, Trash2 |
 | Component internals (chevrons, close, check, carousel arrows, pagination) | theme semantic names | ChevronDown/Left/Right, X, Check, ... |
 
 The tag editor passes lucide `Plus`/`Minus` to `Icon` (filter area below). Sizes: `sm` in the top bar, tiles
@@ -187,7 +187,10 @@ and menus (as shell-top-nav), `lg` for the strip's "All" glyph.
 The header is the Filterable Table template's (`web/templates/pages/table-filter/page.tsx`): its default filter row,
 not its PowerSearch mode. A set clause is its own chip, the row folds into "+N" instead of wrapping, and phones get
 the folded set in a BottomSheet. The site search leads the row; there is no separate search field, tab row or
-command palette.
+command palette. The search is a `Typeahead` (block TypeaheadSearchField) carrying the old quick search's
+suggestions: recent searches on focus, then `/api/palette`'s groups as `TypeaheadItem` rows with a leading Avatar
+(the component's own example). Not 1:1: the applied query shows as the Typeahead's token (its value), and the list is
+36rem wide and up to 60vh tall instead of the field's width and 300 px (`app/filter-row.css`).
 
 | Master filter | Clause | Not 1:1 |
 |---|---|---|
