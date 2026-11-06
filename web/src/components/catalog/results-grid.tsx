@@ -1,14 +1,15 @@
 // The result grid. The server renders the first screen of tiles, so their covers are in the HTML from the
 // start; the rest of the page's results are drawn in the browser near the viewport (LaterTiles), fetched
 // again from `search` when the server renders, passed as data when the browser does (the recent view).
-// Tiles: item-tile.tsx; the loading silhouette: loading.tsx.
+// Tiles: item-tile.tsx, drawn by tiles.tsx; the loading silhouette: loading.tsx.
 
 import { Grid } from "@astryxdesign/core/Grid";
 import type { ItemResponse } from "@/lib/api-types";
 import { ROWS } from "@/lib/motion";
 import type { Rates, Settings, Translate } from "@/lib/settings-core";
-import { FIRST_TILES, GRID, ItemTile, tileOf } from "./item-tile";
+import { FIRST_TILES, GRID, tileOf } from "./item-tile";
 import { LaterTiles } from "./later-tiles";
+import { Tiles } from "./tiles";
 
 export function ResultsGrid({
   items,
@@ -33,15 +34,11 @@ export function ResultsGrid({
   const favLabel = t("fav.add");
   return (
     <Grid {...ROWS} {...GRID}>
-      {first.map((item, i) => (
-        <ItemTile
-          key={item.id}
-          tile={tileOf(item, settings, rates, t)}
-          index={i}
-          markViewed={markViewed}
-          favLabel={favLabel}
-        />
-      ))}
+      <Tiles
+        tiles={first.map((item) => tileOf(item, settings, rates, t))}
+        markViewed={markViewed}
+        favLabel={favLabel}
+      />
       {later && (
         <LaterTiles
           // a new search starts over

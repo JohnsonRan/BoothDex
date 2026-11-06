@@ -2,8 +2,8 @@
 // square media, then title, a secondary line (the shop, with its icon) and the price in large bold; the price
 // row ends with the favourite button, and NEW and feature tags follow as Badges (Badge Category Tags block). Not over the cover: Overlay is a client component,
 // and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration; only a viewed tile mounts one (viewed-mark.tsx).
-// No directive: the server renders the first screen of tiles and LaterTiles renders the rest in the browser,
-// both from this module. For the same reason the favourite button carries no handler of its own: one listener
+// No directive: the server builds the tiles' data (tileOf) and Tiles (tiles.tsx) draws them, from the server's
+// first screen and the browser's later tiles. The favourite button carries no handler of its own: one listener
 // answers every one (account/favourites.tsx). The viewed mark is the tile's only client part; the shop icon is
 // server markup rather than a client Avatar.
 
