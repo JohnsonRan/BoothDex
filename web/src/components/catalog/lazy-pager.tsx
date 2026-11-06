@@ -5,7 +5,7 @@
 
 import { VStack } from "@astryxdesign/core/Stack";
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 const PAGER_HEIGHT = "var(--size-element-md)";
 
@@ -20,9 +20,8 @@ export function LazyPager(props: {
   noSemantic: boolean;
 }) {
   const [near, setNear] = useState(false);
-  const slot = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = slot.current;
+  // a callback ref: the slot appears only once a result has more than one page, which need not be the first
+  const slot = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
     const seen = new IntersectionObserver(
       (entries) => {
