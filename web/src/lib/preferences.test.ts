@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { accountPatch, saveAvatar, setPreferenceSync } from "./preferences";
+import {
+  accountPatch,
+  saveAvatar,
+  savePreferences,
+  setPreferenceSync,
+} from "./preferences";
 import { DEFAULT_SETTINGS } from "./settings-core";
 
 test("the account's valid preferences replace the browser's settings that differ", () => {
@@ -20,6 +25,30 @@ test("missing or invalid preferences leave the browser's settings alone", () => 
       DEFAULT_SETTINGS,
     ),
   ).toEqual({});
+});
+
+/** The account requests `run` makes while signed in, as [path, method, body]. */
+function sentWhileSignedIn(run: () => void) {
+  const sent: unknown[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (path: string, init: RequestInit) => {
+    sent.push([path, init.method, init.body]);
+    return Response.json({});
+  }) as typeof fetch;
+  setPreferenceSync(true);
+  try {
+    run();
+  } finally {
+    setPreferenceSync(false);
+    globalThis.fetch = realFetch;
+  }
+  return sent;
+}
+
+test("item text that follows the interface language clears the account's item-text language", () => {
+  expect(
+    sentWhileSignedIn(() => savePreferences({ content: "ui", ui: "ja" })),
+  ).toEqual([["/api/account/preferences", "PUT", '{"language":"","ui":"ja"}']]);
 });
 
 test("my avatar goes to the account only while signed in", () => {

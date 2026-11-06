@@ -13,6 +13,20 @@
   --font-family-heading: var(--font-family-body);
 }
 
+/* Documented deviation (docs/TEMPLATE-MAP.md): the page density. The owner's best view was the neutral theme
+   at 110-125 % browser zoom, so the root font size carries that scale and every rem token (type, spacing,
+   radius, icons) follows it. The one knob: 110 %, 115 % or 125 %. Control heights are px in Astryx (28/32/36),
+   so they are restated in rem to scale with the text they hold. Viewport breakpoints stay px. */
+html {
+  font-size: 115%;
+}
+:root,
+[data-astryx-theme] {
+  --size-element-sm: 1.75rem;
+  --size-element-md: 2rem;
+  --size-element-lg: 2.25rem;
+}
+
 /* Documented deviation (docs/TEMPLATE-MAP.md): on phones the top bar shows only the logo, as on master, so the
    five end actions fit at 390 px. TopNavHeading has no prop for it; the wordmark is hidden visually and stays
    the link's accessible name. */
@@ -40,7 +54,7 @@
   gap: var(--spacing-3);
 }
 .settings-text {
-  max-width: 420px;
+  max-width: 26.25rem;
 }
 .settings-control {
   flex-shrink: 0;
@@ -60,4 +74,14 @@
    icon of block ToggleButtonShowcase (ToggleButtonShowcase.tsx:30). One rule, so server-rendered buttons need no client state. */
 [data-fav][aria-pressed="true"] svg {
   fill: currentColor;
+}
+
+/* The top bar's account slots (account/account-button.tsx): both are in the server HTML, and `data-account`,
+   set by the head script from the last session and kept by the session, shows one before the first paint. */
+[data-account-slot] {
+  display: contents;
+}
+:root[data-account="in"] [data-account-slot="out"],
+:root:not([data-account="in"]) [data-account-slot="in"] {
+  display: none;
 }

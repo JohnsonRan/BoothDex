@@ -26,11 +26,15 @@ function send(json: Record<string, string>) {
   api("/api/account/preferences", { method: "PUT", json }).catch(() => {});
 }
 
-/** Sends changed settings to the account. */
+/** Sends changed settings to the account. The API has no value for item text that follows the interface
+ *  language, so that choice clears the account's ("" removes a preference). */
 export function savePreferences(patch: Partial<Settings>) {
   send(
     Object.fromEntries(
-      Object.entries(patch).map(([k, v]) => [NAMES[k as keyof Settings], v]),
+      Object.entries(patch).map(([k, v]) => [
+        NAMES[k as keyof Settings],
+        k === "content" && v === "ui" ? "" : v,
+      ]),
     ),
   );
 }

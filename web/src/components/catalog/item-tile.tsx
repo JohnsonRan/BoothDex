@@ -23,13 +23,16 @@ import {
   isNew,
   priceOf,
 } from "@/lib/catalog";
+import { remColumns } from "@/lib/grid";
 import {
+  contentLang,
   formatPrice,
   itemText,
   type Rates,
   type Settings,
   type Translate,
 } from "@/lib/settings-core";
+import { SkeletonImage } from "./silhouette";
 import { ViewedMark } from "./viewed-mark";
 
 /** What a tile shows, already in the visitor's language and currency (small enough to send to the browser). */
@@ -52,7 +55,7 @@ export const tileOf = (
 ): Tile => ({
   id: item.id,
   cover: imgUrl(item, 0),
-  title: itemText(item, "title", settings.content),
+  title: itemText(item, "title", contentLang(settings)),
   shop: item.author_name,
   shopIcon: imageSrc(item.author_icon),
   price: formatPrice(priceOf(item), settings, rates, t),
@@ -62,18 +65,21 @@ export const tileOf = (
   ],
 });
 
-// Reflows to two columns on a phone; the floor is the narrowest tile whose title still reads.
-export const GRID_COLUMNS = { minWidth: 160 } as const;
-// Tiles in the server HTML: more than a first screen at 390x844 (2 columns) and 1440x900 (8 columns), and a
-// whole number of rows at 2, 3, 4, 6 and 8 columns.
+// Template product-gallery (page.tsx:148-149): `<Grid columns={{minWidth: 300}} gap={6}>`, "reflows 3 -> 2 -> 1",
+// with the floor in rem (300 px at a 16 px root).
+export const GRID = { gap: 6, ...remColumns("18.75rem") } as const;
+// Tiles in the server HTML: more than a first screen at every width, and whole rows at 1 to 4 columns (phones
+// to 1900 px at the 115 % root); at 5 columns (1920 px) the fifth row, below the first screen, ends early. Whole
+// rows at 5 too would take 60 tiles: 19 KB more HTML (gzip) than the size budget allows, and the control rows
+// streamed after them moved the grid after the first paint.
 export const FIRST_TILES = 24;
 
-// Roughly the first screen (two columns on phones, five or six on a desktop): those covers load at once,
-// the first few with high priority since one of them is the likely LCP image.
-const EAGER = 12;
-const HIGH = 4;
+// The first screen: two rows at five columns load at once, the first row at three columns (1280-1440 px) with
+// high priority, since one of them is the likely LCP image.
+const EAGER = 10;
+const HIGH = 3;
 
-/** The shop's icon at Avatar's xsm size: a round crop, a muted disc when the shop has none. */
+/** The shop's icon at Avatar's xsm size (20 px at a 16 px root): a round crop, a muted disc when the shop has none. */
 function ShopIcon({ src }: { src: string }) {
   return (
     <span
@@ -81,8 +87,8 @@ function ShopIcon({ src }: { src: string }) {
       style={{
         display: "inline-flex",
         flex: "none",
-        inlineSize: 20,
-        blockSize: 20,
+        inlineSize: "var(--spacing-5)",
+        blockSize: "var(--spacing-5)",
         borderRadius: "var(--radius-full)",
         overflow: "hidden",
         background: "var(--color-background-muted)",
@@ -92,11 +98,9 @@ function ShopIcon({ src }: { src: string }) {
         <img
           src={src}
           alt=""
-          width={20}
-          height={20}
           loading="lazy"
           decoding="async"
-          style={{ objectFit: "cover" }}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       )}
     </span>
@@ -118,10 +122,9 @@ export function ItemTile({
 }) {
   const cover = (
     <Card padding={0}>
-      <AspectRatio ratio={1} fit="cover">
-        <img
+      <AspectRatio ratio={1}>
+        <SkeletonImage
           src={tile.cover}
-          alt=""
           loading={index < EAGER ? "eager" : "lazy"}
           fetchPriority={index < HIGH ? "high" : undefined}
           decoding="async"

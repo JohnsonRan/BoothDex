@@ -7,7 +7,7 @@ import { Grid } from "@astryxdesign/core/Grid";
 import type { ItemResponse } from "@/lib/api-types";
 import { ROWS } from "@/lib/motion";
 import type { Rates, Settings, Translate } from "@/lib/settings-core";
-import { FIRST_TILES, GRID_COLUMNS, ItemTile, tileOf } from "./item-tile";
+import { FIRST_TILES, GRID, ItemTile, tileOf } from "./item-tile";
 import { LaterTiles } from "./later-tiles";
 
 export function ResultsGrid({
@@ -32,7 +32,7 @@ export function ResultsGrid({
   const later = items.length > FIRST_TILES;
   const favLabel = t("fav.add");
   return (
-    <Grid {...ROWS} columns={GRID_COLUMNS} gap={4}>
+    <Grid {...ROWS} {...GRID}>
       {first.map((item, i) => (
         <ItemTile
           key={item.id}

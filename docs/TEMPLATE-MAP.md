@@ -41,7 +41,8 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 |---|---|
 | Page inset | `Layout padding={6}` on header and content |
 | Rhythm | `VStack gap={6}` between page sections, `gap={4}` within the control block, `gap={2}` between a tile's cover and text, `gap={1}` between text lines |
-| Grid | `Grid columns={{minWidth: 160}} gap={4}`: two columns on a 390 px phone, six to seven at 1440 px |
+| Grid | page `product-gallery` (page.tsx:149): `minWidth` 300 (18.75rem, `lib/grid.ts`), `gap={6}`: one column on a 390 px phone, three at 1280-1440 px, five at 1920 px |
+| Density | `html { font-size: 115% }` in `globals.css` is the one knob (110 / 115 / 125 %): every rem token follows it, and `--size-element-sm/md/lg` are restated as 1.75 / 2 / 2.25rem so controls scale with their text |
 | Control size | `sm` for the whole toolbar row, as the table-filter template: search, every filter clause, presets, sort, save and saved views |
 | Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="supporting"` (sm); price `Text type="body" weight="bold"` |
 | Colour | neutral theme tokens only, light and dark via `light-dark()`; no overrides |
@@ -60,11 +61,11 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Item detail | `?item=<id>`, tile click | page `product-detail` inside a `Dialog` (blocks `DialogAdaptivePresentation`, `DialogFullscreenDialog`, `DialogWithSubtitle`): gallery (block `CarouselSnap` hero, `SelectableCard` thumbnails, block `LightboxGallery` zoom), info column (SegmentedControl language tabs, display-2 title, rating row as likes, price row, `Badge` marks, `Banner` avatar fit, two lg actions, `CollapsibleGroup` sections with blocks `ListBasicList` and `MetadataListBasicMetadata`, `Token` chips), "More from" `Carousel` strip; full screen with a `LayoutFooter` bar below lg | phase 2 |
 | Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
-| Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); refresh: nothing for 150 ms, then the template's indeterminate `ProgressBar` along the header's top edge (:4341-4347) held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
+| Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); every image box holds a `Skeleton` under its image until the image paints; refresh: nothing for 150 ms, then the template's indeterminate `ProgressBar` along the header's top edge (:4341-4347) held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
 | Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms) | checkpoint 1 |
-| Account menu | TopNav end, signed in | `DropdownMenu` with sections (block `DropdownMenuWithSections`): favourites, recently viewed, admin console, settings, sign out | track D |
-| Language, item text, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio groups; currency as a ghost DropdownMenu button | checkpoint 1 |
-| Settings (appearance, language, currency, item text) | TopNav end, account menu | page `settings-dialog`; synced to the account when signed in | track D |
+| Account menu | TopNav end, signed in | ghost `IconButton` with the user-circle glyph (template `shell-side-nav` account row, page.tsx:180), tooltip the display name; `DropdownMenu` with a header (display name, email) and two groups: favourites, recently viewed / settings, admin console (admins only), sign out | track D |
+| Language, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio group (interface language only); currency as a ghost DropdownMenu button of the same height | checkpoint 1 |
+| Settings (appearance, language, currency, item text) | TopNav end, account menu | page `settings-dialog`; synced to the account when signed in; item text defaults to the interface language | track D |
 | Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid; recently viewed is read in the browser) | track D |
 | Admin frame | `/admin/*` | page `shell-side-nav` (collapsible, resizable `SideNav`, two titled groups, footer: back to site, language, colour mode; phone drawer from `AppShell`) | track F |
 | Admin sign-in, not an admin, unreachable | `/admin/*` before the probe succeeds | `EmptyState` inside the frame; sign-in opens the site's `login-card` dialog, sign-in only under the admin heading | track F |
@@ -141,12 +142,13 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 - Frame: no centre navigation (BoothDex has no sections; the template's mega menus are dropped). `contentPadding`
   is not set and the template's 1100 px content cap is not used: the home page is the full-width library layout,
   whose own `Layout padding={6}` gives the inset (rule 5).
-- Logo: master's SVG mark at 28 px instead of the template's `NavIcon` (the mark is itself a filled shape). On
+- Logo: master's SVG mark at 1.75rem (28 px at a 16 px root) instead of the template's `NavIcon` (the mark is itself a filled shape). On
   phones (< 640 px) the wordmark is visually hidden by a documented rule in `globals.css` (`.site-heading`), as on
   master: TopNavHeading has no prop for it, and five end actions do not fit beside a truncated name at 390 px.
 - End actions: no magnifier or palette; the site search is the home page's filter row (Filter area below).
-- Currency: a ghost `DropdownMenu` button showing symbol and code ("¥ JPY") instead of an icon (owner: the coin
-  icon was not understood); rows show symbol, code and the localised name.
+- Currency: a ghost `DropdownMenu` button showing only the code ("JPY", no chevron) instead of an icon (owner: the
+  coin icon was not understood); its accessible name and tooltip give the localised name, the rows symbol, code
+  and name.
 - Sign-in: the login card's centring frame and Card are dropped inside the Dialog (as the reference board
   notes); no provider buttons or divider (no third-party sign-in). Tabs (TabList) switch sign-in and register.
 - Tile: secondary line is the shop (icon + name) instead of a two-line description; the price row ends
@@ -167,6 +169,22 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 - Avatar strip: `SelectableCard` is documented for multi-select; the strip is single-select (one avatar or
   all). Kept because it is the component with a selected state for media cards; ClickableCard has none.
 
+## Deviations in the beautification batch
+
+- Density: the root font size (115 %) scales the page as the owner's 110-125 % browser zoom did; the Astryx
+  control heights are px in `astryx.css`, so `globals.css` restates them in rem. Viewport breakpoints stay px.
+  Grid's `columns={{minWidth}}` takes px only, so `lib/grid.ts` passes the same track list with a rem floor as
+  the `style` Grid merges (results grid, item dialog columns, gallery thumbnails).
+- Results grid: 24 server tiles (whole rows at 1 to 4 columns; at 5 columns the fifth row ends early, below the
+  first screen): whole rows at 5 too would take 60 tiles, 19 KB of HTML over the size budget.
+- Image skeletons: each image is a `SkeletonImage` (`catalog/silhouette.tsx`), an `img` over a `Skeleton` in one
+  grid cell, server markup with no handler; the image is positioned so it paints above the animated Skeleton.
+- Top bar account: both variants are server markup in `[data-account-slot]` wrappers (`display: contents`), and
+  `globals.css` shows one by `<html data-account>`, set before the first paint from `lib/session-hint.ts`.
+- Avatar cards: `padding={0.5}` (the selection ring's width) and an image radius of `--radius-container` minus
+  that padding, instead of product-detail's padding 0, so no band of card shows between ring and image.
+- Tab icon: `app/icon.svg` is the logo's mark in black, white under `prefers-color-scheme: dark` inside the SVG.
+
 ## Icons
 
 | Use | Name | lucide glyph |
@@ -176,6 +194,7 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
 | Palette: recent search | `clock` (theme) | Clock |
 | Favourite (tiles, item dialog; saved: filled by CSS on `aria-pressed`) | `site:favourite` | Heart |
 | Language menu | `site:language` | Languages |
+| Account menu (signed in) | `site:account` | CircleUser |
 | Colour mode | `site:dark` / `site:light` | Moon / Sun |
 | Avatar strip "All", avatar without image | `site:allAvatars` | LayoutGrid |
 | Palette: tag row, clear recent | `site:tag`, `site:clear` | Hash, Trash2 |

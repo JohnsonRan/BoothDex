@@ -77,17 +77,17 @@ test("the server HTML carries the first screen's covers, the first ones loading 
   const html = render(items);
   expect(html.match(/<img /g)).toHaveLength(FIRST_TILES);
   expect(html).toContain('src="/img/b/300x300_a2_g5/u/i/1/cover.jpg"');
-  expect(html.match(/<img [^>]*fetchPriority="high"/gi)).toHaveLength(4);
-  expect(html.match(/loading="eager"/g)).toHaveLength(12);
+  expect(html.match(/<img [^>]*fetchPriority="high"/gi)).toHaveLength(3);
+  expect(html.match(/loading="eager"/g)).toHaveLength(10);
 });
 
 test("a full page renders the first screen on the server and the rest in the browser", () => {
   const items = Array.from({ length: 100 }, (_, i) => ({ ...item, id: i + 1 }));
   const html = render(items);
   expect(html.match(/<img /g)).toHaveLength(FIRST_TILES);
-  // one tile silhouette after the last server tile (cover, two title lines, shop icon and name, price, badge
-  // row); the other tiles are drawn near the viewport
-  expect(html.match(/class="astryx-skeleton/g)).toHaveLength(7);
+  // a Skeleton under every server cover, and one tile silhouette after the last server tile (cover, two title
+  // lines, shop icon and name, price, badge row); the other tiles are drawn near the viewport
+  expect(html.match(/class="astryx-skeleton/g)).toHaveLength(FIRST_TILES + 7);
 });
 
 test("every tile reserves two title lines and a badge row, as its loading silhouette does", () => {

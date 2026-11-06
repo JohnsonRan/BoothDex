@@ -104,7 +104,7 @@ export function ThemeChoiceCards({
       aria-label={t("settings.theme")}
       columns={{ minWidth: 96, max: 3 }}
       gap={2}
-      maxWidth={480}
+      maxWidth="30rem"
     >
       {THEME_CHOICES.map((choice) => {
         const isSelected = choice.value === value;

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { translator } from "./dictionaries";
 import {
+  contentLang,
   DEFAULT_SETTINGS,
   formatPrice,
   itemText,
@@ -19,6 +20,13 @@ test("stored settings win, invalid fields fall back", () => {
   ).toEqual({ ...DEFAULT_SETTINGS, ui: "ja" });
   expect(parseSettings("not json")).toEqual(DEFAULT_SETTINGS);
   expect(parseSettings(undefined)).toEqual(DEFAULT_SETTINGS);
+});
+
+test("item text follows the interface language unless a language is chosen", () => {
+  expect(DEFAULT_SETTINGS.content).toBe("ui");
+  expect(contentLang({ ui: "ja", content: "ui" })).toBe("ja");
+  expect(contentLang({ ui: "ja", content: "original" })).toBe("original");
+  expect(parseSettings('{"content":"ui"}').content).toBe("ui");
 });
 
 test("browser language picks the first supported one", () => {

@@ -10,6 +10,7 @@ import { Grid } from "@astryxdesign/core/Grid";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { useUi } from "@/components/providers";
+import type { remColumns } from "@/lib/grid";
 
 // the dialog's height cap: Astryx Dialog's default, which leaves the page visible above and below
 // (master used 92 %, which put the dialog against the top bar)
@@ -75,17 +76,18 @@ export function DetailSilhouette({
   shown: boolean;
   /** the info column's action rows exist from lg up (item-info.tsx) */
   isWide: boolean;
-  columns: { minWidth: number; repeat: "fit" };
+  /** the loaded dialog's columns (lib/grid) */
+  columns: ReturnType<typeof remColumns>;
 }) {
   const { t } = useUi();
   return (
     <Grid
-      columns={columns}
       gap={5}
       aria-busy
       aria-label={t("detail.loading")}
       // as tall as the dialog allows, as a loaded item is: the centred dialog does not move when it arrives
       style={{
+        ...columns.style,
         visibility: shown ? "visible" : "hidden",
         minBlockSize: MAX_HEIGHT,
       }}
