@@ -48,7 +48,12 @@ export function Variations({
       aria-label={t("detail.variations", { n: item.variations.length })}
       style={
         isCapped
-          ? { maxBlockSize: VARIATIONS_HEIGHT, overflowY: "auto" }
+          ? {
+              maxBlockSize: VARIATIONS_HEIGHT,
+              overflowY: "auto",
+              // no bar, as in the popup lists (globals.css); still scrolls by wheel, touch and keyboard
+              scrollbarWidth: "none",
+            }
           : undefined
       }
     >

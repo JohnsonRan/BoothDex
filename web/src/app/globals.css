@@ -87,6 +87,16 @@
   }
 }
 
+/* Popup lists (menus such as currency, a Selector's options such as category) and a dialog's body (the item
+   card; its thumbnails and variations set the same inline) scroll without a visible bar: the
+   classic Windows bar, arrows included, took a third of a narrow menu's edge (owner, Matcha). Wheel, touch and
+   keyboard still scroll them, and the row cut at the bottom edge shows there is more. */
+.astryx-dropdown-menu,
+.astryx-selector-popup [role="listbox"],
+.astryx-dialog .astryx-layout-content {
+  scrollbar-width: none;
+}
+
 /* A saved favourite (account/favourites.tsx sets aria-pressed): the same lucide heart, filled, as the pressed
    icon of block ToggleButtonShowcase (ToggleButtonShowcase.tsx:30). One rule, so server-rendered buttons need no client state. */
 [data-fav][aria-pressed="true"] svg {

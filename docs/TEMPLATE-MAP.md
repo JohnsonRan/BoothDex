@@ -191,6 +191,10 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   radius of `--radius-container` minus that padding, instead of product-detail's padding 0, so no band of card
   shows between ring and image.
 - Tab icon: `app/icon.svg` is the logo's mark in black, white under `prefers-color-scheme: dark` inside the SVG.
+- Scrollbars: `.astryx-dropdown-menu`, a Selector popup's listbox and a dialog's body take `scrollbar-width: none`
+  in `globals.css`, the item card's thumbnails and variations the same inline (the classic Windows bar crowded
+  narrow menus and the card's rounded edge); they still scroll by wheel, touch and keyboard. The account menu
+  passes `menuMaxHeight` so its rows fit whole in themes with tall rows (Matcha: 55 px).
 
 ## Icons
 

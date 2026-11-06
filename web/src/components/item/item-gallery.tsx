@@ -182,6 +182,8 @@ export function ItemGallery({
           style={{
             maxBlockSize: THUMBS_HEIGHT,
             overflowY: "auto",
+            // no bar beside the thumbnails, as in the popup lists (globals.css); the cut-off row shows there is more
+            scrollbarWidth: "none",
             padding: "var(--spacing-1)",
             margin: "calc(-1 * var(--spacing-1))",
           }}
