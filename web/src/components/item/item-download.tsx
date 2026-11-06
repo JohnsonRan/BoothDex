@@ -13,6 +13,7 @@ import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import type { ItemResponse } from "@/lib/api-types";
 import { imgUrl } from "@/lib/catalog";
+import { MENU_MAX_HEIGHT } from "@/lib/menu-height";
 import {
   downloadFormats,
   downloadName,
@@ -53,6 +54,7 @@ export function Download({
     <DropdownMenu
       placement="below"
       alignment="start"
+      menuMaxHeight={MENU_MAX_HEIGHT}
       renderTrigger={(props) => (
         <IconButton
           {...props}

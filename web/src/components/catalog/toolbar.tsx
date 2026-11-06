@@ -21,6 +21,7 @@ import { useAccount } from "@/components/account/session";
 import { useUi } from "@/components/providers";
 import { FILTER_RESET, parseFilters } from "@/lib/catalog";
 import { preloadOn, preloadWhenIdle } from "@/lib/lazy";
+import { MENU_MAX_HEIGHT } from "@/lib/menu-height";
 import { type ClauseNames, SORTS, sortKey, sortLabel } from "./clause-text";
 import { FilterBar } from "./filter-bar";
 import {
@@ -130,6 +131,7 @@ export function Toolbar({
                 size: CONTROL_SIZE,
               }}
               alignment="end"
+              menuMaxHeight={MENU_MAX_HEIGHT}
             >
               <DropdownMenuRadioGroup
                 label={t("sort.label")}
