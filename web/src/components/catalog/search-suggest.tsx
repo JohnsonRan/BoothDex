@@ -9,6 +9,7 @@
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
+import { VStack } from "@astryxdesign/core/Stack";
 import { Typeahead, TypeaheadItem } from "@astryxdesign/core/Typeahead";
 import { type RefObject, useEffect, useMemo, useRef } from "react";
 import { useItemOpener, useRates } from "@/components/item/item-host";
@@ -19,6 +20,11 @@ import { useFilterUrl } from "./filter-url";
 import { useSearch } from "./search-box";
 import { type Row, searchSource } from "./search-source";
 import "@/lib/icons-on-demand";
+
+// Avatar's sm box (Avatar.d.ts:80): a row with a glyph holds it in the box a row with a picture has, so every
+// row's text starts on one edge, as the component's example leads every row with an Avatar
+// (TypeaheadItemShowcase.tsx:43)
+const AVATAR_SM = 24;
 
 // the theme's semantic icons where it has one (TEMPLATE-MAP rule 6), the site's own otherwise (lib/icons)
 const ICONS = {
@@ -161,7 +167,14 @@ export function SearchSuggest({
                   />
                 ) : (
                   d?.icon && (
-                    <Icon icon={ICONS[d.icon]} size="sm" color="secondary" />
+                    <VStack
+                      width={AVATAR_SM}
+                      height={AVATAR_SM}
+                      hAlign="center"
+                      vAlign="center"
+                    >
+                      <Icon icon={ICONS[d.icon]} size="sm" color="secondary" />
+                    </VStack>
                   )
                 )
               }
