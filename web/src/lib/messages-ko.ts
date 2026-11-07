@@ -123,7 +123,7 @@ export const ko: Dict = {
   "fav.needSignIn": "즐겨찾기는 로그인 후 사용할 수 있습니다",
   "fav.failed": "즐겨찾기를 변경하지 못했습니다",
   "price.free": "무료",
-  "price.listed": "표시 가격 {price} · 왜 다를까요?",
+  "price.listed": "표시 가격 {price}",
   "detail.label": "상품 상세",
   "detail.close": "닫기",
   "detail.closeZoom": "확대 이미지 닫기",

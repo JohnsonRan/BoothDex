@@ -25,7 +25,6 @@ pub struct ItemResponse {
     pub booth_category: Option<String>,
     pub price_jpy: Option<i32>,
     pub smart_price: Option<i32>,
-    pub smart_price_reason: Option<String>,
     pub likes: i32,
     pub is_adult: bool,
     pub content_rating: Option<ContentRating>,
@@ -148,12 +147,11 @@ pub struct Translation {
 }
 
 impl ItemResponse {
-    /// What a result card shows, in the same shape: bio, variations, tags, linked avatars, categories and the
-    /// price reason come back empty, translations keep only titles and images only the cover and hover preview.
+    /// What a result card shows, in the same shape: bio, variations, tags, linked avatars and categories come
+    /// back empty, translations keep only titles and images only the cover and hover preview.
     /// A page of 100 shrinks from ~1.3 MB to ~100 KB of JSON; the item page loads the full record.
     pub fn card(mut self) -> Self {
         self.bio.clear();
-        self.smart_price_reason = None;
         self.booth_tags.clear();
         self.variations.clear();
         self.linked_avatars.clear();
@@ -187,7 +185,6 @@ impl Default for ItemResponse {
             booth_category: None,
             price_jpy: None,
             smart_price: None,
-            smart_price_reason: None,
             likes: 0,
             is_adult: false,
             content_rating: None,
@@ -338,7 +335,6 @@ pub async fn load_items(pool: &PgPool, ids: &[i64]) -> Result<Vec<ItemResponse>>
             'booth_category', i.booth_category,
             'price_jpy', i.price_jpy,
             'smart_price', i.smart_price,
-            'smart_price_reason', i.smart_price_reason,
             'likes', i.likes,
             'is_adult', i.is_adult,
             'content_rating', i.content_rating,
@@ -389,7 +385,6 @@ mod tests {
             id: 1,
             title: "Title".into(),
             bio: "Long description".into(),
-            smart_price_reason: Some("reason".into()),
             booth_tags: vec!["tag".into()],
             media: vec!["m1".into(), "m2".into(), "m3".into()],
             booth_images: Some(vec!["b1".into(), "b2".into(), "b3".into(), "b4".into()]),
@@ -412,7 +407,6 @@ mod tests {
         let card = full.card();
         assert_eq!(card.title, "Title");
         assert_eq!(card.bio, "");
-        assert_eq!(card.smart_price_reason, None);
         assert!(card.booth_tags.is_empty());
         assert_eq!(card.media, vec!["m1", "m2"]);
         assert_eq!(card.booth_images, Some(vec!["b1".into(), "b2".into()]));

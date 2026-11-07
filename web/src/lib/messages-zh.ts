@@ -120,7 +120,7 @@ export const zh = {
   "fav.needSignIn": "登录后才能收藏",
   "fav.failed": "收藏失败",
   "price.free": "免费",
-  "price.listed": "标价 {price} · 为什么不同?",
+  "price.listed": "标价 {price}",
   "detail.label": "商品详情",
   "detail.close": "关闭",
   "detail.closeZoom": "关闭大图",

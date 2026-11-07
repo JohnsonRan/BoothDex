@@ -1,7 +1,7 @@
 // Generated from the Rust response types (crates/api/src/api_types.rs). Do not edit:
 // change the Rust types, then run `UPDATE_API_TYPES=1 cargo test -p api api_types`.
 
-export type ItemResponse = { id: number, title: string, bio: string, author_name: string, author_uri: string, author_icon: string | null, booth_category: string | null, price_jpy: number | null, smart_price: number | null, smart_price_reason: string | null, likes: number, is_adult: boolean, content_rating: ContentRating | null, quest: string | null, features: Array<string>, status: Status, published_at: string | null, scraped_at: string, original_language: string | null, avatar_slug: string | null, supported: boolean, gender: Gender | null, needs_enrichment: boolean, last_listed_at: string | null, enrich_failures: number, media: Array<string>, booth_tags: Array<string>, variations: Array<Variation>, 
+export type ItemResponse = { id: number, title: string, bio: string, author_name: string, author_uri: string, author_icon: string | null, booth_category: string | null, price_jpy: number | null, smart_price: number | null, likes: number, is_adult: boolean, content_rating: ContentRating | null, quest: string | null, features: Array<string>, status: Status, published_at: string | null, scraped_at: string, original_language: string | null, avatar_slug: string | null, supported: boolean, gender: Gender | null, needs_enrichment: boolean, last_listed_at: string | null, enrich_failures: number, media: Array<string>, booth_tags: Array<string>, variations: Array<Variation>, 
 /**
  * AI translations by language, plus `original_language`. Kept as raw JSON: a few rows carry stray keys, and
  * the API passes them through untouched. The site sees the documented shape.

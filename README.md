@@ -260,7 +260,7 @@ tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender 
 
 Differences from VRCatalogue: feature facet counts respect the selected category; Trending is likes decayed by
 age; `range` also accepts `7d`, `30d` and `90d`; `fields=card` opts into compact card records (bio, variations,
-booth_tags, linked_avatars, categories and smart_price_reason emptied, translations keep only titles,
+booth_tags, linked_avatars and categories emptied, translations keep only titles,
 booth_images/media at most 2; default response unchanged; fetch full records via `/api/items?ids=`).
 
 ## Acknowledgments

@@ -123,7 +123,7 @@ export const en: Dict = {
   "fav.needSignIn": "Sign in to save favourites",
   "fav.failed": "Couldn't update favourites",
   "price.free": "Free",
-  "price.listed": "Listed at {price} · why different?",
+  "price.listed": "Listed at {price}",
   "detail.label": "Item details",
   "detail.close": "Close",
   "detail.closeZoom": "Close full-size image",

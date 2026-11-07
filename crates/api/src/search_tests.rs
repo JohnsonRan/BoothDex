@@ -85,11 +85,11 @@ async fn load_items_fills_every_field(pool: PgPool) {
     sqlx::raw_sql(
         "insert into avatars (slug, name_en) values ('shinano', 'Shinano') on conflict (slug) do nothing;
          insert into items (id, title, bio, author_name, author_uri, author_icon, booth_category, price_jpy, smart_price,
-                            smart_price_reason, likes, is_adult, content_rating, quest, features, status, published_at,
+                            likes, is_adult, content_rating, quest, features, status, published_at,
                             scraped_at, original_language, media, booth_tags, variations, translations, avatar_slug,
                             supported, gender, needs_enrichment, last_listed_at, enrich_failures, relisted_as)
          values (1, 'Title', 'Bio', 'creator', 'https://example.test', 'https://example.test/i.png', '3D Clothing', 500, 400,
-                 'reason', 3, false, 'SFW', 'Yes', '{PhysBones}', 'delisted', now(), now(), 'ja', '{https://example.test/m.png}',
+                 3, false, 'SFW', 'Yes', '{PhysBones}', 'delisted', now(), now(), 'ja', '{https://example.test/m.png}',
                  '{tag}', '[]', '{}', 'shinano', true, 'female', false, now(), 1, 2);
          insert into item_avatars (item_id, avatar_slug) values (1, 'shinano');
          insert into item_categories (item_id, category_slug, is_primary) select 1, slug, true from smart_categories limit 1;

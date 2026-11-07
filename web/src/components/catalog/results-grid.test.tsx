@@ -22,7 +22,6 @@ const item: ItemResponse = {
   booth_category: null,
   price_jpy: 1000,
   smart_price: null,
-  smart_price_reason: null,
   likes: 0,
   is_adult: false,
   content_rating: "SFW",

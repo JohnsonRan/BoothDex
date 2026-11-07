@@ -4,7 +4,7 @@
 // the price row with its Badge), option controls, the two large action buttons, then the CollapsibleGroup of
 // sections (item-sections.tsx).
 // BoothDex fills it with master's details: the language tabs as the template's SegmentedControl, likes in the
-// rating row, "listed at … why different?" in the price row, rating, features, Quest, Delisted and Relisted as
+// rating row, "listed at …" in the price row, rating, features, Quest, Delisted and Relisted as
 // Badges, the avatar-fit Banner, and Buy on Booth / favourite / copy link as the actions. Phones get the
 // actions in the dialog's footer instead (PhoneBar).
 
@@ -17,7 +17,6 @@ import {
 } from "@astryxdesign/core/SegmentedControl";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
 import type { ContentRating, ItemResponse } from "@/lib/api-types";
@@ -109,16 +108,9 @@ export function ItemInfo({
             {money(priceOf(item))}
           </Text>
           {listed && (
-            // focusable, and opened by a tap: the reason is the point of the line (master: a title attribute)
-            <Tooltip
-              content={item.smart_price_reason ?? ""}
-              hasHoverIndication
-              touchTrigger="tap"
-            >
-              <Text type="body" color="secondary" tabIndex={0}>
-                {t("price.listed", { price: money(item.price_jpy) })}
-              </Text>
-            </Tooltip>
+            <Text type="body" color="secondary">
+              {t("price.listed", { price: money(item.price_jpy) })}
+            </Text>
           )}
         </HStack>
       </VStack>

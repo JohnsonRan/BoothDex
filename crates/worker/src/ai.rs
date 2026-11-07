@@ -122,7 +122,6 @@ purpose and description. Always choose at least one listed slug; never return an
 \"content_rating\": \"SFW\", \"Suggestive\" (revealing swimwear/lingerie, suggestive poses) or \"NSFW\" (nudity, sexual content);\n\
 \"quest_compatible\": \"Yes\", \"No\", or \"Non-Applicable\" (not an avatar or avatar asset);\n\
 \"smart_price\": integer yen a typical buyer pays for the main product (ignore support/donation tiers, pick the full set if that is the obvious main item), or null if unclear;\n\
-\"smart_price_reason\": one short English sentence;\n\
 \"translations\": {\"en\": {\"title\": ...}, \"ja\": {\"title\": ...}, \"ko\": {\"title\": ...}, \"zh\": {\"title\": ...}}: the title only \
 (zh is Simplified Chinese, in the terms Chinese VRChat users use); for the item's own language, copy the original title with proper JSON escaping. \
 Each title must be non-empty and at most 300 characters. Do not translate the description or variations.\n\
@@ -158,7 +157,6 @@ pub struct Enrichment {
     pub content_rating: Option<String>,
     pub quest: Option<String>,
     pub smart_price: Option<i32>,
-    pub smart_price_reason: Option<String>,
     pub translations: Value,
 }
 
@@ -262,7 +260,6 @@ pub fn validate_enrichment(v: &Value, known_categories: &[String], existing: &Va
         content_rating: Some(content_rating),
         quest: pick("quest_compatible", &["Yes", "No", "Non-Applicable"]),
         smart_price,
-        smart_price_reason: v["smart_price_reason"].as_str().map(|s| s.chars().take(300).collect()),
         translations,
     })
 }
@@ -476,7 +473,6 @@ mod tests {
             "content_rating": "SFW",
             "quest_compatible": "Yes",
             "smart_price": 890,
-            "smart_price_reason": "main set",
             "translations": {
                 "en": {
                     "title": "Dress",

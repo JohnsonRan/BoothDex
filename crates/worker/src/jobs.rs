@@ -416,15 +416,14 @@ async fn write_enrichment(pool: &PgPool, id: i64, title: &str, bio: &str, e: &cr
     let mut tx = pool.begin().await?;
     let affected = sqlx::query(
         "update items set content_rating = coalesce($2, content_rating), quest = coalesce($3, quest), smart_price = $4,
-                smart_price_reason = coalesce($5, smart_price_reason), translations = $6, features = $7, original_language = $6->>'original_language',
+                translations = $5, features = $6, original_language = $5->>'original_language',
                 needs_enrichment = false, enrich_failures = 0, embedding = null
-         where id = $1 and title = $8 and bio = $9",
+         where id = $1 and title = $7 and bio = $8",
     )
     .bind(id)
     .bind(&e.content_rating)
     .bind(&e.quest)
     .bind(e.smart_price)
-    .bind(&e.smart_price_reason)
     .bind(&e.translations)
     .bind(&e.features)
     .bind(title)

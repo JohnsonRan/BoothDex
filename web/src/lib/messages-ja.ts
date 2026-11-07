@@ -123,7 +123,7 @@ export const ja: Dict = {
   "fav.needSignIn": "お気に入りにはログインが必要です",
   "fav.failed": "お気に入りを更新できませんでした",
   "price.free": "無料",
-  "price.listed": "表示価格 {price} · 違う理由は?",
+  "price.listed": "表示価格 {price}",
   "detail.label": "商品詳細",
   "detail.close": "閉じる",
   "detail.closeZoom": "拡大画像を閉じる",
