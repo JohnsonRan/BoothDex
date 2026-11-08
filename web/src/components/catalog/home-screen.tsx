@@ -218,7 +218,6 @@ async function Catalog({
         <LayoutContent isScrollable={false} padding={0}>
           <FilterBand
             label={t("filter.region")}
-            page={page}
             avatars={
               filters.view === "items"
                 ? avatars.map((a) => ({

@@ -109,7 +109,12 @@
    trigger appears in that place. Once folded the clauses left fit on the one line, so this changes nothing. */
 .filter-clauses {
   flex-wrap: wrap;
+  /* the clip reaches 1 px past the controls on each side: flush with them, a sub-pixel offset of the sticky band
+     (the top bar is 55.17 px tall) cut a control's top or bottom border */
+  box-sizing: content-box;
   block-size: var(--size-element-sm);
+  padding-block: 1px;
+  margin-block: -1px;
 }
 .filter-clauses::before {
   content: "";

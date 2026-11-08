@@ -6,8 +6,10 @@
 // The avatar strip sits under it at full size and scrolls away beneath it; once it is wholly under the band, a
 // compact row takes its place in the band, an empty box of its height takes the strip's, and the results draw up
 // under the band by what the row added to it, so nothing below the band moves (not even the results' own box,
-// which a layout shift would count). The strip's chevron folds it into that row by hand, and the row's chevron unfolds it: in
-// place while the strip's place is in view, else as a panel over the results. A start past page 1 begins folded.
+// which a layout shift would count). Scrolling back unfolds it. The strip's toggle folds it into that row by hand,
+// and the row's toggle unfolds it: in place while the strip's place is in view, else as a panel over the results.
+// A start past page 1 begins with the strip too, which folds as the pages above go in (result-pages.tsx) and
+// unfolds again at the top; a fold by hand stays until the reader unfolds it.
 // The state is the page's own, as the Collapsible blocks' custom disclosure (CollapsibleHookUsage.tsx:14-42: the
 // open state, a trigger with aria-expanded and aria-controls, the content it shows).
 
@@ -38,11 +40,13 @@ const STUCK: CSSProperties = {
   insetBlockStart: "var(--_app-shell-header-height, 0px)",
   zIndex: 1,
 };
+// over the compact row, which keeps its place, out to the band's edges and down over the results
 const PANEL: CSSProperties = {
   ...SURFACE,
   position: "absolute",
-  insetBlockStart: "100%",
-  insetInline: 0,
+  insetBlockStart: 0,
+  insetInline: "calc(-1 * var(--spacing-6))",
+  zIndex: 1,
 };
 
 let band: HTMLElement | null = null;
@@ -64,7 +68,6 @@ export function FilterBand({
   label,
   toolbar,
   avatars,
-  page,
   children,
 }: {
   label: string;
@@ -72,8 +75,6 @@ export function FilterBand({
   toolbar?: ReactNode;
   /** the avatar strip's avatars, in the items view */
   avatars?: Avatar[];
-  /** the page the server rendered */
-  page: number;
   /** the results */
   children: ReactNode;
 }) {
@@ -82,7 +83,7 @@ export function FilterBand({
   const slot = useRef<HTMLDivElement>(null);
   const row = useRef<HTMLDivElement>(null);
   const id = useId();
-  const [open, setOpen] = useState(page === 1);
+  const [open, setOpen] = useState(true);
   // the open strip is wholly under the band: the compact row stands in for it
   const [under, setUnder] = useState(false);
   const [panel, setPanel] = useState(false);
@@ -165,14 +166,27 @@ export function FilterBand({
       >
         <VStack gap={4}>
           {toolbar}
-          {docked && <VStack ref={row}>{strip(true, unfold)}</VStack>}
+          {docked && (
+            <VStack ref={row} style={{ position: "relative" }}>
+              {/* the row stays for its height, hidden while the panel shows the strip in its place: each avatar
+                  once */}
+              <VStack style={panel ? { visibility: "hidden" } : undefined}>
+                {strip(true, unfold)}
+              </VStack>
+              {panel && (
+                // a VStack's padding, not a Section's: a Carousel bleeds into a Section's inset
+                <VStack
+                  id={id}
+                  paddingInline={6}
+                  paddingBlockEnd={4}
+                  style={PANEL}
+                >
+                  {strip(false, () => setPanel(false))}
+                </VStack>
+              )}
+            </VStack>
+          )}
         </VStack>
-        {docked && panel && (
-          // a VStack's padding, not a Section's: a Carousel bleeds into a Section's inset
-          <VStack id={id} padding={6} paddingBlockStart={4} style={PANEL}>
-            {strip(false, () => setPanel(false))}
-          </VStack>
-        )}
         <RefreshProgress />
       </Section>
       <VStack

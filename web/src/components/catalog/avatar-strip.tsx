@@ -9,13 +9,15 @@
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
 // focus or scroll in the strip, before any of them can come into view.
 // Compact (folded into the filter band, band.tsx), each card is 40 px, Avatar's size scale, with its name beside
-// it; a chevron after the row folds or unfolds it, pointing as Collapsible's (down to unfold, up to fold).
+// it, and the row has no prev/next buttons (Carousel `hasButtons`): they covered the last name and read like the
+// toggle; wheel, touch, trackpad and focus scroll it. After the row, apart from it, the toggle is Collapsible's
+// trigger: its label and a chevron that points down to unfold and turns up to fold.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
+import { Button } from "@astryxdesign/core/Button";
 import { Carousel, type CarouselHandle } from "@astryxdesign/core/Carousel";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
-import { IconButton } from "@astryxdesign/core/IconButton";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
@@ -37,9 +39,13 @@ const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
 // through. Without buttons the Carousel hides that layer (display: none), which the sampling skips.
 const TOUCH = "(hover: none) and (pointer: coarse)";
 
-const AllGlyph = () => (
+const AllGlyph = ({ compact }: { compact: boolean }) => (
   <VStack height="100%" hAlign="center" vAlign="center">
-    <Icon icon="site:allAvatars" size="lg" color="secondary" />
+    <Icon
+      icon="site:allAvatars"
+      size={compact ? "sm" : "lg"}
+      color="secondary"
+    />
   </VStack>
 );
 
@@ -113,12 +119,13 @@ export function AvatarStrip({
   }, []);
 
   return (
-    <HStack gap={2} vAlign="center">
+    // the toggle at the row's end, at the top of a full-size strip, apart from the Carousel's buttons
+    <HStack gap={4} vAlign={compact ? "center" : "start"}>
       <StackItem size="fill">
         <Carousel
           gap={2}
           hasSnap
-          hasButtons={!touch}
+          hasButtons={!touch && !compact}
           handleRef={carousel}
           ref={strip}
           aria-label={t("strip.label")}
@@ -130,7 +137,7 @@ export function AvatarStrip({
             hasImage={false}
             compact={compact}
           >
-            <AllGlyph />
+            <AllGlyph compact={compact} />
           </Tile>
           {(all ? avatars : avatars.slice(0, FIRST_CARDS - 1)).map((a) => (
             <Tile
@@ -149,24 +156,24 @@ export function AvatarStrip({
                   decoding="async"
                 />
               ) : (
-                <AllGlyph />
+                <AllGlyph compact={compact} />
               )}
             </Tile>
           ))}
         </Carousel>
       </StackItem>
-      <IconButton
+      <Button
         label={t(compact ? "strip.expand" : "strip.collapse")}
-        icon={
-          // Collapsible's chevron: down while folded, turned to point up while open
+        endContent={
           <Icon
             icon="chevronDown"
-            size="sm"
             style={compact ? undefined : { transform: "rotate(180deg)" }}
           />
         }
         variant="ghost"
         size="sm"
+        // its label whole: the row gives way instead
+        style={{ flexShrink: 0 }}
         aria-expanded={!compact}
         aria-controls={controls}
         onClick={onToggle}
