@@ -31,9 +31,11 @@ const settle = (p) =>
       document
         .getAnimations()
         .every(
+          // a scroll-driven animation (the avatar strip's shrink) runs as long as the page does
           (a) =>
             a.playState !== "running" ||
-            a.effect?.getTiming().iterations === Infinity,
+            a.effect?.getTiming().iterations === Infinity ||
+            !(a.timeline instanceof DocumentTimeline),
         ),
     null,
     { timeout: 5000 },

@@ -3,21 +3,19 @@
 // prev/next buttons and the Carousel's own edge fade). Each card is Product Detail's selectable image thumbnail as
 // is (a transparent SelectableCard filling a square AspectRatio; its corner radius and selection ring are the
 // card's own, the image only fills and covers, inset by the ring's width so the ring shows); the name sits under it
-// as the caption of the Top Nav template's category tiles. The label's line ends with the toggle, Collapsible's
-// trigger anatomy: a label and a chevron that turns up to fold.
+// as the caption of the Top Nav template's category tiles. The row ends with the toggle, Collapsible's trigger
+// anatomy: a label and a chevron that turns up to fold.
 // A mouse wheel over the strip scrolls it sideways while it can move that way, as on the old strip; the
 // Carousel maps only Shift + wheel itself (Carousel.d.ts:5-8).
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
 // focus or scroll in the strip, before any of them can come into view.
-// Compact (docked under the filter band, band.tsx), each card is 40 px, Avatar's size scale, with its name beside
-// it, and the row has no prev/next buttons (Carousel `hasButtons`): wheel, touch, trackpad and focus scroll it.
-// After it, past a vertical divider (DividerVertical.tsx:12-15, 31), the toggle points down to unfold.
-// Memoised: the band's fold state changes around it without drawing it again.
+// The strip is one: under the filter band it shrinks with the page's scroll (band.tsx, app/globals.css
+// `strip-*`), each card's square to 40 px about its bottom edge while its name stays as it is, and its label
+// goes under the band. The cards are memoised: the toggle's state changes around them without drawing them again.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Button } from "@astryxdesign/core/Button";
 import { Carousel, type CarouselHandle } from "@astryxdesign/core/Carousel";
-import { Divider } from "@astryxdesign/core/Divider";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
@@ -29,9 +27,8 @@ import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
 import { useFilterUrl } from "./filter-url";
 import { SkeletonImage, THUMB_RADIUS } from "./silhouette";
 
-// structural width of one card (104 px at a 16 px root, 40 px compact); Booth's avatar thumbnails are square
+// structural width of one card (104 px at a 16 px root); Booth's avatar thumbnails are square
 const CARD_WIDTH = "6.5rem";
-const COMPACT_WIDTH = "2.5rem";
 // cards rendered before the strip is used: more than fit across 1440 px (with the "all" card)
 const FIRST_CARDS = 14;
 const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
@@ -40,32 +37,87 @@ const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
 // (WebKit LocalFrameView::fixedContainerEdges), so it painted the toolbar solid instead of letting the page show
 // through. Without buttons the Carousel hides that layer (display: none), which the sampling skips.
 const TOUCH = "(hover: none) and (pointer: coarse)";
+// the toggle's middle on the shrunk cards' middle: up from the row's bottom by a name line, the name's gap and half
+// the difference between a 40 px card and the button
+const TOGGLE_LIFT =
+  "calc(var(--text-supporting-leading) * var(--text-supporting-size) + var(--spacing-2) + (2.5rem - var(--size-element-sm)) / 2)";
 
-// DividerVertical.tsx:12-15: the divider spans the row it stands in
-const DIVIDER_FILL: CSSProperties = { alignSelf: "stretch", height: "auto" };
+// the toggle's two labels in one cell, the one not shown hidden: the button keeps its width as it turns, so a
+// shorter label does not shift it along the row
+const LABELS: CSSProperties = {
+  display: "inline-grid",
+  justifyItems: "center",
+};
+const SHOWN: CSSProperties = { gridArea: "1 / 1" };
+const UNSEEN: CSSProperties = { ...SHOWN, visibility: "hidden" };
+const TURNS = ["strip.collapse", "strip.expand"] as const;
 
-const AllGlyph = ({ compact }: { compact: boolean }) => (
+const AllGlyph = () => (
   <VStack height="100%" hAlign="center" vAlign="center">
-    <Icon
-      icon="site:allAvatars"
-      size={compact ? "sm" : "lg"}
-      color="secondary"
-    />
+    <Icon icon="site:allAvatars" size="lg" color="secondary" />
   </VStack>
 );
 
-export const AvatarStrip = memo(function AvatarStrip({
+export function AvatarStrip({
   avatars,
-  compact,
+  expanded,
   controls,
   onToggle,
   onPick,
 }: {
   avatars: Avatar[];
-  compact: boolean;
-  /** the id of what the toggle shows or hides: the strip at full size */
+  /** shown at full size: the toggle folds it */
+  expanded: boolean;
+  /** the id the toggle names as what it shows or hides */
   controls: string;
   onToggle: () => void;
+  onPick: () => void;
+}) {
+  const { t } = useUi();
+  const turn = expanded ? "strip.collapse" : "strip.expand";
+  return (
+    <VStack gap={3}>
+      <Text type="body" weight="bold" className="strip-label">
+        {t("filter.avatar")}
+      </Text>
+      <HStack gap={4} vAlign="end" className="strip-row">
+        <StackItem size="fill">
+          <Cards avatars={avatars} onPick={onPick} />
+        </StackItem>
+        <Button
+          label={t(turn)}
+          endContent={
+            <Icon
+              icon="chevronDown"
+              style={expanded ? { transform: "rotate(180deg)" } : undefined}
+            />
+          }
+          variant="ghost"
+          size="sm"
+          // its label whole: the row gives way instead
+          style={{ flexShrink: 0, marginBlockEnd: TOGGLE_LIFT }}
+          aria-expanded={expanded}
+          aria-controls={controls}
+          onClick={onToggle}
+        >
+          <span style={LABELS}>
+            {TURNS.map((k) => (
+              <span key={k} style={k === turn ? SHOWN : UNSEEN}>
+                {t(k)}
+              </span>
+            ))}
+          </span>
+        </Button>
+      </HStack>
+    </VStack>
+  );
+}
+
+const Cards = memo(function Cards({
+  avatars,
+  onPick,
+}: {
+  avatars: Avatar[];
   onPick: () => void;
 }) {
   const { t, ui } = useUi();
@@ -123,11 +175,11 @@ export const AvatarStrip = memo(function AvatarStrip({
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  const cards = (
+  return (
     <Carousel
       gap={2}
       hasSnap
-      hasButtons={!touch && !compact}
+      hasButtons={!touch}
       handleRef={carousel}
       ref={strip}
       aria-label={t("strip.label")}
@@ -137,9 +189,8 @@ export const AvatarStrip = memo(function AvatarStrip({
         selected={!value}
         onSelect={() => pick("")}
         hasImage={false}
-        compact={compact}
       >
-        <AllGlyph compact={compact} />
+        <AllGlyph />
       </Tile>
       {(all ? avatars : avatars.slice(0, FIRST_CARDS - 1)).map((a) => (
         <Tile
@@ -148,7 +199,6 @@ export const AvatarStrip = memo(function AvatarStrip({
           selected={a.slug === value}
           onSelect={() => pick(a.slug === value ? "" : a.slug)}
           hasImage={!!a.image_url}
-          compact={compact}
         >
           {a.image_url ? (
             <SkeletonImage
@@ -158,49 +208,11 @@ export const AvatarStrip = memo(function AvatarStrip({
               decoding="async"
             />
           ) : (
-            <AllGlyph compact={compact} />
+            <AllGlyph />
           )}
         </Tile>
       ))}
     </Carousel>
-  );
-  const toggle = (
-    <Button
-      label={t(compact ? "strip.expand" : "strip.collapse")}
-      endContent={
-        <Icon
-          icon="chevronDown"
-          style={compact ? undefined : { transform: "rotate(180deg)" }}
-        />
-      }
-      variant="ghost"
-      size="sm"
-      // its label whole: the row gives way instead
-      style={{ flexShrink: 0 }}
-      aria-expanded={!compact}
-      aria-controls={controls}
-      onClick={onToggle}
-    />
-  );
-
-  return compact ? (
-    <HStack gap={4} vAlign="center">
-      <StackItem size="fill">{cards}</StackItem>
-      <Divider orientation="vertical" style={DIVIDER_FILL} />
-      {toggle}
-    </HStack>
-  ) : (
-    <VStack gap={3}>
-      <HStack gap={4} vAlign="center">
-        <StackItem size="fill">
-          <Text type="body" weight="bold">
-            {t("filter.avatar")}
-          </Text>
-        </StackItem>
-        {toggle}
-      </HStack>
-      {cards}
-    </VStack>
   );
 });
 
@@ -209,7 +221,6 @@ function Tile({
   selected,
   onSelect,
   hasImage,
-  compact,
   children,
 }: {
   label: string;
@@ -217,36 +228,23 @@ function Tile({
   onSelect: () => void;
   /** a glyph instead of a picture sits on the muted card surface, so the card still reads as one */
   hasImage: boolean;
-  compact: boolean;
   children: React.ReactNode;
 }) {
-  const card = (
-    <AspectRatio ratio={1}>
-      <SelectableCard
-        label={label}
-        isSelected={selected}
-        onChange={onSelect}
-        variant={hasImage ? "transparent" : "muted"}
-        padding={0.5}
-        width="100%"
-        height="100%"
-      >
-        {children}
-      </SelectableCard>
-    </AspectRatio>
-  );
-  return compact ? (
-    <HStack gap={2} vAlign="center" maxWidth="10rem">
-      <VStack width={COMPACT_WIDTH}>{card}</VStack>
-      <StackItem size="fill">
-        <Text type="supporting" maxLines={1} hasTruncateTooltip={false}>
-          {label}
-        </Text>
-      </StackItem>
-    </HStack>
-  ) : (
+  return (
     <VStack gap={2} width={CARD_WIDTH}>
-      {card}
+      <AspectRatio ratio={1} className="strip-thumb">
+        <SelectableCard
+          label={label}
+          isSelected={selected}
+          onChange={onSelect}
+          variant={hasImage ? "transparent" : "muted"}
+          padding={0.5}
+          width="100%"
+          height="100%"
+        >
+          {children}
+        </SelectableCard>
+      </AspectRatio>
       <Text
         type="supporting"
         maxLines={1}

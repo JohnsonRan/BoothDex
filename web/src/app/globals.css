@@ -153,3 +153,103 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   > .astryx-skeleton:not(#\#):not(#\#):not(#\#):not(#\#) {
   display: none;
 }
+
+/* The avatar strip shrinking as the page scrolls it under the filter toolbar (catalog/band.tsx): each card's square
+   to 40 px about its bottom edge (2.5rem of 6.5rem), the label gone by half-way, the surface the shrunk strip lays
+   over the results fading in with its divider, and the Carousel's prev/next buttons, which sit on the top layer
+   above the band, gone at once. Scroll-driven over the shrink's range (`--strip-y0` from the band, `--strip-d`), so
+   the compositor runs it with the scroll; without scroll timelines (Firefox) the same keyframes stand paused at the
+   band's `--strip-p`. Under reduced motion nothing runs: the band's `data-shrink` shows the strip whole or shrunk.
+   Opened by hand, the strip is drawn at full size. */
+@property --strip-d {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+@keyframes strip-thumb {
+  to {
+    scale: 0.3846;
+  }
+}
+@keyframes strip-out {
+  50%,
+  to {
+    opacity: 0;
+  }
+}
+@keyframes strip-in {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes strip-gone {
+  15%,
+  to {
+    visibility: hidden;
+  }
+}
+.strip-thumb {
+  transform-origin: 50% 100%;
+  animation-name: strip-thumb;
+}
+.strip-label {
+  animation-name: strip-out;
+}
+.strip-surface {
+  position: absolute;
+  inset: var(--strip-d) 0 0;
+  z-index: -1;
+  pointer-events: auto;
+  background-color: var(--color-background-surface);
+  border-block-end: 1px solid var(--color-border);
+  /* the strip at the top of the page, also before its timeline runs */
+  opacity: 0;
+  animation-name: strip-in;
+}
+[data-strip] [popover] {
+  animation-name: strip-out, strip-gone;
+}
+.strip-row {
+  pointer-events: auto;
+}
+:is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
+  animation-duration: auto;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  animation-timeline: scroll(root);
+  animation-range: var(--strip-y0, 0px)
+    calc(var(--strip-y0, 0px) + var(--strip-d));
+}
+@supports not (animation-timeline: scroll()) {
+  :is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
+    animation-duration: 1s;
+    animation-play-state: paused;
+    animation-delay: calc(var(--strip-p, 0) * -1s);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
+    animation: none;
+  }
+  [data-shrink="all"]:not([data-strip-open]) .strip-thumb {
+    scale: 0.3846;
+  }
+  [data-shrink="all"]:not([data-strip-open]) .strip-label {
+    opacity: 0;
+  }
+  [data-shrink="all"]:not([data-strip-open]) .strip-surface {
+    opacity: 1;
+  }
+  [data-shrink="part"] [popover],
+  [data-shrink="all"]:not([data-strip-open]) [popover] {
+    visibility: hidden;
+  }
+}
+[data-strip-open]
+  :is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
+  animation: none;
+}
+[data-strip-open] .strip-surface {
+  inset: 0;
+  opacity: 1;
+}
