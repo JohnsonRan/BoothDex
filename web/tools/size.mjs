@@ -10,8 +10,9 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // row, the item dialog's host and the account (session, delegated favourites, viewed marks): JS 410,604; with the
 // browser given only the visitor's dictionary (HTML carries it: 57,004) and on-demand icons and Banner: 396,116.
 // Perf run 3: the later tiles fetched by the browser, Pagination on demand, one name per avatar: HTML 43,684,
-// JS 388,417, CSS 43,262.
-const BUDGET = { html: 48_000, js: 396_000, css: 44_000 };
+// JS 388,417, CSS 43,262. Upstream's additions since the Astryx merge (JS 396,491, CSS 44,116) and the endless
+// grid that replaced the pager: JS 397,557, CSS 44,265, held to the next 500 and 250 B (owner, 2026-11-08).
+const BUDGET = { html: 48_000, js: 398_000, css: 44_500 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
