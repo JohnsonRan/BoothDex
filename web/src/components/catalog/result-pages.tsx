@@ -111,6 +111,9 @@ export function ResultPages({
   const nearTop = useRef(false);
   const busy = useRef(false);
   const anchor = useRef<{ el: Element; at: number } | null>(null);
+  const scrolling = useRef(false);
+  /** a previous page read while the reader scrolls, put in once scrolling stops */
+  const held = useRef<(() => void) | null>(null);
   const restoring = useRef<Snapshot | null>(null);
   const width = useRef(0);
   const tick = useRef(() => {});
@@ -145,12 +148,18 @@ export function ResultPages({
       setLoading(dir);
       api<SearchResponse>(path(n)).then(
         (r) => {
-          busy.current = false;
           const fresh = r.items.map((i) => tileOf(i, settings, rates, t));
-          keep(() => {
-            setLoading(null);
-            setPages((p) => place(p, fresh));
-          });
+          const put = () => {
+            busy.current = false;
+            keep(() => {
+              setLoading(null);
+              setPages((p) => place(p, fresh));
+            });
+          };
+          // a page above moves the scroll position to keep the tiles in view, and on iOS moving it during a
+          // fling stops the fling dead: the page waits for scrolling to stop
+          if (dir === "prev" && scrolling.current) held.current = put;
+          else put();
         },
         () => {
           busy.current = false;
@@ -384,9 +393,15 @@ export function ResultPages({
     const onScroll = () => {
       up = scrollY < lastY;
       lastY = scrollY;
+      scrolling.current = true;
       schedule();
       clearTimeout(settle);
-      settle = window.setTimeout(save, 200);
+      settle = window.setTimeout(() => {
+        scrolling.current = false;
+        save();
+        held.current?.();
+        held.current = null;
+      }, 200);
     };
     const onWheel = (e: WheelEvent) => {
       if (e.deltaY >= 0) return;
