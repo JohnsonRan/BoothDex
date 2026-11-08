@@ -6,6 +6,7 @@ import {
   pageQuery,
   readSnapshot,
   restorePlan,
+  resultsQuery,
   SNAPSHOT,
   type Snapshot,
   withPage,
@@ -27,6 +28,11 @@ test("withPage rewrites page and sem, keeping the other pairs byte for byte and 
   );
   expect(withPage("?q=x&page=2&item=7", 3, false)).toBe("?q=x&page=3&item=7");
   expect(withPage("?item=7&q=x", 1, false)).toBe("?q=x&item=7");
+});
+
+test("resultsQuery keeps only the pairs that choose the results", () => {
+  expect(resultsQuery("?tags=a+b&page=2&sem=0&item=7")).toBe("tags=a+b");
+  expect(resultsQuery("")).toBe("");
 });
 
 test("pageAt picks the last page starting above the line, the first when none does", () => {

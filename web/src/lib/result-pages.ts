@@ -20,16 +20,22 @@ export function pageQuery(base: string, page: number, noSemantic: boolean) {
     .join("&");
 }
 
+const pairs = (search: string) => search.slice(1).split("&").filter(Boolean);
+
+/** The pairs of a search that choose the results, byte for byte: all but `page`, `sem` and `item`. */
+export const resultsQuery = (search: string) =>
+  pairs(search)
+    .filter((p) => !/^(page|sem|item)=/.test(p))
+    .join("&");
+
 /**
  * The address bar's search for results page `page`. The other pairs are kept byte for byte (the catalogue's
  * lists use a literal "+"), and an open item's `item` stays last (components/item/item-data.ts).
  */
 export function withPage(search: string, page: number, noSemantic: boolean) {
-  const pairs = search.slice(1).split("&").filter(Boolean);
-  const base = pairs.filter((p) => !/^(page|sem|item)=/.test(p)).join("&");
   const query = [
-    pageQuery(base, page, noSemantic),
-    pairs.find((p) => p.startsWith("item=")),
+    pageQuery(resultsQuery(search), page, noSemantic),
+    pairs(search).find((p) => p.startsWith("item=")),
   ]
     .filter(Boolean)
     .join("&");

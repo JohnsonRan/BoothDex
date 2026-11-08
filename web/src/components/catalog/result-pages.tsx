@@ -31,6 +31,7 @@ import {
   pageAt,
   readSnapshot,
   restorePlan,
+  resultsQuery,
   SCREENS,
   SNAPSHOT,
   type Snapshot,
@@ -302,6 +303,8 @@ export function ResultPages({
     let lastY = scrollY;
     let up = false;
     let shown = page;
+    // the address these results answer; once a navigation changes it, they no longer write to it
+    const own = resultsQuery(location.search);
     const starts = (p: Page[]) => {
       let at = 0;
       return p.map((q) => {
@@ -315,6 +318,7 @@ export function ResultPages({
       const p = now.current.pages;
       const i = p.findIndex((q) => q.n === shown);
       if (!g || i < 0 || restoring.current) return;
+      if (resultsQuery(location.search) !== own) return;
       const from = starts(p)[i];
       const el = g.children[
         firstInView(g.children, from, from + p[i].tiles.length)
@@ -327,8 +331,10 @@ export function ResultPages({
         id,
         top: el.getBoundingClientRect().top,
       };
+      // with Next's own entry state, which its history patch passes through: the router is not told, so a
+      // navigation under way (a filter change scrolls to the top) is not replaced by this address
       history.replaceState(
-        { [SNAPSHOT]: snap },
+        { ...history.state, [SNAPSHOT]: snap },
         "",
         `${location.pathname}${withPage(location.search, shown, lexical)}`,
       );
@@ -461,8 +467,13 @@ export function ResultPages({
             </GridSpan>
           ) : (
             Array.from({ length: cols }, (_, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: a fixed row of silhouettes
-              <TileSilhouette key={i} ref={i === 0 ? end : undefined} />
+              // new ones after each page: the old ones go with the wait they stood for, instead of moving down
+              // past the tiles that arrived (a layout shift)
+              <TileSilhouette
+                // biome-ignore lint/suspicious/noArrayIndexKey: a fixed row of silhouettes
+                key={`${last.n}${last.partial ? "+" : ""}-${i}`}
+                ref={i === 0 ? end : undefined}
+              />
             ))
           ))}
         {hasPrev && (
