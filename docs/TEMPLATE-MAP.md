@@ -185,6 +185,11 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   `--duration-exit` out), not `useAnimatedLayout`, which has nothing to glide when nothing after it moves. The one
   height change, a strip folded by hand on a page too short to scroll it away, is the box's own height
   (lib/motion `shut`): the Collapsible machinery that would glide it (`holdLayoutExit`) is not exported.
+- Filter band's sticky top: `--_app-shell-header-height`, the AppShell's private variable (AppShell.js: set on its
+  root from the header's measured height, by a ResizeObserver in an effect, so only once it hydrates; not in its
+  `.d.ts`). The band sticks under the top bar with it, as the AppShell's own sticky parts do, and a start past
+  page 1 (`lib/deep-start.ts`, before hydration) sets the same value on the same element first. Re-check it on an
+  Astryx update.
 - Avatar strip: `SelectableCard` is documented for multi-select; the strip is single-select (one avatar or
   all). Kept because it is the component with a selected state for media cards; ClickableCard has none.
 

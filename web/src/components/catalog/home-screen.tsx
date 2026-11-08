@@ -26,6 +26,7 @@ import {
   parseFilters,
   RAW_QUERY_HEADER,
 } from "@/lib/catalog";
+import { DEEP_START } from "@/lib/deep-start";
 import { MESSAGES, translator } from "@/lib/dictionaries";
 import {
   componentCatalogue,
@@ -227,6 +228,7 @@ async function Catalog({
                   }))
                 : undefined
             }
+            folded={page > 1}
             // filters and sort do not apply to the recent view. The row and the avatar strip render with the
             // frame, not as boundaries of their own: React streams a large finished boundary apart from its
             // parent and reveals it later, and the grid below moved when it arrived.
@@ -264,6 +266,12 @@ async function Catalog({
                 />
               )}
             </Suspense>
+            {page > 1 && !recent && (
+              <script
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
+                dangerouslySetInnerHTML={{ __html: DEEP_START }}
+              />
+            )}
           </FilterBand>
         </LayoutContent>
       }
