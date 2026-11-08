@@ -38,6 +38,7 @@ import { type Filters, searchQuery } from "@/lib/catalog";
 import { ROWS } from "@/lib/motion";
 import {
   ABOVE,
+  drawnWith,
   isFar,
   type Kept,
   pageAt,
@@ -73,8 +74,11 @@ type Page = {
 
 type Dir = "next" | "prev";
 
-/** The pages of the results last left, for a return to them (lib/result-pages restorePlan). */
-let kept: Kept<Page> | undefined;
+/**
+ * The pages of the results last left, for a return to them (lib/result-pages restorePlan), with the settings their
+ * tiles were drawn in and the place last saved.
+ */
+let kept: (Kept<Page> & { drawn: string; place: Snapshot | null }) | undefined;
 
 const MARGIN = `${SCREENS * 100}%`;
 // a silhouette in the first column, out of the flow and unseen, measured for the boxes' mask
@@ -183,6 +187,8 @@ export function ResultPages({
   /** changes above the reader made while scrolling, put in once scrolling stops */
   const held = useRef(new Map<string, () => void>());
   const restoring = useRef<Snapshot | null>(null);
+  /** the place last saved to the history entry */
+  const place = useRef<Snapshot | null>(null);
   const width = useRef(0);
   // the boxes' tile mask, for the look it was measured in; a hidden silhouette stands until it is measured
   const [mask, setMask] = useState<{ look: string; style: CSSProperties }>();
@@ -401,8 +407,21 @@ export function ResultPages({
     history.scrollRestoration = "manual";
     width.current = grid.current?.clientWidth ?? 0;
     measure();
-    const snap = readSnapshot(history.state, key);
-    const plan = snap && restorePlan(snap, kept, width.current, Date.now());
+    const drawn = drawnWith(settings);
+    // New settings (a language or currency change) remount the results through a router refresh, which writes a
+    // history entry of Next's own without the place: the place these results last saved goes on from here.
+    const snap =
+      readSnapshot(history.state, key) ??
+      (kept?.key === key && kept.drawn !== drawn ? kept.place : null);
+    place.current = snap;
+    const plan =
+      snap &&
+      restorePlan(
+        snap,
+        kept?.drawn === drawn ? kept : undefined,
+        width.current,
+        Date.now(),
+      );
     if (snap) restoring.current = snap;
     // the same pages when the results were only hidden (a route kept in the background) and come back
     if (plan && "pages" in plan) {
@@ -421,6 +440,8 @@ export function ResultPages({
     return () => {
       kept = {
         key,
+        drawn,
+        place: place.current,
         pages: now.current.pages,
         width: width.current,
         at: Date.now(),
@@ -512,6 +533,7 @@ export function ResultPages({
       };
       // with Next's own entry state, which its history patch passes through: the router is not told, so a
       // navigation under way (a filter change scrolls to the top) is not replaced by this address
+      place.current = snap;
       history.replaceState(
         { ...history.state, [SNAPSHOT]: snap },
         "",

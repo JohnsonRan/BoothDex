@@ -1,6 +1,8 @@
 // The results' page state outside React (components/catalog/result-pages.tsx): the address of a results page,
 // which page is in view, which pages are far enough to give up their tiles, and where Back or a reload returns to.
 
+import type { Settings } from "./settings-core";
+
 /** Pages further than this many screens from the viewport hold placeholders; the next page loads this far ahead. */
 export const SCREENS = 2;
 /**
@@ -11,6 +13,9 @@ export const SCREENS = 2;
 export const ABOVE = 40;
 /** Loaded pages kept for a return to the results this long, before they are read again. */
 const KEPT_MS = 5 * 60_000;
+
+/** The settings a tile's text and price are drawn in (catalog/item-tile.tsx tileOf): tiles drawn in others are read again. */
+export const drawnWith = (s: Settings) => `${s.ui} ${s.content} ${s.currency}`;
 
 /**
  * `base` (a query without `page`, `sem` or `item`) for results page `page`: page 1 has no `page`, and later pages

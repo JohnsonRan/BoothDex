@@ -7,7 +7,7 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { type Filters, filtersToQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
-import { pageQuery } from "@/lib/result-pages";
+import { drawnWith, pageQuery } from "@/lib/result-pages";
 import type { SearchOutcome } from "@/lib/server-data";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { ClearAll } from "./filter-bar";
@@ -103,8 +103,9 @@ export async function Results({
       <Swap>
         <VStack gap={6}>
           <ResultPages
-            // a new search starts over; the same search read again (a retry) keeps the pages on screen
-            key={`${filtersToQuery(filters)}${lexical ? "&sem=0" : ""}`}
+            // a new search starts over, and so do new tile texts or prices (a language, item text or currency
+            // change), at the place the history entry keeps; the same search read again (a retry) keeps the pages
+            key={`${filtersToQuery(filters)}${lexical ? "&sem=0" : ""} ${drawnWith(settings)}`}
             page={result.page}
             total={result.totalPages}
             count={result.count}
