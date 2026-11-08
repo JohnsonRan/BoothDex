@@ -97,8 +97,6 @@ export const en: Dict = {
   "list.startingTitle": "The service is starting",
   "list.loading": "Loading",
   "list.allLoaded": "All {n} items loaded",
-  "list.before": "Pages before this: {n}",
-  "list.loadPrev": "Load previous page",
   "list.page": "Page {n}",
   "strip.label": "Filter by avatar",
   "strip.collapse": "Collapse avatars",

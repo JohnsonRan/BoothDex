@@ -3,6 +3,7 @@ import {
   isFar,
   type Kept,
   pageAt,
+  pageBlock,
   pageQuery,
   readSnapshot,
   restorePlan,
@@ -78,4 +79,10 @@ test("restorePlan reuses recent pages laid out at this width, else reads the anc
     page: 3,
   });
   expect(restorePlan(snap, undefined, 1200, 2_000)).toEqual({ page: 3 });
+});
+
+test("pageBlock counts a partial last row as a row and drops the gap after it", () => {
+  expect(pageBlock(100, 6, 400, 24)).toBe(17 * 400 - 24);
+  expect(pageBlock(100, 2, 380, 16)).toBe(50 * 380 - 16);
+  expect(pageBlock(100, 5, 400, 24)).toBe(20 * 400 - 24);
 });

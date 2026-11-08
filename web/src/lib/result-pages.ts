@@ -3,6 +3,12 @@
 
 /** Pages further than this many screens from the viewport hold placeholders; the next page loads this far ahead. */
 export const SCREENS = 2;
+/**
+ * Pages put above a start past page 1 at once, as boxes; more go up as the reader nears the top of them. It keeps
+ * the document far below the engines' element height limits (WebKit and Chromium near 33 million px, Firefox near
+ * 18 million): 2,000 pages of 100 on a two-column phone would be about 30 million px.
+ */
+export const ABOVE = 40;
 /** Loaded pages kept for a return to the results this long, before they are read again. */
 const KEPT_MS = 5 * 60_000;
 
@@ -85,3 +91,11 @@ export function restorePlan<P>(
     return { pages: kept.pages };
   return { page: snap.page };
 }
+
+/** The estimated height of a whole page not read yet: its rows at the measured row pitch, less the gap after the last. */
+export const pageBlock = (
+  pageSize: number,
+  cols: number,
+  pitch: number,
+  gap: number,
+) => Math.ceil(pageSize / cols) * pitch - gap;

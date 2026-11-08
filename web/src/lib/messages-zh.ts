@@ -94,8 +94,6 @@ export const zh = {
   "list.startingTitle": "服务正在启动",
   "list.loading": "正在加载",
   "list.allLoaded": "已加载全部 {n} 件",
-  "list.before": "前面还有 {n} 页",
-  "list.loadPrev": "载入上一页",
   "list.page": "第 {n} 页",
   "strip.label": "按模型筛选",
   "strip.collapse": "收起模型",
