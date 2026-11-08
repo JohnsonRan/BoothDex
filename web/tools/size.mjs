@@ -13,8 +13,9 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // JS 388,417, CSS 43,262. Upstream's additions since the Astryx merge (JS 396,491, CSS 44,116) and the endless
 // grid that replaced the pager: JS 397,557, CSS 44,265, held to the next 500 and 250 B (owner, 2026-11-08).
 // The sticky filter band, the folding avatar strip and the pages above a deep start: JS 399,319, CSS 44,327,
-// held to the next 500 B as before.
-const BUDGET = { html: 48_000, js: 399_500, css: 44_500 };
+// held to the next 500 B as before. The docked compact row, its toggles and the deep start: JS 400,319, CSS
+// 44,409, held to the next 500 B (owner, 2026-11-08).
+const BUDGET = { html: 48_000, js: 400_500, css: 44_500 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
