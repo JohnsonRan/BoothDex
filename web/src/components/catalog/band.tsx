@@ -121,9 +121,13 @@ export function FilterBand({
     };
     schedule();
     addEventListener("scroll", schedule, { passive: true });
+    // the pages above a deep start go in after the band hydrates, and WebKit sends no scroll for the jump
+    const grown = new ResizeObserver(schedule);
+    if (content.current) grown.observe(content.current);
     return () => {
       cancelAnimationFrame(frame);
       removeEventListener("scroll", schedule);
+      grown.disconnect();
     };
   }, [avatars, open, under]);
 
@@ -194,7 +198,9 @@ export function FilterBand({
         gap={4}
         padding={6}
         paddingBlockStart={4}
-        style={{ marginBlockStart: -lift }}
+        // out of Chrome's scroll anchoring, as the grid is: it would follow the band's growth before the lift
+        // takes it back and leave the results a row's height off
+        style={{ marginBlockStart: -lift, overflowAnchor: "none" }}
       >
         {avatars && open && (
           <VStack ref={slot} id={under ? undefined : id}>
