@@ -5,8 +5,8 @@
 // in the same grid, so rows run on across pages. The address bar names the page in view (replaced, never pushed),
 // and the history entry keeps the first tile in view, so a reload or a return lands on it with the pages it had.
 // Pages more than SCREENS screens from view give their tiles up for boxes of the same heights, and every change
-// keeps the first tile in view where it was (the grid opts out of the browser's own scroll anchoring, which
-// WebKit lacks, so all engines move the same way).
+// keeps the first tile in view where it was (the grid opts out of the browser's own scroll anchoring, which not
+// every engine has, so all of them move the same way).
 
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
 import { VStack } from "@astryxdesign/core/Stack";
@@ -128,9 +128,9 @@ export function ResultPages({
   /** Runs a change of what is drawn, keeping the first tile in view where it is (the layout effect below). */
   const keep = useCallback((change: () => void) => {
     const g = grid.current;
-    const count = now.current.pages.reduce((s, p) => s + p.tiles.length, 0);
-    if (g && count) {
-      const el = g.children[firstInView(g.children, 0, count)];
+    const drawn = now.current.pages.reduce((s, p) => s + p.tiles.length, 0);
+    if (g && drawn) {
+      const el = g.children[firstInView(g.children, 0, drawn)];
       anchor.current = { el, at: el.getBoundingClientRect().top + scrollY };
     }
     startTransition(change);
