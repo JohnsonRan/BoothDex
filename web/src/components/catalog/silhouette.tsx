@@ -7,7 +7,7 @@ import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Card } from "@astryxdesign/core/Card";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
-import type { ComponentProps, Ref } from "react";
+import type { ComponentProps, CSSProperties, Ref } from "react";
 
 type TextType = "heading-1" | "heading-4" | "supporting" | "body" | "large";
 
@@ -75,6 +75,41 @@ export function TileSilhouette({ ref }: { ref?: Ref<HTMLDivElement> }) {
       </VStack>
     </VStack>
   );
+}
+
+/**
+ * One tile's silhouette as a mask for a box of tiles not drawn (result-pages.tsx, app/globals.css `.page-box`):
+ * each Skeleton of a laid-out TileSilhouette as a rect at its place (the cover with its card's corners), in an
+ * image of the tile's column width and row pitch that the box repeats across its columns and down its rows. The
+ * box shows the tiles it stands for with no element per tile and nothing running.
+ */
+export function silhouetteMask(
+  tile: HTMLElement,
+  grid: HTMLElement,
+): CSSProperties {
+  const box = tile.getBoundingClientRect();
+  const n = (v: number) => Math.round(v * 100) / 100;
+  const rects = [...tile.querySelectorAll<HTMLElement>(".astryx-skeleton")].map(
+    (s, i) => {
+      const r = s.getBoundingClientRect();
+      const corner = getComputedStyle(
+        (i === 0 && tile.firstElementChild) || s,
+      ).borderTopLeftRadius;
+      const rx = Math.min(
+        Number.parseFloat(corner) || 0,
+        r.width / 2,
+        r.height / 2,
+      );
+      return `<rect x="${n(r.left - box.left)}" y="${n(r.top - box.top)}" width="${n(r.width)}" height="${n(r.height)}" rx="${n(rx)}"/>`;
+    },
+  );
+  const w = n(box.width);
+  const h = n(box.height + Number.parseFloat(getComputedStyle(grid).rowGap));
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${rects.join("")}</svg>`;
+  return {
+    "--_tile": `url("data:image/svg+xml,${encodeURIComponent(svg)}")`,
+    "--_tile-size": `${w}px ${h}px`,
+  } as CSSProperties;
 }
 
 // Product Detail's thumbImage in a selectable card (avatar strip, item gallery), inset by the card's padding 0.5:

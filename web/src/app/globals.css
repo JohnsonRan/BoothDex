@@ -253,3 +253,13 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   inset: 0;
   opacity: 1;
 }
+
+/* A box standing in for tiles not drawn (catalog/result-pages.tsx): their silhouettes, painted through one mask
+   measured from a TileSilhouette (silhouette.tsx silhouetteMask) in the Skeleton's resting look, static: its
+   colour at its 0.25 opacity (core src/Skeleton/Skeleton.tsx:81, :91). */
+.page-box {
+  background-color: color-mix(in srgb, var(--color-skeleton) 25%, transparent);
+  mask-image: var(--_tile, linear-gradient(transparent, transparent));
+  mask-size: var(--_tile-size, auto);
+  mask-repeat: space repeat;
+}

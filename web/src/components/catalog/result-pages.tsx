@@ -10,16 +10,18 @@
 // The address bar names the page in view (replaced, never pushed), and the history entry keeps the first tile in
 // view, so a reload or a return lands on it with the pages it had.
 // Pages more than SCREENS screens from view give their tiles up for boxes of the same heights (a page not read
-// yet is one box; near view, silhouette tiles), and every change keeps the first tile in view where it was (the
-// grid opts out of the browser's own scroll anchoring, which not every engine has, so all of them move the same
-// way). A change above the reader waits for scrolling to stop: moving the scroll position during an iOS fling
-// stops the fling dead. Every place is measured from the filter band's bottom edge (band.tsx covered()), so the
-// tile in view is the first one below the band, not one under it.
+// yet is one box; near view, silhouette tiles); a box paints the tiles' silhouettes (silhouette.tsx
+// silhouetteMask), so no speed of scrolling shows an empty page, and every change keeps the first tile in view
+// where it was (the grid opts out of the browser's own scroll anchoring, which not every engine has, so all of
+// them move the same way). A change above the reader waits for scrolling to stop: moving the scroll position
+// during an iOS fling stops the fling dead. Every place is measured from the filter band's bottom edge (band.tsx
+// covered()), so the tile in view is the first one below the band, not one under it.
 
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
 import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import {
+  type CSSProperties,
   Fragment,
   startTransition,
   useCallback,
@@ -52,7 +54,7 @@ import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { covered } from "./band";
 import { FIRST_TILES, GRID, type Tile, tileOf } from "./item-tile";
 import { RefreshFailed } from "./refresh";
-import { TileSilhouette } from "./silhouette";
+import { silhouetteMask, TileSilhouette } from "./silhouette";
 import { Tiles } from "./tiles";
 
 type Page = {
@@ -75,6 +77,14 @@ type Dir = "next" | "prev";
 let kept: Kept<Page> | undefined;
 
 const MARGIN = `${SCREENS * 100}%`;
+// a silhouette in the first column, out of the flow and unseen, measured for the boxes' mask
+const PROBE: CSSProperties = {
+  position: "absolute",
+  gridArea: "1 / 1 / 2 / 2",
+  insetInline: 0,
+  insetBlockStart: 0,
+  visibility: "hidden",
+};
 
 /** The page in view while the results are on screen (the one in the address), for the readout beside the count. */
 let pageInView: number | undefined;
@@ -174,6 +184,17 @@ export function ResultPages({
   const held = useRef(new Map<string, () => void>());
   const restoring = useRef<Snapshot | null>(null);
   const width = useRef(0);
+  // the boxes' tile mask, for the look it was measured in; a hidden silhouette stands until it is measured
+  const [mask, setMask] = useState<{ look: string; style: CSSProperties }>();
+  const probe = useRef<HTMLDivElement>(null);
+  const tileMask = mask?.look === settings.style ? mask.style : undefined;
+  useLayoutEffect(() => {
+    if (tileMask || !probe.current || !grid.current) return;
+    setMask({
+      look: settings.style,
+      style: silhouetteMask(probe.current, grid.current),
+    });
+  });
   /** the estimated height of a whole page not read yet */
   const block = useRef(0);
   const tick = useRef(() => {});
@@ -592,6 +613,7 @@ export function ResultPages({
       if (!g || g.clientWidth === width.current) return;
       width.current = g.clientWidth;
       setCols(getComputedStyle(g).gridTemplateColumns.split(" ").length);
+      setMask(undefined);
       measure();
       const tile = g.querySelector("[data-item]");
       const height = tile?.getBoundingClientRect().height ?? 0;
@@ -631,7 +653,12 @@ export function ResultPages({
         ref={grid}
         {...ROWS}
         gap={GRID.gap}
-        style={{ ...GRID.style, position: "relative", overflowAnchor: "none" }}
+        style={{
+          ...GRID.style,
+          ...tileMask,
+          position: "relative",
+          overflowAnchor: "none",
+        }}
       >
         {pages.map((q) => (
           <Fragment key={q.n}>
@@ -660,13 +687,19 @@ export function ResultPages({
                 <GridSpan
                   columns="full"
                   aria-hidden
+                  className="page-box"
                   style={{ blockSize: q.block }}
                 />
               )
             ) : q.heights ? (
               q.heights.map((h, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: one box per tile, in the tiles' order
-                <div key={i} aria-hidden style={{ blockSize: h }} />
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: one box per tile, in the tiles' order
+                  key={i}
+                  aria-hidden
+                  className="page-box"
+                  style={{ blockSize: h }}
+                />
               ))
             ) : (
               <Tiles
@@ -703,6 +736,12 @@ export function ResultPages({
             aria-hidden
             style={{ position: "absolute", insetBlockStart: 0 }}
           />
+        )}
+        {/* last, as the sentinel: the children before them are the pages' */}
+        {!tileMask && (
+          <div aria-hidden style={PROBE}>
+            <TileSilhouette ref={probe} />
+          </div>
         )}
       </Grid>
       {/* template :4527-4537, once every page is on screen */}

@@ -187,6 +187,11 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   the results (lib/motion `glide`, Astryx's `--ease-standard` in, `--ease-exit` and `--duration-exit` out); at full
   size with the page it folds by scrolling to where the scroll shrinks it. The Carousel's prev/next buttons sit on
   the top layer, above the band, so they go as the shrink starts.
+- Boxes for tiles not drawn (`result-pages.tsx`, pages not read and pages given up far from view) paint the tile
+  silhouette through a CSS mask measured once from a hidden `TileSilhouette` (`silhouette.tsx` `silhouetteMask`),
+  in the Skeleton's own static look (`--color-skeleton` at its resting 0.25 opacity, as it shows under reduced
+  motion; core `src/Skeleton/Skeleton.tsx:81`, `:91`, `:108`): a Skeleton per tile there would be thousands of
+  running layers, and an empty box showed white when scrolled into fast.
 - Filter band's sticky top: `--_app-shell-header-height`, the AppShell's private variable (AppShell.js: set on its
   root from the header's measured height, by a ResizeObserver in an effect, so only once it hydrates; not in its
   `.d.ts`). The band sticks under the top bar with it, as the AppShell's own sticky parts do, and a start past
