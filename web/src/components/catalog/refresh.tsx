@@ -1,5 +1,5 @@
 "use client";
-// Refreshing results after a filter, sort or page change. The current results stay on screen while the next
+// Refreshing results after a filter or sort change. The current results stay on screen while the next
 // ones load; only a wait of 150 ms or more shows anything (lib/use-delayed): the table-filter template's
 // indeterminate ProgressBar (page.tsx:4341-4347) along the filter band's bottom edge, as doona lite's at its
 // header's edge (apps/lite src/ui.tsx:131-137), held for at least 300 ms, and the new count and results then

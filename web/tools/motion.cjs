@@ -202,6 +202,7 @@ const clickPreset = (p) =>
       const box = [...document.querySelectorAll("[data-item]")]
         .map((t) => t.getBoundingClientRect())
         .find((r) => r.top > band && r.bottom < innerHeight);
+      // the cover is the tile's top square: half the tile's width down is its middle
       return { x: box.x + box.width / 2, y: box.y + box.width / 2 };
     });
     await p.mouse.click(cover.x, cover.y);

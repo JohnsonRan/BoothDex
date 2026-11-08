@@ -81,6 +81,9 @@ type Dir = "next" | "prev";
 let kept: (Kept<Page> & { drawn: string; place: Snapshot | null }) | undefined;
 
 const MARGIN = `${SCREENS * 100}%`;
+// no scroll event for this long and scrolling has stopped: an engine sends one a frame while a fling or a smooth
+// scroll runs, so a pause this long is the reader's, and the changes held for it go in soon after
+const SETTLE_MS = 200;
 // a silhouette in the first column, out of the flow and unseen, measured for the boxes' mask
 const PROBE: CSSProperties = {
   position: "absolute",
@@ -630,7 +633,7 @@ export function ResultPages({
         for (const change of held.current.values()) change();
         held.current.clear();
         schedule();
-      }, 200);
+      }, SETTLE_MS);
     };
     const onWheel = (e: WheelEvent) => {
       if (e.deltaY >= 0) return;
