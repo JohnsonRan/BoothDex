@@ -16,8 +16,10 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // The sticky filter band, the folding avatar strip and the pages above a deep start: JS 399,319, CSS 44,327,
 // held to the next 500 B as before. The deep start's first paint, with the strip's earlier design: JS 400,319,
 // CSS 44,409, held to the next 500 B (owner, 2026-11-08). One strip shrinking with the scroll and the boxes'
-// painted silhouettes: JS 400,918, CSS 44,958, held to the next 500 B as before.
-const BUDGET = { html: 48_000, js: 401_000, css: 45_000 };
+// painted silhouettes: JS 400,918, CSS 44,958, held to the next 500 B as before. The review fixes (tiles redrawn
+// after a settings change, the band's edge set as it attaches, Astryx parts for the boxes): JS 401,132, held to
+// the next 500 B as before.
+const BUDGET = { html: 48_000, js: 401_500, css: 45_000 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
