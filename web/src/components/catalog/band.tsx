@@ -138,7 +138,7 @@ export function FilterBand({
         ? Math.min(1, Math.max(0, (scrollY - start) / length))
         : 0;
       if (!driven) head.style.setProperty("--strip-p", String(p));
-      // reduced motion shows the strip whole or shrunk (app/globals.css)
+      // the shrink runs from the first measure on; reduced motion shows the strip whole or shrunk (app/globals.css)
       const state = p <= 0 ? "none" : p >= 1 ? "all" : "part";
       if (head.dataset.shrink !== state) head.dataset.shrink = state;
       span.current.shrunk = p >= 1;
@@ -231,7 +231,8 @@ export function FilterBand({
         variant="transparent"
         padding={0}
         data-strip-open={open ? "" : undefined}
-        data-shrink={avatars ? (folded ? "all" : "none") : undefined}
+        // a start past page 1 is shrunk from the first paint; page 1 shrinks once measured
+        data-shrink={avatars && folded ? "all" : undefined}
         style={
           avatars
             ? ({
