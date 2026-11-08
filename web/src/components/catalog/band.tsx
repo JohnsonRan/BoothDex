@@ -115,13 +115,15 @@ export function FilterBand({
   const openNow = useRef(open);
   openNow.current = open;
 
-  useLayoutEffect(() => {
-    band = ref.current;
-    bar = barRef.current;
-    return () => {
-      band = null;
-      bar = null;
-    };
+  // covered() reads these as they attach, not from a layout effect of the band's: the results are its children,
+  // whose layout effects run first when the two mount together (a client navigation back to the results)
+  const attachBand = useCallback((el: HTMLElement | null) => {
+    ref.current = el;
+    band = el;
+  }, []);
+  const attachBar = useCallback((el: HTMLDivElement | null) => {
+    barRef.current = el;
+    bar = el;
   }, []);
 
   useEffect(() => {
@@ -226,7 +228,7 @@ export function FilterBand({
   return (
     <VStack gap={0}>
       <Section
-        ref={ref}
+        ref={attachBand}
         aria-label={label}
         variant="transparent"
         padding={0}
@@ -244,7 +246,7 @@ export function FilterBand({
         }
       >
         <VStack
-          ref={barRef}
+          ref={attachBar}
           padding={toolbar ? 6 : 0}
           paddingBlockStart={toolbar ? 4 : 0}
           className="filter-toolbar"
