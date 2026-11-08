@@ -195,6 +195,9 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   first screen): whole rows at 5 too would take 60 tiles, 19 KB of HTML over the size budget.
 - Image skeletons: each image is a `SkeletonImage` (`catalog/silhouette.tsx`), an `img` over a `Skeleton` in one
   grid cell, server markup with no handler; the image is positioned so it paints above the animated Skeleton.
+  Once the image is decoded, one document listener in the head marks it `data-painted` and `globals.css` drops
+  the Skeleton under it: each running Skeleton under a painted image was a compositor layer, about 300 on a
+  screen of results, and layerizing them took most of every scrolled frame. A new `src` is a new `img` (keyed).
 - Top bar account: both variants are server markup in `[data-account-slot]` wrappers (`display: contents`), and
   `globals.css` shows one by `<html data-account>`, set before the first paint from `lib/session-hint.ts`.
 - Avatar cards and the item gallery's thumbnails: `padding={0.5}` (the selection ring's width) and an image

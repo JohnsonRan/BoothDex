@@ -86,7 +86,8 @@ export const THUMB_RADIUS =
 
 /** An image filling and covering its box over a Skeleton, which shows until the image paints over it: no
  *  handler and no state, so server markup needs no script. `radius` rounds both. The image is positioned so it
- *  paints above the Skeleton, whose animation makes it a layer of its own. */
+ *  paints above the Skeleton, whose animation makes it a layer of its own; once the image can paint, the Skeleton
+ *  goes (SKELETON_PAINTED). */
 export function SkeletonImage({
   radius,
   alt = "",
@@ -94,6 +95,7 @@ export function SkeletonImage({
 }: Omit<ComponentProps<"img">, "style"> & { radius?: string }) {
   return (
     <span
+      data-skeleton=""
       style={{
         display: "grid",
         width: "100%",
@@ -104,6 +106,8 @@ export function SkeletonImage({
     >
       <Skeleton radius="none" style={{ gridArea: "1 / 1" }} />
       <img
+        // a new image is a new element: the old one's data-painted would hide the Skeleton while this one loads
+        key={String(img.src)}
         alt={alt}
         {...img}
         style={{
@@ -118,3 +122,13 @@ export function SkeletonImage({
     </span>
   );
 }
+
+/**
+ * Marks an image over a Skeleton once it is decoded and can paint, and the Skeleton under it is dropped
+ * (app/globals.css). A running Skeleton is a compositor layer, and so is every image over one: about 300 on a
+ * screen of results, whose layerizing took most of every scrolled frame. One listener for the whole document, in
+ * the head (app/layout.tsx) before any image; a load does not bubble, so it listens in the capture phase.
+ */
+export const SKELETON_PAINTED = `;document.addEventListener("load",function(e){var t=e.target,p=t.parentNode;
+if(t.tagName!=="IMG"||!p||!p.hasAttribute||!p.hasAttribute("data-skeleton"))return;
+function f(){t.setAttribute("data-painted","")}t.decode?t.decode().then(f,f):f()},true);`;

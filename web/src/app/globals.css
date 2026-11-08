@@ -146,3 +146,10 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 :root:not([data-account="in"]) [data-account-slot="in"] {
   display: none;
 }
+
+/* An image over a Skeleton that can paint (catalog/silhouette.tsx SKELETON_PAINTED): the Skeleton under it goes,
+   and with it its running animation, a compositor layer per image. Core's rules carry up to four :not(#\#). */
+[data-skeleton]:has(> img[data-painted])
+  > .astryx-skeleton:not(#\#):not(#\#):not(#\#):not(#\#) {
+  display: none;
+}
