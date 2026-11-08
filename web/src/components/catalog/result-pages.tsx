@@ -8,8 +8,9 @@
 // keeps the first tile in view where it was (the grid opts out of the browser's own scroll anchoring, which not
 // every engine has, so all of them move the same way).
 
+import { Button } from "@astryxdesign/core/Button";
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
-import { VStack } from "@astryxdesign/core/Stack";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import {
   Fragment,
@@ -19,6 +20,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
@@ -58,6 +60,42 @@ type Dir = "next" | "prev";
 let kept: Kept<Page> | undefined;
 
 const MARGIN = `${SCREENS * 100}%`;
+
+/** The page in view while the results are on screen (the one in the address), for the readout beside the count. */
+let pageInView: number | undefined;
+const inViewWatchers = new Set<() => void>();
+function showInView(n: number | undefined) {
+  pageInView = n;
+  for (const w of inViewWatchers) w();
+}
+const watchInView = (w: () => void) => {
+  inViewWatchers.add(w);
+  return () => inViewWatchers.delete(w);
+};
+
+/**
+ * "Page N" before the count in the filter row's readout (results.tsx), from page 2 on: the server's page in its
+ * HTML, then the page in view as the reader scrolls, so it moves with the address.
+ */
+export function PageInView({ page }: { page: number }) {
+  const { t } = useUi();
+  const n = useSyncExternalStore(
+    watchInView,
+    () => pageInView ?? page,
+    () => page,
+  );
+  if (n < 2) return null;
+  return (
+    <>
+      <Text type="supporting" color="secondary" hasTabularNumbers>
+        {t("list.page", { n })}
+      </Text>
+      <Text type="supporting" color="secondary">
+        ·
+      </Text>
+    </>
+  );
+}
 
 /** The index of the first of `kids[from, to)` reaching into the viewport (their bottoms ascend in grid order). */
 function firstInView(kids: HTMLCollection, from: number, to: number) {
@@ -370,6 +408,7 @@ export function ResultPages({
       const inView = p[pageAt(tops, h / 2)].n;
       if (inView !== shown && !restoring.current) {
         shown = inView;
+        showInView(shown);
         save();
       }
       const focused = document.activeElement;
@@ -433,6 +472,7 @@ export function ResultPages({
     return () => {
       cancelAnimationFrame(frame);
       clearTimeout(settle);
+      showInView(undefined);
       tick.current = () => {};
       removeEventListener("scroll", onScroll);
       removeEventListener("wheel", onWheel);
@@ -443,7 +483,7 @@ export function ResultPages({
   const favLabel = t("fav.add");
   return (
     <>
-      {failed === "prev" && (
+      {failed === "prev" ? (
         <RefreshFailed
           starting={false}
           onRetry={() => {
@@ -451,6 +491,24 @@ export function ResultPages({
             loadPrev();
           }}
         />
+      ) : (
+        hasPrev && (
+          // the end line's place and look (template :4527-4537) above the first row: how many pages are above, and
+          // the previous one on request. It keeps its height while that page loads (the button's own spinner), so
+          // nothing above the reader moves until the page goes in.
+          <HStack minHeight={56} gap={2} vAlign="center" hAlign="center">
+            <Text type="supporting" color="secondary" hasTabularNumbers>
+              {t("list.before", { n: pages[0].n - 1 })}
+            </Text>
+            <Button
+              label={t("list.loadPrev")}
+              variant="ghost"
+              size="sm"
+              isLoading={loading === "prev"}
+              onClick={loadPrev}
+            />
+          </HStack>
+        )
       )}
       <Grid
         ref={grid}

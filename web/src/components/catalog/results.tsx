@@ -1,8 +1,9 @@
-// The parts of the home page that wait for the search: the result count in the filter row's readout, with the
-// readout's "Clear all" so the two arrive together, and the results region. Both read the same pending search,
-// each behind its own Suspense boundary (home-screen.tsx), so the frame around them is painted first.
+// The parts of the home page that wait for the search: the result count in the filter row's readout (after the page
+// in view, from page 2 on), with the readout's "Clear all" so the two arrive together, and the results region. Both
+// read the same pending search, each behind its own Suspense boundary (home-screen.tsx), so the frame around them is
+// painted first.
 
-import { VStack } from "@astryxdesign/core/Stack";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { type Filters, filtersToQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
@@ -12,7 +13,7 @@ import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { ClearAll } from "./filter-bar";
 import { FIRST_TILES, tileOf } from "./item-tile";
 import { KeepResults, Swap } from "./refresh";
-import { ResultPages } from "./result-pages";
+import { PageInView, ResultPages } from "./result-pages";
 import { EmptyResults, SemanticNote } from "./result-states";
 import { SearchTrace } from "./search-trace";
 
@@ -44,19 +45,22 @@ export async function ResultCount({
   return (
     <>
       <Swap>
-        {hasQuery ? (
-          <SearchTrace
-            count={count}
-            semantic={o.result.semantic}
-            steps={o.result.trace}
-            serverMs={o.result.timing.totalMs}
-            totalMs={o.ms}
-          />
-        ) : (
-          <Text type="supporting" color="secondary" hasTabularNumbers>
-            {count}
-          </Text>
-        )}
+        <HStack gap={2} vAlign="center">
+          <PageInView page={o.result.page} />
+          {hasQuery ? (
+            <SearchTrace
+              count={count}
+              semantic={o.result.semantic}
+              steps={o.result.trace}
+              serverMs={o.result.timing.totalMs}
+              totalMs={o.ms}
+            />
+          ) : (
+            <Text type="supporting" color="secondary" hasTabularNumbers>
+              {count}
+            </Text>
+          )}
+        </HStack>
       </Swap>
       <ClearAll afterCount />
     </>
