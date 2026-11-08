@@ -3,13 +3,14 @@
 // LayoutContent that does not scroll itself (LayoutContent.d.ts:28-33, its example :70-75; the style object as
 // product-detail's sticky column, page.tsx:26-30, opaque as dashboard-alert-rail's sticky header, :895-900). It
 // carries the page header's divider and, on that edge, the refresh progress (refresh.tsx).
-// The avatar strip sits under it at full size and scrolls away beneath it; once it is wholly under the band, a
-// compact row takes its place in the band, an empty box of its height takes the strip's, and the results draw up
-// under the band by what the row added to it, so nothing below the band moves (not even the results' own box,
-// which a layout shift would count). Scrolling back unfolds it. The strip's toggle folds it into that row by hand,
-// and the row's toggle unfolds it: in place while the strip's place is in view, else as a panel over the results.
-// A start past page 1 begins with the strip too, which folds as the pages above go in (result-pages.tsx) and
-// unfolds again at the top; a fold by hand stays until the reader unfolds it.
+// The avatar strip sits under it at full size and scrolls away beneath it. Once it is wholly under the band, a
+// compact row docks along the band's bottom edge, laid over what scrolls beneath, so the band's own height and
+// everything below it stay where they are; the row leaves again once the strip comes out from under it (the row's
+// height apart, so the two never trade places back and forth). The strip's toggle folds it by scrolling it under the band, or, where the page is too short for
+// that, by closing its box; the row's toggle opens the strip again, as a panel over the row while the page is
+// scrolled. The row and the panel are drawn from the start, hidden until wanted: showing one is a fade, not a new
+// strip. A start past page 1 renders with the row docked: the page opens scrolled to its results
+// (deep-start.ts).
 // The state is the page's own, as the Collapsible blocks' custom disclosure (CollapsibleHookUsage.tsx:14-42: the
 // open state, a trigger with aria-expanded and aria-controls, the content it shows).
 
@@ -18,14 +19,21 @@ import { VStack } from "@astryxdesign/core/Stack";
 import {
   type CSSProperties,
   type ReactNode,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import type { Avatar } from "@/lib/catalog";
-import { cancelOnReducedMotion, swapIn } from "@/lib/motion";
+import {
+  cancelOnReducedMotion,
+  dock,
+  prefersReducedMotion,
+  shut,
+} from "@/lib/motion";
 import { AvatarStrip } from "./avatar-strip";
 import { RefreshProgress } from "./refresh";
 
@@ -40,27 +48,46 @@ const STUCK: CSSProperties = {
   insetBlockStart: "var(--_app-shell-header-height, 0px)",
   zIndex: 1,
 };
-// over the compact row, which keeps its place, out to the band's edges and down over the results
+// under the toolbar at the toolbar row's gap (4, 16 px): up over the band's bottom padding (6) by the difference,
+// and over the band's divider, which the row carries on instead
+const ROW: CSSProperties = {
+  ...SURFACE,
+  position: "absolute",
+  insetBlockStart: "calc(100% - var(--spacing-2))",
+  insetInline: 0,
+};
+// over the row, which keeps its place, and down over the results
 const PANEL: CSSProperties = {
   ...SURFACE,
   position: "absolute",
   insetBlockStart: 0,
-  insetInline: "calc(-1 * var(--spacing-6))",
-  zIndex: 1,
+  insetInline: 0,
+};
+// the content's gap, which a closed strip gives up with its height
+const GAP = "var(--spacing-4)";
+const CLOSED: CSSProperties = {
+  blockSize: 0,
+  marginBlockEnd: `calc(-1 * ${GAP})`,
+  overflow: "clip",
+  visibility: "hidden",
 };
 
 let band: HTMLElement | null = null;
-const height = (el: Element) => el.getBoundingClientRect().height;
+let row: HTMLElement | null = null;
 
 /**
- * The viewport px above the line the band's bottom edge holds once stuck: content above it is under the top bar
- * or the band. Scrolling does not change it, so a place measured from it is found again at the same scroll.
+ * The viewport px above the line the band's bottom edge holds once stuck, the compact row's included wherever the
+ * strip is (shown or not, so a place saved and the same place restored agree): content above it is under the top
+ * bar or the band. Scrolling does not change it, so a place measured from it is found again at the same scroll.
+ * deep-start.ts reads the same line before the page hydrates.
  */
 export function covered() {
   if (!band) return 0;
+  const b = band.getBoundingClientRect();
   return (
     Number.parseFloat(getComputedStyle(band).top) +
-    band.getBoundingClientRect().height
+    (row ? row.getBoundingClientRect().bottom : b.bottom) -
+    b.top
   );
 }
 
@@ -68,6 +95,7 @@ export function FilterBand({
   label,
   toolbar,
   avatars,
+  folded = false,
   children,
 }: {
   label: string;
@@ -75,46 +103,49 @@ export function FilterBand({
   toolbar?: ReactNode;
   /** the avatar strip's avatars, in the items view */
   avatars?: Avatar[];
+  /** the page opens scrolled past the strip (a start past page 1): the row is docked from the first paint */
+  folded?: boolean;
   /** the results */
   children: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const slot = useRef<HTMLDivElement>(null);
-  const row = useRef<HTMLDivElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const id = useId();
-  const [open, setOpen] = useState(true);
-  // the open strip is wholly under the band: the compact row stands in for it
-  const [under, setUnder] = useState(false);
+  // the strip is under the band: the row stands in for it
+  const [under, setUnder] = useState(folded);
+  // folded by hand where the page could not scroll it away
+  const [closed, setClosed] = useState(false);
   const [panel, setPanel] = useState(false);
-  // the band's growth by the compact row while the strip is under it
-  const [lift, setLift] = useState(0);
-  // the strip's and the band's heights when the strip went under
-  const was = useRef({ strip: 0, band: 0 });
+  const docked = !!avatars && (under || closed);
+  const state = useRef({ closed });
+  state.current.closed = closed;
 
   useLayoutEffect(() => {
     band = ref.current;
+    row = rowRef.current;
     return () => {
       band = null;
+      row = null;
     };
   }, []);
 
   useEffect(() => {
-    if (!avatars || !open) return;
+    if (!avatars || closed) return;
     let frame = 0;
     const run = () => {
       frame = 0;
-      const b = ref.current;
-      const s = slot.current;
-      if (!b || !s) return;
-      if (
-        s.getBoundingClientRect().bottom <= b.getBoundingClientRect().bottom ===
-        under
-      )
-        return;
-      if (!under) was.current = { strip: height(s), band: height(b) };
-      else setPanel(false);
-      setUnder(!under);
+      const s = slot.current?.getBoundingClientRect();
+      const b = ref.current?.getBoundingClientRect();
+      const r = rowRef.current?.getBoundingClientRect();
+      if (!s || !b || !r) return;
+      // in under the band's edge, out once clear of the row (half a px for a deep start's rounding)
+      const next = under ? s.bottom <= r.bottom + 0.5 : s.bottom <= b.bottom;
+      if (next === under) return;
+      if (!next) setPanel(false);
+      setUnder(next);
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(run);
@@ -129,33 +160,89 @@ export function FilterBand({
       removeEventListener("scroll", schedule);
       grown.disconnect();
     };
-  }, [avatars, open, under]);
+  }, [avatars, closed, under]);
 
-  // before the change paints: the results draw up by what the row added to the band, and what came in fades in
+  // the row, the panel and a closed strip glide; the first render is the server's and stays as it is
+  const was = useRef({ docked, panel, closed });
   useLayoutEffect(() => {
-    const b = ref.current;
-    if (b) setLift(under ? height(b) - was.current.band : 0);
-    const el = under ? row.current : slot.current;
-    if (el && was.current.strip) return cancelOnReducedMotion(swapIn(el));
-  }, [under]);
+    const w = was.current;
+    was.current = { docked, panel, closed };
+    const running: Animation[] = [];
+    if (w.docked !== docked && rowRef.current)
+      running.push(...dock(rowRef.current, docked));
+    if (w.panel !== panel && panelRef.current) {
+      running.push(...dock(panelRef.current, panel));
+      // focus in the closing panel goes back to the row's toggle
+      if (!panel && panelRef.current.contains(document.activeElement))
+        rowRef.current?.querySelector<HTMLElement>("[aria-expanded]")?.focus();
+    }
+    const s = slot.current;
+    if (w.closed !== closed && s)
+      running.push(...shut(s, closed, s.scrollHeight, GAP));
+    return running.length ? cancelOnReducedMotion(running) : undefined;
+  }, [docked, panel, closed]);
 
-  const unfold = () => {
-    const top = content.current?.getBoundingClientRect().top ?? 0;
-    if (!open && top >= (ref.current?.getBoundingClientRect().bottom ?? 0))
-      setOpen(true);
-    else setPanel(!panel);
-  };
-  const strip = (compact: boolean, onToggle: () => void) =>
-    avatars && (
-      <AvatarStrip
-        avatars={avatars}
-        compact={compact}
-        controls={id}
-        onToggle={onToggle}
-        onPick={() => setPanel(false)}
-      />
-    );
-  const docked = !!avatars && (!open || under);
+  // Folds by hand: scrolls the strip under the band, where it folds itself; a page too short for that closes it.
+  const fold = useCallback(() => {
+    const s = slot.current?.getBoundingClientRect();
+    const b = ref.current;
+    if (!s || !b) return;
+    // to the edge the band holds once stuck, a px past it: a smooth scroll may stop a fraction short
+    const edge =
+      Number.parseFloat(getComputedStyle(b).top) +
+      b.getBoundingClientRect().height;
+    const need = Math.ceil(s.bottom - edge) + 1;
+    const room = document.documentElement.scrollHeight - innerHeight - scrollY;
+    if (need <= room)
+      scrollBy({
+        top: need,
+        behavior: prefersReducedMotion() ? "instant" : "smooth",
+      });
+    else setClosed(true);
+  }, []);
+  // Unfolds by hand: a closed strip in view opens in place, else the panel shows it over the row.
+  const unfold = useCallback(() => {
+    const s = slot.current?.getBoundingClientRect();
+    const b = ref.current?.getBoundingClientRect();
+    if (state.current.closed && s && b && s.top >= b.bottom) setClosed(false);
+    else setPanel(true);
+  }, []);
+  const hide = useCallback(() => setPanel(false), []);
+
+  // made once, so a fold draws none of them again (AvatarStrip is memoised)
+  const strips = useMemo(
+    () =>
+      avatars && {
+        full: (
+          <AvatarStrip
+            avatars={avatars}
+            compact={false}
+            controls={id}
+            onToggle={fold}
+            onPick={hide}
+          />
+        ),
+        compact: (
+          <AvatarStrip
+            avatars={avatars}
+            compact
+            controls={id}
+            onToggle={unfold}
+            onPick={hide}
+          />
+        ),
+        panel: (
+          <AvatarStrip
+            avatars={avatars}
+            compact={false}
+            controls={id}
+            onToggle={hide}
+            onPick={hide}
+          />
+        ),
+      },
+    [avatars, id, fold, unfold, hide],
+  );
 
   return (
     <VStack gap={0}>
@@ -168,47 +255,54 @@ export function FilterBand({
         className="filter-toolbar"
         style={STUCK}
       >
-        <VStack gap={4}>
-          {toolbar}
-          {docked && (
-            <VStack ref={row} style={{ position: "relative" }}>
-              {/* the row stays for its height, hidden while the panel shows the strip in its place: each avatar
-                  once */}
-              <VStack style={panel ? { visibility: "hidden" } : undefined}>
-                {strip(true, unfold)}
-              </VStack>
-              {panel && (
-                // a VStack's padding, not a Section's: a Carousel bleeds into a Section's inset
-                <VStack
-                  id={id}
-                  paddingInline={6}
-                  paddingBlockEnd={4}
-                  style={PANEL}
-                >
-                  {strip(false, () => setPanel(false))}
-                </VStack>
-              )}
+        <VStack gap={4}>{toolbar}</VStack>
+        {!docked && <RefreshProgress />}
+        {strips && (
+          // hidden is out of reach too: no focus, no pointer, nothing read
+          <VStack
+            ref={rowRef}
+            data-strip-row=""
+            style={docked ? ROW : { ...ROW, visibility: "hidden" }}
+          >
+            {/* the row keeps its place under the panel, which shows the strip in it: each avatar once */}
+            <VStack
+              paddingInline={6}
+              paddingBlockEnd={6}
+              style={panel ? { visibility: "hidden" } : undefined}
+            >
+              {strips.compact}
             </VStack>
-          )}
-        </VStack>
-        <RefreshProgress />
+            {docked && <RefreshProgress />}
+            {/* a VStack's padding, not a Section's: a Carousel bleeds into a Section's inset */}
+            <VStack
+              ref={panelRef}
+              id={panel ? id : undefined}
+              style={panel ? PANEL : { ...PANEL, visibility: "hidden" }}
+            >
+              <VStack paddingInline={6} paddingBlockEnd={6}>
+                {strips.panel}
+              </VStack>
+            </VStack>
+          </VStack>
+        )}
       </Section>
       <VStack
         ref={content}
+        data-band-content=""
         gap={4}
         padding={6}
         paddingBlockStart={4}
-        // out of Chrome's scroll anchoring, as the grid is: it would follow the band's growth before the lift
-        // takes it back and leave the results a row's height off
-        style={{ marginBlockStart: -lift, overflowAnchor: "none" }}
+        // the results keep their own place through every change (result-pages.tsx), in every engine alike
+        style={{ overflowAnchor: "none" }}
       >
-        {avatars && open && (
-          <VStack ref={slot} id={under ? undefined : id}>
-            {under ? (
-              <VStack aria-hidden style={{ blockSize: was.current.strip }} />
-            ) : (
-              strip(false, () => setOpen(false))
-            )}
+        {strips && (
+          <VStack
+            ref={slot}
+            data-strip=""
+            id={panel ? undefined : id}
+            style={closed ? CLOSED : undefined}
+          >
+            {strips.full}
           </VStack>
         )}
         {children}

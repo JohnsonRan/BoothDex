@@ -1,8 +1,11 @@
 // Motion values and the entrance itself (the pattern of doona's apps/lite/src/ui/motion). The easing is Astryx's
 // `--ease-standard`; every animation on the site reads these, so retuning one number retunes it everywhere.
-// Only transform and opacity move, and reduced motion leaves everything static.
+// Only transform and opacity move (and the one box that folds where the page cannot scroll it away, its own height),
+// and reduced motion leaves everything static.
 
 const EASE = "cubic-bezier(0.24, 1, 0.4, 1)";
+/** Astryx's `--ease-exit`: what leaves speeds up as it goes */
+const EASE_EXIT = "cubic-bezier(0.3, 0, 0.6, 0.6)";
 
 const MOTION = {
   /** a page section rises this far and fades in */
@@ -21,12 +24,18 @@ const MOTION = {
   rowMax: 24,
   /** content a slow refresh replaced fades in where the old content was */
   swapDuration: 240,
+  /** the compact avatar row docking under the filter band, and the panel opening there; Astryx's
+      `--duration-exit` (175 ms) for leaving */
+  dockDuration: 240,
+  dockExit: 175,
+  dockRise: 8,
 } as const;
 
 /** `Animation.id`s (tools/motion.cjs matches them), so checks can tell the entrance from a component's own motion. */
 const PAGE_ENTER_ID = "page-enter";
 const ROW_ENTER_ID = "row-enter";
 const SWAP_ID = "swap-in";
+const DOCK_ID = "dock";
 
 /** Marks a container whose children (a carousel: its slides) enter as rows: the grid, the avatar strip. */
 export const ROWS = { "data-enter-rows": "" } as const;
@@ -117,3 +126,62 @@ export const swapIn = (el: Element): Animation[] =>
           easing: EASE,
         }),
       ];
+
+/**
+ * Something docking under the filter band or leaving it (catalog/band.tsx): the box fades, its first child sliding
+ * down from under the band's edge. The box itself never moves, so its place can be measured mid-way; it stays
+ * visible while it leaves, whatever its own style says by then.
+ */
+export function dock(el: Element, shown: boolean): Animation[] {
+  if (prefersReducedMotion()) return [];
+  const timing = {
+    id: DOCK_ID,
+    duration: shown ? MOTION.dockDuration : MOTION.dockExit,
+    easing: shown ? EASE : EASE_EXIT,
+  };
+  const box = [
+    { opacity: 0, visibility: "visible" },
+    { opacity: 1, visibility: "visible" },
+  ];
+  const slide = [
+    { transform: `translateY(${-MOTION.dockRise}px)` },
+    { transform: "none" },
+  ];
+  if (!shown) {
+    box.reverse();
+    slide.reverse();
+  }
+  const running = [el.animate(box, timing)];
+  if (el.firstElementChild)
+    running.push(el.firstElementChild.animate(slide, timing));
+  return running;
+}
+
+/**
+ * A box giving up its height, or taking it back, with the gap after it (`gap`, a CSS length): the avatar strip
+ * folded where the page is too short to scroll it away. `height` is the box's own.
+ */
+export function shut(
+  el: Element,
+  closed: boolean,
+  height: number,
+  gap: string,
+): Animation[] {
+  if (prefersReducedMotion()) return [];
+  const frames = [
+    { blockSize: `${height}px`, marginBlockEnd: "0px", visibility: "visible" },
+    {
+      blockSize: "0px",
+      marginBlockEnd: `calc(-1 * ${gap})`,
+      visibility: "visible",
+    },
+  ];
+  if (!closed) frames.reverse();
+  return [
+    el.animate(frames, {
+      id: DOCK_ID,
+      duration: closed ? MOTION.dockExit : MOTION.dockDuration,
+      easing: closed ? EASE_EXIT : EASE,
+    }),
+  ];
+}
