@@ -21,6 +21,7 @@ import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { ItemResponse } from "@/lib/api-types";
 import { imageSrc } from "@/lib/catalog";
+import { DIALOG_MAX_HEIGHT } from "@/lib/dialog-height";
 import { remColumns } from "@/lib/grid";
 import type { Rates } from "@/lib/settings-core";
 import { useDelayed } from "@/lib/use-delayed";
@@ -32,7 +33,6 @@ import { ItemInfo } from "./item-info";
 import {
   DetailSilhouette,
   HeaderSilhouette,
-  MAX_HEIGHT,
   PhoneBarSilhouette,
 } from "./item-silhouette";
 import { MoreFrom } from "./more-from";
@@ -112,7 +112,7 @@ export default function ItemDialog({
       onOpenChange={(open) => !open && close()}
       variant={phone ? "fullscreen" : "standard"}
       width={WIDTH}
-      maxHeight={MAX_HEIGHT}
+      maxHeight={DIALOG_MAX_HEIGHT}
       aria-label={item?.title ?? t("detail.label")}
     >
       <Layout

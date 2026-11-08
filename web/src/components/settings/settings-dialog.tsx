@@ -20,6 +20,7 @@ import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { useId, useState } from "react";
 import { useUi } from "@/components/providers";
+import { DIALOG_MAX_HEIGHT } from "@/lib/dialog-height";
 import { PANEL_GROUPS, type PanelId, SettingsPanelBody } from "./panels";
 import "@/lib/icons-on-demand";
 
@@ -215,11 +216,11 @@ export default function SettingsDialog({
       onOpenChange={onOpenChange}
       purpose="form"
       width="70rem"
-      maxHeight="min(50rem, calc(100dvh - 2rem))"
+      maxHeight={DIALOG_MAX_HEIGHT}
       padding={0}
       aria-labelledby={titleId}
     >
-      <VStack style={{ height: "min(50rem, calc(100dvh - 2rem))" }}>
+      <VStack style={{ height: DIALOG_MAX_HEIGHT }}>
         {isNarrow ? (
           <SettingsNarrowShell
             titleId={titleId}

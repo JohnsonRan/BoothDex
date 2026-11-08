@@ -334,6 +334,8 @@ Deviations, all prop values or token-backed inline styles:
 - Height caps: DropdownMenu's 300 px cap is lifted to `menuMaxHeight` 480 px (`lib/menu-height.ts`) on the
   language, sort, download and account menus, whose rem rows outgrow it at the page scale or in a roomier theme;
   the viewport still bounds them.
+- Dialog height: the item dialog takes settings' cap, `min(50rem, calc(100dvh - 2rem))` (`lib/dialog-height.ts`),
+  instead of Dialog's default 75dvh, so on a short window it is as tall as settings (owner, 2026-11-09).
 - Search tokens: the Tokenizer's cap of a token's wrapper at the field's width is lifted (`app/filter-row.css`),
   so a token in a phone's narrow field keeps its words and the field scrolls them sideways.
 - Matcha and Y2K popups: a Selector's 300 px list cap and a ComplexSelector's 480 px panel cap grow by the themes'

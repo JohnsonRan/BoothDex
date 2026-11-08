@@ -10,11 +10,8 @@ import { Grid } from "@astryxdesign/core/Grid";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { useUi } from "@/components/providers";
+import { DIALOG_MAX_HEIGHT } from "@/lib/dialog-height";
 import type { remColumns } from "@/lib/grid";
-
-// the dialog's height cap: Astryx Dialog's default, which leaves the page visible above and below
-// (master used 92 %, which put the dialog against the top bar)
-export const MAX_HEIGHT = "75dvh";
 
 type TextType = "display-2" | "heading-1" | "body" | "large" | "supporting";
 
@@ -91,7 +88,7 @@ export function DetailSilhouette({
       style={{
         ...columns.style,
         visibility: shown ? "visible" : "hidden",
-        minBlockSize: MAX_HEIGHT,
+        minBlockSize: DIALOG_MAX_HEIGHT,
       }}
     >
       <VStack gap={3}>
