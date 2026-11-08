@@ -162,8 +162,9 @@ export function SkeletonImage({
  * Marks an image over a Skeleton once it is decoded and can paint, and the Skeleton under it is dropped
  * (app/globals.css). A running Skeleton is a compositor layer, and so is every image over one: about 300 on a
  * screen of results, whose layerizing took most of every scrolled frame. One listener for the whole document, in
- * the head (app/layout.tsx) before any image; a load does not bubble, so it listens in the capture phase.
+ * the head (app/layout.tsx) before any image; a load does not bubble, so it listens in the capture phase. An image
+ * that fails to decode keeps its Skeleton.
  */
 export const SKELETON_PAINTED = `;document.addEventListener("load",function(e){var t=e.target,p=t.parentNode;
 if(t.tagName!=="IMG"||!p||!p.hasAttribute||!p.hasAttribute("data-skeleton"))return;
-function f(){t.setAttribute("data-painted","")}t.decode?t.decode().then(f,f):f()},true);`;
+function f(){t.setAttribute("data-painted","")}t.decode?t.decode().then(f,function(){}):f()},true);`;
