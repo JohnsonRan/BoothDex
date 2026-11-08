@@ -53,7 +53,7 @@ export const pageAt = (tops: number[], line: number) =>
 export const isFar = (top: number, bottom: number, height: number) =>
   bottom < -SCREENS * height || top > (1 + SCREENS) * height;
 
-/** Where the reader was, kept in the history entry: the first tile in view, its offset, and its page. */
+/** Where the reader was, kept in the history entry: the first tile below the filter band, its offset from the band's edge, and its page. */
 export type Snapshot = { key: string; page: number; id: number; top: number };
 
 export const SNAPSHOT = "boothdex-results";

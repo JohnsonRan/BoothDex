@@ -6,7 +6,8 @@
 // and the history entry keeps the first tile in view, so a reload or a return lands on it with the pages it had.
 // Pages more than SCREENS screens from view give their tiles up for boxes of the same heights, and every change
 // keeps the first tile in view where it was (the grid opts out of the browser's own scroll anchoring, which not
-// every engine has, so all of them move the same way).
+// every engine has, so all of them move the same way). Every place is measured from the filter band's bottom edge
+// (band.tsx covered()), so the tile in view is the first one below the band, not one under it.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
@@ -40,6 +41,7 @@ import {
   withPage,
 } from "@/lib/result-pages";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
+import { covered } from "./band";
 import { FIRST_TILES, GRID, type Tile, tileOf } from "./item-tile";
 import { RefreshFailed } from "./refresh";
 import { TileSilhouette } from "./silhouette";
@@ -97,13 +99,18 @@ export function PageInView({ page }: { page: number }) {
   );
 }
 
-/** The index of the first of `kids[from, to)` reaching into the viewport (their bottoms ascend in grid order). */
-function firstInView(kids: HTMLCollection, from: number, to: number) {
+/** The index of the first of `kids[from, to)` reaching below `edge` (their bottoms ascend in grid order). */
+function firstInView(
+  kids: HTMLCollection,
+  from: number,
+  to: number,
+  edge: number,
+) {
   let lo = from;
   let hi = to - 1;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (kids[mid].getBoundingClientRect().bottom > 0) hi = mid;
+    if (kids[mid].getBoundingClientRect().bottom > edge) hi = mid;
     else lo = mid + 1;
   }
   return lo;
@@ -172,7 +179,7 @@ export function ResultPages({
     const g = grid.current;
     const drawn = now.current.pages.reduce((s, p) => s + p.tiles.length, 0);
     if (g && drawn) {
-      const el = g.children[firstInView(g.children, 0, drawn)];
+      const el = g.children[firstInView(g.children, 0, drawn, covered())];
       anchor.current = { el, at: el.getBoundingClientRect().top + scrollY };
     }
     startTransition(change);
@@ -258,10 +265,12 @@ export function ResultPages({
     const s = restoring.current;
     if (!s) return;
     const el = grid.current?.querySelector(`[data-item="${s.id}"]`);
-    if (el) scrollTo(0, el.getBoundingClientRect().top + scrollY - s.top);
+    const edge = covered();
+    if (el)
+      scrollTo(0, el.getBoundingClientRect().top + scrollY - edge - s.top);
     const p = now.current.pages;
     const last = p[p.length - 1];
-    if (el && Math.abs(el.getBoundingClientRect().top - s.top) < 1)
+    if (el && Math.abs(el.getBoundingClientRect().top - edge - s.top) < 1)
       restoring.current = null;
     else if (last.partial || (el && last.n < total)) loadNext();
     else if (el && p[0].n > 1) loadPrev();
@@ -334,7 +343,7 @@ export function ResultPages({
       ([e]) => {
         nearTop.current = e.isIntersecting;
       },
-      { rootMargin: `${MARGIN} 0px 0px 0px` },
+      { rootMargin: `${SCREENS * innerHeight - covered()}px 0px 0px 0px` },
     );
     seen.observe(el);
     return () => {
@@ -370,8 +379,9 @@ export function ResultPages({
       if (!g || i < 0 || restoring.current) return;
       if (resultsQuery(location.search) !== own) return;
       const from = starts(p)[i];
+      const edge = covered();
       const el = g.children[
-        firstInView(g.children, from, from + p[i].tiles.length)
+        firstInView(g.children, from, from + p[i].tiles.length, edge)
       ] as HTMLElement | undefined;
       const id = Number(el?.dataset.item);
       if (!el || !id) return;
@@ -379,7 +389,7 @@ export function ResultPages({
         key,
         page: shown,
         id,
-        top: el.getBoundingClientRect().top,
+        top: el.getBoundingClientRect().top - edge,
       };
       // with Next's own entry state, which its history patch passes through: the router is not told, so a
       // navigation under way (a filter change scrolls to the top) is not replaced by this address
@@ -405,7 +415,9 @@ export function ResultPages({
         ...tops.slice(1),
         lastTile?.getBoundingClientRect().bottom ?? 0,
       ];
-      const inView = p[pageAt(tops, h / 2)].n;
+      // the middle of what the band leaves in view
+      const c = covered();
+      const inView = p[pageAt(tops, (c + h) / 2)].n;
       if (inView !== shown && !restoring.current) {
         shown = inView;
         showInView(shown);

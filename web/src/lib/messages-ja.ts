@@ -101,6 +101,8 @@ export const ja: Dict = {
   "list.loadPrev": "前のページを読み込む",
   "list.page": "{n}ページ目",
   "strip.label": "アバターで絞り込む",
+  "strip.collapse": "アバターを折りたたむ",
+  "strip.expand": "アバターを展開",
   "page.nav": "ページ",
   "page.prev": "前のページ",
   "page.next": "次のページ",

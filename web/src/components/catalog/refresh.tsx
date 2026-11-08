@@ -1,8 +1,9 @@
 "use client";
 // Refreshing results after a filter, sort or page change. The current results stay on screen while the next
 // ones load; only a wait of 150 ms or more shows anything (lib/use-delayed): the table-filter template's
-// indeterminate ProgressBar across the top of the header (page.tsx:4341-4347), held for at least 300 ms, and the
-// new count and results then fade in. A failed refresh keeps the results with an inline Banner to retry (doona
+// indeterminate ProgressBar (page.tsx:4341-4347) along the filter band's bottom edge, as doona lite's at its
+// header's edge (apps/lite src/ui.tsx:131-137), held for at least 300 ms, and the new count and results then
+// fade in. A failed refresh keeps the results with an inline Banner to retry (doona
 // apps/lite UI rules, Phase 1d of the rewrite).
 
 import { Button } from "@astryxdesign/core/Button";
@@ -32,10 +33,11 @@ const Banner = dynamic(
 );
 
 /**
- * At the top edge of the header (the template's `progress` and `headerWrap`, :1452-1459: absolutely placed in a
- * relative wrapper), so it takes no room. Its wrapper is always there and lays nothing out (`display: contents`),
- * carrying the state (data-refresh, read by tools/lab.cjs); the bar is mounted only while a refresh has been
- * waiting, so nothing animates at rest.
+ * On the bottom edge of the filter band, over its divider (the template's `progress` and `headerWrap`,
+ * :1452-1459: absolutely placed in a relative wrapper, here the sticky band), so it takes no room; a hairline
+ * there (app/filter-row.css, .band-progress). Its wrapper is always there and lays nothing out
+ * (`display: contents`), carrying the state (data-refresh, read by tools/lab.cjs); the bar is mounted only while a
+ * refresh has been waiting, so nothing animates at rest.
  */
 export function RefreshProgress() {
   const { t } = useUi();
@@ -50,7 +52,8 @@ export function RefreshProgress() {
           label={t("list.loading")}
           isLabelHidden
           isIndeterminate
-          style={{ position: "absolute", insetBlockStart: 0, insetInline: 0 }}
+          className="band-progress"
+          style={{ position: "absolute", insetBlockEnd: -1, insetInline: 0 }}
         />
       )}
     </VStack>

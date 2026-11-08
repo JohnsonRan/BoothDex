@@ -101,6 +101,8 @@ export const en: Dict = {
   "list.loadPrev": "Load previous page",
   "list.page": "Page {n}",
   "strip.label": "Filter by avatar",
+  "strip.collapse": "Collapse avatars",
+  "strip.expand": "Expand avatars",
   "page.nav": "Pages",
   "page.prev": "Previous page",
   "page.next": "Next page",

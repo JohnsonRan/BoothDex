@@ -98,6 +98,8 @@ export const zh = {
   "list.loadPrev": "载入上一页",
   "list.page": "第 {n} 页",
   "strip.label": "按模型筛选",
+  "strip.collapse": "收起模型",
+  "strip.expand": "展开模型",
   "page.nav": "分页",
   "page.prev": "上一页",
   "page.next": "下一页",
