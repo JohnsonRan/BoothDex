@@ -203,20 +203,23 @@ export function ResultPages({
   }, [load]);
 
   /**
-   * Scrolls the restored tile to where it was. Short of it (the tile's page not yet whole, or too little below it to
-   * scroll that far) the next part is read and this runs again; with nothing left to read it stops where it is.
+   * Scrolls the restored tile to where it was. Short of it (the tile's page not yet whole, or too little around it
+   * to scroll that far: near the end, the pages above) the next part is read and this runs again; with nothing left
+   * to read it stops where it is.
    */
   const position = useCallback(() => {
     const s = restoring.current;
     if (!s) return;
     const el = grid.current?.querySelector(`[data-item="${s.id}"]`);
     if (el) scrollTo(0, el.getBoundingClientRect().top + scrollY - s.top);
-    const last = now.current.pages[now.current.pages.length - 1];
+    const p = now.current.pages;
+    const last = p[p.length - 1];
     if (el && Math.abs(el.getBoundingClientRect().top - s.top) < 1)
       restoring.current = null;
     else if (last.partial || (el && last.n < total)) loadNext();
+    else if (el && p[0].n > 1) loadPrev();
     else restoring.current = null;
-  }, [loadNext, total]);
+  }, [loadNext, loadPrev, total]);
 
   // A reload, Back or Forward to these results: the entry says where the reader was. Before the sentinels below,
   // so a page read for the return goes first. Leaving keeps the pages for a return.
