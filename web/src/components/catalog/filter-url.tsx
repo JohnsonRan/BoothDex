@@ -25,8 +25,6 @@ type FilterUrl = {
   filters: Filters;
   /** applies a change from page 1 */
   apply: (patch: Partial<Filters>) => void;
-  /** `noSemantic`: the first page went without meaning-based matches, so later pages must too */
-  goPage: (page: number, noSemantic: boolean) => void;
 };
 
 type Refresh = {
@@ -89,12 +87,11 @@ export function FilterUrlProvider({
   }, [pathname, router]);
 
   const value = useMemo<FilterUrl>(() => {
-    const go = (query: string, push: boolean, next = current) => {
+    const go = (query: string, next: Filters) => {
       const url = query ? `${pathname}?${query}` : pathname;
       startTransition(() => {
         setCurrent(next);
-        if (push) router.push(url, { scroll: false });
-        else router.replace(url, { scroll: false });
+        router.replace(url, { scroll: false });
       });
       window.scrollTo({ top: 0 });
     };
@@ -105,24 +102,12 @@ export function FilterUrlProvider({
         const view = current.view === "recent" &&
           !patch.view && { view: "items" as const };
         const next = { ...current, ...view, ...patch };
-        go(filtersToQuery(next), false, next);
+        go(filtersToQuery(next), next);
         if (patch.avatar !== undefined) {
           remember(patch.avatar);
           saveAvatar(patch.avatar);
         }
       },
-      // push, not replace: Back returns to the previous page
-      goPage: (page, noSemantic) =>
-        go(
-          [
-            filtersToQuery(current),
-            page > 1 ? `page=${page}` : "",
-            page > 1 && noSemantic ? "sem=0" : "",
-          ]
-            .filter(Boolean)
-            .join("&"),
-          true,
-        ),
     };
   }, [current, setCurrent, pathname, router]);
 

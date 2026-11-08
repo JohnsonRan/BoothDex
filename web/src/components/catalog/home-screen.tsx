@@ -261,7 +261,6 @@ async function Catalog({
                   rates={rates}
                   settings={settings}
                   filters={filters}
-                  page={page}
                   noSemantic={noSemantic}
                 />
               )}

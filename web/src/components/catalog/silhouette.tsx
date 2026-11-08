@@ -1,7 +1,7 @@
 // Loading silhouettes of text, of a result tile and under an image. Each line box is the real text's line box (its size times
 // its leading), and the tile silhouette has the tile's parts in the tile's order (item-tile.tsx), so nothing
 // moves when the real content replaces it (`tools/loading-layout.cjs` checks this). Shared by the server's
-// loading states (loading.tsx) and LaterTiles.
+// loading states (loading.tsx), the results' next page (result-pages.tsx) and LaterTiles.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Card } from "@astryxdesign/core/Card";

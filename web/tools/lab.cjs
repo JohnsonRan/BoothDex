@@ -165,24 +165,13 @@ function compare(a, b, tolerance = 2) {
   return { worst, bad };
 }
 
-/**
- * Scrolls down by wheel, as a visitor would, until the pagination's "next page" button is on screen, and
- * returns it. A jump straight to the bottom would pass tiles 25-100 before they are drawn (later-tiles.tsx).
- */
-async function nextPageButton(p) {
-  const next = p.locator("nav.astryx-pagination button").last();
-  for (let i = 0; i < 80 && !(await next.isVisible()); i++) {
-    await p.mouse.wheel(0, 500);
+/** Scrolls down by wheel, as a visitor would, until the address bar names results page `n` (result-pages.tsx). */
+async function scrollToPage(p, n) {
+  const page = () => Number(new URL(p.url()).searchParams.get("page") ?? 1);
+  for (let i = 0; i < 600 && page() < n; i++) {
+    await p.mouse.wheel(0, 600);
     await p.waitForTimeout(60);
   }
-  for (let i = 0; i < 80; i++) {
-    const box = await next.boundingBox();
-    const { height } = p.viewportSize();
-    if (box && box.y + box.height < height) break;
-    await p.mouse.wheel(0, 500);
-    await p.waitForTimeout(60);
-  }
-  return next;
 }
 
-module.exports = { launch, lab, RECORDER, GEOMETRY, compare, nextPageButton };
+module.exports = { launch, lab, RECORDER, GEOMETRY, compare, scrollToPage };

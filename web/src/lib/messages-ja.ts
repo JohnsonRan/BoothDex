@@ -96,6 +96,7 @@ export const ja: Dict = {
   "list.emptyHint": "絞り込み条件をクリアしてもう一度お試しください。",
   "list.startingTitle": "サービスを起動しています",
   "list.loading": "読み込み中",
+  "list.allLoaded": "全{n}件を読み込みました",
   "strip.label": "アバターで絞り込む",
   "page.nav": "ページ",
   "page.prev": "前のページ",

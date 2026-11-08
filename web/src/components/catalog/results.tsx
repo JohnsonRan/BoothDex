@@ -4,16 +4,26 @@
 
 import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { type Filters, searchQuery } from "@/lib/catalog";
+import { type Filters, filtersToQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
+import { pageQuery } from "@/lib/result-pages";
 import type { SearchOutcome } from "@/lib/server-data";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { ClearAll } from "./filter-bar";
-import { LazyPager } from "./lazy-pager";
+import { FIRST_TILES, tileOf } from "./item-tile";
 import { KeepResults, Swap } from "./refresh";
+import { ResultPages } from "./result-pages";
 import { EmptyResults, SemanticNote } from "./result-states";
-import { ResultsGrid } from "./results-grid";
 import { SearchTrace } from "./search-trace";
+
+const VISUALLY_HIDDEN = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+} as const;
 
 export async function ResultCount({
   outcome,
@@ -58,14 +68,12 @@ export async function Results({
   rates,
   settings,
   filters,
-  page,
   noSemantic,
 }: {
   outcome: Promise<SearchOutcome>;
   rates: Promise<Rates>;
   settings: Settings;
   filters: Filters;
-  page: number;
   noSemantic: boolean;
 }) {
   const o = await outcome;
@@ -82,29 +90,46 @@ export async function Results({
         </Swap>
       </KeepResults>
     );
+  const t = translator(settings.ui);
+  const known = await rates;
+  const href = (n: number) =>
+    `?${pageQuery(filtersToQuery(filters), n, lexical)}`;
   return (
     <KeepResults>
       <Swap>
         <VStack gap={6}>
-          <ResultsGrid
-            items={result.items}
-            settings={settings}
-            rates={await rates}
-            t={translator(settings.ui)}
-            // the request searchItems (lib/server-data) made, so the API answers it from its cache; without
-            // meaning-based matches it asks for none, so a semantic search that comes back does not mix in
-            search={`/api/search?${searchQuery(filters, page, result.pageSize)}&fields=card${lexical ? "&sem=0" : ""}`}
-          />
-          {result.semantic === "unavailable" && (
-            <SemanticNote
-              text={translator(settings.ui)("list.semanticUnavailable")}
-            />
-          )}
-          <LazyPager
+          <ResultPages
+            // a new search starts over; the same search read again (a retry) keeps the pages on screen
+            key={`${filtersToQuery(filters)}${lexical ? "&sem=0" : ""}`}
             page={result.page}
             total={result.totalPages}
-            noSemantic={lexical}
+            count={result.count}
+            pageSize={result.pageSize}
+            tiles={result.items
+              .slice(0, FIRST_TILES)
+              .map((item) => tileOf(item, settings, known, t))}
+            partial={result.items.length > FIRST_TILES}
+            filters={filters}
+            lexical={lexical}
+            settings={settings}
+            rates={known}
           />
+          {result.semantic === "unavailable" && (
+            <SemanticNote text={t("list.semanticUnavailable")} />
+          )}
+          {/* plain links for crawlers and screen readers' link lists; out of the tab order, the scroll reads on */}
+          <nav aria-label={t("page.nav")} style={VISUALLY_HIDDEN}>
+            {result.page > 1 && (
+              <a href={href(result.page - 1)} tabIndex={-1}>
+                {t("page.prev")}
+              </a>
+            )}
+            {result.page < result.totalPages && (
+              <a href={href(result.page + 1)} tabIndex={-1}>
+                {t("page.next")}
+              </a>
+            )}
+          </nav>
         </VStack>
       </Swap>
     </KeepResults>

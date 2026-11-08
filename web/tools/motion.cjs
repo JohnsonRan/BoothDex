@@ -1,10 +1,10 @@
 // Motion check (modelled on doona apps/lite/scripts/motion.cjs): a first screen that comes with the first paint
 // never animates; with the search held back by the slow-API proxy the arriving results enter once; a filter
-// change, a page change and Back never replay it; under reduced motion nothing runs at all. Refresh timing
+// change, scrolling into the next page and Back from an item never replay it; under reduced motion nothing runs at all. Refresh timing
 // (lib/use-delayed): a refresh answered in under 150 ms shows no indicator and fades nothing in; a slow one shows
 // the indicator from 150 ms, keeps it at least 300 ms, and fades the new results in once.
 //   node tools/motion.cjs <page url> <proxy url> [delay ms=2500]
-const { launch, lab, RECORDER, nextPageButton } = require("./lab.cjs");
+const { launch, lab, RECORDER, scrollToPage } = require("./lab.cjs");
 
 const [
   url = "http://127.0.0.1:3203/",
@@ -188,18 +188,26 @@ const clickPreset = (p) =>
       `${tag}: filter change does not replay (${new URL(p.url()).search})`,
     );
 
-    await (await nextPageButton(p)).click();
-    await refreshed(p);
+    await scrollToPage(p, 2);
     check(
       (await entrances(p)).length === first.length,
-      `${tag}: page change does not replay (${new URL(p.url()).search})`,
+      `${tag}: the next page does not replay (${new URL(p.url()).search})`,
     );
 
+    // a tile in view, clicked where a visitor would: its cover
+    const cover = await p.evaluate(() => {
+      const box = [...document.querySelectorAll("[data-item]")]
+        .map((t) => t.getBoundingClientRect())
+        .find((r) => r.top > 0 && r.bottom < innerHeight);
+      return { x: box.x + box.width / 2, y: box.y + box.width / 2 };
+    });
+    await p.mouse.click(cover.x, cover.y);
+    await p.waitForURL(/item=/);
     await p.goBack();
-    await refreshed(p);
+    await p.waitForTimeout(300);
     check(
       (await entrances(p)).length === first.length,
-      `${tag}: Back does not replay`,
+      `${tag}: Back from an item does not replay`,
     );
 
     if (!reduced) {

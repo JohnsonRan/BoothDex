@@ -93,6 +93,7 @@ export const zh = {
   "list.emptyHint": "清除筛选条件后再试。",
   "list.startingTitle": "服务正在启动",
   "list.loading": "正在加载",
+  "list.allLoaded": "已加载全部 {n} 件",
   "strip.label": "按模型筛选",
   "page.nav": "分页",
   "page.prev": "上一页",

@@ -96,6 +96,7 @@ export const ko: Dict = {
   "list.emptyHint": "필터를 지우고 다시 시도해 주세요.",
   "list.startingTitle": "서비스를 시작하는 중입니다",
   "list.loading": "불러오는 중",
+  "list.allLoaded": "{n}개 항목을 모두 불러왔습니다",
   "strip.label": "아바타로 필터",
   "page.nav": "페이지",
   "page.prev": "이전 페이지",

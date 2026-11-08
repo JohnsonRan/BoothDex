@@ -96,6 +96,7 @@ export const en: Dict = {
   "list.emptyHint": "Clear the filters and try again.",
   "list.startingTitle": "The service is starting",
   "list.loading": "Loading",
+  "list.allLoaded": "All {n} items loaded",
   "strip.label": "Filter by avatar",
   "page.nav": "Pages",
   "page.prev": "Previous page",
