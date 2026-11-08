@@ -27,8 +27,11 @@ import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
 import { useFilterUrl } from "./filter-url";
 import { SkeletonImage, THUMB_RADIUS } from "./silhouette";
 
-// structural width of one card (104 px at a 16 px root); Booth's avatar thumbnails are square
-const CARD_WIDTH = "6.5rem";
+// a card's square at full size and shrunk by the scroll, in rem (104 and 40 px at a 16 px root); Booth's avatar
+// thumbnails are square. The band's shrink (band.tsx `--strip-d`, `--strip-scale`) is reckoned from these.
+export const CARD_REM = 6.5;
+export const SHRUNK_REM = 2.5;
+const CARD_WIDTH = `${CARD_REM}rem`;
 // cards rendered before the strip is used: more than fit across 1440 px (with the "all" card)
 const FIRST_CARDS = 14;
 const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
@@ -38,12 +41,12 @@ const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
 // through. Without buttons the Carousel hides that layer (display: none), which the sampling skips.
 const TOUCH = "(hover: none) and (pointer: coarse)";
 // the toggle's middle on the shrunk cards' middle: up from the row's bottom by a name line, the name's gap and half
-// the difference between a 40 px card and the button
-const TOGGLE_LIFT =
-  "calc(var(--text-supporting-leading) * var(--text-supporting-size) + var(--spacing-2) + (2.5rem - var(--size-element-sm)) / 2)";
+// the difference between a shrunk card and the button
+const TOGGLE_LIFT = `calc(var(--text-supporting-leading) * var(--text-supporting-size) + var(--spacing-2) + (${SHRUNK_REM}rem - var(--size-element-sm)) / 2)`;
 
 // the toggle's two labels in one cell, the one not shown hidden: the button keeps its width as it turns, so a
-// shorter label does not shift it along the row
+// shorter label does not shift it along the row. Plain spans: a button holds phrasing content only (a Stack is a
+// div), and Text would set its own type and colour over the button's
 const LABELS: CSSProperties = {
   display: "inline-grid",
   justifyItems: "center",

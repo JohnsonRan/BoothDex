@@ -723,7 +723,7 @@ export function ResultPages({
               )
             ) : q.heights ? (
               q.heights.map((h, i) => (
-                <div
+                <GridSpan
                   // biome-ignore lint/suspicious/noArrayIndexKey: one box per tile, in the tiles' order
                   key={i}
                   aria-hidden
@@ -761,18 +761,14 @@ export function ResultPages({
             ))
           ))}
         {hasPrev && (
-          <div
+          <GridSpan
             ref={top}
             aria-hidden
             style={{ position: "absolute", insetBlockStart: 0 }}
           />
         )}
         {/* last, as the sentinel: the children before them are the pages' */}
-        {!tileMask && (
-          <div aria-hidden style={PROBE}>
-            <TileSilhouette ref={probe} />
-          </div>
-        )}
+        {!tileMask && <TileSilhouette ref={probe} style={PROBE} />}
       </Grid>
       {/* template :4527-4537, once every page is on screen */}
       {!hasNext && pages.every((q) => q.tiles.length) && total > 1 && (

@@ -199,6 +199,28 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   Astryx update.
 - Avatar strip: `SelectableCard` is documented for multi-select; the strip is single-select (one avatar or
   all). Kept because it is the component with a selected state for media cards; ClickableCard has none.
+- Strip toggle label (`avatar-strip.tsx`): both labels ("Collapse", "Expand") stand in one grid cell with the one
+  not shown hidden, so the button keeps its width as it turns. They are plain `span`s, the one raw markup here: a
+  button holds phrasing content only (a Stack is a `div`), and `Text` would set its own type and colour over the
+  button's.
+- Readout "Page N" (`result-pages.tsx` `PageInView`): from page 2 on the readout reads "Page N · {n} items", N
+  the page in view (the address's). No template has it. `.readout-line` (`app/filter-row.css`) puts it on the
+  side away from where the count is set (before it at the row's end, after it on a phone's own line), so the
+  count never moves when it appears.
+- Clause list clip (`app/filter-row.css` `.filter-clauses`): 1 px of block padding cancelled by a -1 px margin,
+  so the clip reaches 1 px past the controls; flush with them, the sticky band's sub-pixel offset (the top bar is
+  55.17 px tall) cut a control's top or bottom border.
+- Astryx class and DOM hooks outside the `.d.ts` files, to re-check on an Astryx update:
+  - `.astryx-app-shell` and `.astryx-app-shell-header` (`lib/deep-start.ts`): the deep start sets the shell's
+    header height variable on the shell before it hydrates (above).
+  - `.astryx-skeleton` (`silhouette.tsx` `silhouetteMask`, `app/globals.css` image skeletons): the boxes' mask is
+    measured from a silhouette's Skeletons, and a painted image's Skeleton is dropped.
+  - The Carousel's top-layer `[popover]` (its prev/next buttons) under `[data-strip]` (`app/globals.css`
+    `strip-*`): faded and hidden as the strip shrinks.
+  - The Carousel's scroll area `:scope > [role="group"]` (`avatar-strip.tsx`): the vertical wheel scrolls it by
+    the same `scrollBy` the Carousel's Shift + wheel uses.
+  - `.astryx-progress-bar-track` and `-fill` (`app/filter-row.css` `.band-progress`): the refresh progress as a
+    2 px square-ended line on the band's divider instead of the 8 px pill on a muted track.
 
 ## Deviations in the beautification batch
 

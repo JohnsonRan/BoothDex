@@ -39,9 +39,16 @@ export function TextSilhouette({
 }
 
 /** One result tile: square cover, two title lines, shop, price, badge row (item-tile.tsx). */
-export function TileSilhouette({ ref }: { ref?: Ref<HTMLDivElement> }) {
+export function TileSilhouette({
+  ref,
+  style,
+}: {
+  ref?: Ref<HTMLDivElement>;
+  /** where it stands out of the flow (result-pages.tsx: the boxes' mask probe) */
+  style?: CSSProperties;
+}) {
   return (
-    <VStack ref={ref} gap={3} aria-hidden>
+    <VStack ref={ref} gap={3} aria-hidden style={style}>
       <Card padding={0}>
         <AspectRatio ratio={1}>
           <Skeleton radius="none" />

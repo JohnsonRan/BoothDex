@@ -35,7 +35,7 @@ import {
   lookOf,
   prefersReducedMotion,
 } from "@/lib/motion";
-import { AvatarStrip } from "./avatar-strip";
+import { AvatarStrip, CARD_REM, SHRUNK_REM } from "./avatar-strip";
 import { RefreshProgress } from "./refresh";
 
 // the top bar's height, which the AppShell keeps on its root for its own sticky parts
@@ -60,10 +60,11 @@ const BAR: CSSProperties = {
 // its own layer of the band, so the surface behind it stays behind its cards
 const STRIP: CSSProperties = { position: "relative", isolation: "isolate" };
 // How far the strip goes under the toolbar: its top padding, its label line and the label's gap, then the
-// cards' shrink from 104 to 40 px less the 8 px a shrunk card keeps from the toolbar. Registered as a length
-// (app/globals.css), so it reads back in px.
-const STRIP_D =
-  "calc(var(--spacing-4) + var(--text-body-leading) * var(--text-body-size) + var(--spacing-3) + 4rem - var(--spacing-2))";
+// cards' shrink less the 8 px a shrunk card keeps from the toolbar. Registered as a length (app/globals.css), so
+// it reads back in px.
+const STRIP_D = `calc(var(--spacing-4) + var(--text-body-leading) * var(--text-body-size) + var(--spacing-3) + ${CARD_REM - SHRUNK_REM}rem - var(--spacing-2))`;
+// the shrunk card's scale of the full one (app/globals.css `strip-thumb`)
+const STRIP_SCALE = SHRUNK_REM / CARD_REM;
 
 let band: HTMLElement | null = null;
 let bar: HTMLElement | null = null;
@@ -255,6 +256,7 @@ export function FilterBand({
             ? ({
                 ...(open ? OPEN : HEAD),
                 "--strip-d": STRIP_D,
+                "--strip-scale": STRIP_SCALE,
                 "--strip-p": folded ? 1 : 0,
               } as CSSProperties)
             : ({ ...HEAD, "--strip-d": "0px" } as CSSProperties)
@@ -280,7 +282,7 @@ export function FilterBand({
             paddingBlockEnd={2}
             style={STRIP}
           >
-            <div className="strip-surface" aria-hidden />
+            <VStack className="strip-surface" aria-hidden />
             {strip}
           </VStack>
         )}

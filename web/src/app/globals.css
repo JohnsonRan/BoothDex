@@ -155,11 +155,11 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 }
 
 /* The avatar strip shrinking as the page scrolls it under the filter toolbar (catalog/band.tsx): each card's square
-   to 40 px about its bottom edge (2.5rem of 6.5rem), the label gone by half-way, the surface the shrunk strip lays
-   over the results fading in with its divider, and the Carousel's prev/next buttons, which sit on the top layer
-   above the band, gone at once. Scroll-driven over the shrink's range (`--strip-y0` from the band, `--strip-d`), so
-   the compositor runs it with the scroll; without scroll timelines (Firefox) the same keyframes stand paused at the
-   band's `--strip-p`. It runs once the band knows where the shrink starts (`data-shrink`, set as it hydrates, or
+   to 40 px about its bottom edge (`--strip-scale`, set by the band from avatar-strip.tsx's card sizes), the label
+   gone by half-way, the surface the shrunk strip lays over the results fading in with its divider, and the
+   Carousel's prev/next buttons, which sit on the top layer above the band, gone at once. Scroll-driven over the
+   shrink's range (`--strip-y0` from the band, `--strip-d`), so the compositor runs it with the scroll; without
+   scroll timelines (Firefox) the same keyframes stand paused at the band's `--strip-p`. It runs once the band knows where the shrink starts (`data-shrink`, set as it hydrates, or
    from the server for a start past page 1); until then the strip stands whole. Under reduced motion nothing runs:
    `data-shrink` shows the strip whole or shrunk. Opened by hand, the strip is drawn at full size. */
 @property --strip-d {
@@ -169,7 +169,7 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 }
 @keyframes strip-thumb {
   to {
-    scale: 0.3846;
+    scale: var(--strip-scale);
   }
 }
 @keyframes strip-out {
@@ -238,7 +238,7 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
     animation: none;
   }
   [data-shrink="all"]:not([data-strip-open]) .strip-thumb {
-    scale: 0.3846;
+    scale: var(--strip-scale);
   }
   [data-shrink="all"]:not([data-strip-open]) .strip-label {
     opacity: 0;
