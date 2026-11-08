@@ -274,7 +274,6 @@ export function FilterBand({
           // a VStack's padding, not a Section's: a Carousel bleeds into a Section's inset
           <VStack
             ref={stripRef}
-            id={id}
             data-strip=""
             paddingInline={6}
             paddingBlockStart={4}

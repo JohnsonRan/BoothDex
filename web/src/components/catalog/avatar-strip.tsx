@@ -68,7 +68,7 @@ export function AvatarStrip({
   avatars: Avatar[];
   /** shown at full size: the toggle folds it */
   expanded: boolean;
-  /** the id the toggle names as what it shows or hides */
+  /** an id for the cards, which the toggle names as what it shows at full size or shrunk */
   controls: string;
   onToggle: () => void;
   onPick: () => void;
@@ -81,7 +81,7 @@ export function AvatarStrip({
         {t("filter.avatar")}
       </Text>
       <HStack gap={4} vAlign="end" className="strip-row">
-        <StackItem size="fill">
+        <StackItem size="fill" id={controls}>
           <Cards avatars={avatars} onPick={onPick} />
         </StackItem>
         <Button
