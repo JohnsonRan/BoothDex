@@ -126,10 +126,18 @@ export function FilterBand({
     bar = el;
   }, []);
 
+  // each server render sends the avatars as a new array: the same ones keep the strip and its observers as they are
+  const avatarsKey = JSON.stringify(avatars);
+  const shown = useMemo<Avatar[] | undefined>(
+    () => avatarsKey && JSON.parse(avatarsKey),
+    [avatarsKey],
+  );
+  const hasStrip = !!shown;
+
   useEffect(() => {
     const head = ref.current;
     const b = barRef.current;
-    if (!avatars || !head || !b) return;
+    if (!hasStrip || !head || !b) return;
     // Firefox has no scroll-driven animations: the same keyframes run paused at the progress set here
     const driven = CSS.supports("animation-timeline", "scroll()");
     let frame = 0;
@@ -170,15 +178,22 @@ export function FilterBand({
     };
     measure();
     addEventListener("scroll", schedule, { passive: true });
-    // what is above the band changes its place; WebKit sends no scroll for a deep start's jump
+    // a new size of what is above the band in the flow (the top bar, the page header) moves it; what is below it,
+    // the results, does not
     const sized = new ResizeObserver(measure);
-    sized.observe(document.body);
+    for (
+      let e = head.parentElement;
+      e && e !== document.body;
+      e = e.parentElement
+    )
+      for (let s = e.previousElementSibling; s; s = s.previousElementSibling)
+        sized.observe(s);
     return () => {
       cancelAnimationFrame(frame);
       removeEventListener("scroll", schedule);
       sized.disconnect();
     };
-  }, [avatars]);
+  }, [hasStrip]);
 
   // a hand turn glides from the look before it; the first render and a turn by the scroll stay as they are
   useLayoutEffect(() => {
@@ -213,16 +228,16 @@ export function FilterBand({
 
   const strip = useMemo(
     () =>
-      avatars && (
+      shown && (
         <AvatarStrip
-          avatars={avatars}
+          avatars={shown}
           expanded={open || !shrunk}
           controls={id}
           onToggle={toggle}
           onPick={picked}
         />
       ),
-    [avatars, open, shrunk, id, toggle, picked],
+    [shown, open, shrunk, id, toggle, picked],
   );
 
   return (

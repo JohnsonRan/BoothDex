@@ -473,20 +473,28 @@ export function ResultPages({
     return () => seen.disconnect();
   }, [hasNext, loading, failed, loadNext]);
 
-  // the one above the first row marks the top of the boxes as near: more go up when the reader moves up
+  // the one above the first row marks the top of the boxes as near: more go up when the reader moves up. Its
+  // margin is screens of the viewport's height, so a new size (a rotation) sets it again.
   useEffect(() => {
     const el = top.current;
     if (!el || !hasPrev) return;
-    const seen = new IntersectionObserver(
-      ([e]) => {
-        nearTop.current = e.isIntersecting;
-      },
-      { rootMargin: `${SCREENS * innerHeight - covered()}px 0px 0px 0px` },
-    );
-    seen.observe(el);
+    let seen: IntersectionObserver | undefined;
+    const watch = () => {
+      seen?.disconnect();
+      seen = new IntersectionObserver(
+        ([e]) => {
+          nearTop.current = e.isIntersecting;
+        },
+        { rootMargin: `${SCREENS * innerHeight - covered()}px 0px 0px 0px` },
+      );
+      seen.observe(el);
+    };
+    watch();
+    addEventListener("resize", watch);
     return () => {
       nearTop.current = false;
-      seen.disconnect();
+      removeEventListener("resize", watch);
+      seen?.disconnect();
     };
   }, [hasPrev]);
 
