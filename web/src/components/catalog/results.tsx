@@ -45,7 +45,7 @@ export async function ResultCount({
   return (
     <>
       <Swap>
-        <HStack gap={2} vAlign="center">
+        <HStack gap={2} vAlign="center" className="readout-line">
           <PageInView page={o.result.page} />
           {hasQuery ? (
             <SearchTrace

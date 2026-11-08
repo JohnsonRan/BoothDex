@@ -194,11 +194,14 @@ const clickPreset = (p) =>
       `${tag}: the next page does not replay (${new URL(p.url()).search})`,
     );
 
-    // a tile in view, clicked where a visitor would: its cover
+    // a tile in view below the sticky filter band, clicked where a visitor would: its cover
     const cover = await p.evaluate(() => {
+      const band = document
+        .querySelector(".filter-toolbar")
+        .getBoundingClientRect().bottom;
       const box = [...document.querySelectorAll("[data-item]")]
         .map((t) => t.getBoundingClientRect())
-        .find((r) => r.top > 0 && r.bottom < innerHeight);
+        .find((r) => r.top > band && r.bottom < innerHeight);
       return { x: box.x + box.width / 2, y: box.y + box.width / 2 };
     });
     await p.mouse.click(cover.x, cover.y);

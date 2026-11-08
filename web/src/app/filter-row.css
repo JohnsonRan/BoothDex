@@ -56,6 +56,14 @@
   align-items: flex-end;
 }
 
+/* The page cue (catalog/result-pages.tsx PageInView) joins the count on the side away from where the count is set,
+   so the count never moves when it appears in the sticky band: before it while the count sits at the end, after it
+   on a phone, where the readout starts its own line. */
+.readout-line {
+  align-self: stretch;
+  justify-content: flex-end;
+}
+
 /* A phone (owner's request; the template keeps one line): where the row cannot hold the search, the trigger and the
    reserve (7.5 + 0.5 + 3 + 11.5 rem, inside the toolbar's own 2 x 1.5 rem inset), the readout takes a line of its
    own under the row and the slot keeps just the trigger, so the search and "+N" stay as they were. Decided by the
@@ -77,6 +85,9 @@
     margin-inline-start: 0;
     flex-grow: 0;
     align-items: flex-start;
+  }
+  .filter-toolbar .readout-line {
+    flex-direction: row-reverse;
   }
 }
 
