@@ -201,18 +201,21 @@ export function ResultPages({
       );
   }, [load]);
 
-  /** Scrolls the restored tile to where it was; gives up once its page is whole and the tile is not in it. */
+  /**
+   * Scrolls the restored tile to where it was. Short of it (the tile's page not yet whole, or too little below it to
+   * scroll that far) the next part is read and this runs again; with nothing left to read it stops where it is.
+   */
   const position = useCallback(() => {
     const s = restoring.current;
     if (!s) return;
     const el = grid.current?.querySelector(`[data-item="${s.id}"]`);
-    if (el) {
+    if (el) scrollTo(0, el.getBoundingClientRect().top + scrollY - s.top);
+    const last = now.current.pages[now.current.pages.length - 1];
+    if (el && Math.abs(el.getBoundingClientRect().top - s.top) < 1)
       restoring.current = null;
-      scrollTo(0, el.getBoundingClientRect().top + scrollY - s.top);
-    } else if (!now.current.pages.some((p) => p.partial)) {
-      restoring.current = null;
-    } else loadNext();
-  }, [loadNext]);
+    else if (last.partial || (el && last.n < total)) loadNext();
+    else restoring.current = null;
+  }, [loadNext, total]);
 
   // A reload, Back or Forward to these results: the entry says where the reader was. Before the sentinels below,
   // so a page read for the return goes first. Leaving keeps the pages for a return.
@@ -224,8 +227,10 @@ export function ResultPages({
     if (snap) {
       restoring.current = snap;
       const plan = restorePlan(snap, kept, width.current, Date.now());
-      if ("pages" in plan) startTransition(() => setPages(plan.pages));
-      else if (plan.page !== page)
+      // the same pages when the results were only hidden (a route kept in the background) and come back
+      if ("pages" in plan && plan.pages !== now.current.pages)
+        startTransition(() => setPages(plan.pages));
+      else if ("page" in plan && plan.page !== page)
         load(plan.page, (_, fresh) => [{ n: plan.page, tiles: fresh }], "next");
       else position();
     }
