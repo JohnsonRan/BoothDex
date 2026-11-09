@@ -3,6 +3,7 @@
 // or a container query are plain classes in app/filter-row.css.
 
 import { type CSSProperties, useEffect, useState } from "react";
+import type { Recognized } from "@/lib/api-types";
 
 /** What the clauses show once the search answers: the count, and per category and feature counts. */
 export type Facets = {
@@ -16,10 +17,7 @@ export type Facets = {
 };
 
 /** Query words the search took as a model or a smart category (the API's `recognized`), named for their token. */
-export type SearchMark = {
-  kind: "model" | "category";
-  /** as typed */
-  words: string[];
+export type SearchMark = Recognized & {
   /** in the visitor's language */
   name: string;
   /** a model's picture */

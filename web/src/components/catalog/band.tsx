@@ -48,6 +48,7 @@ import {
   type StripMorph,
 } from "./avatar-strip";
 import { attachBand, attachBar } from "./band-edge";
+import type { Facets } from "./filter-style";
 import { RefreshProgress } from "./refresh";
 import { StripToggleContext, type StripToggleState } from "./strip-toggle";
 
@@ -92,6 +93,7 @@ export function FilterBand({
   label,
   toolbar,
   avatars,
+  facets,
   folded: foldedNow = false,
   children,
 }: {
@@ -100,6 +102,8 @@ export function FilterBand({
   toolbar?: ReactNode;
   /** the avatar strip's avatars, in the items view */
   avatars?: Avatar[];
+  /** the search's reading of query models; the strip stays available while it loads */
+  facets: Promise<Facets>;
   /** the page opens scrolled past the strip (a start past page 1): the strip is shrunk from the first paint */
   folded?: boolean;
   /** the results */
@@ -350,13 +354,14 @@ export function FilterBand({
       shown && (
         <AvatarStrip
           avatars={shown}
+          facets={facets}
           controls={id}
           onPick={picked}
           folded={folded}
           morph={morph}
         />
       ),
-    [shown, id, picked, folded],
+    [shown, facets, id, picked, folded],
   );
   const expanded = open || (!tucked && !shrunk);
   const toggleState = useMemo<StripToggleState | null>(

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { Recognized } from "./api-types";
 import {
   activeFilterCount,
   DEFAULT_FILTERS,
@@ -12,6 +13,8 @@ import {
   queryWords,
   searchQuery,
   searchWidth,
+  selectAvatar,
+  selectedAvatars,
 } from "./catalog";
 
 test("filters round-trip through the API's + list format", () => {
@@ -159,6 +162,68 @@ test("the query splits into words, a quoted phrase staying one", () => {
   ]);
   expect(queryWords('mao "short hair')).toEqual(["mao", '"short hair']);
   expect(queryWords("")).toEqual([]);
+});
+
+const shinano: Recognized = {
+  kind: "model",
+  slug: "shinano",
+  words: ["shinano"],
+};
+const longHair: Recognized = {
+  kind: "category",
+  slug: "hair--long",
+  words: ["long", "hair"],
+};
+
+test("the avatar strip selects models recognized in the query, not categories", () => {
+  expect([...selectedAvatars("", [shinano, longHair])]).toEqual(["shinano"]);
+  expect([...selectedAvatars("shinano", [shinano])]).toEqual(["shinano"]);
+  expect([...selectedAvatars("mayo", [shinano])]).toEqual(["mayo", "shinano"]);
+  expect([...selectedAvatars("", [longHair])]).toEqual([]);
+});
+
+test("picking an avatar replaces the query's model and keeps its other words", () => {
+  const patch = selectAvatar("shinano long hair", "mayo", [shinano, longHair]);
+  expect(patch).toEqual({ avatar: "mayo", q: "long hair" });
+  expect(filtersToQuery({ ...DEFAULT_FILTERS, ...patch })).toBe(
+    "q=long%20hair&avatars=mayo",
+  );
+  expect([...selectedAvatars(patch.avatar, [])]).toEqual(["mayo"]);
+});
+
+test("All avatars or toggling off a model removes the query's model too", () => {
+  expect(selectAvatar("shinano long hair", "", [shinano, longHair])).toEqual({
+    avatar: "",
+    q: "long hair",
+  });
+  expect(selectAvatar("shinano", "", [shinano])).toEqual({ avatar: "", q: "" });
+});
+
+test("avatar selection removes whole model names, including repeats and translated phrases", () => {
+  const maya: Recognized = { kind: "model", slug: "maya", words: ["舞夜"] };
+  const multi: Recognized = {
+    kind: "model",
+    slug: "inaba",
+    words: ["Inaba", "Kohaku"],
+  };
+  expect(
+    selectAvatar('Shinano shinano 舞夜 "long hair"', "mayo", [shinano, maya]),
+  ).toEqual({ avatar: "mayo", q: '"long hair"' });
+  expect(
+    selectAvatar("Inaba Kohaku long hair Kohaku", "mayo", [multi]),
+  ).toEqual({ avatar: "mayo", q: "long hair Kohaku" });
+  expect(selectAvatar("shinano-style hair", "mayo", [shinano])).toEqual({
+    avatar: "mayo",
+    q: "shinano-style hair",
+  });
+});
+
+test("avatar selection preserves a query without recognized models", () => {
+  expect(selectAvatar('  long  "hair style" ', "mayo", [longHair])).toEqual({
+    avatar: "mayo",
+    q: '  long  "hair style" ',
+  });
+  expect(selectAvatar("", "mayo", [])).toEqual({ avatar: "mayo", q: "" });
 });
 
 test("the search field's width follows the query's words", () => {

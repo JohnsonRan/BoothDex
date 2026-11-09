@@ -2,7 +2,7 @@
 // query format (VRCatalogue-compatible): list values are joined with a literal "+".
 
 // Item and search types come from the Rust API (generated, see api-types.ts).
-import type { ItemResponse } from "./api-types";
+import type { ItemResponse, Recognized } from "./api-types";
 
 export type Avatar = {
   slug: string;
@@ -248,6 +248,34 @@ export function markTokens<M extends { words: string[] }>(
     i += n;
   }
   return out;
+}
+
+/** Explicit and query-recognized models are both active constraints, so the strip shows both. */
+export function selectedAvatars(avatar: string, marks: Recognized[]) {
+  return new Set(
+    [
+      avatar,
+      ...marks.filter((m) => m.kind === "model").map((m) => m.slug),
+    ].filter(Boolean),
+  );
+}
+
+/** A picker replaces query models with one explicit filter, keeping all non-model search terms. */
+export function selectAvatar(q: string, avatar: string, marks: Recognized[]) {
+  const models = marks
+    .filter((m) => m.kind === "model" && m.words.length)
+    .map((m) => m.words.map((w) => w.toLowerCase()));
+  if (!models.length) return { avatar, q };
+  const words = queryWords(q);
+  const rest: string[] = [];
+  for (let i = 0; i < words.length; ) {
+    const model = models.find((name) =>
+      name.every((w, k) => words[i + k]?.toLowerCase() === w),
+    );
+    if (model) i += model.length;
+    else rest.push(words[i++]);
+  }
+  return { avatar, q: rest.join(" ") };
 }
 
 /**

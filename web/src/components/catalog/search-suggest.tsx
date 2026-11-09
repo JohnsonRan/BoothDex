@@ -19,7 +19,7 @@ import { TypeaheadItem } from "@astryxdesign/core/Typeahead";
 import { type RefObject, useEffect, useMemo, useRef } from "react";
 import { useItemOpener, useRates } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
-import { markTokens, queryWords } from "@/lib/catalog";
+import { markTokens, queryWords, selectAvatar } from "@/lib/catalog";
 import { loadHistory, saveHistory } from "@/lib/history";
 import { CONTROL_SIZE, type SearchMark } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
@@ -129,7 +129,8 @@ export function SearchSuggest({
       return search(plus(inputRef.current?.value || p.value));
     if (p.kind === "word") return search(plus(p.value));
     if (p.kind === "query") return search(p.value);
-    if (p.kind === "avatar") return apply({ avatar: p.value });
+    if (p.kind === "avatar")
+      return apply(selectAvatar(filters.q, p.value, marks ?? []));
     if (p.kind === "shop") return apply({ author: p.value, q: "", avatar: "" });
     if (p.kind === "item") return openItem(p.value);
     if (p.kind === "clear") saveHistory([]);

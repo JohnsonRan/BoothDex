@@ -116,12 +116,13 @@ function marks(
       const a = avatars.find((a) => a.slug === slug);
       return {
         kind,
+        slug,
         words,
         name: a ? avatarName(a, ui) : slug,
         image: imageSrc(a?.image_url) || undefined,
       };
     }
-    return { kind, words, name: names.get(slug) ?? slug };
+    return { kind, slug, words, name: names.get(slug) ?? slug };
   });
 }
 
@@ -229,6 +230,7 @@ async function Catalog({
                 : undefined
             }
             folded={page > 1}
+            facets={facets}
             // filters and sort do not apply to the recent view. The row and the avatar strip render with the
             // frame, not as boundaries of their own: React streams a large finished boundary apart from its
             // parent and reveals it later, and the grid below moved when it arrived.

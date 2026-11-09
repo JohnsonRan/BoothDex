@@ -40,7 +40,14 @@ import {
   useState,
 } from "react";
 import { useUi } from "@/components/providers";
-import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
+import {
+  type Avatar,
+  avatarName,
+  imageSrc,
+  selectAvatar,
+  selectedAvatars,
+} from "@/lib/catalog";
+import { type Facets, useFacets } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
 import { SkeletonImage, THUMB_RADIUS } from "./silhouette";
 
@@ -176,12 +183,14 @@ const AllGlyph = () => (
 
 export function AvatarStrip({
   avatars,
+  facets,
   controls,
   onPick,
   folded,
   morph,
 }: {
   avatars: Avatar[];
+  facets: Promise<Facets>;
   /** an id for the cards, which the toolbar's toggle names as what it shows at full size or shrunk */
   controls: string;
   onPick: () => void;
@@ -200,6 +209,7 @@ export function AvatarStrip({
         <StackItem size="fill" id={controls}>
           <Cards
             avatars={avatars}
+            facets={facets}
             onPick={onPick}
             folded={folded}
             morph={morph}
@@ -212,31 +222,36 @@ export function AvatarStrip({
 
 const Cards = memo(function Cards({
   avatars,
+  facets,
   onPick,
   folded,
   morph,
 }: {
   avatars: Avatar[];
+  facets: Promise<Facets>;
   onPick: () => void;
   folded: boolean;
   morph: RefObject<StripMorph | null>;
 }) {
   const { t, ui } = useUi();
   const { filters, apply } = useFilterUrl();
-  // the picked avatar shows as selected at once, before its results arrive
-  const value = filters.avatar;
+  const answered = useFacets(facets);
+  // Never use an earlier query's reading while the next search is still loading.
+  const marks = answered?.query === filters.q ? answered.marks : [];
+  // A typed model is selected too; an explicit pick still shows before its results arrive.
+  const selected = selectedAvatars(filters.avatar, marks);
   const carousel = useRef<CarouselHandle>(null);
   const strip = useRef<HTMLDivElement>(null);
   const pick = (slug: string) => {
     onPick();
-    apply({ avatar: slug });
+    apply(selectAvatar(filters.q, slug, marks));
   };
   const touch = useMediaQuery(TOUCH);
 
   // keep the chosen avatar in view, also when the page opens on one far down the list. The handle's scrollTo
   // brings a card to the start edge (CarouselHandle.scrollTo, Carousel.d.ts:41-46), where the "previous" button
   // covers it, so the card before it goes there and the chosen one sits whole beside the button.
-  const index = avatars.findIndex((a) => a.slug === value) + 1;
+  const index = avatars.findIndex((a) => selected.has(a.slug)) + 1;
   const [used, setUsed] = useState(false);
   const all = used || index >= FIRST_CARDS;
   useEffect(() => {
@@ -357,15 +372,15 @@ const Cards = memo(function Cards({
     >
       <Tile
         label={t("strip.all")}
-        selected={!value}
+        selected={!selected.size}
         onSelect={() => pick("")}
       />
       {(all ? avatars : avatars.slice(0, FIRST_CARDS - 1)).map((a) => (
         <Tile
           key={a.slug}
           label={avatarName(a, ui)}
-          selected={a.slug === value}
-          onSelect={() => pick(a.slug === value ? "" : a.slug)}
+          selected={selected.has(a.slug)}
+          onSelect={() => pick(selected.has(a.slug) ? "" : a.slug)}
           src={a.image_url && imageSrc(a.image_url, "300x300_a2_g5")}
         />
       ))}
