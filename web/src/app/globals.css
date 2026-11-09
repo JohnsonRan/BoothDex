@@ -179,7 +179,8 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 }
 @keyframes strip-thumb {
   to {
-    translate: var(--chip-dx) var(--strip-dy);
+    translate: calc(var(--chip-dx) - var(--_face-in))
+      calc(var(--strip-dy) - var(--_face-in));
     scale: var(--strip-scale);
   }
 }
@@ -234,6 +235,9 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 .strip-thumb {
   inline-size: var(--strip-card);
   transform-origin: 0 0;
+  /* the face's inset at the chip's size: the thumb moves back by it, so the face, not the card's corner, lands on
+     the chip's place, flush with the capsule and inside the Carousel's clip (it stood 0.6-1 px low and right) */
+  --_face-in: calc(var(--spacing-0-5) * var(--strip-scale));
 }
 /* the chip's face: the card's image clipped round, where the card draws it (inside the card's padding), with no
    ring: a selected chip is its capsule and semibold name, as Astryx marks a selected Token or item (a fill, no
@@ -312,7 +316,8 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   animation-name: strip-name;
 }
 [data-chips] .strip-thumb {
-  translate: var(--chip-dx) var(--strip-dy);
+  translate: calc(var(--chip-dx) - var(--_face-in))
+    calc(var(--strip-dy) - var(--_face-in));
   scale: var(--strip-scale);
 }
 [data-chips] :is(.strip-card, .strip-caption) {
@@ -337,6 +342,13 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 }
 [data-morph] .strip-surface {
   animation-name: strip-in;
+}
+/* shrunk, the chips have no edge fade (core Carousel.tsx:188-205): it faded the first chip's avatar where it rests
+   at the row's start, so it looked cut; the row's own edge clips a chip only while it scrolls sideways */
+[data-shrink="all"]:not([data-strip-open])
+  [data-strip]
+  .astryx-carousel-scroller {
+  mask-image: none;
 }
 [data-shrink="part"] [data-strip] [popover],
 [data-shrink="all"]:not([data-strip-open]) [data-strip] [popover] {
@@ -390,7 +402,8 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
     animation: none;
   }
   [data-shrink="all"]:not([data-strip-open]) .strip-thumb {
-    translate: var(--chip-dx) var(--strip-dy);
+    translate: calc(var(--chip-dx) - var(--_face-in))
+      calc(var(--strip-dy) - var(--_face-in));
     scale: var(--strip-scale);
   }
   [data-shrink="all"]:not([data-strip-open])
