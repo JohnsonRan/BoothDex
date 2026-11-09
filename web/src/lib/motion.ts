@@ -121,16 +121,23 @@ export const swapIn = (el: Element): Animation[] =>
         }),
       ];
 
-/** Each part's scroll morph (its CSS animation), its keyframes resolved as the part stands now. */
-export const morphsOf = (parts: HTMLElement[]) =>
-  new Map(
-    parts.flatMap((el) => {
-      const a = el.getAnimations().find((x) => x instanceof CSSAnimation);
-      return a?.effect instanceof KeyframeEffect
-        ? [[el, a.effect.getKeyframes()] as const]
-        : [];
-    }),
-  );
+/**
+ * Each part's scroll morph (its CSS animation), its keyframes resolved as the part stands now. One query for the
+ * page: `getAnimations` on an element runs a lifecycle update each call, which over a strip of cards cost most of a
+ * click.
+ */
+export const morphsOf = (parts: HTMLElement[]) => {
+  const morphs = new Map<HTMLElement, ComputedKeyframe[]>();
+  const wanted = new Set(parts);
+  for (const a of document.getAnimations()) {
+    if (!(a instanceof CSSAnimation && a.effect instanceof KeyframeEffect))
+      continue;
+    const el = a.effect.target;
+    if (el instanceof HTMLElement && wanted.has(el) && !morphs.has(el))
+      morphs.set(el, a.effect.getKeyframes());
+  }
+  return morphs;
+};
 
 /**
  * The avatar strip turned by hand (catalog/band.tsx) along the scroll's path: each part runs its scroll morph's

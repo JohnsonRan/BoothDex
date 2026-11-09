@@ -319,10 +319,13 @@ export function FilterBand({
     if (turning.current) return;
     if (open) turn(false);
     else if (tucked) {
-      // the chips go back to the cards' row, drawn as they are
-      morph.current?.settle("part");
-      if (scrollY <= span.current.start) tuck(false);
-      else {
+      // the chips go back to the cards' row, drawn as they are; at the top the strip's place is read first, before
+      // the cards' layout change would make that read lay the strip out
+      if (scrollY <= span.current.start) {
+        tuck(false);
+        morph.current?.settle("part");
+      } else {
+        morph.current?.settle("part");
         // scrolled past: the shrink goes back in the flow above the tiles and the window as far down, in one frame
         const results = resultsRef.current;
         const was = results?.getBoundingClientRect().top ?? 0;
