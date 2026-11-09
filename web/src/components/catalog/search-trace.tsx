@@ -6,7 +6,7 @@
 import { Divider } from "@astryxdesign/core/Divider";
 import { Link } from "@astryxdesign/core/Link";
 import { Popover } from "@astryxdesign/core/Popover";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { useUi } from "@/components/providers";
 import type { SemanticStatus, TraceStep } from "@/lib/api-types";
@@ -63,7 +63,7 @@ export function SearchTrace({
     <Popover
       placement="below"
       label={t("trace.title")}
-      width={320}
+      width="max-content"
       content={
         <VStack gap={2}>
           <VStack gap={0}>
@@ -87,22 +87,34 @@ export function SearchTrace({
                     : undefined
                 }
               >
-                <Text type="body" color="inherit" style={{ flex: 1 }}>
-                  {STEPS.has(s.step)
-                    ? t(`trace.step.${s.step}` as MessageKey)
-                    : s.step}
-                </Text>
-                <Text type="body" color="inherit" hasTabularNumbers>
+                <StackItem size="fill">
+                  <Text type="body" color="inherit" maxLines={1}>
+                    {STEPS.has(s.step)
+                      ? t(`trace.step.${s.step}` as MessageKey)
+                      : s.step}
+                  </Text>
+                </StackItem>
+                <Text
+                  type="body"
+                  color="inherit"
+                  textWrap="nowrap"
+                  hasTabularNumbers
+                >
                   +{ms(s.ms)}
                 </Text>
-                <Text type="body" color="secondary" hasTabularNumbers>
+                <Text
+                  type="body"
+                  color="secondary"
+                  textWrap="nowrap"
+                  hasTabularNumbers
+                >
                   {ms(sum)}
                 </Text>
               </HStack>
             );
           })}
           <Divider />
-          <HStack gap={4} style={{ justifyContent: "space-between" }}>
+          <HStack gap={4} hAlign="between">
             <Text type="supporting" color="secondary" hasTabularNumbers>
               {t("trace.server")} {ms(serverMs)}
             </Text>
