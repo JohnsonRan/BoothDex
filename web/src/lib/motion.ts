@@ -3,8 +3,6 @@
 // Only transform and opacity move, and reduced motion leaves everything static.
 
 const EASE = "cubic-bezier(0.24, 1, 0.4, 1)";
-/** Astryx's `--ease-exit`: what leaves speeds up as it goes */
-const EASE_EXIT = "cubic-bezier(0.3, 0, 0.6, 0.6)";
 
 const MOTION = {
   /** a page section rises this far and fades in */
@@ -23,9 +21,8 @@ const MOTION = {
   rowMax: 24,
   /** content a slow refresh replaced fades in where the old content was */
   swapDuration: 240,
-  /** the avatar strip opened or folded by hand; Astryx's `--duration-exit` (175 ms) for folding */
+  /** the avatar strip opened or folded by hand */
   turnDuration: 240,
-  turnExit: 175,
 } as const;
 
 /** `Animation.id`s (tools/motion.cjs matches them), so checks can tell the entrance from a component's own motion. */
@@ -124,67 +121,6 @@ export const swapIn = (el: Element): Animation[] =>
         }),
       ];
 
-/** What a hand turn glides, as the page's scroll would: a part's place, size and opacity. */
-const LOOK = ["translate", "scale", "opacity"] as const;
-
-/** How the parts of a box are drawn now: the box's top, and each part's values of LOOK. */
-export type Look = {
-  top: number;
-  parts: { el: HTMLElement; values: string[] }[];
-};
-
-/** `parts` off screen (a strip's cards scrolled sideways out of view) are left out: they need no glide. */
-export const lookOf = (
-  box: HTMLElement,
-  parts: Iterable<HTMLElement>,
-): Look => ({
-  top: box.getBoundingClientRect().top,
-  parts: [...parts]
-    .filter((el) => {
-      const r = el.getBoundingClientRect();
-      return r.right > 0 && r.left < innerWidth;
-    })
-    .map((el) => {
-      const s = getComputedStyle(el);
-      return { el, values: LOOK.map((p) => s.getPropertyValue(p)) };
-    }),
-});
-
-/**
- * A box turned by hand from how `was` saw it to how it is drawn now (the avatar strip opened over the results or
- * folded back, catalog/band.tsx): the box glides from its old place, each part from its old values.
- * When it ends, whatever drives the parts (the page's scroll) has them where the glide took them.
- */
-export function glide(
-  box: HTMLElement,
-  was: Look,
-  opening: boolean,
-): Animation[] {
-  if (prefersReducedMotion()) return [];
-  const timing = {
-    id: TURN_ID,
-    duration: opening ? MOTION.turnDuration : MOTION.turnExit,
-    easing: opening ? EASE : EASE_EXIT,
-  };
-  const running: Animation[] = [];
-  const dy = was.top - box.getBoundingClientRect().top;
-  if (Math.abs(dy) >= 0.5)
-    running.push(
-      box.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], timing),
-    );
-  for (const { el, values } of was.parts) {
-    const now = getComputedStyle(el);
-    const from: Keyframe = {};
-    const to: Keyframe = {};
-    LOOK.forEach((p, i) => {
-      const v = now.getPropertyValue(p);
-      if (v !== values[i]) [from[p], to[p]] = [values[i], v];
-    });
-    if (Object.keys(from).length) running.push(el.animate([from, to], timing));
-  }
-  return running;
-}
-
 /** Each part's scroll morph (its CSS animation), its keyframes resolved as the part stands now. */
 export const morphsOf = (parts: HTMLElement[]) =>
   new Map(
@@ -197,22 +133,29 @@ export const morphsOf = (parts: HTMLElement[]) =>
   );
 
 /**
- * The avatar strip folded or grown back where it stands (catalog/band.tsx), along the scroll's path: each part runs
- * its scroll morph's keyframes over time (`morphs`, to their end folding, back to their start growing), while the
- * strip and the results after it slide from where the strip stood (`top`), in step.
+ * The avatar strip turned by hand (catalog/band.tsx) along the scroll's path: each part runs its scroll morph's
+ * keyframes over time (`morphs`, to their end folding, back to their start growing or opening), while `slides` (the
+ * strip, and in place the results after it) move down from `from` to `to` px, in step. Each holds its end until
+ * cancelled, so the layout can take over in the same frame.
  */
-export function turnInPlace(
-  box: HTMLElement,
-  top: number,
+export function turnAlong(
+  slides: HTMLElement[],
+  [from, to]: [number, number],
   morphs: ReturnType<typeof morphsOf>,
-  after: HTMLElement,
   folding: boolean,
 ): Animation[] {
   if (prefersReducedMotion()) return [];
-  const timing = { id: TURN_ID, duration: MOTION.turnDuration, easing: EASE };
-  const dy = top - box.getBoundingClientRect().top;
-  const running = [box, after].map((el) =>
-    el.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], timing),
+  const timing = {
+    id: TURN_ID,
+    duration: MOTION.turnDuration,
+    easing: EASE,
+    fill: "forwards",
+  } as const;
+  const running = slides.map((el) =>
+    el.animate(
+      [{ translate: `0 ${from}px` }, { translate: `0 ${to}px` }],
+      timing,
+    ),
   );
   for (const [el, frames] of morphs) {
     const path = frames.map(({ computedOffset, ...k }) => ({

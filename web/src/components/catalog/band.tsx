@@ -10,9 +10,10 @@
 // opacity only); nothing in the flow changes, so nothing below moves. The band tells the strip where the scroll
 // has it, so shrunk and in use it lays its chips out for real.
 // The toggle in the toolbar's end cluster (strip-toggle.tsx, handed the strip's state here) opens the shrunk strip
-// over the results (the band sticks at the top bar's edge and the strip glides down to full size along the
-// morph, lib/motion `glide`) and folds it back. At full size in its place it folds the strip there (`tucked`,
-// lib/motion `turnInPlace`): only the chip row stays in the flow, the results slide up, the band has no shrink
+// over the results (the band sticks at the top bar's edge, the strip's surface whole under it, and the strip runs
+// the morph back to full size over time, lib/motion `turnAlong`) and folds it back the same way, laid out open
+// until the morph ends. At full size in its place it folds the strip there along the morph (`tucked`): only the
+// chip row stays in the flow, the results slide up, the band has no shrink
 // (`--strip-d` 0, as covered() and changeTop() read it) and the scroll morphs nothing. Expanded, it grows back in
 // place, or, scrolled past, comes back with the window as far down and opens over the results. Part-way shrunk,
 // it scrolls to the shrink's end. A start past page 1 opens scrolled there (deep-start.ts).
@@ -36,12 +37,9 @@ import { flushSync } from "react-dom";
 import type { Avatar } from "@/lib/catalog";
 import {
   cancelOnReducedMotion,
-  glide,
-  type Look,
-  lookOf,
   morphsOf,
   prefersReducedMotion,
-  turnInPlace,
+  turnAlong,
 } from "@/lib/motion";
 import {
   AvatarStrip,
@@ -120,23 +118,24 @@ export function FilterBand({
   const [shrunk, setShrunk] = useState(folded);
   // opened over the results by hand
   const [open, setOpen] = useState(false);
+  // folding back over the results: laid out open until the morph ends
+  const [closing, setClosing] = useState(false);
   // folded in place by hand: shrunk, out of the scroll's hands
   const [tucked, setTucked] = useState(false);
-  // the scroll the shrink starts at and its length; the look a hand turn glides from
+  // the scroll the shrink starts at and its length
   const span = useRef({ start: 0, length: 0, shrunk: folded });
-  const was = useRef<Look | null>(null);
   const openNow = useRef(open);
   openNow.current = open;
   const morph = useRef<StripMorph>(null);
-  // a hand turn's glide while it runs: the strip is not at rest until it ends
-  const gliding = useRef<Animation[] | null>(null);
-  // where the strip stood before it folded or grew in place (and its morphs, folding), and that turn while it
-  // runs: the scroll's marks wait for its end
+  // where the strip stood before a hand turn (and its morphs, when the turn's layout drops them), and that turn
+  // while it runs: the scroll's marks wait for its end
   const placed = useRef<{
     top: number;
     morphs?: ReturnType<typeof morphsOf>;
   } | null>(null);
   const turning = useRef<Animation[] | null>(null);
+  // the morphs the strip opened over the results along, to fold back along: open, its parts run none
+  const opened = useRef<ReturnType<typeof morphsOf>>(new Map());
   const rerun = useRef(() => {});
 
   // covered() reads these as they attach, not from a layout effect of the band's: the results are its children,
@@ -176,7 +175,7 @@ export function FilterBand({
           : 0;
       if (!driven) head.style.setProperty("--strip-p", String(p));
       // the shrink runs from the first measure on (`data-morph`); where the scroll has it (`data-shrink`) hides the
-      // Carousel's buttons and, shrunk, draws the strip as the morph ends (app/globals.css); a turn in place is
+      // Carousel's buttons and, shrunk, draws the strip as the morph ends (app/globals.css); a hand turn is
       // part-way until it ends, as the scroll would be
       const state = turning.current
         ? "part"
@@ -192,7 +191,7 @@ export function FilterBand({
       morph.current?.settle(
         p <= 0
           ? "none"
-          : p >= 1 && !openNow.current && !gliding.current && !turning.current
+          : p >= 1 && !openNow.current && !turning.current
             ? "rest"
             : "part",
       );
@@ -220,7 +219,7 @@ export function FilterBand({
       schedule();
     };
     measure();
-    rerun.current = schedule;
+    rerun.current = run;
     addEventListener("scroll", schedule, { passive: true });
     // a new size of what is above the band in the flow (the top bar, the page header) moves it; what is below it,
     // the results, does not
@@ -239,60 +238,69 @@ export function FilterBand({
     };
   }, [hasStrip, tucked]);
 
-  // a hand turn glides from the look before it; the first render and a turn by the scroll stay as they are. Folded
-  // back, the strip is at rest once the glide has drawn it.
-  useLayoutEffect(() => {
-    const from = was.current;
-    const s = stripRef.current;
-    was.current = null;
-    if (!from || !s) return;
-    const running = glide(s, from, open);
-    gliding.current = running;
+  // A hand turn: the scroll's marks wait for its end, where `done` lets the layout take over before the turn
+  // lets go.
+  const play = useCallback((running: Animation[], done: () => void) => {
+    turning.current = running;
+    rerun.current();
     Promise.allSettled(running.map((a) => a.finished)).then(() => {
-      if (gliding.current !== running) return;
-      gliding.current = null;
-      if (span.current.shrunk && !openNow.current)
-        morph.current?.settle("rest");
+      if (turning.current !== running) return;
+      done();
+      for (const a of running) a.cancel();
+      turning.current = null;
+      rerun.current();
     });
-    return cancelOnReducedMotion(running);
-  }, [open]);
+  }, []);
 
-  // folded or grown back in place by hand: the strip runs the scroll's morph from where it stood and the results
-  // slide with it. Folded, the strip is at rest once the morph has drawn it, and in use: the toggle was pressed.
+  // opened over the results, or folded or grown back in place, by hand: the strip runs the scroll's morph from where
+  // it stood, in place with the results. Folded in place, the strip is at rest once the morph has drawn it, and in
+  // use: the toggle was pressed.
   useLayoutEffect(() => {
     const from = placed.current;
     const s = stripRef.current;
     const results = resultsRef.current;
     placed.current = null;
-    turning.current = null;
     if (!from || !s || !results) return;
-    const running = turnInPlace(
-      s,
-      from.top,
+    const running = turnAlong(
+      open ? [s] : [s, results],
+      [from.top - s.getBoundingClientRect().top, 0],
       from.morphs ?? morphsOf(partsOf(s)),
-      results,
       tucked,
     );
-    turning.current = running;
-    Promise.allSettled(running.map((a) => a.finished)).then(() => {
-      if (turning.current !== running) return;
-      turning.current = null;
-      rerun.current();
-      if (tucked) {
-        morph.current?.settle("rest");
-        morph.current?.use();
-      }
+    play(running, () => {
+      if (!tucked) return;
+      morph.current?.settle("rest");
+      morph.current?.use();
     });
     return cancelOnReducedMotion(running);
-  }, [tucked]);
+  }, [open, tucked, play]);
 
-  const turn = useCallback((next: boolean) => {
-    const s = stripRef.current;
-    // opened from the chips: the cards drawn as the chips are, which the glide takes to full size
-    if (next) morph.current?.settle("part");
-    if (s) was.current = lookOf(s, partsOf(s));
-    setOpen(next);
-  }, []);
+  const turn = useCallback(
+    (next: boolean) => {
+      const s = stripRef.current;
+      if (!s) return;
+      if (next) {
+        // opened from the chips: the cards drawn as the chips are, which the morph takes to full size over the
+        // whole surface (`data-strip-open`), so the surface's own fade stays out
+        morph.current?.settle("part");
+        opened.current = morphsOf(
+          partsOf(s).filter((el) => !el.matches(".strip-surface")),
+        );
+        placed.current = {
+          top: s.getBoundingClientRect().top,
+          morphs: opened.current,
+        };
+      } else if (span.current.shrunk) {
+        setClosing(true);
+        play(
+          turnAlong([s], [0, -span.current.length], opened.current, true),
+          () => flushSync(() => setClosing(false)),
+        );
+      }
+      setOpen(next);
+    },
+    [play],
+  );
   const tuck = useCallback((next: boolean) => {
     const s = stripRef.current;
     // folded, the parts drop their morphs: taken now
@@ -304,6 +312,7 @@ export function FilterBand({
     setTucked(next);
   }, []);
   const toggle = useCallback(() => {
+    if (turning.current) return;
     if (open) turn(false);
     else if (tucked) {
       // the chips go back to the cards' row, drawn as they are
@@ -313,14 +322,12 @@ export function FilterBand({
         // scrolled past: the shrink goes back in the flow above the tiles and the window as far down, in one frame
         const results = resultsRef.current;
         const was = results?.getBoundingClientRect().top ?? 0;
-        flushSync(() => {
-          setTucked(false);
-          turn(true);
-        });
+        flushSync(() => setTucked(false));
         scrollBy({
           top: (results?.getBoundingClientRect().top ?? 0) - was,
           behavior: "instant",
         });
+        turn(true);
       }
     } else if (span.current.shrunk) turn(true);
     else if (scrollY <= span.current.start) tuck(true);
@@ -335,7 +342,7 @@ export function FilterBand({
     }
   }, [open, tucked, turn, tuck]);
   const picked = useCallback(() => {
-    if (openNow.current) turn(false);
+    if (openNow.current && !turning.current) turn(false);
   }, [turn]);
 
   const strip = useMemo(
@@ -364,7 +371,7 @@ export function FilterBand({
         aria-label={label}
         variant="transparent"
         padding={0}
-        data-strip-open={open ? "" : undefined}
+        data-strip-open={open || closing ? "" : undefined}
         data-strip-tucked={tucked ? "" : undefined}
         // a start past page 1 is shrunk from the first paint; page 1 shrinks once measured
         data-morph={avatars && folded ? "" : undefined}
@@ -372,7 +379,7 @@ export function FilterBand({
         style={
           avatars
             ? ({
-                ...(open ? OPEN : HEAD),
+                ...(open || closing ? OPEN : HEAD),
                 "--strip-d": tucked ? "0px" : STRIP_D,
                 "--strip-dy": STRIP_DY,
                 "--strip-scale": STRIP_SCALE,
@@ -429,7 +436,7 @@ export function FilterBand({
   );
 }
 
-/** what the scroll morphs or fades in the strip (app/globals.css), each glided by a hand turn */
+/** what the scroll morphs or fades in the strip (app/globals.css), each run by a hand turn */
 const PARTS =
   ".strip-thumb, .strip-face, .strip-card, .strip-caption, .strip-name, .strip-label, .strip-surface";
 const partsOf = (s: HTMLElement) => [...s.querySelectorAll<HTMLElement>(PARTS)];
