@@ -156,9 +156,7 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 
 /* The avatar strip shrinking as the page scrolls it under the filter toolbar (catalog/band.tsx): each card's square
    to 40 px about its bottom edge (`--strip-scale`, set by the band from avatar-strip.tsx's card sizes), the label
-   gone by half-way, the surface the shrunk strip lays over the results fading in with its divider, the toggle
-   coming down from the label line to the shrunk cards' middle (`--strip-toggle-up`, avatar-strip.tsx) while the
-   cards' view is clipped short of it by 10 %, before it reaches their tops (`--strip-toggle-w`), and the
+   gone by half-way, the surface the shrunk strip lays over the results fading in with its divider, and the
    Carousel's prev/next buttons, which sit on the top layer above the band, gone at once. Scroll-driven over the
    shrink's range (`--strip-y0` from the band, `--strip-d`), so the compositor runs it with the scroll; without
    scroll timelines (Firefox) the same keyframes stand paused at the band's `--strip-p`. It runs once the band knows where the shrink starts (`data-shrink`, set as it hydrates, or
@@ -178,17 +176,6 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   50%,
   to {
     opacity: 0;
-  }
-}
-@keyframes strip-toggle {
-  to {
-    translate: none;
-  }
-}
-@keyframes strip-clear {
-  10%,
-  to {
-    clip-path: var(--strip-cleared);
   }
 }
 @keyframes strip-in {
@@ -211,23 +198,6 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 [data-shrink] .strip-label {
   animation-name: strip-out;
 }
-.strip-toggle {
-  /* at full size, also before the timeline runs and when opened by hand */
-  translate: 0 calc(-1 * var(--strip-toggle-up));
-}
-[data-shrink] .strip-toggle {
-  animation-name: strip-toggle;
-}
-.strip-cards {
-  /* past the cards' rings on the other sides */
-  clip-path: inset(-1rem 0 -1rem -1rem);
-  --strip-cleared: inset(
-    -1rem calc(var(--strip-toggle-w, 7rem) + var(--spacing-4)) -1rem -1rem
-  );
-}
-[data-shrink] .strip-cards {
-  animation-name: strip-clear;
-}
 .strip-surface {
   position: absolute;
   inset: var(--strip-d) 0 0;
@@ -247,14 +217,7 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 .strip-row {
   pointer-events: auto;
 }
-:is(
-  .strip-thumb,
-  .strip-label,
-  .strip-toggle,
-  .strip-cards,
-  .strip-surface,
-  [data-strip] [popover]
-) {
+:is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
   animation-duration: auto;
   animation-timing-function: linear;
   animation-fill-mode: both;
@@ -263,14 +226,7 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
     calc(var(--strip-y0, 0px) + var(--strip-d));
 }
 @supports not (animation-timeline: scroll()) {
-  :is(
-    .strip-thumb,
-    .strip-label,
-    .strip-toggle,
-    .strip-cards,
-    .strip-surface,
-    [data-strip] [popover]
-  ) {
+  :is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
     animation-duration: 1s;
     animation-play-state: paused;
     animation-delay: calc(var(--strip-p, 0) * -1s);
@@ -278,24 +234,11 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 }
 @media (prefers-reduced-motion: reduce) {
   [data-shrink]
-    :is(
-      .strip-thumb,
-      .strip-label,
-      .strip-toggle,
-      .strip-cards,
-      .strip-surface,
-      [data-strip] [popover]
-    ) {
+    :is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
     animation: none;
   }
   [data-shrink="all"]:not([data-strip-open]) .strip-thumb {
     scale: var(--strip-scale);
-  }
-  [data-shrink="all"]:not([data-strip-open]) .strip-toggle {
-    translate: none;
-  }
-  [data-shrink="all"]:not([data-strip-open]) .strip-cards {
-    clip-path: var(--strip-cleared);
   }
   [data-shrink="all"]:not([data-strip-open]) .strip-label {
     opacity: 0;
@@ -309,14 +252,7 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   }
 }
 [data-strip-open]
-  :is(
-    .strip-thumb,
-    .strip-label,
-    .strip-toggle,
-    .strip-cards,
-    .strip-surface,
-    [data-strip] [popover]
-  ) {
+  :is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
   animation: none;
 }
 [data-strip-open] .strip-surface {

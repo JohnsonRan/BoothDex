@@ -1,7 +1,8 @@
 "use client";
 // The toolbar row under the title, as the table-filter template's header (page.tsx:4373-4470): the filter row, or
 // the saved-views bar while that is toggled on, then one end cluster — the sort as the view control (:3999-4006,
-// a ghost `sm` menu), "Save this search" (bookmark-plus, :4439-4446) and the saved-views toggle (:4450-4468).
+// a ghost `sm` menu), "Save this search" (bookmark-plus, :4439-4446), the saved-views toggle (:4450-4468) and,
+// over the avatar strip, its toggle (strip-toggle.tsx).
 // Saved searches belong to the account: signed out, both open the sign-in dialog. They are not offered in the
 // favourites view, whose list is the account's own.
 
@@ -36,6 +37,7 @@ import {
   savedQuery,
   useSavedSearches,
 } from "./saved-searches";
+import { StripToggle } from "./strip-toggle";
 
 const loadBar = () => import("./saved-views");
 const loadForms = () => import("./saved-view-forms");
@@ -181,6 +183,7 @@ export function Toolbar({
             }
           />
         )}
+        <StripToggle />
       </HStack>
       {creating !== undefined && (
         <CreateSavedForm

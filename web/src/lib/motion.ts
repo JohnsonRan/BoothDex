@@ -33,8 +33,6 @@ const PAGE_ENTER_ID = "page-enter";
 const ROW_ENTER_ID = "row-enter";
 const SWAP_ID = "swap-in";
 const TURN_ID = "strip-turn";
-// how far into the shrink the avatar strip's cards are clipped clear of the toggle (app/globals.css `strip-clear`)
-const CLEAR_AT = 0.1;
 
 /** Marks a container whose children (a carousel: its slides) enter as rows: the grid, the avatar strip. */
 export const ROWS = { "data-enter-rows": "" } as const;
@@ -126,16 +124,10 @@ export const swapIn = (el: Element): Animation[] =>
         }),
       ];
 
-/** How the parts of a box are drawn now: the box's top, and each part's scale, translate, opacity and clip. */
+/** How the parts of a box are drawn now: the box's top, and each part's scale and opacity. */
 export type Look = {
   top: number;
-  parts: {
-    el: HTMLElement;
-    scale: string;
-    translate: string;
-    opacity: string;
-    clip: string;
-  }[];
+  parts: { el: HTMLElement; scale: string; opacity: string }[];
 };
 
 /** `parts` off screen (a strip's cards scrolled sideways out of view) are left out: they need no glide. */
@@ -151,20 +143,13 @@ export const lookOf = (
     })
     .map((el) => {
       const s = getComputedStyle(el);
-      return {
-        el,
-        scale: s.scale,
-        translate: s.translate,
-        opacity: s.opacity,
-        clip: s.clipPath,
-      };
+      return { el, scale: s.scale, opacity: s.opacity };
     }),
 });
 
 /**
  * A box turned by hand from how `was` saw it to how it is drawn now (the avatar strip opened over the results or
- * folded back, catalog/band.tsx): the box glides from its old place, each part from its old scale, translate,
- * opacity and clip. A clip changes over the shrunk end's first CLEAR_AT of the glide, where the scroll changes it.
+ * folded back, catalog/band.tsx): the box glides from its old place, each part from its old scale and opacity.
  * When it ends, whatever drives the parts (the page's scroll) has them where the glide took them.
  */
 export function glide(
@@ -184,29 +169,14 @@ export function glide(
     running.push(
       box.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], timing),
     );
-  for (const { el, scale, translate, opacity, clip } of was.parts) {
+  for (const { el, scale, opacity } of was.parts) {
     const now = getComputedStyle(el);
     const from: Keyframe = {};
     const to: Keyframe = {};
     if (now.scale !== scale) [from.scale, to.scale] = [scale, now.scale];
-    if (now.translate !== translate)
-      [from.translate, to.translate] = [translate, now.translate];
     if (now.opacity !== opacity)
       [from.opacity, to.opacity] = [opacity, now.opacity];
     if (Object.keys(from).length) running.push(el.animate([from, to], timing));
-    if (now.clipPath !== clip)
-      running.push(
-        el.animate(
-          [
-            { clipPath: clip },
-            opening
-              ? { clipPath: clip, offset: 1 - CLEAR_AT }
-              : { clipPath: now.clipPath, offset: CLEAR_AT },
-            { clipPath: now.clipPath },
-          ],
-          timing,
-        ),
-      );
   }
   return running;
 }
