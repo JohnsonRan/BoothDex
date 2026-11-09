@@ -257,7 +257,7 @@ pub(crate) async fn register(
     Json(b): Json<Register>,
 ) -> Result<Response, ApiError> {
     if let Err(r) = s.limits.auth.check(ip) {
-        return Ok(r);
+        return Ok(r.into_response());
     }
     if !valid_display_name(&b.display_name) {
         return Ok(err(StatusCode::BAD_REQUEST, "Display name is required."));
@@ -306,7 +306,7 @@ pub(crate) async fn login(
     Json(b): Json<Login>,
 ) -> Result<Response, ApiError> {
     if let Err(r) = s.limits.auth.check(ip) {
-        return Ok(r);
+        return Ok(r.into_response());
     }
     if !valid_login(&b.login) {
         return Ok(err(StatusCode::UNAUTHORIZED, "Incorrect username or password."));

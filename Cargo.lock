@@ -57,6 +57,7 @@ dependencies = [
  "percent-encoding",
  "reqwest",
  "roaring",
+ "rustc-hash",
  "rustls",
  "serde",
  "serde_json",

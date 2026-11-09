@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use anyhow::Result;
 use roaring::RoaringBitmap;
+use rustc_hash::FxHashMap;
 use serde::Serialize;
 
 use crate::params::Params;
@@ -60,7 +61,7 @@ impl Index {
 
 pub struct Catalog {
     pub ids: Vec<i64>,
-    doc_of: HashMap<i64, u32>,
+    doc_of: FxHashMap<i64, u32>,
     price: Vec<Option<i32>>,
     published: Vec<i64>,
     likes: Vec<i32>,
@@ -141,7 +142,7 @@ impl Catalog {
 
         let mut c = Catalog {
             ids: Vec::with_capacity(n),
-            doc_of: HashMap::with_capacity(n),
+            doc_of: FxHashMap::with_capacity_and_hasher(n, Default::default()),
             price: Vec::with_capacity(n),
             published: Vec::with_capacity(n),
             likes: Vec::with_capacity(n),
@@ -464,11 +465,11 @@ pub struct Semantic<'a> {
 /// item ranks with text hits around 60th place unless both lists agree on it. Items in a category the query names
 /// get a little more than the best meaning-only match: below the top text hits, above meaning-only ones.
 /// shortcut: category-only items tie with each other (then by load order); rank them by meaning if that shows.
-fn fuse(text: &HashMap<u32, f32>, semantic: &[u32], category: &RoaringBitmap) -> HashMap<u32, f32> {
+fn fuse(text: &FxHashMap<u32, f32>, semantic: &[u32], category: &RoaringBitmap) -> FxHashMap<u32, f32> {
     const K: f32 = 60.0;
     let mut ranked: Vec<(u32, f32)> = text.iter().map(|(d, s)| (*d, *s)).collect();
     ranked.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
-    let mut out = HashMap::with_capacity(ranked.len() + semantic.len());
+    let mut out = FxHashMap::with_capacity_and_hasher(ranked.len() + semantic.len(), Default::default());
     for (rank, (d, _)) in ranked.iter().enumerate() {
         *out.entry(*d).or_default() += 1.0 / (K + rank as f32 + 1.0);
     }
@@ -628,7 +629,7 @@ mod tests {
 
     #[test]
     fn fusion_rewards_agreement_and_keeps_semantic_only_hits() {
-        let text: HashMap<u32, f32> = [(1, 9.0), (2, 5.0), (3, 1.0)].into();
+        let text: FxHashMap<u32, f32> = [(1, 9.0), (2, 5.0), (3, 1.0)].into_iter().collect();
         let f = fuse(&text, &[3, 7], &RoaringBitmap::new());
         // in both lists beats first in one list; a semantic-only hit stays below the text hits
         assert!(f[&3] > f[&1]);

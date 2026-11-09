@@ -3,13 +3,13 @@
 //! - substring: character bigrams over title/tags with spaces and punctuation removed, verified per query word by
 //!   `contains` (covers partial names like "ミル" → "ミルティナ", and "shorthair" / "short hair" / "short-hair")
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::Result;
 use lindera::{dictionary::load_dictionary, mode::Mode, segmenter::Segmenter};
 use lindera_tantivy::tokenizer::LinderaTokenizer;
 use roaring::RoaringBitmap;
+use rustc_hash::FxHashMap;
 use tantivy::collector::{Collector, DocSetCollector, SegmentCollector};
 use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
 use tantivy::schema::{FAST, Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions};
@@ -215,10 +215,10 @@ impl TextIndex {
     }
 
     /// Matching catalog docs with a relevance score (substring-only hits get a small floor score).
-    pub fn search(&self, q: &str) -> Result<(RoaringBitmap, HashMap<u32, f32>)> {
+    pub fn search(&self, q: &str) -> Result<(RoaringBitmap, FxHashMap<u32, f32>)> {
         let searcher = self.reader.searcher();
         let mut hits = RoaringBitmap::new();
-        let mut scores = HashMap::new();
+        let mut scores = FxHashMap::default();
 
         let (query, _errors) = self.parser.parse_query_lenient(&query_words(q));
         for (score, addr) in searcher.search(&query, &ScoredDocs)? {

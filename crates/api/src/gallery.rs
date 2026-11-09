@@ -40,7 +40,7 @@ pub async fn gallery(
     Path(id): Path<i64>,
 ) -> Result<Response, ApiError> {
     if let Err(r) = s.limits.gallery.check(ip) {
-        return Ok(r);
+        return Ok(r.into_response());
     }
     if s.snap().catalog.docs_for(&[id]).is_empty() {
         return Ok((StatusCode::NOT_FOUND, Json(json!({ "ok": false, "error": "Unknown item." }))).into_response());

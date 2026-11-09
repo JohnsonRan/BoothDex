@@ -122,12 +122,12 @@ impl AppState {
         self.snap.load()
     }
 
-    async fn acquire_search(&self) -> std::result::Result<tokio::sync::SemaphorePermit<'_>, Response> {
+    async fn acquire_search(&self) -> std::result::Result<tokio::sync::SemaphorePermit<'_>, limit::RateLimited> {
         tokio::time::timeout(std::time::Duration::from_secs(2), self.search_permits.acquire())
             .await
             .ok()
             .and_then(std::result::Result::ok)
-            .ok_or_else(|| limit::too_many_requests(2))
+            .ok_or(limit::RateLimited(2))
     }
 }
 
@@ -153,18 +153,18 @@ async fn lookup_rate_limit(
     next: axum::middleware::Next,
 ) -> Response {
     if let Err(r) = s.limits.lookup.check(ip) {
-        return r;
+        return r.into_response();
     }
     next.run(req).await
 }
 
 async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
     if let Err(r) = s.limits.rss.check(ip) {
-        return Ok(r);
+        return Ok(r.into_response());
     }
     let _permit = match s.acquire_search().await {
         Ok(p) => p,
-        Err(r) => return Ok(r),
+        Err(r) => return Ok(r.into_response()),
     };
     let user_q = q.unwrap_or_default();
     // first occurrence wins in Params, so the prefix pins ordering and size
@@ -179,7 +179,7 @@ async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cl
 /// Ctrl+K: one query across items, avatars, authors, tags and categories.
 async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
     if let Err(r) = s.limits.palette.check(ip) {
-        return Ok(r);
+        return Ok(r.into_response());
     }
     let raw = q.unwrap_or_default();
     let p = Params::parse(&raw);
@@ -189,7 +189,7 @@ async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cli
     }
     let _permit = match s.acquire_search().await {
         Ok(p) => p,
-        Err(r) => return Ok(r),
+        Err(r) => return Ok(r.into_response()),
     };
     let small = Params::parse(&format!("limit=5&{raw}"));
     let needle = text.to_lowercase();
@@ -235,7 +235,7 @@ async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cli
 /// Full records by id (favourites list, palette picks): `/api/items?ids=1+2+3`, at most 100.
 async fn items_by_id(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
     if let Err(r) = s.limits.items.check(ip) {
-        return Ok(r);
+        return Ok(r.into_response());
     }
     let ids = item_ids(q.as_deref().unwrap_or(""));
     if ids.is_empty() {
@@ -243,7 +243,7 @@ async fn items_by_id(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit:
     }
     let _permit = match s.acquire_search().await {
         Ok(p) => p,
-        Err(r) => return Ok(r),
+        Err(r) => return Ok(r.into_response()),
     };
     Ok(Json(json!({ "items": db::load_items(&s.pool, &ids, false).await? })).into_response())
 }
@@ -484,6 +484,22 @@ mod tests {
             assert_eq!(call(ip).await.status(), StatusCode::OK);
         }
         assert_eq!(call(ip).await.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn search_capacity_rejections_keep_retry_after() {
+        use axum::response::IntoResponse;
+
+        let state = test_state();
+        let _held = state.search_permits.acquire_many(16).await.unwrap();
+        for closed in [false, true] {
+            if closed {
+                state.search_permits.close();
+            }
+            let response = state.acquire_search().await.unwrap_err().into_response();
+            assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+            assert_eq!(response.headers()[axum::http::header::RETRY_AFTER], "2");
+        }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

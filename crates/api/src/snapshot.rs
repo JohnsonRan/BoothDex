@@ -50,7 +50,7 @@ impl Lookup {
         for e in &mut entries {
             e.0.iter_mut().for_each(|s| *s = s.to_lowercase());
         }
-        entries.sort_by(|a, b| b.2.cmp(&a.2));
+        entries.sort_by_key(|e| std::cmp::Reverse(e.2));
         Self(entries)
     }
 
@@ -228,6 +228,15 @@ pub(crate) async fn build_snapshot(pool: &PgPool, version: i64) -> Result<Snapsh
 #[cfg(test)]
 mod name_tests {
     use super::*;
+
+    #[test]
+    fn lookup_keeps_input_order_when_counts_tie() {
+        let entries = [("first", 10), ("second", 10), ("popular", 20), ("unused", 0)]
+            .into_iter().map(|(slug, count)| (vec![slug.into()], json!({ "slug": slug }), count)).collect();
+        let lookup = Lookup::new(entries);
+        let slugs: Vec<_> = lookup.0.iter().map(|(_, item, _)| item["slug"].as_str().unwrap()).collect();
+        assert_eq!(slugs, ["popular", "first", "second"]);
+    }
 
     #[test]
     fn model_names_are_split_out_of_the_query() {

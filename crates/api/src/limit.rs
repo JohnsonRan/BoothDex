@@ -148,9 +148,9 @@ impl RateLimiter {
         self.take_at(ip, Instant::now())
     }
 
-    /// Consumes one token or builds a `429 Too Many Requests` response with `Retry-After`.
-    pub fn check(&self, ip: IpAddr) -> Result<(), Response> {
-        self.take(ip).map_err(too_many_requests)
+    /// Consumes one token or returns a lightweight HTTP-convertible rejection.
+    pub fn check(&self, ip: IpAddr) -> Result<(), RateLimited> {
+        self.take(ip).map_err(RateLimited)
     }
 
     pub fn take_global(&self) -> Result<(), u64> {
@@ -219,13 +219,18 @@ impl Default for Limits {
     }
 }
 
-pub fn too_many_requests(retry_after: u64) -> Response {
-    (
-        StatusCode::TOO_MANY_REQUESTS,
-        [(header::RETRY_AFTER, retry_after.to_string())],
-        Json(json!({ "ok": false, "error": "Too many requests. Try again shortly." })),
-    )
-        .into_response()
+#[derive(Debug)]
+pub struct RateLimited(pub u64);
+
+impl IntoResponse for RateLimited {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(header::RETRY_AFTER, self.0.to_string())],
+            Json(json!({ "ok": false, "error": "Too many requests. Try again shortly." })),
+        )
+            .into_response()
+    }
 }
 
 #[cfg(test)]
@@ -236,6 +241,16 @@ mod tests {
 
     fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
+    }
+
+    #[tokio::test]
+    async fn rate_limit_response_keeps_status_retry_after_and_body() {
+        let response = RateLimited(7).into_response();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(response.headers()[header::RETRY_AFTER], "7");
+        let body = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+            json!({ "ok": false, "error": "Too many requests. Try again shortly." }));
     }
 
     #[test]

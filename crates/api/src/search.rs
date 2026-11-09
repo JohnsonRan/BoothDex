@@ -129,7 +129,7 @@ pub(crate) async fn search(
     RawQuery(q): RawQuery,
 ) -> Result<Response, ApiError> {
     if let Err(r) = s.limits.search.check(ip) {
-        return Ok(r);
+        return Ok(r.into_response());
     }
     let t0 = Instant::now();
     let mut trace = Trace::default();
@@ -162,7 +162,7 @@ pub(crate) async fn search(
     // acquired after any external provider wait so slow embeddings cannot block keyword/filter searches
     let _permit = match s.acquire_search().await {
         Ok(p) => p,
-        Err(r) => return Ok(r),
+        Err(r) => return Ok(r.into_response()),
     };
     trace.step("queue");
     let (semantic, semantic_status) = match embed_plan {

@@ -24,6 +24,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 lindera-tantivy = { version = "6.2", features = ["embed-ipadic"] }
 roaring = "0.12"
+rustc-hash = "2.1"
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
