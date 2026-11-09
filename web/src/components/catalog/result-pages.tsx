@@ -14,8 +14,10 @@
 // silhouetteMask), so no speed of scrolling shows an empty page, and every change keeps the first tile in view
 // where it was (the grid opts out of the browser's own scroll anchoring, which not every engine has, so all of
 // them move the same way). A change above the reader waits for scrolling to stop: moving the scroll position
-// during an iOS fling stops the fling dead. Every place is measured from the filter band's bottom edge (band.tsx
-// covered()), so the tile in view is the first one below the band, not one under it.
+// during an iOS fling stops the fling dead. A page that arrives or comes back below the reader, or gives its tiles
+// up for boxes of their heights, does it a few tiles a frame (PageTiles), so a fling never waits on a whole page's
+// layout. Every place is measured from the filter band's bottom edge (band.tsx covered()), so the tile in view is
+// the first one below the band, not one under it.
 
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
 import { VStack } from "@astryxdesign/core/Stack";
@@ -52,7 +54,7 @@ import {
   withPage,
 } from "@/lib/result-pages";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
-import { covered } from "./band";
+import { covered } from "./band-edge";
 import { FIRST_TILES, GRID, type Tile, tileOf } from "./item-tile";
 import { RefreshFailed } from "./refresh";
 import { silhouetteMask, TileSilhouette } from "./silhouette";
@@ -66,6 +68,8 @@ type Page = {
   partial?: boolean;
   /** far from view: a box of each tile's height stands in for it */
   heights?: number[];
+  /** its tiles come and go a few a frame (PageTiles): the change moves nothing in view */
+  gradual?: boolean;
   block?: number;
   near?: boolean;
   /** reading it failed: a notice to retry stands in its place */
@@ -84,6 +88,9 @@ const MARGIN = `${SCREENS * 100}%`;
 // no scroll event for this long and scrolling has stopped: an engine sends one a frame while a fling or a smooth
 // scroll runs, so a pause this long is the reader's, and the changes held for it go in soon after
 const SETTLE_MS = 200;
+// tiles a gradual page draws or gives up a frame: four rows at six columns. Each step lays the whole grid out
+// again, so twelve a frame (nine steps a page) held the main thread over 100 ms more often than the page at once
+const STEP = 24;
 // a silhouette in the first column, out of the flow and unseen, measured for the boxes' mask
 const PROBE: CSSProperties = {
   position: "absolute",
@@ -323,6 +330,7 @@ export function ResultPages({
               ? {
                   n: q.n,
                   tiles: [...q.tiles, ...fresh.filter((i) => !seen.has(i.id))],
+                  gradual: true,
                 }
               : q,
           ),
@@ -332,7 +340,9 @@ export function ResultPages({
       load(
         last.n + 1,
         (p, fresh) =>
-          p.at(-1)?.n === last.n ? [...p, { n: last.n + 1, tiles: fresh }] : p,
+          p.at(-1)?.n === last.n
+            ? [...p, { n: last.n + 1, tiles: fresh, gradual: true }]
+            : p,
         "next",
       );
   }, [load, total]);
@@ -344,7 +354,9 @@ export function ResultPages({
         n,
         (p, fresh) =>
           p.map((q) =>
-            q.n === n && !q.tiles.length ? { n, tiles: fresh } : q,
+            q.n === n && !q.tiles.length
+              ? { n, tiles: fresh, gradual: dir === "next" }
+              : q,
           ),
         dir,
         true,
@@ -368,6 +380,8 @@ export function ResultPages({
       ? kids[n].getBoundingClientRect().top - a.top
       : a.height + gap;
     block.current = pageBlock(pageSize, n, pitch, gap);
+    // the height of a box standing for a tile not drawn yet (PageTiles)
+    g.style.setProperty("--_tile-h", `${pitch - gap}px`);
   };
 
   /**
@@ -501,6 +515,15 @@ export function ResultPages({
     };
   }, [hasPrev]);
 
+  // A Skeleton pulses without end (core Skeleton.tsx:99-103), one under every cover still loading, and each pulse
+  // sends an `animationiteration` that React's root listener walks the tree for, though nothing listens to it:
+  // during a fling hundreds of them a second held the main thread. Stopped at the window, they never reach React.
+  useEffect(() => {
+    const stop = (e: Event) => e.stopPropagation();
+    addEventListener("animationiteration", stop, true);
+    return () => removeEventListener("animationiteration", stop, true);
+  }, []);
+
   // One frame after scrolling: the page in view goes to the address bar, far pages give up their tiles and near
   // ones take them back, a page not read yet near view is read, the page in view first, and more boxes go up when
   // the reader moves up near the top of them. The entry records where the reader is when a page is crossed, when
@@ -600,12 +623,14 @@ export function ResultPages({
           return { ...q, near };
         }
         if (far === !!q.heights) return q;
-        if (!far) return { ...q, heights: undefined };
+        // tiles back from below the screen come a few a frame; above the reader, all at once, kept in place
+        if (!far) return { ...q, heights: undefined, gradual: tops[j] > h };
         const own = [...kids].slice(at[j], at[j] + q.tiles.length);
         if (focused && own.some((k) => k.contains(focused))) return q;
         return {
           ...q,
           heights: own.map((k) => k.getBoundingClientRect().height),
+          gradual: true,
         };
       });
       if (next.some((q, j) => q !== p[j]))
@@ -724,21 +749,13 @@ export function ResultPages({
                   style={{ blockSize: q.block }}
                 />
               )
-            ) : q.heights ? (
-              q.heights.map((h, i) => (
-                <GridSpan
-                  // biome-ignore lint/suspicious/noArrayIndexKey: one box per tile, in the tiles' order
-                  key={i}
-                  aria-hidden
-                  className="page-box"
-                  style={{ blockSize: h }}
-                />
-              ))
             ) : (
-              <Tiles
+              <PageTiles
                 tiles={q.tiles}
+                heights={q.heights}
+                // a return draws its pages whole, so the place it restores is there to scroll to
+                gradual={!!q.gradual && !restoring.current}
                 from={q.n === page ? 0 : FIRST_TILES}
-                markViewed
                 favLabel={favLabel}
               />
             )}
@@ -783,6 +800,63 @@ export function ResultPages({
           </Text>
         </VStack>
       )}
+    </>
+  );
+}
+
+/**
+ * A page's tiles, or while it is far from view a box of each tile's height in its place. A gradual page goes from
+ * one to the other STEP tiles a frame, the rest standing as boxes (one not drawn yet as tall as a measured tile,
+ * `--_tile-h`): a page of 100 tiles drawn in one commit held the main thread for its style and layout, about 0.2 s
+ * (over 1 s at 4x CPU), mid-fling. Only a change that moves nothing in view is gradual (Page.gradual).
+ */
+function PageTiles({
+  tiles,
+  heights,
+  gradual,
+  from,
+  favLabel,
+}: {
+  tiles: Tile[];
+  heights?: number[];
+  gradual: boolean;
+  from: number;
+  favLabel: string;
+}) {
+  const target = heights ? 0 : tiles.length;
+  const [drawn, setDrawn] = useState(gradual ? 0 : target);
+  if (!gradual && drawn !== target) setDrawn(target);
+  // the heights the page last stood at, for its boxes as it is drawn again
+  const last = useRef(heights);
+  useEffect(() => {
+    if (heights) last.current = heights;
+  }, [heights]);
+  useEffect(() => {
+    if (drawn === target) return;
+    const frame = requestAnimationFrame(() =>
+      setDrawn((d) =>
+        d < target ? Math.min(target, d + STEP) : Math.max(target, d - STEP),
+      ),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [drawn, target]);
+  const box = heights ?? last.current;
+  return (
+    <>
+      <Tiles
+        tiles={drawn < tiles.length ? tiles.slice(0, drawn) : tiles}
+        from={from}
+        markViewed
+        favLabel={favLabel}
+      />
+      {tiles.slice(drawn).map((tile, i) => (
+        <GridSpan
+          key={tile.id}
+          aria-hidden
+          className="page-box"
+          style={{ blockSize: box?.[drawn + i] ?? "var(--_tile-h)" }}
+        />
+      ))}
     </>
   );
 }

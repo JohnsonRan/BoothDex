@@ -18,8 +18,9 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // CSS 44,409, held to the next 500 B (owner, 2026-11-08). One strip shrinking with the scroll and the boxes'
 // painted silhouettes: JS 400,918, CSS 44,958, held to the next 500 B as before. The review fixes (tiles redrawn
 // after a settings change, the band's edge set as it attaches, Astryx parts for the boxes): JS 401,132, held to
-// the next 500 B as before.
-const BUDGET = { html: 48_000, js: 401_500, css: 45_000 };
+// the next 500 B as before. The strip's cards morphing into chips, kept shrunk through a filter change: JS 403,120,
+// CSS 45,330, held to the next 500 B as before.
+const BUDGET = { html: 48_000, js: 403_500, css: 45_500 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {

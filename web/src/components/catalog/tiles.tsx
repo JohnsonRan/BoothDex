@@ -4,7 +4,12 @@
 // data, about 0.3 KB, instead of its rendered Astryx elements and class names, about 4.5 KB; the server HTML is
 // the same.
 
+import { memo } from "react";
 import { ItemTile, type Tile } from "./item-tile";
+
+// a tile renders again only when its own data changes: a page drawn a few tiles a frame (result-pages.tsx
+// PageTiles), or any change to the pages, would otherwise render every tile already drawn, again, each time
+const Item = memo(ItemTile);
 
 export function Tiles({
   tiles,
@@ -19,7 +24,7 @@ export function Tiles({
   favLabel: string;
 }) {
   return tiles.map((tile, i) => (
-    <ItemTile
+    <Item
       key={tile.id}
       tile={tile}
       index={from + i}
