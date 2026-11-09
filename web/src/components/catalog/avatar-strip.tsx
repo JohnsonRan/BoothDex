@@ -15,10 +15,10 @@
 // Each card's square moves and shrinks to its chip's place, measured here once (and again on a resize, a font load
 // or a sideways scroll of the cards) as a distance per card (`--chip-x`) and one for the row (`--chip-ax`), which
 // brings the first card in view to the row's start; over it the same image fades in clipped round (AspectRatio
-// `shape="ellipse"`, AspectRatio.tsx:68-78) with the selection ring over it, the caption fades out and the
-// chip's name in. All of it is transform and opacity, so the compositor runs it with the scroll. Shrunk and in
-// use (a pointer, a touch, focus or a wheel on it), the chips are laid out for real (`data-chips`), as they were
-// drawn, so the row scrolls and snaps chip by chip. The cards are memoised: the band's state changes around them
+// `shape="ellipse"`, AspectRatio.tsx:68-78), the caption fades out and the chip's name in, the selected one
+// semibold on a filled capsule with no ring (app/globals.css). All of it is transform and
+// opacity, so the compositor runs it with the scroll. Shrunk and in use (a pointer, a touch, focus or a wheel on
+// it), the chips are laid out for real (`data-chips`), as they were drawn, so the row scrolls and snaps chip by chip. The cards are memoised: the band's state changes around them
 // without drawing them again.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
@@ -368,7 +368,8 @@ const Cards = memo(function Cards({
 });
 
 // A card over its caption, the round face of its chip over the card; its chip's name beside where the card shrinks
-// to, hidden from assistive technology as the caption already names the card.
+// to, hidden from assistive technology as the caption already names the card, and drawn first, so the selected
+// chip's fill behind it lies under the avatar too.
 function Tile({
   label,
   selected,
@@ -393,7 +394,21 @@ function Tile({
       <AllGlyph />
     );
   return (
-    <VStack gap={2} className="strip-tile">
+    <VStack
+      gap={2}
+      className="strip-tile"
+      data-selected={selected ? "" : undefined}
+    >
+      <HStack vAlign="center" className="strip-name" aria-hidden>
+        <Text
+          type="supporting"
+          weight={selected ? "semibold" : undefined}
+          maxLines={1}
+          hasTruncateTooltip={false}
+        >
+          {label}
+        </Text>
+      </HStack>
       <AspectRatio ratio={1} className="strip-thumb">
         <SelectableCard
           label={label}
@@ -413,7 +428,6 @@ function Tile({
           fit="cover"
           className="strip-face"
           data-glyph={src ? undefined : ""}
-          data-selected={selected ? "" : undefined}
           aria-hidden
         >
           {image()}
@@ -428,11 +442,6 @@ function Tile({
       >
         {label}
       </Text>
-      <HStack vAlign="center" className="strip-name" aria-hidden>
-        <Text type="supporting" maxLines={1} hasTruncateTooltip={false}>
-          {label}
-        </Text>
-      </HStack>
     </VStack>
   );
 }

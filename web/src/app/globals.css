@@ -159,9 +159,9 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
    row's `--chip-ax`, measured by the strip; `--strip-dy` from the band) and shrinks to the chip's size about its
    corner (`--strip-scale`). Each part shows only where it overlaps nothing: the caption is gone by a quarter, before
    the shrinking card reaches its line; the square turns round late (the face in over 70-80 %, the card's square
-   corners and its ring out behind it over 75-85 %), when the card is already about half its size, and the face's
-   ring shows with the face; the chip's name fades in from 90 %, once its avatar has moved clear of where it
-   stands. The label goes by half-way, the surface the shrunk strip lays over the results fades in with its divider, and the Carousel's
+   corners and its ring out behind it over 75-85 %), when the card is already about half its size; the chip's
+   name (and the selected chip's capsule) fades in from 90 %, once its avatar
+   has moved clear of where it stands. The label goes by half-way, the surface the shrunk strip lays over the results fades in with its divider, and the Carousel's
    prev/next buttons, which sit on the top layer above the band, go as the shrink starts (`data-shrink`, not an
    animation: `visibility` would keep the main thread drawing every frame). Only transform and opacity move,
    scroll-driven over the shrink's range (`--strip-y0` from the band, `--strip-d`), so the compositor runs it with
@@ -235,8 +235,9 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   inline-size: var(--strip-card);
   transform-origin: 0 0;
 }
-/* the chip's face: the card's image clipped round, where the card draws it (inside the card's padding), and the
-   selection ring over it, 3 px wide in the chip */
+/* the chip's face: the card's image clipped round, where the card draws it (inside the card's padding), with no
+   ring: a selected chip is its capsule and semibold name, as Astryx marks a selected Token or item (a fill, no
+   ring), so its avatar is as large as the others */
 .strip-face {
   position: absolute;
   inset: var(--spacing-0-5);
@@ -245,13 +246,6 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 }
 .strip-face[data-glyph] {
   background-color: var(--color-background-muted);
-}
-.strip-face[data-selected]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 calc(3px / var(--strip-scale)) var(--color-accent);
 }
 .strip-face .strip-glyph {
   scale: var(--strip-glyph);
@@ -268,6 +262,19 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   translate: var(--chip-dx) 0;
   opacity: 0;
   pointer-events: none;
+  isolation: isolate;
+}
+/* the selected chip, avatar and name, on a capsule in a Token's fill (core Token.tsx:226 `--color-neutral`, a translucent
+   tint that stays visible on the page in light and dark; Token's round end, Token.tsx:194 `--radius-full`), its name
+   semibold as a selected TopNav item's (TopNavItem.tsx:66-68). Static under the name, it fades in with it. */
+.strip-tile[data-selected] .strip-name::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline: calc(-1 * (var(--strip-chip) + var(--spacing-2))) 0;
+  z-index: -1;
+  border-radius: var(--radius-full);
+  background-color: var(--color-neutral);
 }
 /* the chips laid out: a tile as wide as its avatar and its name (the caption, hidden, keeps the tile's height and
    gives the name's width), the card drawn as at the shrink's end */
@@ -310,6 +317,10 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 }
 [data-chips] :is(.strip-card, .strip-caption) {
   opacity: 0;
+}
+/* the selected chip's hidden caption as wide as its semibold name */
+[data-chips] .strip-tile[data-selected] .strip-caption {
+  font-weight: var(--font-weight-semibold);
 }
 [data-chips] :is(.strip-face, .strip-name) {
   opacity: 1;
