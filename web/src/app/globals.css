@@ -146,3 +146,126 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 :root:not([data-account="in"]) [data-account-slot="in"] {
   display: none;
 }
+
+/* An image over a Skeleton that can paint (catalog/silhouette.tsx SKELETON_PAINTED): the Skeleton under it goes,
+   and with it its running animation, a compositor layer per image. Core's rules carry up to four :not(#\#). */
+[data-skeleton]:has(> img[data-painted])
+  > .astryx-skeleton:not(#\#):not(#\#):not(#\#):not(#\#) {
+  display: none;
+}
+
+/* The avatar strip shrinking as the page scrolls it under the filter toolbar (catalog/band.tsx): each card's square
+   to 40 px about its bottom edge (`--strip-scale`, set by the band from avatar-strip.tsx's card sizes), the label
+   gone by half-way, the surface the shrunk strip lays over the results fading in with its divider, and the
+   Carousel's prev/next buttons, which sit on the top layer above the band, gone at once. Scroll-driven over the
+   shrink's range (`--strip-y0` from the band, `--strip-d`), so the compositor runs it with the scroll; without
+   scroll timelines (Firefox) the same keyframes stand paused at the band's `--strip-p`. It runs once the band knows where the shrink starts (`data-shrink`, set as it hydrates, or
+   from the server for a start past page 1); until then the strip stands whole. Under reduced motion nothing runs:
+   `data-shrink` shows the strip whole or shrunk. Opened by hand, the strip is drawn at full size. */
+@property --strip-d {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+@keyframes strip-thumb {
+  to {
+    scale: var(--strip-scale);
+  }
+}
+@keyframes strip-out {
+  50%,
+  to {
+    opacity: 0;
+  }
+}
+@keyframes strip-in {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes strip-gone {
+  15%,
+  to {
+    visibility: hidden;
+  }
+}
+.strip-thumb {
+  transform-origin: 50% 100%;
+}
+[data-shrink] .strip-thumb {
+  animation-name: strip-thumb;
+}
+[data-shrink] .strip-label {
+  animation-name: strip-out;
+}
+.strip-surface {
+  position: absolute;
+  inset: var(--strip-d) 0 0;
+  z-index: -1;
+  pointer-events: auto;
+  background-color: var(--color-background-surface);
+  border-block-end: 1px solid var(--color-border);
+  /* the strip at the top of the page, also before its timeline runs */
+  opacity: 0;
+}
+[data-shrink] .strip-surface {
+  animation-name: strip-in;
+}
+[data-shrink] [data-strip] [popover] {
+  animation-name: strip-out, strip-gone;
+}
+.strip-row {
+  pointer-events: auto;
+}
+:is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
+  animation-duration: auto;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  animation-timeline: scroll(root);
+  animation-range: var(--strip-y0, 0px)
+    calc(var(--strip-y0, 0px) + var(--strip-d));
+}
+@supports not (animation-timeline: scroll()) {
+  :is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
+    animation-duration: 1s;
+    animation-play-state: paused;
+    animation-delay: calc(var(--strip-p, 0) * -1s);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-shrink]
+    :is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
+    animation: none;
+  }
+  [data-shrink="all"]:not([data-strip-open]) .strip-thumb {
+    scale: var(--strip-scale);
+  }
+  [data-shrink="all"]:not([data-strip-open]) .strip-label {
+    opacity: 0;
+  }
+  [data-shrink="all"]:not([data-strip-open]) .strip-surface {
+    opacity: 1;
+  }
+  [data-shrink="part"] [popover],
+  [data-shrink="all"]:not([data-strip-open]) [popover] {
+    visibility: hidden;
+  }
+}
+[data-strip-open]
+  :is(.strip-thumb, .strip-label, .strip-surface, [data-strip] [popover]) {
+  animation: none;
+}
+[data-strip-open] .strip-surface {
+  inset: 0;
+  opacity: 1;
+}
+
+/* A box standing in for tiles not drawn (catalog/result-pages.tsx): their silhouettes, painted through one mask
+   measured from a TileSilhouette (silhouette.tsx silhouetteMask) in the Skeleton's resting look, static: its
+   colour at its 0.25 opacity (core src/Skeleton/Skeleton.tsx:81, :91). */
+.page-box {
+  background-color: color-mix(in srgb, var(--color-skeleton) 25%, transparent);
+  mask-image: var(--_tile, linear-gradient(transparent, transparent));
+  mask-size: var(--_tile-size, auto);
+  mask-repeat: space repeat;
+}

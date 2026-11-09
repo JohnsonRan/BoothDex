@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
+import { SKELETON_PAINTED } from "@/components/catalog/silhouette";
 import { EARLY_CLICKS } from "@/lib/early-clicks";
 import { SESSION_HINT_SCRIPT } from "@/lib/session-hint";
 import { SINGLE_MODE, STYLES } from "@/lib/settings-core";
@@ -61,7 +62,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script
           // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
           dangerouslySetInnerHTML={{
-            __html: preferences + SESSION_HINT_SCRIPT + EARLY_CLICKS,
+            __html:
+              preferences +
+              SESSION_HINT_SCRIPT +
+              EARLY_CLICKS +
+              SKELETON_PAINTED,
           }}
         />
       </head>

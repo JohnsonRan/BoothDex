@@ -1,12 +1,13 @@
 // Home page: the table-filter template's header (page.tsx:4339-4475: progress bar, title row, toolbar row of
-// filter row and end cluster) over the avatar strip and a uniform card grid with a real empty state. Everything
+// filter row and end cluster), its toolbar row the filter band that stays under the top bar (band.tsx), over the
+// avatar strip and a uniform card grid with a real empty state. Everything
 // here renders on the server; the controls it places are client components. The frame (title, controls) streams
 // first; the count and the results follow when the search answers, Skeleton silhouettes holding their places
 // (loading.tsx), and enter once if the visitor saw those (arrival.tsx).
 
 import { Layout, LayoutContent, LayoutHeader } from "@astryxdesign/core/Layout";
 import { Section } from "@astryxdesign/core/Section";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { HStack } from "@astryxdesign/core/Stack";
 import { Heading } from "@astryxdesign/core/Text";
 import { headers } from "next/headers";
 import { Suspense } from "react";
@@ -25,6 +26,7 @@ import {
   parseFilters,
   RAW_QUERY_HEADER,
 } from "@/lib/catalog";
+import { DEEP_START } from "@/lib/deep-start";
 import { MESSAGES, translator } from "@/lib/dictionaries";
 import {
   componentCatalogue,
@@ -38,12 +40,11 @@ import {
 } from "@/lib/server-data";
 import type { Rates, Settings } from "@/lib/settings-core";
 import { Arrival } from "./arrival";
-import { AvatarStrip } from "./avatar-strip";
+import { FilterBand } from "./band";
 import type { ClauseNames } from "./clause-text";
 import type { Facets, SearchMark } from "./filter-style";
 import { FilterUrlProvider } from "./filter-url";
 import { CountSilhouette, ResultsSilhouette } from "./loading";
-import { RefreshProgress } from "./refresh";
 import { ResultCount, Results } from "./results";
 import { Toolbar } from "./toolbar";
 
@@ -196,60 +197,60 @@ async function Catalog({
       height="auto"
       padding={6}
       header={
-        // padding 0 and a Section inside, as the template (:4339-4353), so the progress bar runs along the header's
-        // top edge; the Section keeps the page inset (TEMPLATE-MAP rule 5) where the template has 16 px
-        <LayoutHeader hasDivider padding={0} label={t("filter.region")}>
-          <VStack gap={0} style={{ position: "relative" }}>
-            <RefreshProgress />
-            <Section
-              variant="transparent"
-              padding={6}
-              className="filter-toolbar"
-            >
-              <VStack gap={4}>
-                <HStack gap={3} vAlign="center" wrap="wrap">
-                  <Heading level={1}>{title}</Heading>
-                  {recent && <RecentCount />}
-                  {(recent || filters.view === "favourites") && <ViewActions />}
-                </HStack>
-                {/* filters and sort do not apply to the recent view. The row and the avatar strip render with
-                    the frame, not as boundaries of their own: React streams a large finished boundary apart from
-                    its parent and reveals it later, and the grid below moved when it arrived. */}
-                {!recent && (
-                  <Toolbar
-                    title={title}
-                    facets={facets}
-                    names={names}
-                    count={
-                      <Suspense fallback={<CountSilhouette />}>
-                        <ResultCount
-                          outcome={outcome}
-                          settings={settings}
-                          hasQuery={!!filters.q}
-                        />
-                      </Suspense>
-                    }
-                  />
-                )}
-              </VStack>
-            </Section>
-          </VStack>
+        // padding 0 and a Section inside, as the template (:4339-4353); the Section keeps the page inset
+        // (TEMPLATE-MAP rule 5) where the template has 16 px. The divider and the progress bar are the band's.
+        <LayoutHeader padding={0}>
+          <Section
+            variant="transparent"
+            padding={6}
+            paddingBlockEnd={recent ? 6 : 0}
+          >
+            <HStack gap={3} vAlign="center" wrap="wrap">
+              <Heading level={1}>{title}</Heading>
+              {recent && <RecentCount />}
+              {(recent || filters.view === "favourites") && <ViewActions />}
+            </HStack>
+          </Section>
         </LayoutHeader>
       }
       content={
-        // the default padding: a content area under a header starts 4 below it (owner: the template's 6 left too
-        // much space above the strip), and the strip sits the same 4 above the grid
-        <LayoutContent isScrollable={false}>
-          <VStack gap={4}>
-            {filters.view === "items" && (
-              <AvatarStrip
-                avatars={avatars.map((a) => ({
-                  slug: a.slug,
-                  en: avatarName(a, settings.ui),
-                  image_url: a.image_url,
-                }))}
-              />
-            )}
+        // not scrolling itself, so the band sticks to the window (band.tsx); the band and the results carry the
+        // page inset, the results the default 4 below the header (owner: the template's 6 left too much space)
+        <LayoutContent isScrollable={false} padding={0}>
+          <FilterBand
+            label={t("filter.region")}
+            avatars={
+              filters.view === "items"
+                ? avatars.map((a) => ({
+                    slug: a.slug,
+                    en: avatarName(a, settings.ui),
+                    image_url: a.image_url,
+                  }))
+                : undefined
+            }
+            folded={page > 1}
+            // filters and sort do not apply to the recent view. The row and the avatar strip render with the
+            // frame, not as boundaries of their own: React streams a large finished boundary apart from its
+            // parent and reveals it later, and the grid below moved when it arrived.
+            toolbar={
+              !recent && (
+                <Toolbar
+                  title={title}
+                  facets={facets}
+                  names={names}
+                  count={
+                    <Suspense fallback={<CountSilhouette />}>
+                      <ResultCount
+                        outcome={outcome}
+                        settings={settings}
+                        hasQuery={!!filters.q}
+                      />
+                    </Suspense>
+                  }
+                />
+              )
+            }
+          >
             <Suspense
               fallback={<ResultsSilhouette label={t("list.loading")} />}
             >
@@ -261,12 +262,17 @@ async function Catalog({
                   rates={rates}
                   settings={settings}
                   filters={filters}
-                  page={page}
                   noSemantic={noSemantic}
                 />
               )}
             </Suspense>
-          </VStack>
+            {page > 1 && !recent && (
+              <script
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
+                dangerouslySetInnerHTML={{ __html: DEEP_START }}
+              />
+            )}
+          </FilterBand>
         </LayoutContent>
       }
     />

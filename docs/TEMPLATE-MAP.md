@@ -61,15 +61,15 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Surface | Route / trigger | Astryx template | Status |
 |---|---|---|---|
 | Page frame | every route | page `shell-top-nav` (AppShell + TopNav, heading with master's logo; end actions: language menu, currency menu, colour mode, account) | checkpoint 1 |
-| Home grid | `/` | header: page `table-filter` (`LayoutHeader hasDivider` > indeterminate `ProgressBar` > `Section` > title row + toolbar row, page.tsx:4335-4500); body: page `library` (Card Grid) card grid, empty state | phase 1 |
+| Home grid | `/` | header: page `table-filter` (`LayoutHeader` > `Section` > title row, page.tsx:4335-4500); its toolbar row is the filter band, a sticky `Section` first in a `LayoutContent isScrollable={false}` (LayoutContent.d.ts:28-33, example :70-75; style object as page `product-detail` `stickyInfo` :26-30, opaque as page `dashboard-alert-rail` `stickyHeader` :895-900) carrying the header's divider and the indeterminate `ProgressBar` on it; body: page `library` (Card Grid) card grid, empty state | phase 1 |
 | Result tile | home grid | page `product-gallery`, `ProductCard` (square media; title, secondary line = shop icon and name, price `large` bold with a favourite `IconButton`); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`). The server renders the first 24 tiles; the rest of the page's 100 are drawn in the browser near the viewport, a tile silhouette holding their place | phase 1 |
 | Search | home, leading the filter row | page `table-filter` search `TextInput size="sm"` (:3419-3430, `searchSlot`); Enter or a pause applies `q`, Ctrl/Cmd+K focuses it | phase 1 |
 | Filter clauses, sort, saved searches | the toolbar row | page `table-filter` `filterBar` (:3408-3494): one closed trigger per filter that doubles as its chip, folding from the end into "+N" (`FilterOverflow`, :2034-2121: `Popover`; `BottomSheet` on a compact surface), then the readout "{n} items • Clear all". End cluster: sort `DropdownMenu`, save (`IconButton`, `AdaptiveSavedViewForm` :2122), saved-views toggle swapping the row for `savedViewsBar` (:3495) | checkpoint 1 |
-| Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar exactly as page `product-detail`'s image thumbnails, lines 117-150: square `AspectRatio` > `SelectableCard variant="transparent" padding={0}` filling it > image filling and covering; name as caption below); the first 14 cards until the strip is touched, focused or scrolled | phase 1 |
+| Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar exactly as page `product-detail`'s image thumbnails, lines 117-150: square `AspectRatio` > `SelectableCard variant="transparent" padding={0}` filling it > image filling and covering; name as caption below); the first 14 cards until the strip is touched, focused or scrolled. Its label line as block `CarouselSnap` (:22-27: bold body label above the carousel, gap 3); the row ends with the toggle, a ghost `sm` `Button` with Collapsible's trigger anatomy (its label and a chevron turned up to fold), its middle on the shrunk cards' middle. Shrunk with the scroll under the filter toolbar: the same strip, its cards' squares scaled to 40 px (Avatar's size scale) about their bottom edge, the names as they are, the prev/next buttons gone (they sit on the top layer above the band); open state and aria-expanded/aria-controls of block `CollapsibleHookUsage` (:14-42); see deviations | phase 1 |
 | Item detail | `?item=<id>`, tile click | page `product-detail` inside a `Dialog` (blocks `DialogAdaptivePresentation`, `DialogFullscreenDialog`, `DialogWithSubtitle`): gallery (block `CarouselSnap` hero, `SelectableCard` thumbnails, block `LightboxGallery` zoom), info column (SegmentedControl language tabs, display-2 title, rating row as likes, price row, `Badge` marks, `Banner` avatar fit, two lg actions, `CollapsibleGroup` sections with blocks `ListBasicList` and `MetadataListBasicMetadata`, `Token` chips), "More from" `Carousel` strip; full screen with a `LayoutFooter` bar below lg | phase 2 |
-| Pagination | under the grid | `Pagination` component; no template covers paging (gap) | phase 1 |
+| Endless results | the grid, page by page | page `table-filter` `useInfiniteBatches` (:1160-1237) with `/api/search` pages for its timer, sentinel (:2356-2376, margin two screens), "All N loaded" line (:4517-4538); silhouette tiles while a page loads, inline retry Banner on failure (in a page's own place for a page above); a start past page 1 puts the pages before it above it as boxes of the estimated height (at most 40 at once, more as the reader nears their top), each read when in view; the URL names the page in view (`replaceState`), Back and reload return to the same tile; hidden prev/next links for crawlers (`components/catalog/result-pages.tsx`) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
-| Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); every image box holds a `Skeleton` under its image until the image paints; refresh: nothing for 150 ms, then the template's indeterminate `ProgressBar` along the header's top edge (:4341-4347) held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
+| Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); every image box holds a `Skeleton` under its image until the image paints; refresh: nothing for 150 ms, then the template's indeterminate `ProgressBar` (:4341-4347) as a 2 px square line on the filter band's bottom edge (doona `apps/lite` src/ui.tsx:131-137, at its header's edge; restyled by its theme hooks for this instance only) held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
 | Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms) | checkpoint 1 |
 | Account menu | TopNav end, signed in | ghost `IconButton` with the user-circle glyph (template `shell-side-nav` account row, page.tsx:180), tooltip the display name; `DropdownMenu` with a header (display name, email) and two groups: favourites, recently viewed / settings, admin console (admins only), sign out | track D |
 | Language, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio group (interface language only); currency as a ghost DropdownMenu button of the same height | checkpoint 1 |
@@ -176,8 +176,51 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   dev warning suggests: extending the prebuilt theme makes it an unbuilt theme whose CSS `Theme` generates and
   injects at run time, on top of the shipped `theme.css`.
 - Tile title: `weight="normal"` on the level-4 Heading, the weight the tiles were approved with at checkpoint 1.
+- Avatar strip folding: no template shrinks a strip with the scroll. The strip stays one Carousel Snap strip (owner
+  2026-11-09: 「跟著捲動連續縮小」): the band sticks higher by the strip's shrink with its toolbar pinned inside (two nested
+  `position: sticky`), so the strip goes on under the toolbar while each card's square scales to 40 px about its
+  bottom edge, then stays over the results. The shrink is a scroll-driven CSS animation of `scale` and `opacity`
+  only (app/globals.css `strip-*`; paused at a progress set from the scroll where scroll timelines are missing;
+  under reduced motion none runs and the strip is whole or shrunk), so the flow never changes and nothing below
+  moves. The toggle follows block `CollapsibleHookUsage` (its own trigger and content on `useCollapsible`'s state
+  shape) with plain state: open, the band sticks at the top bar's edge and the strip glides down to full size over
+  the results (lib/motion `glide`, Astryx's `--ease-standard` in, `--ease-exit` and `--duration-exit` out); at full
+  size with the page it folds by scrolling to where the scroll shrinks it. The Carousel's prev/next buttons sit on
+  the top layer, above the band, so they go as the shrink starts.
+- Boxes for tiles not drawn (`result-pages.tsx`, pages not read and pages given up far from view) paint the tile
+  silhouette through a CSS mask measured once from a hidden `TileSilhouette` (`silhouette.tsx` `silhouetteMask`),
+  in the Skeleton's own static look (`--color-skeleton` at its resting 0.25 opacity, as it shows under reduced
+  motion; core `src/Skeleton/Skeleton.tsx:81`, `:91`, `:108`): a Skeleton per tile there would be thousands of
+  running layers, and an empty box showed white when scrolled into fast.
+- Filter band's sticky top: `--_app-shell-header-height`, the AppShell's private variable (AppShell.js: set on its
+  root from the header's measured height, by a ResizeObserver in an effect, so only once it hydrates; not in its
+  `.d.ts`). The band sticks under the top bar with it, as the AppShell's own sticky parts do, and a start past
+  page 1 (`lib/deep-start.ts`, before hydration) sets the same value on the same element first. Re-check it on an
+  Astryx update.
 - Avatar strip: `SelectableCard` is documented for multi-select; the strip is single-select (one avatar or
   all). Kept because it is the component with a selected state for media cards; ClickableCard has none.
+- Strip toggle label (`avatar-strip.tsx`): both labels ("Collapse", "Expand") stand in one grid cell with the one
+  not shown hidden, so the button keeps its width as it turns. They are plain `span`s, the one raw markup here: a
+  button holds phrasing content only (a Stack is a `div`), and `Text` would set its own type and colour over the
+  button's.
+- Readout "Page N" (`result-pages.tsx` `PageInView`): from page 2 on the readout reads "Page N · {n} items", N
+  the page in view (the address's). No template has it. `.readout-line` (`app/filter-row.css`) puts it on the
+  side away from where the count is set (before it at the row's end, after it on a phone's own line), so the
+  count never moves when it appears.
+- Clause list clip (`app/filter-row.css` `.filter-clauses`): 1 px of block padding cancelled by a -1 px margin,
+  so the clip reaches 1 px past the controls; flush with them, the sticky band's sub-pixel offset (the top bar is
+  55.17 px tall) cut a control's top or bottom border.
+- Astryx class and DOM hooks outside the `.d.ts` files, to re-check on an Astryx update:
+  - `.astryx-app-shell` and `.astryx-app-shell-header` (`lib/deep-start.ts`): the deep start sets the shell's
+    header height variable on the shell before it hydrates (above).
+  - `.astryx-skeleton` (`silhouette.tsx` `silhouetteMask`, `app/globals.css` image skeletons): the boxes' mask is
+    measured from a silhouette's Skeletons, and a painted image's Skeleton is dropped.
+  - The Carousel's top-layer `[popover]` (its prev/next buttons) under `[data-strip]` (`app/globals.css`
+    `strip-*`): faded and hidden as the strip shrinks.
+  - The Carousel's scroll area `:scope > [role="group"]` (`avatar-strip.tsx`): the vertical wheel scrolls it by
+    the same `scrollBy` the Carousel's Shift + wheel uses.
+  - `.astryx-progress-bar-track` and `-fill` (`app/filter-row.css` `.band-progress`): the refresh progress as a
+    2 px square-ended line on the band's divider instead of the 8 px pill on a muted track.
 
 ## Deviations in the beautification batch
 
@@ -189,6 +232,9 @@ Templates copied as is to `web/templates/` (not compiled); each adapted file nam
   first screen): whole rows at 5 too would take 60 tiles, 19 KB of HTML over the size budget.
 - Image skeletons: each image is a `SkeletonImage` (`catalog/silhouette.tsx`), an `img` over a `Skeleton` in one
   grid cell, server markup with no handler; the image is positioned so it paints above the animated Skeleton.
+  Once the image is decoded, one document listener in the head marks it `data-painted` and `globals.css` drops
+  the Skeleton under it: each running Skeleton under a painted image was a compositor layer, about 300 on a
+  screen of results, and layerizing them took most of every scrolled frame. A new `src` is a new `img` (keyed).
 - Top bar account: both variants are server markup in `[data-account-slot]` wrappers (`display: contents`), and
   `globals.css` shows one by `<html data-account>`, set before the first paint from `lib/session-hint.ts`.
 - Avatar cards and the item gallery's thumbnails: `padding={0.5}` (the selection ring's width) and an image
@@ -328,6 +374,8 @@ Deviations, all prop values or token-backed inline styles:
 - Height caps: DropdownMenu's 300 px cap is lifted to `menuMaxHeight` 480 px (`lib/menu-height.ts`) on the
   language, sort, download and account menus, whose rem rows outgrow it at the page scale or in a roomier theme;
   the viewport still bounds them.
+- Dialog height: the item dialog takes settings' cap, `min(50rem, calc(100dvh - 2rem))` (`lib/dialog-height.ts`),
+  instead of Dialog's default 75dvh, so on a short window it is as tall as settings (owner, 2026-11-09).
 - Search tokens: the Tokenizer's cap of a token's wrapper at the field's width is lifted (`app/filter-row.css`),
   so a token in a phone's narrow field keeps its words and the field scrolls them sideways.
 - Matcha and Y2K popups: a Selector's 300 px list cap and a ComplexSelector's 480 px panel cap grow by the themes'

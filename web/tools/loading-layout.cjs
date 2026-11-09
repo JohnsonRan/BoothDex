@@ -1,8 +1,8 @@
 // Loading-layout check (modelled on doona apps/lite/scripts/loading-layout.cjs): with the search held back by the
 // slow-API proxy, the loading frame must have the final frame's geometry. At 1440x900 and 390x844 it records
 // the boxes of the header, count, search, avatar strip, controls and the first screen of tiles with their
-// parts (lab.cjs GEOMETRY) while loading and after the results arrive, then while a page change refreshes and
-// after it; every box must stay within 2 px, tiles per row equal, and no layout shift may be recorded. A control
+// parts (lab.cjs GEOMETRY) while loading and after the results arrive; every box must stay within 2 px and tiles
+// per row equal. Then it scrolls on into page 2, read as slowly, and no layout shift may be recorded throughout. A control
 // that first appears in a place the loading frame already holds (the fold trigger at hydration) is no failure by
 // itself: it moves no other box and shifts nothing.
 //   node tools/loading-layout.cjs <page url> <proxy url> [delay ms=2500]
@@ -12,7 +12,7 @@ const {
   RECORDER,
   GEOMETRY,
   compare,
-  nextPageButton,
+  scrollToPage,
 } = require("./lab.cjs");
 
 const [
@@ -28,13 +28,13 @@ const SIZES = [
 const settle = (p) =>
   p.waitForFunction(
     () =>
-      document
-        .getAnimations()
-        .every(
-          (a) =>
-            a.playState !== "running" ||
-            a.effect?.getTiming().iterations === Infinity,
-        ),
+      document.getAnimations().every(
+        // a scroll-driven animation (the avatar strip's shrink) runs as long as the page does
+        (a) =>
+          a.playState !== "running" ||
+          a.effect?.getTiming().iterations === Infinity ||
+          !(a.timeline instanceof DocumentTimeline),
+      ),
     null,
     { timeout: 5000 },
   );
@@ -77,26 +77,10 @@ const settle = (p) =>
       `; ${tiles} tiles, ${ready.perRow} per row (loading ${loading.perRow})`,
     );
 
-    // page change: the current results stay, with the progress bar along the header's top edge
+    // the next page, read while the reader scrolls: silhouettes hold the rows it arrives in
     await lab(proxy, { delay });
-    await (await nextPageButton(p)).click();
-    await p.waitForSelector('[data-refresh="shown"]', { timeout: 3000 });
-    await p.waitForTimeout(300);
-    const refreshing = await p.evaluate(GEOMETRY);
-    report(`${width}x${height} refreshing`, compare(ready, refreshing));
-    await p.waitForURL(/page=2/, { timeout: 5000 }).catch(() => {});
-    await p.waitForSelector('[data-refresh="idle"]', {
-      state: "attached",
-      timeout: Number(delay) + 15000,
-    });
-    await settle(p);
-    await p.waitForTimeout(500);
-    const after = await p.evaluate(GEOMETRY);
-    report(
-      `${width}x${height} page 2`,
-      compare(ready, after),
-      `; url ${new URL(p.url()).search}`,
-    );
+    await scrollToPage(p, 2);
+    console.log(`${width}x${height} scrolled to ${new URL(p.url()).search}`);
 
     const shifts = await p.evaluate(() => window.__shifts);
     failed ||= shifts.length > 0;

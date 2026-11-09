@@ -56,6 +56,14 @@
   align-items: flex-end;
 }
 
+/* The page cue (catalog/result-pages.tsx PageInView) joins the count on the side away from where the count is set,
+   so the count never moves when it appears in the sticky band: before it while the count sits at the end, after it
+   on a phone, where the readout starts its own line. */
+.readout-line {
+  align-self: stretch;
+  justify-content: flex-end;
+}
+
 /* A phone (owner's request; the template keeps one line): where the row cannot hold the search, the trigger and the
    reserve (7.5 + 0.5 + 3 + 11.5 rem, inside the toolbar's own 2 x 1.5 rem inset), the readout takes a line of its
    own under the row and the slot keeps just the trigger, so the search and "+N" stay as they were. Decided by the
@@ -78,6 +86,9 @@
     flex-grow: 0;
     align-items: flex-start;
   }
+  .filter-toolbar .readout-line {
+    flex-direction: row-reverse;
+  }
 }
 
 /* The favourites and recent views' actions sit at the end of the title row, as the template's title-row action
@@ -98,7 +109,12 @@
    trigger appears in that place. Once folded the clauses left fit on the one line, so this changes nothing. */
 .filter-clauses {
   flex-wrap: wrap;
+  /* the clip reaches 1 px past the controls on each side: flush with them, a sub-pixel offset of the sticky band
+     (the top bar is 55.17 px tall) cut a control's top or bottom border */
+  box-sizing: content-box;
   block-size: var(--size-element-sm);
+  padding-block: 1px;
+  margin-block: -1px;
 }
 .filter-clauses::before {
   content: "";
@@ -192,4 +208,17 @@
 }
 .filter-search .astryx-typeahead-dropdown {
   max-height: 60vh;
+}
+
+/* The refresh progress on the filter band's bottom edge (catalog/refresh.tsx), by its theme hooks and only here:
+   a 2 px square-ended line over the band's divider instead of the 8 px pill on a muted track, which read as a
+   separate bar in themes with a tinted muted colour (Y2K's beige). Core's rules carry up to four :not(#\#), so
+   these carry one class more. */
+.band-progress .astryx-progress-bar-track:not(#\#):not(#\#):not(#\#):not(#\#) {
+  height: 2px;
+  border-radius: 0;
+  background-color: transparent;
+}
+.band-progress .astryx-progress-bar-fill:not(#\#):not(#\#):not(#\#):not(#\#) {
+  border-radius: 0;
 }
