@@ -18,7 +18,7 @@ import { fetchAccount } from "@/lib/api";
 import { DEFAULT_FILTERS, type Filters, filtersToQuery } from "@/lib/catalog";
 import { saveAvatar } from "@/lib/preferences";
 import { useDelayed } from "@/lib/use-delayed";
-import { changeTop } from "./band";
+import { changeTop } from "./band-edge";
 
 const MY_AVATAR = "myAvatar";
 

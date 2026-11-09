@@ -9,7 +9,7 @@
 // A reload, Back or Forward is the results' own restore and is left to it; a page restored from the back-forward
 // cache runs no script, and React never runs a script it renders on a client-side navigation. Anything missing
 // makes it do nothing.
-// The line is band.tsx covered(): the band's sticky top plus its height, its strip shrunk; the top is the top bar's
+// The line is band-edge.ts covered(): the band's sticky top plus its height, its strip shrunk; the top is the top bar's
 // height (less the strip's shrink), which the AppShell sets on its root only once it hydrates, so this sets it
 // first, as AppShell does. The results then start at that line, where the band's bottom edge meets them.
 

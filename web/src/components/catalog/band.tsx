@@ -43,6 +43,7 @@ import {
   CHIP_REM,
   type StripMorph,
 } from "./avatar-strip";
+import { attachBand, attachBar } from "./band-edge";
 import { RefreshProgress } from "./refresh";
 import { StripToggleContext, type StripToggleState } from "./strip-toggle";
 
@@ -75,40 +76,6 @@ const STRIP_DY = `calc(${CARD_REM - CHIP_REM}rem + var(--spacing-2) + var(--text
 const STRIP_D = `calc(var(--spacing-4) + var(--text-body-leading) * var(--text-body-size) + var(--spacing-3) + ${STRIP_DY} - var(--spacing-2))`;
 // the chip's scale of the card (app/globals.css `strip-thumb`)
 const STRIP_SCALE = CHIP_REM / CARD_REM;
-
-let band: HTMLElement | null = null;
-let bar: HTMLElement | null = null;
-
-/**
- * The viewport px above the line the band's bottom edge holds once stuck with its strip shrunk (opened by hand or
- * not, so a place saved and the same place restored agree): content above it is under the top bar or the band.
- * Scrolling does not change it, so a place measured from it is found again at the same scroll. deep-start.ts
- * reads the same line before the page hydrates.
- */
-export function covered() {
-  if (!band || !bar) return 0;
-  const head = getComputedStyle(band);
-  return (
-    Number.parseFloat(getComputedStyle(bar).top) -
-    (Number.parseFloat(head.getPropertyValue("--strip-d")) || 0) +
-    band.getBoundingClientRect().height
-  );
-}
-
-/**
- * Where a filter change scrolls the window (filter-url.tsx), as the new results go in from their start: the page's
- * top while the avatar strip is at full size; with it shrunk (opened by hand or not) where it stays shrunk, the
- * results at their start under the band; part-way, where the window is. Without a strip, the top.
- */
-export function changeTop() {
-  const at = band?.dataset.shrink;
-  if (!band || !at || at === "none") return 0;
-  const end =
-    (Number.parseFloat(band.style.getPropertyValue("--strip-y0")) || 0) +
-    (Number.parseFloat(getComputedStyle(band).getPropertyValue("--strip-d")) ||
-      0);
-  return Math.min(scrollY, Math.ceil(end));
-}
 
 export function FilterBand({
   label,
@@ -150,13 +117,13 @@ export function FilterBand({
 
   // covered() reads these as they attach, not from a layout effect of the band's: the results are its children,
   // whose layout effects run first when the two mount together (a client navigation back to the results)
-  const attachBand = useCallback((el: HTMLElement | null) => {
+  const onBand = useCallback((el: HTMLElement | null) => {
     ref.current = el;
-    band = el;
+    attachBand(el);
   }, []);
-  const attachBar = useCallback((el: HTMLDivElement | null) => {
+  const onBar = useCallback((el: HTMLDivElement | null) => {
     barRef.current = el;
-    bar = el;
+    attachBar(el);
   }, []);
 
   // each server render sends the avatars as a new array: the same ones keep the strip and its observers as they are
@@ -301,7 +268,7 @@ export function FilterBand({
   return (
     <VStack gap={0}>
       <Section
-        ref={attachBand}
+        ref={onBand}
         aria-label={label}
         variant="transparent"
         padding={0}
@@ -322,7 +289,7 @@ export function FilterBand({
         }
       >
         <VStack
-          ref={attachBar}
+          ref={onBar}
           padding={toolbar ? 6 : 0}
           paddingBlockStart={toolbar ? 4 : 0}
           className="filter-toolbar"

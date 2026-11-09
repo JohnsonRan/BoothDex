@@ -52,7 +52,7 @@ import {
   withPage,
 } from "@/lib/result-pages";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
-import { covered } from "./band";
+import { covered } from "./band-edge";
 import { FIRST_TILES, GRID, type Tile, tileOf } from "./item-tile";
 import { RefreshFailed } from "./refresh";
 import { silhouetteMask, TileSilhouette } from "./silhouette";
