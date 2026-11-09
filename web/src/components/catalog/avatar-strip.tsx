@@ -9,9 +9,17 @@
 // Carousel maps only Shift + wheel itself (Carousel.d.ts:5-8).
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
 // focus or scroll in the strip, before any of them can come into view.
-// The strip is one: under the filter band it shrinks with the page's scroll (band.tsx, app/globals.css
-// `strip-*`), each card's square to 40 px about its bottom edge while its name stays as it is, and its label
-// goes under the band. The cards are memoised: the band's state changes around them without drawing them again.
+// The strip is one: under the filter band it shrinks with the page's scroll (band.tsx, app/globals.css `strip-*`)
+// into a row of chips, each the card's own image round at Avatar's 32 px size with its name beside it, as the
+// table-filter template's person cell (page.tsx:2862-2867: an Avatar and its name in an HStack, gap 2, centred).
+// Each card's square moves and shrinks to its chip's place, measured here once (and again on a resize, a font load
+// or a sideways scroll of the cards) as a distance per card (`--chip-x`) and one for the row (`--chip-ax`), which
+// brings the first card in view to the row's start; over it the same image fades in clipped round (AspectRatio
+// `shape="ellipse"`, AspectRatio.tsx:68-78) with the selection ring over it, the caption fades out and the
+// chip's name in. All of it is transform and opacity, so the compositor runs it with the scroll. Shrunk and in
+// use (a pointer, a touch, focus or a wheel on it), the chips are laid out for real (`data-chips`), as they were
+// drawn, so the row scrolls and snaps chip by chip. The cards are memoised: the band's state changes around them
+// without drawing them again.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Carousel, type CarouselHandle } from "@astryxdesign/core/Carousel";
@@ -20,28 +28,143 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { memo, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  memo,
+  type RefObject,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useUi } from "@/components/providers";
 import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
 import { useFilterUrl } from "./filter-url";
 import { SkeletonImage, THUMB_RADIUS } from "./silhouette";
 
-// a card's square at full size and shrunk by the scroll, in rem (104 and 40 px at a 16 px root); Booth's avatar
-// thumbnails are square. The band's shrink (band.tsx `--strip-d`, `--strip-scale`) is reckoned from these.
+// a card's square at full size and a chip's round avatar (Avatar's 32 px size), in rem at a 16 px root; Booth's
+// avatar thumbnails are square. The band's shrink (band.tsx `--strip-d`, `--strip-scale`) is reckoned from these.
 export const CARD_REM = 6.5;
-export const SHRUNK_REM = 2.5;
-const CARD_WIDTH = `${CARD_REM}rem`;
+export const CHIP_REM = 2;
+// A chip's name with the space after it at most this wide, ellipsised past it; the "all" glyph (Icon lg, 1.5rem)
+// at 1rem in its chip, drawn that much larger on the round face the card shrinks with.
+const SIZES = {
+  "--strip-card": `${CARD_REM}rem`,
+  "--strip-chip": `${CHIP_REM}rem`,
+  "--strip-name": "8rem",
+  "--strip-glyph": 1 / (1.5 * (CHIP_REM / CARD_REM)),
+} as CSSProperties;
 // cards rendered before the strip is used: more than fit across 1440 px (with the "all" card)
 const FIRST_CARDS = 14;
 const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
+// what puts the shrunk strip to use: its chips are then laid out for real
+const USE = ["pointerover", "touchstart", "focusin", "wheel"] as const;
 // A touch screen swipes the strip, so it gets no prev/next buttons. They also break iOS Safari 26's toolbar: they
 // sit in an always-open fixed top-layer popover, which Safari's toolbar sampling finds at the bottom edge
 // (WebKit LocalFrameView::fixedContainerEdges), so it painted the toolbar solid instead of letting the page show
 // through. Without buttons the Carousel hides that layer (display: none), which the sampling skips.
 const TOUCH = "(hover: none) and (pointer: coarse)";
 
+/** Where the page's scroll has the strip (band.tsx): full size, shrinking, or shrunk and at rest. */
+export type StripState = "none" | "part" | "rest";
+export type StripMorph = { settle: (state: StripState) => void };
+
+// The Carousel's scroll area, its documented scroll-area group; it exposes no scroller, only its edge queries.
+const scrollArea = (strip: HTMLElement) =>
+  strip.querySelector<HTMLElement>(':scope > [role="group"]');
+
+// The chip row the scroll morphs the cards into: each chip's start in it (its card's in the cards' row is the card
+// pitch times its index), the row's length, the row's distance (`--chip-ax`), and where the strip stands.
+type Row = {
+  chipX: number[];
+  length: number;
+  pitch: number;
+  ax: number;
+  state: StripState;
+  /** the chips laid out for real */
+  chips: boolean;
+};
+
+const shift = (el: HTMLElement, r: Row, ax: number) => {
+  r.ax = ax;
+  el.style.setProperty("--chip-ax", `${ax}px`);
+};
+
+// The row's distance: the card nearest the row's start becomes the first chip, or the chips end at the strip's end.
+// Taken as the cards stand, before they move.
+function anchor(el: HTMLElement, r: Row) {
+  const area = scrollArea(el);
+  if (!area || !r.pitch || r.chips) return;
+  const s = area.scrollLeft;
+  const first = Math.min(r.chipX.length - 1, Math.round(s / r.pitch));
+  const end = Math.max(0, r.length - area.clientWidth);
+  const ax = s - Math.min(r.chipX[first] ?? 0, end);
+  if (ax !== r.ax) shift(el, r, ax);
+}
+
+// Each chip's width is its name's start and width (app/globals.css `.strip-name`), as wide as the tile laid out as
+// a chip; each card's distance to its chip (`--chip-x`) follows.
+function measure(el: HTMLElement | null, r: Row) {
+  const area = el && scrollArea(el);
+  const tiles = area
+    ? [...area.querySelectorAll<HTMLElement>(".strip-tile")]
+    : [];
+  const thumb = tiles[0]?.querySelector<HTMLElement>(".strip-thumb");
+  if (!el || !area || !thumb) return;
+  // read everything, then write: a write between reads would make each read lay the strip out again
+  const gap = Number.parseFloat(getComputedStyle(area).columnGap) || 0;
+  const pitch = Number.parseFloat(getComputedStyle(thumb).width) + gap;
+  const names = tiles.map((t) => t.querySelector<HTMLElement>(".strip-name"));
+  const lead = names[0]
+    ? Number.parseFloat(getComputedStyle(names[0]).insetInlineStart)
+    : 0;
+  const widths = names.map(
+    (n) => lead + (n?.getBoundingClientRect().width ?? 0),
+  );
+  const chipX: number[] = [];
+  let x = 0;
+  for (const w of widths) {
+    chipX.push(x);
+    x += w + gap;
+  }
+  for (const [i, t] of tiles.entries())
+    t.style.setProperty("--chip-x", `${chipX[i] - i * pitch}px`);
+  Object.assign(r, { chipX, length: x - gap, pitch });
+  anchor(el, r);
+}
+
+// Scrolls the row to a chip's or a card's start at once. Chromium's mandatory snap may pick another start for a
+// scroll made as the layout changes, so the snap is off for it; back on, it finds the row on a start already.
+function jump(area: HTMLElement, left: number) {
+  area.style.scrollSnapType = "none";
+  area.scrollTo({ left, behavior: "instant" });
+  area.style.scrollSnapType = "";
+}
+
+// Shrunk to the end and in use, the chips are laid out for real, the row scrolled to where they were drawn; as the
+// strip leaves rest, the cards are drawn as the chips were, the chip nearest the row's start the first card in view.
+// The chips wait for use, so a scroll through the shrink never lays them out; leaving rest undoes it once.
+function lay(el: HTMLElement | null, r: Row, chips: boolean) {
+  const area = el && scrollArea(el);
+  if (chips === r.chips || !el || !area) return;
+  const s = area.scrollLeft;
+  r.chips = chips;
+  if (chips) {
+    el.dataset.chips = "";
+    jump(area, s - r.ax);
+    return;
+  }
+  let first = 0;
+  for (const [i, x] of r.chipX.entries())
+    if (Math.abs(x - s) < Math.abs(r.chipX[first] - s)) first = i;
+  delete el.dataset.chips;
+  jump(area, first * r.pitch);
+  shift(el, r, area.scrollLeft - s);
+}
+
 const AllGlyph = () => (
-  <VStack height="100%" hAlign="center" vAlign="center">
+  <VStack height="100%" hAlign="center" vAlign="center" className="strip-glyph">
     <Icon icon="site:allAvatars" size="lg" color="secondary" />
   </VStack>
 );
@@ -50,11 +173,17 @@ export function AvatarStrip({
   avatars,
   controls,
   onPick,
+  folded,
+  morph,
 }: {
   avatars: Avatar[];
   /** an id for the cards, which the toolbar's toggle names as what it shows at full size or shrunk */
   controls: string;
   onPick: () => void;
+  /** shrunk from the first paint (band.tsx): the chips are laid out from the server on */
+  folded: boolean;
+  /** how the band tells the cards where the scroll has the strip */
+  morph: RefObject<StripMorph | null>;
 }) {
   const { t } = useUi();
   return (
@@ -64,7 +193,12 @@ export function AvatarStrip({
       </Text>
       <HStack className="strip-row">
         <StackItem size="fill" id={controls}>
-          <Cards avatars={avatars} onPick={onPick} />
+          <Cards
+            avatars={avatars}
+            onPick={onPick}
+            folded={folded}
+            morph={morph}
+          />
         </StackItem>
       </HStack>
     </VStack>
@@ -74,9 +208,13 @@ export function AvatarStrip({
 const Cards = memo(function Cards({
   avatars,
   onPick,
+  folded,
+  morph,
 }: {
   avatars: Avatar[];
   onPick: () => void;
+  folded: boolean;
+  morph: RefObject<StripMorph | null>;
 }) {
   const { t, ui } = useUi();
   const { filters, apply } = useFilterUrl();
@@ -114,8 +252,8 @@ const Cards = memo(function Cards({
     };
   }, [all]);
   // non-passive, so the page stays put; trackpad sideways deltas and Shift + wheel stay the Carousel's. The
-  // Carousel exposes no scroller, only its edge queries, so the scroll goes to its documented scroll-area
-  // group, by the same scrollBy its Shift + wheel uses, which keeps the mandatory snap stepping a card at a time.
+  // scroll goes to the Carousel's scroll area by the same scrollBy its Shift + wheel uses, which keeps the
+  // mandatory snap stepping a card at a time.
   useEffect(() => {
     const el = strip.current;
     if (!el) return;
@@ -124,13 +262,79 @@ const Cards = memo(function Cards({
       if (e.shiftKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || !c) return;
       if (!(e.deltaY > 0 ? c.canScrollNext() : c.canScrollPrev())) return;
       e.preventDefault();
-      el.querySelector(':scope > [role="group"]')?.scrollBy({
-        left: e.deltaY,
-        behavior: "auto",
-      });
+      scrollArea(el)?.scrollBy({ left: e.deltaY, behavior: "auto" });
+    };
+    // A card's control is the SelectableCard's input beside its surface, so a press on a tile (its card, caption or
+    // name) would hand focus to the nearest focusable box, the Carousel's scroll area, and the next key (paging the
+    // results) would show its ring round the whole strip. A press leaves focus where it is; the keyboard still
+    // reaches every card.
+    const onPress = (e: MouseEvent) => {
+      if (e.target instanceof Element && e.target.closest(".strip-tile"))
+        e.preventDefault();
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    el.addEventListener("mousedown", onPress);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("mousedown", onPress);
+    };
+  }, []);
+
+  const row = useRef<Row>({
+    chipX: [],
+    length: 0,
+    pitch: 0,
+    ax: 0,
+    state: folded ? "rest" : "none",
+    chips: folded,
+  });
+  useImperativeHandle(
+    morph,
+    () => ({
+      settle(state) {
+        const r = row.current;
+        r.state = state;
+        if (state !== "rest") lay(strip.current, r, false);
+      },
+    }),
+    [],
+  );
+  // the cards rendered and their names set the chips' places; a resize sets the row's end, a font the names' widths
+  // biome-ignore lint/correctness/useExhaustiveDependencies: what is rendered changes the tiles measure reads
+  useLayoutEffect(
+    () => measure(strip.current, row.current),
+    [all, avatars, ui],
+  );
+  useEffect(() => {
+    const el = strip.current;
+    const area = el && scrollArea(el);
+    if (!el || !area) return;
+    const place = () => anchor(el, row.current);
+    const again = () => measure(el, row.current);
+    // without scrollend (Safari), once the cards stop moving
+    let timer = 0;
+    const later = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(place, 150);
+    };
+    const end = "onscrollend" in window ? "scrollend" : "scroll";
+    const moved = end === "scroll" ? later : place;
+    const use = () => {
+      if (row.current.state === "rest") lay(el, row.current, true);
+    };
+    const sized = new ResizeObserver(place);
+    sized.observe(area);
+    area.addEventListener(end, moved);
+    document.fonts.addEventListener("loadingdone", again);
+    for (const e of USE)
+      el.addEventListener(e, use, { capture: true, passive: true });
+    return () => {
+      clearTimeout(timer);
+      sized.disconnect();
+      area.removeEventListener(end, moved);
+      document.fonts.removeEventListener("loadingdone", again);
+      for (const e of USE) el.removeEventListener(e, use, { capture: true });
+    };
   }, []);
 
   return (
@@ -141,76 +345,94 @@ const Cards = memo(function Cards({
       handleRef={carousel}
       ref={strip}
       aria-label={t("strip.label")}
+      className="strip-cards"
+      style={SIZES}
+      data-chips={folded ? "" : undefined}
     >
       <Tile
         label={t("strip.all")}
         selected={!value}
         onSelect={() => pick("")}
-        hasImage={false}
-      >
-        <AllGlyph />
-      </Tile>
+      />
       {(all ? avatars : avatars.slice(0, FIRST_CARDS - 1)).map((a) => (
         <Tile
           key={a.slug}
           label={avatarName(a, ui)}
           selected={a.slug === value}
           onSelect={() => pick(a.slug === value ? "" : a.slug)}
-          hasImage={!!a.image_url}
-        >
-          {a.image_url ? (
-            <SkeletonImage
-              radius={THUMB_RADIUS}
-              src={imageSrc(a.image_url, "300x300_a2_g5")}
-              loading="lazy"
-              decoding="async"
-            />
-          ) : (
-            <AllGlyph />
-          )}
-        </Tile>
+          src={a.image_url && imageSrc(a.image_url, "300x300_a2_g5")}
+        />
       ))}
     </Carousel>
   );
 });
 
+// A card over its caption, the round face of its chip over the card; its chip's name beside where the card shrinks
+// to, hidden from assistive technology as the caption already names the card.
 function Tile({
   label,
   selected,
   onSelect,
-  hasImage,
-  children,
+  src,
 }: {
   label: string;
   selected: boolean;
   onSelect: () => void;
-  /** a glyph instead of a picture sits on the muted card surface, so the card still reads as one */
-  hasImage: boolean;
-  children: React.ReactNode;
+  /** the avatar's image; without one a glyph sits on the muted card surface, so the card still reads as one */
+  src?: string | null;
 }) {
+  const image = (radius?: string) =>
+    src ? (
+      <SkeletonImage
+        radius={radius}
+        src={src}
+        loading="lazy"
+        decoding="async"
+      />
+    ) : (
+      <AllGlyph />
+    );
   return (
-    <VStack gap={2} width={CARD_WIDTH}>
+    <VStack gap={2} className="strip-tile">
       <AspectRatio ratio={1} className="strip-thumb">
         <SelectableCard
           label={label}
           isSelected={selected}
           onChange={onSelect}
-          variant={hasImage ? "transparent" : "muted"}
+          variant={src ? "transparent" : "muted"}
           padding={0.5}
           width="100%"
           height="100%"
+          className="strip-card"
         >
-          {children}
+          {image(THUMB_RADIUS)}
         </SelectableCard>
+        <AspectRatio
+          ratio={1}
+          shape="ellipse"
+          fit="cover"
+          className="strip-face"
+          data-glyph={src ? undefined : ""}
+          data-selected={selected ? "" : undefined}
+          aria-hidden
+        >
+          {image()}
+        </AspectRatio>
       </AspectRatio>
       <Text
         type="supporting"
         maxLines={1}
         justify="center"
         hasTruncateTooltip={false}
+        className="strip-caption"
       >
         {label}
       </Text>
+      <HStack vAlign="center" className="strip-name" aria-hidden>
+        <Text type="supporting" maxLines={1} hasTruncateTooltip={false}>
+          {label}
+        </Text>
+      </HStack>
     </VStack>
   );
 }

@@ -18,6 +18,7 @@ import { fetchAccount } from "@/lib/api";
 import { DEFAULT_FILTERS, type Filters, filtersToQuery } from "@/lib/catalog";
 import { saveAvatar } from "@/lib/preferences";
 import { useDelayed } from "@/lib/use-delayed";
+import { changeTop } from "./band";
 
 const MY_AVATAR = "myAvatar";
 
@@ -93,7 +94,7 @@ export function FilterUrlProvider({
         setCurrent(next);
         router.replace(url, { scroll: false });
       });
-      window.scrollTo({ top: 0 });
+      window.scrollTo({ top: changeTop() });
     };
     return {
       filters: current,

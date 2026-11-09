@@ -5,13 +5,14 @@
 // carries the page header's divider and, on that edge, the refresh progress (refresh.tsx).
 // The avatar strip is the band's lower part: the band sticks a strip's shrink higher (`--strip-d`) with the toolbar
 // pinned inside it, so once the toolbar reaches the top bar the strip goes on under it for that far while its
-// cards shrink to 40 px, then stays, laid over the results that scroll beneath. The shrink is scroll-driven CSS
-// (app/globals.css `strip-*`, transform and opacity only); nothing in the flow changes, so nothing below moves.
+// cards morph into a row of chips the height of the toolbar's controls (avatar-strip.tsx), then stays, laid over
+// the results that scroll beneath. The morph is scroll-driven CSS (app/globals.css `strip-*`, transform and
+// opacity only); nothing in the flow changes, so nothing below moves. The band tells the strip where the scroll
+// has it, so shrunk and in use it lays its chips out for real.
 // The toggle in the toolbar's end cluster (strip-toggle.tsx, handed the strip's state here) opens the shrunk strip
-// over the results (the band sticks at the top bar's edge and the strip glides down to full size, lib/motion
-// `glide`) and folds it back; while the strip is still at full size with the page it folds it as the scroll does,
-// by scrolling there. A start past page 1 opens scrolled
-// there (deep-start.ts).
+// over the results (the band sticks at the top bar's edge and the strip glides down to full size along the
+// morph, lib/motion `glide`) and folds it back; while the strip is still at full size with the page it folds it
+// as the scroll does, by scrolling there. A start past page 1 opens scrolled there (deep-start.ts).
 // The state is the page's own, as the Collapsible blocks' custom disclosure (CollapsibleHookUsage.tsx:14-42: the
 // open state, a trigger with aria-expanded and aria-controls, the content it shows).
 
@@ -36,7 +37,12 @@ import {
   lookOf,
   prefersReducedMotion,
 } from "@/lib/motion";
-import { AvatarStrip, CARD_REM, SHRUNK_REM } from "./avatar-strip";
+import {
+  AvatarStrip,
+  CARD_REM,
+  CHIP_REM,
+  type StripMorph,
+} from "./avatar-strip";
 import { RefreshProgress } from "./refresh";
 import { StripToggleContext, type StripToggleState } from "./strip-toggle";
 
@@ -61,12 +67,14 @@ const BAR: CSSProperties = {
 };
 // its own layer of the band, so the surface behind it stays behind its cards
 const STRIP: CSSProperties = { position: "relative", isolation: "isolate" };
-// How far the strip goes under the toolbar: its top padding, its label line and the label's gap, then the
-// cards' shrink less the 8 px a shrunk card keeps from the toolbar. Registered as a length (app/globals.css), so
-// it reads back in px.
-const STRIP_D = `calc(var(--spacing-4) + var(--text-body-leading) * var(--text-body-size) + var(--spacing-3) + ${CARD_REM - SHRUNK_REM}rem - var(--spacing-2))`;
-// the shrunk card's scale of the full one (app/globals.css `strip-thumb`)
-const STRIP_SCALE = SHRUNK_REM / CARD_REM;
+// A card's top to its chip's: a chip ends where its card's caption does (the card, the caption's gap and line).
+const STRIP_DY = `calc(${CARD_REM - CHIP_REM}rem + var(--spacing-2) + var(--text-supporting-leading) * var(--text-supporting-size))`;
+// How far the strip goes under the toolbar: its top padding, its label line and the label's gap, then a card's
+// top to its chip's less the 8 px a chip keeps from the toolbar, as many as the strip keeps below it. Registered
+// as a length (app/globals.css), so it reads back in px.
+const STRIP_D = `calc(var(--spacing-4) + var(--text-body-leading) * var(--text-body-size) + var(--spacing-3) + ${STRIP_DY} - var(--spacing-2))`;
+// the chip's scale of the card (app/globals.css `strip-thumb`)
+const STRIP_SCALE = CHIP_REM / CARD_REM;
 
 let band: HTMLElement | null = null;
 let bar: HTMLElement | null = null;
@@ -87,11 +95,26 @@ export function covered() {
   );
 }
 
+/**
+ * Where a filter change scrolls the window (filter-url.tsx), as the new results go in from their start: the page's
+ * top while the avatar strip is at full size; with it shrunk (opened by hand or not) where it stays shrunk, the
+ * results at their start under the band; part-way, where the window is. Without a strip, the top.
+ */
+export function changeTop() {
+  const at = band?.dataset.shrink;
+  if (!band || !at || at === "none") return 0;
+  const end =
+    (Number.parseFloat(band.style.getPropertyValue("--strip-y0")) || 0) +
+    (Number.parseFloat(getComputedStyle(band).getPropertyValue("--strip-d")) ||
+      0);
+  return Math.min(scrollY, Math.ceil(end));
+}
+
 export function FilterBand({
   label,
   toolbar,
   avatars,
-  folded = false,
+  folded: foldedNow = false,
   children,
 }: {
   label: string;
@@ -108,6 +131,10 @@ export function FilterBand({
   const barRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const id = useId();
+  // How the server drew the first paint. The band takes over from there and sets its marks itself (`data-morph`,
+  // `data-shrink`, the strip's `data-chips`), so a later render with another page (a filter change from a start
+  // past page 1, which goes to page 1) must not take them back.
+  const [folded] = useState(foldedNow);
   // the strip shrunk all the way with the scroll
   const [shrunk, setShrunk] = useState(folded);
   // opened over the results by hand
@@ -117,6 +144,9 @@ export function FilterBand({
   const was = useRef<Look | null>(null);
   const openNow = useRef(open);
   openNow.current = open;
+  const morph = useRef<StripMorph>(null);
+  // a hand turn's glide while it runs: the strip is not at rest until it ends
+  const gliding = useRef<Animation[] | null>(null);
 
   // covered() reads these as they attach, not from a layout effect of the band's: the results are its children,
   // whose layout effects run first when the two mount together (a client navigation back to the results)
@@ -151,11 +181,20 @@ export function FilterBand({
         ? Math.min(1, Math.max(0, (scrollY - start) / length))
         : 0;
       if (!driven) head.style.setProperty("--strip-p", String(p));
-      // the shrink runs from the first measure on; reduced motion shows the strip whole or shrunk (app/globals.css)
+      // the shrink runs from the first measure on (`data-morph`); where the scroll has it (`data-shrink`) hides the
+      // Carousel's buttons, and reduced motion shows the strip whole or shrunk by it (app/globals.css)
       const state = p <= 0 ? "none" : p >= 1 ? "all" : "part";
+      head.dataset.morph ??= "";
       if (head.dataset.shrink !== state) head.dataset.shrink = state;
       span.current.shrunk = p >= 1;
       setShrunk(p >= 1);
+      morph.current?.settle(
+        p <= 0
+          ? "none"
+          : p >= 1 && !openNow.current && !gliding.current
+            ? "rest"
+            : "part",
+      );
       // back at full size with the page, an opened strip is the same as one that is not
       if (p <= 0) setOpen(false);
     };
@@ -198,17 +237,28 @@ export function FilterBand({
     };
   }, [hasStrip]);
 
-  // a hand turn glides from the look before it; the first render and a turn by the scroll stay as they are
+  // a hand turn glides from the look before it; the first render and a turn by the scroll stay as they are. Folded
+  // back, the strip is at rest once the glide has drawn it.
   useLayoutEffect(() => {
     const from = was.current;
     const s = stripRef.current;
     was.current = null;
     if (!from || !s) return;
-    return cancelOnReducedMotion(glide(s, from, open));
+    const running = glide(s, from, open);
+    gliding.current = running;
+    Promise.allSettled(running.map((a) => a.finished)).then(() => {
+      if (gliding.current !== running) return;
+      gliding.current = null;
+      if (span.current.shrunk && !openNow.current)
+        morph.current?.settle("rest");
+    });
+    return cancelOnReducedMotion(running);
   }, [open]);
 
   const turn = useCallback((next: boolean) => {
     const s = stripRef.current;
+    // opened from the chips: the cards drawn as the chips are, which the glide takes to full size
+    if (next) morph.current?.settle("part");
     if (s) was.current = lookOf(s, s.querySelectorAll<HTMLElement>(PARTS));
     setOpen(next);
   }, []);
@@ -231,8 +281,16 @@ export function FilterBand({
 
   const strip = useMemo(
     () =>
-      shown && <AvatarStrip avatars={shown} controls={id} onPick={picked} />,
-    [shown, id, picked],
+      shown && (
+        <AvatarStrip
+          avatars={shown}
+          controls={id}
+          onPick={picked}
+          folded={folded}
+          morph={morph}
+        />
+      ),
+    [shown, id, picked, folded],
   );
   const expanded = open || !shrunk;
   const toggleState = useMemo<StripToggleState | null>(
@@ -249,12 +307,14 @@ export function FilterBand({
         padding={0}
         data-strip-open={open ? "" : undefined}
         // a start past page 1 is shrunk from the first paint; page 1 shrinks once measured
+        data-morph={avatars && folded ? "" : undefined}
         data-shrink={avatars && folded ? "all" : undefined}
         style={
           avatars
             ? ({
                 ...(open ? OPEN : HEAD),
                 "--strip-d": STRIP_D,
+                "--strip-dy": STRIP_DY,
                 "--strip-scale": STRIP_SCALE,
                 "--strip-p": folded ? 1 : 0,
               } as CSSProperties)
@@ -308,5 +368,6 @@ export function FilterBand({
   );
 }
 
-/** what the scroll shrinks or fades in the strip (app/globals.css), each glided by a hand turn */
-const PARTS = ".strip-thumb, .strip-label, .strip-surface";
+/** what the scroll morphs or fades in the strip (app/globals.css), each glided by a hand turn */
+const PARTS =
+  ".strip-thumb, .strip-face, .strip-card, .strip-caption, .strip-name, .strip-label, .strip-surface";
