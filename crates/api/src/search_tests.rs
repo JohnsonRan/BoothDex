@@ -99,12 +99,39 @@ async fn load_items_fills_every_field(pool: PgPool) {
     .await
     .unwrap();
 
-    let items = db::load_items(&pool, &[1]).await.unwrap();
+    let items = db::load_items(&pool, &[1], false).await.unwrap();
+    assert_eq!(db::load_items(&pool, &[1], true).await.unwrap(), items.iter().cloned().map(db::ItemResponse::card).collect::<Vec<_>>());
     let item = serde_json::to_value(&items[0]).unwrap();
     let nulls: Vec<&String> = item.as_object().unwrap().iter().filter(|(_, v)| v.is_null()).map(|(k, _)| k).collect();
     assert!(nulls.is_empty(), "load_items left these fields null: {nulls:?}");
     assert_eq!(item["linked_avatars"][0]["slug"], "shinano");
     assert_eq!(item["categories"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn sql_cards_match_the_reference_projection(pool: PgPool) {
+    let translations = [
+        json!({ "en": { "title": "Title", "bio": "Long bio", "variations": { "v": "V" } }, "ja": { "title": null }, "ko": { "bio": "No title" }, "original_language": "ja" }),
+        json!({ "en": null, "ja": "text", "ko": [], "zh": { "title": "中文" }, "custom": { "title": 42 } }),
+        json!(null), json!(42), json!(["array"]), json!({}),
+    ];
+    for (i, translation) in translations.iter().enumerate() {
+        sqlx::query(
+            "insert into items (id, title, bio, author_name, author_uri, is_adult, status, scraped_at, media, booth_tags, variations, translations)
+             values ($1, 'Title', repeat('Description ', 1000), 'creator', 'https://example.test', false, 'ok', now(), '{m1,m2,m3}', '{tag}', '[{\"id\":1,\"name\":\"Variation\",\"price_jpy\":500,\"status\":\"available\",\"type\":\"digital\"}]', $2)",
+        )
+        .bind(i as i64 + 1)
+        .bind(translation)
+        .execute(&pool).await.unwrap();
+    }
+    sqlx::raw_sql("insert into booth_images (item_id, images, complete, fetched_at) values (1, '{b1,b2,b3}', true, now()), (2, '{}', false, now());
+                   update items set media = '{}' where id = 2;").execute(&pool).await.unwrap();
+    let ids = [6, 1, 2, 3, 999, 4, 5];
+    let full = db::load_items(&pool, &ids, false).await.unwrap();
+    let cards = db::load_items(&pool, &ids, true).await.unwrap();
+    assert_eq!(cards, full.into_iter().map(db::ItemResponse::card).collect::<Vec<_>>());
+    assert!(db::load_items(&pool, &[], true).await.unwrap().is_empty());
 }
 
 #[sqlx::test(migrations = "../core/migrations")]

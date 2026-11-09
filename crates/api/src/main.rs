@@ -170,8 +170,8 @@ async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cl
     // first occurrence wins in Params, so the prefix pins ordering and size
     let p = Params::parse(&format!("sort=newest&dir=desc&page=1&pageSize=50&{user_q}"));
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, now, None, None))?;
-    let items = db::load_items(&s.pool, &r.ids).await?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, now, None, None, false))?;
+    let items = db::load_items(&s.pool, &r.ids, false).await?;
     let link = format!("{}/?{user_q}", s.site_url);
     Ok(([(axum::http::header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")], rss::render(&link, &user_q, &items)).into_response())
 }
@@ -207,8 +207,8 @@ async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cli
     let adult = p.get("adult").unwrap_or_else(|| "safe".into());
     let item_params = Params::parse(&format!("q={}&adult={}&sort=relevant&pageSize=8", urlencode(&text), urlencode(&adult)));
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&item_params, now, None, None))?;
-    let items: Vec<Value> = db::load_items(&s.pool, &r.ids)
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&item_params, now, None, None, false))?;
+    let items: Vec<Value> = db::load_items(&s.pool, &r.ids, true)
         .await?
         .into_iter()
         .map(|it| {
@@ -245,7 +245,7 @@ async fn items_by_id(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit:
         Ok(p) => p,
         Err(r) => return Ok(r),
     };
-    Ok(Json(json!({ "items": db::load_items(&s.pool, &ids).await? })).into_response())
+    Ok(Json(json!({ "items": db::load_items(&s.pool, &ids, false).await? })).into_response())
 }
 
 /// `ids=` from a raw query, at most 100. Not `Params`: that caps lists at 10, and the web proxy re-encodes the
@@ -484,6 +484,33 @@ mod tests {
             assert_eq!(call(ip).await.status(), StatusCode::OK);
         }
         assert_eq!(call(ip).await.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn search_cpu_timing_excludes_the_permit_queue() {
+        use axum::body::to_bytes;
+        use axum::extract::{RawQuery, State};
+        use axum::http::HeaderMap;
+        use axum::response::IntoResponse;
+
+        let state = test_state();
+        let held = state.search_permits.acquire_many(16).await.unwrap();
+        let request = super::search::search(
+            State(state.clone()), super::limit::ClientIp("203.0.113.70".parse().unwrap()), HeaderMap::new(), RawQuery(None),
+        );
+        tokio::pin!(request);
+        // Poll all the way to the exhausted semaphore before starting the controlled wait.
+        assert!(futures_util::poll!(&mut request).is_pending());
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        drop(held);
+        let response = request.await.unwrap_or_else(IntoResponse::into_response);
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+        let steps = body["trace"].as_array().unwrap();
+        let ms = |step: &str| steps.iter().find(|s| s["step"] == step).unwrap()["ms"].as_f64().unwrap();
+        assert!(ms("queue") >= 25.0, "{body}");
+        assert!(body["timing"]["searchMs"].as_f64().unwrap() <= ms("search") + 1.0, "{body}");
+        assert!(body["timing"]["totalMs"].as_f64().unwrap() >= ms("queue"), "{body}");
     }
 
     #[tokio::test]

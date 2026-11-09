@@ -90,6 +90,7 @@ pub(crate) struct TraceStep {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Timing {
+    // Catalogue CPU work only; embedding, permit wait and item hydration are separate trace steps.
     search_ms: f64,
     total_ms: f64,
 }
@@ -151,6 +152,7 @@ pub(crate) async fn search(
     let q = p.get("q").unwrap_or_default();
     let (meaning, named) = s.snap().avatars.split_names(&q);
     let models: Vec<String> = named.iter().map(|(slug, _)| slug.clone()).collect();
+    trace.step("prepare");
     let embed_plan = match p.get("q").filter(|q| !q.trim().is_empty()) {
         Some(_) if p.get("sem").as_deref() == Some("0") => EmbedPlan::Skipped,
         Some(_) if meaning.is_empty() => EmbedPlan::Skipped,
@@ -162,13 +164,15 @@ pub(crate) async fn search(
         Ok(p) => p,
         Err(r) => return Ok(r),
     };
+    trace.step("queue");
     let (semantic, semantic_status) = match embed_plan {
-        EmbedPlan::Vector(vector) => match nearest(&s, &vector, &models).await {
-            Some(ids) => {
-                trace.step("neighbours");
-                (Some(ids), SemanticStatus::Used)
+        EmbedPlan::Vector(vector) => {
+            let ids = nearest(&s, &vector, &models).await;
+            trace.step("neighbours");
+            match ids {
+                Some(ids) => (Some(ids), SemanticStatus::Used),
+                None => (None, SemanticStatus::Unavailable),
             }
-            None => (None, SemanticStatus::Unavailable),
         },
         EmbedPlan::Off => (None, SemanticStatus::Off),
         EmbedPlan::Skipped => (None, SemanticStatus::Skipped),
@@ -182,14 +186,11 @@ pub(crate) async fn search(
     let catalog_now = chrono::Utc::now().timestamp();
     let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
         .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models, rest: &meaning });
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref(), semantic))?;
+    let search_start = Instant::now();
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref(), semantic, true))?;
+    let search_ms = search_start.elapsed().as_secs_f64() * 1e3;
     trace.step("search");
-    let search_ms = t0.elapsed().as_secs_f64() * 1e3;
-    let mut items = db::load_items(&s.pool, &r.ids).await?;
-    // the site's result grids ask for card-sized items; other callers keep the full records
-    if p.get("fields").as_deref() == Some("card") {
-        items = items.into_iter().map(db::ItemResponse::card).collect();
-    }
+    let items = db::load_items(&s.pool, &r.ids, p.get("fields").as_deref() == Some("card")).await?;
     trace.step("items");
     Ok(Json(SearchResponse {
         count: r.count,
@@ -212,9 +213,10 @@ pub(crate) async fn search(
 
 /// Resolves the query embedding (or why there isn't one) before acquiring a search execution permit.
 pub(crate) async fn semantic_vector(s: Arc<AppState>, ip: std::net::IpAddr, q: &str, trace: &mut Trace) -> EmbedPlan {
-    let Ok(c) = s.ai_config().await else { return EmbedPlan::Unavailable };
-    let (Some(base), Some(key), Some(model)) = (c.base_url.clone(), c.api_key.clone(), c.embed_model.clone()) else { return EmbedPlan::Off };
+    let config = s.ai_config().await;
     trace.step("settings");
+    let Ok(c) = config else { return EmbedPlan::Unavailable };
+    let (Some(base), Some(key), Some(model)) = (c.base_url.clone(), c.api_key.clone(), c.embed_model.clone()) else { return EmbedPlan::Off };
     match query_embedding(s, ip, q, base, key, model, trace).await {
         Some(v) => EmbedPlan::Vector(v),
         None => EmbedPlan::Unavailable,

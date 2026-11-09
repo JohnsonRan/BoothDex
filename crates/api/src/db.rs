@@ -146,8 +146,9 @@ pub struct Translation {
     variations: Option<std::collections::BTreeMap<String, Option<String>>>,
 }
 
+#[cfg(test)]
 impl ItemResponse {
-    /// What a result card shows, in the same shape: bio, variations, tags, linked avatars and categories come
+    /// Reference projection for checking the SQL card path: bio, variations, tags, linked avatars and categories come
     /// back empty, translations keep only titles and images only the cover and hover preview.
     /// A page of 100 shrinks from ~1.3 MB to ~100 KB of JSON; the item page loads the full record.
     pub fn card(mut self) -> Self {
@@ -319,8 +320,8 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
         .collect())
 }
 
-/// Full item payloads for one result page, in the given order.
-pub async fn load_items(pool: &PgPool, ids: &[i64]) -> Result<Vec<ItemResponse>> {
+/// Item payloads in the given order. Card mode avoids loading details that result grids discard.
+pub async fn load_items(pool: &PgPool, ids: &[i64], card: bool) -> Result<Vec<ItemResponse>> {
     if ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -328,7 +329,7 @@ pub async fn load_items(pool: &PgPool, ids: &[i64]) -> Result<Vec<ItemResponse>>
         "select i.id, jsonb_build_object(
             'id', i.id,
             'title', i.title,
-            'bio', i.bio,
+            'bio', case when $2 then '' else i.bio end,
             'author_name', i.author_name,
             'author_uri', i.author_uri,
             'author_icon', i.author_icon,
@@ -350,21 +351,26 @@ pub async fn load_items(pool: &PgPool, ids: &[i64]) -> Result<Vec<ItemResponse>>
             'needs_enrichment', i.needs_enrichment,
             'last_listed_at', i.last_listed_at,
             'enrich_failures', i.enrich_failures,
-            'media', to_jsonb(i.media),
-            'booth_tags', to_jsonb(i.booth_tags),
-            'variations', i.variations,
-            'translations', i.translations,
-            'linked_avatars', coalesce((select jsonb_agg(jsonb_build_object('slug', a.slug, 'en', a.name_en, 'ja', a.name_ja, 'ko', a.name_ko, 'image_url', coalesce((select b.images[1] from booth_images b where b.item_id = a.avatar_item_id), a.image_url)) order by a.slug)
-                               from item_avatars ia join avatars a on a.slug = ia.avatar_slug where ia.item_id = i.id), '[]'::jsonb),
-            'categories', coalesce((select jsonb_agg(jsonb_build_object('slug', ic.category_slug, 'is_primary', ic.is_primary))
-                               from item_categories ic where ic.item_id = i.id), '[]'::jsonb),
+            'media', to_jsonb(case when $2 then i.media[1:2] else i.media end),
+            'booth_tags', case when $2 then '[]'::jsonb else to_jsonb(i.booth_tags) end,
+            'variations', case when $2 then '[]'::jsonb else i.variations end,
+            'translations', case when $2 then (
+                select coalesce(jsonb_object_agg(lang, jsonb_build_object('title', translation->'title')), '{}'::jsonb)
+                from jsonb_each(case when jsonb_typeof(i.translations) = 'object' then i.translations else '{}'::jsonb end) t(lang, translation)
+                where jsonb_typeof(translation) = 'object' and translation ? 'title'
+            ) else i.translations end,
+            'linked_avatars', case when $2 then '[]'::jsonb else coalesce((select jsonb_agg(jsonb_build_object('slug', a.slug, 'en', a.name_en, 'ja', a.name_ja, 'ko', a.name_ko, 'image_url', coalesce((select b.images[1] from booth_images b where b.item_id = a.avatar_item_id), a.image_url)) order by a.slug)
+                               from item_avatars ia join avatars a on a.slug = ia.avatar_slug where ia.item_id = i.id), '[]'::jsonb) end,
+            'categories', case when $2 then '[]'::jsonb else coalesce((select jsonb_agg(jsonb_build_object('slug', ic.category_slug, 'is_primary', ic.is_primary))
+                               from item_categories ic where ic.item_id = i.id), '[]'::jsonb) end,
             -- Booth image URLs (canonical); `media` keeps the archived VRCatalogue CDN URLs for delisted items
-            'booth_images', (select to_jsonb(b.images) from booth_images b where b.item_id = i.id),
+            'booth_images', (select to_jsonb(case when $2 then b.images[1:2] else b.images end) from booth_images b where b.item_id = i.id),
             'booth_images_complete', (select b.complete from booth_images b where b.item_id = i.id),
             'relisted_as', i.relisted_as)
          from items i where i.id = any($1)",
     )
     .bind(ids)
+    .bind(card)
     .fetch_all(pool)
     .await?;
     let by_id: HashMap<i64, ItemResponse> = rows.into_iter().map(|(id, r)| (id, r.0)).collect();

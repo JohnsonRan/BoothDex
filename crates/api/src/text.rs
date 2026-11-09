@@ -231,7 +231,8 @@ impl TextIndex {
         // "short hair" finds "ShortHair" and "shorthair" finds "Short Hair"
         let words: Vec<String> = query_words(q).split_whitespace().map(compact).filter(|w| !w.is_empty()).collect();
         let mut needles = vec![words.clone()];
-        if words.len() > 1 {
+        // With no single-character word, the joined hits are already a subset of the per-word hits.
+        if words.len() > 1 && words.iter().any(|w| w.chars().count() < 2) {
             needles.push(vec![words.concat()]);
         }
         for needles in needles {
@@ -339,6 +340,15 @@ mod tests {
         assert_eq!(hits.iter().collect::<Vec<_>>(), [0]);
         let (hits, _) = idx.search("nothing-here").unwrap();
         assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn single_character_words_keep_the_joined_substring_fallback() {
+        let docs = vec![doc("AB accessory", ""), doc("XZ set", ""), doc("ShortHair", ""), doc("ショートヘア", "")];
+        let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
+        for (query, expected) in [("a b", vec![0]), ("x z", vec![1]), ("s h", vec![2]), ("シ ョート", vec![3]), ("short hair", vec![2])] {
+            assert_eq!(idx.search(query).unwrap().0.iter().collect::<Vec<_>>(), expected, "query {query:?}");
+        }
     }
 
     #[test]

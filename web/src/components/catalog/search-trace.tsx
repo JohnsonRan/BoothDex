@@ -14,12 +14,14 @@ import type { MessageKey } from "@/lib/messages";
 
 const STEPS = new Set([
   "favourites",
+  "prepare",
   "settings",
   "embed_memory",
   "embed_db",
   "embed_provider",
   "embed_timeout",
   "embed_failed",
+  "queue",
   "neighbours",
   "search",
   "items",

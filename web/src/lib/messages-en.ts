@@ -112,6 +112,8 @@ export const en: Dict = {
   "trace.server": "Server",
   "trace.total": "Total",
   "trace.step.favourites": "Read favourites",
+  "trace.step.prepare": "Prepare query",
+  "trace.step.queue": "Wait for search slot",
   "trace.step.settings": "Read settings",
   "trace.step.embed_memory": "Query embedding (memory cache)",
   "trace.step.embed_db": "Query embedding (database cache)",

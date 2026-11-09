@@ -112,6 +112,8 @@ export const ko: Dict = {
   "trace.server": "서버",
   "trace.total": "전체",
   "trace.step.favourites": "즐겨찾기 읽기",
+  "trace.step.prepare": "검색어 준비",
+  "trace.step.queue": "검색 실행 대기",
   "trace.step.settings": "설정 읽기",
   "trace.step.embed_memory": "검색 벡터(메모리 캐시)",
   "trace.step.embed_db": "검색 벡터(데이터베이스 캐시)",

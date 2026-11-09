@@ -112,6 +112,8 @@ export const ja: Dict = {
   "trace.server": "サーバー",
   "trace.total": "合計",
   "trace.step.favourites": "お気に入りの読み込み",
+  "trace.step.prepare": "クエリの準備",
+  "trace.step.queue": "検索の実行待ち",
   "trace.step.settings": "設定の読み込み",
   "trace.step.embed_memory": "検索ベクトル（メモリキャッシュ）",
   "trace.step.embed_db": "検索ベクトル（データベースキャッシュ）",

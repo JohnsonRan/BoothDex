@@ -340,8 +340,8 @@ impl Catalog {
     }
 
     /// `semantic`: item ids nearest to the query by meaning (see main.rs); they join the text hits and, when
-    /// sorting by relevance, the two rankings are merged.
-    pub fn search(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>) -> Result<SearchResult> {
+    /// sorting by relevance, the two rankings are merged. Autocomplete and RSS skip facet counts.
+    pub fn search(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>, count_facets: bool) -> Result<SearchResult> {
         let q = p.get("q").filter(|q| !q.trim().is_empty());
         let mut text = q.as_deref().map(|q| self.text.search(q)).transpose()?;
         if let (Some((hits, scores)), Some(sem)) = (text.as_mut(), semantic) {
@@ -376,13 +376,15 @@ impl Catalog {
 
         // disjunctive facets: each group's counts ignore that group's own selection
         let mut facets = Facets::default();
-        let base = self.intersect(&cs, Some(Group::BoothCat));
-        facets.booth = self.booth_cats.0.iter().map(|(k, b)| (k.clone(), base.intersection_len(b))).filter(|(_, n)| *n > 0).collect();
-        let base = self.intersect(&cs, Some(Group::SmartCat));
-        let cats = if p.get("scp").as_deref() == Some("1") { &self.cats_primary } else { &self.cats };
-        facets.smart = cats.0.iter().map(|(k, b)| (k.clone(), base.intersection_len(b))).filter(|(_, n)| *n > 0).collect();
-        let base = self.intersect(&cs, Some(Group::Features));
-        facets.features = FEATURES.iter().map(|f| (f.to_string(), base.intersection_len(self.features.0.get(*f).unwrap_or(&RoaringBitmap::new())))).collect();
+        if count_facets {
+            let base = self.intersect(&cs, Some(Group::BoothCat));
+            facets.booth = self.booth_cats.0.iter().map(|(k, b)| (k.clone(), base.intersection_len(b))).filter(|(_, n)| *n > 0).collect();
+            let base = self.intersect(&cs, Some(Group::SmartCat));
+            let cats = if p.get("scp").as_deref() == Some("1") { &self.cats_primary } else { &self.cats };
+            facets.smart = cats.0.iter().map(|(k, b)| (k.clone(), base.intersection_len(b))).filter(|(_, n)| *n > 0).collect();
+            let base = self.intersect(&cs, Some(Group::Features));
+            facets.features = FEATURES.iter().map(|f| (f.to_string(), base.intersection_len(self.features.0.get(*f).unwrap_or(&RoaringBitmap::new())))).collect();
+        }
 
         let asc = p.get("dir").as_deref() == Some("asc");
         let (sort, scores) = match (p.get("sort").as_deref(), &text) {
@@ -562,7 +564,7 @@ mod tests {
         ] {
             let p = Params::parse(query);
             for sem in [None, Some(semantic)] {
-                assert_eq!(cached.search(&p, 0, Some(&favourites), sem).unwrap(), rebuilt.search(&p, 0, Some(&favourites), sem).unwrap(), "query {query:?}");
+                assert_eq!(cached.search(&p, 0, Some(&favourites), sem, true).unwrap(), rebuilt.search(&p, 0, Some(&favourites), sem, true).unwrap(), "query {query:?}");
             }
         }
         // Reusing disk files must not mutate an old snapshot still serving requests.
@@ -602,7 +604,7 @@ mod tests {
         let models = vec!["shinano".to_owned()];
         let run = |q: &str, rest: &str| {
             let sem = Semantic { ids: &[], categories: &[], models: &models, rest };
-            let mut v = c.search(&Params::parse(&format!("q={q}&sort=relevant")), 0, None, Some(sem)).unwrap().ids;
+            let mut v = c.search(&Params::parse(&format!("q={q}&sort=relevant")), 0, None, Some(sem), true).unwrap().ids;
             let first = v[0];
             v.sort();
             (first, v)
@@ -615,7 +617,7 @@ mod tests {
 
     impl Catalog {
         fn search_plain(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>) -> Result<SearchResult> {
-            self.search(p, now, favourites, None)
+            self.search(p, now, favourites, None, true)
         }
     }
 
@@ -679,6 +681,28 @@ mod tests {
         assert_eq!(r.count, 1);
         assert_eq!(r.facets.features["ma"], 2); // feature counts ignore the feature filter
         assert_eq!(r.facets.smart["clothing"], 1); // other groups respect it
+    }
+
+    #[test]
+    fn skipping_facets_preserves_results_counts_and_order() {
+        let c = catalog();
+        let favourites = c.docs_for(&[1, 2, 4, 6]);
+        let models = vec!["manuka".to_owned()];
+        let categories = vec!["clothing".to_owned()];
+        let semantic = Semantic { ids: &[4, 2], categories: &categories, models: &models, rest: "item" };
+        for query in [
+            "", "q=item", "q=item&pageSize=2&page=2", "q=missing", "if=liltoon", "sc=clothing&scp=1",
+            "adult=include&sort=price&dir=asc", "v=avatars", "v=favourites", "free=1", "avatars=manuka",
+        ] {
+            let p = Params::parse(query);
+            for sem in [None, Some(semantic)] {
+                let mut full = c.search(&p, 0, Some(&favourites), sem, true).unwrap();
+                let light = c.search(&p, 0, Some(&favourites), sem, false).unwrap();
+                assert_eq!(light.facets, Facets::default());
+                full.facets = Facets::default();
+                assert_eq!(full, light, "query {query:?}");
+            }
+        }
     }
 
     #[test]

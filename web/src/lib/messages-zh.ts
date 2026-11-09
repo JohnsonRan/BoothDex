@@ -109,6 +109,8 @@ export const zh = {
   "trace.server": "服务器",
   "trace.total": "总计",
   "trace.step.favourites": "读取收藏",
+  "trace.step.prepare": "准备查询",
+  "trace.step.queue": "搜索排队",
   "trace.step.settings": "读取设置",
   "trace.step.embed_memory": "查询向量（内存缓存）",
   "trace.step.embed_db": "查询向量（数据库缓存）",
