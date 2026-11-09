@@ -7,9 +7,10 @@
 // pinned inside it, so once the toolbar reaches the top bar the strip goes on under it for that far while its
 // cards shrink to 40 px, then stays, laid over the results that scroll beneath. The shrink is scroll-driven CSS
 // (app/globals.css `strip-*`, transform and opacity only); nothing in the flow changes, so nothing below moves.
-// The toggle at the row's end opens the shrunk strip over the results (the band sticks at the top bar's edge
-// and the strip glides down to full size, lib/motion `glide`) and folds it back; while the strip is still at
-// full size with the page it folds it as the scroll does, by scrolling there. A start past page 1 opens scrolled
+// The toggle (on the label line at full size, at the row's end once shrunk) opens the shrunk strip over the
+// results (the band sticks at the top bar's edge and the strip glides down to full size, lib/motion `glide`) and
+// folds it back; while the strip is still at full size with the page it folds it as the scroll does, by
+// scrolling there. A start past page 1 opens scrolled
 // there (deep-start.ts).
 // The state is the page's own, as the Collapsible blocks' custom disclosure (CollapsibleHookUsage.tsx:14-42: the
 // open state, a trigger with aria-expanded and aria-controls, the content it shows).
@@ -306,4 +307,5 @@ export function FilterBand({
 }
 
 /** what the scroll shrinks or fades in the strip (app/globals.css), each glided by a hand turn */
-const PARTS = ".strip-thumb, .strip-label, .strip-surface";
+const PARTS =
+  ".strip-thumb, .strip-label, .strip-toggle, .strip-cards, .strip-surface";

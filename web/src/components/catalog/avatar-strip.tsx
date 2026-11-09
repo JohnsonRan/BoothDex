@@ -3,8 +3,11 @@
 // prev/next buttons and the Carousel's own edge fade). Each card is Product Detail's selectable image thumbnail as
 // is (a transparent SelectableCard filling a square AspectRatio; its corner radius and selection ring are the
 // card's own, the image only fills and covers, inset by the ring's width so the ring shows); the name sits under it
-// as the caption of the Top Nav template's category tiles. The row ends with the toggle, Collapsible's trigger
-// anatomy: a label and a chevron that turns up to fold.
+// as the caption of the Top Nav template's category tiles. The toggle is Collapsible's trigger anatomy: a label and
+// a chevron that turns up to fold. At full size it stands on the label line at the end opposite the label, clear of
+// the cards and the Carousel's buttons, and the cards take the whole row; as they shrink it comes down to their
+// middle at the row's end, and the cards' view is clipped short of it by its width and the row's gap
+// (app/globals.css `strip-toggle`, `strip-clear`). Clipped, not narrowed, so nothing in the row moves.
 // A mouse wheel over the strip scrolls it sideways while it can move that way, as on the old strip; the
 // Carousel maps only Shift + wheel itself (Carousel.d.ts:5-8).
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
@@ -21,7 +24,14 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { type CSSProperties, memo, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useUi } from "@/components/providers";
 import { type Avatar, avatarName, imageSrc } from "@/lib/catalog";
 import { useFilterUrl } from "./filter-url";
@@ -43,6 +53,9 @@ const TOUCH = "(hover: none) and (pointer: coarse)";
 // the toggle's middle on the shrunk cards' middle: up from the row's bottom by a name line, the name's gap and half
 // the difference between a shrunk card and the button
 const TOGGLE_LIFT = `calc(var(--text-supporting-leading) * var(--text-supporting-size) + var(--spacing-2) + (${SHRUNK_REM}rem - var(--size-element-sm)) / 2)`;
+// and from there up to the label line's middle at full size: a full card less half a shrunk one, the label's gap
+// and half its line
+const TOGGLE_UP = `calc(${CARD_REM - SHRUNK_REM / 2}rem + var(--spacing-3) + var(--text-body-leading) * var(--text-body-size) / 2)`;
 
 // the toggle's two labels in one cell, the one not shown hidden: the button keeps its width as it turns, so a
 // shorter label does not shift it along the row. Plain spans: a button holds phrasing content only (a Stack is a
@@ -54,6 +67,14 @@ const LABELS: CSSProperties = {
 const SHOWN: CSSProperties = { gridArea: "1 / 1" };
 const UNSEEN: CSSProperties = { ...SHOWN, visibility: "hidden" };
 const TURNS = ["strip.collapse", "strip.expand"] as const;
+// the toggle over the row's end, out of its flow: the cards keep the whole row
+const ROW: CSSProperties = { position: "relative" };
+const TOGGLE = {
+  position: "absolute",
+  insetInlineEnd: 0,
+  insetBlockEnd: TOGGLE_LIFT,
+  "--strip-toggle-up": TOGGLE_UP,
+} as CSSProperties;
 
 const AllGlyph = () => (
   <VStack height="100%" hAlign="center" vAlign="center">
@@ -78,13 +99,26 @@ export function AvatarStrip({
 }) {
   const { t } = useUi();
   const turn = expanded ? "strip.collapse" : "strip.expand";
+  const row = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  // the toggle's width, which the cards' clip clears once shrunk; its labels are the language's
+  useLayoutEffect(() => {
+    const r = row.current;
+    const b = toggle.current;
+    if (!r || !b) return;
+    const sized = new ResizeObserver(() =>
+      r.style.setProperty("--strip-toggle-w", `${b.offsetWidth}px`),
+    );
+    sized.observe(b);
+    return () => sized.disconnect();
+  }, []);
   return (
     <VStack gap={3}>
       <Text type="body" weight="bold" className="strip-label">
         {t("filter.avatar")}
       </Text>
-      <HStack gap={4} vAlign="end" className="strip-row">
-        <StackItem size="fill" id={controls}>
+      <HStack ref={row} className="strip-row" style={ROW}>
+        <StackItem size="fill" id={controls} className="strip-cards">
           <Cards avatars={avatars} onPick={onPick} />
         </StackItem>
         <Button
@@ -97,8 +131,9 @@ export function AvatarStrip({
           }
           variant="ghost"
           size="sm"
-          // its label whole: the row gives way instead
-          style={{ flexShrink: 0, marginBlockEnd: TOGGLE_LIFT }}
+          ref={toggle}
+          className="strip-toggle"
+          style={TOGGLE}
           aria-expanded={expanded}
           aria-controls={controls}
           onClick={onToggle}
