@@ -61,6 +61,9 @@ const HEAD: CSSProperties = {
   insetBlockStart: `calc(${TOP} - var(--strip-d))`,
   zIndex: 1,
   pointerEvents: "none",
+  // the strip turning over the results slides up past the band's top, where its opaque surface would paint over the
+  // top bar (the same z-index, earlier in the DOM); clipped at the top edge only, the other sides stay open
+  clipPath: "inset(0 -100vw -100vh)",
 };
 const OPEN: CSSProperties = { ...HEAD, insetBlockStart: TOP };
 const BAR: CSSProperties = {
@@ -319,10 +322,13 @@ export function FilterBand({
     if (turning.current) return;
     if (open) turn(false);
     else if (tucked) {
-      // the chips go back to the cards' row, drawn as they are
-      morph.current?.settle("part");
-      if (scrollY <= span.current.start) tuck(false);
-      else {
+      // the chips go back to the cards' row, drawn as they are; at the top the strip's place is read first, before
+      // the cards' layout change would make that read lay the strip out
+      if (scrollY <= span.current.start) {
+        tuck(false);
+        morph.current?.settle("part");
+      } else {
+        morph.current?.settle("part");
         // scrolled past: the shrink goes back in the flow above the tiles and the window as far down, in one frame
         const results = resultsRef.current;
         const was = results?.getBoundingClientRect().top ?? 0;
