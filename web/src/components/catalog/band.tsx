@@ -61,6 +61,9 @@ const HEAD: CSSProperties = {
   insetBlockStart: `calc(${TOP} - var(--strip-d))`,
   zIndex: 1,
   pointerEvents: "none",
+  // the strip turning over the results slides up past the band's top, where its opaque surface would paint over the
+  // top bar (the same z-index, earlier in the DOM); clipped at the top edge only, the other sides stay open
+  clipPath: "inset(0 -100vw -100vh)",
 };
 const OPEN: CSSProperties = { ...HEAD, insetBlockStart: TOP };
 const BAR: CSSProperties = {
