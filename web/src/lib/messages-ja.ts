@@ -220,6 +220,7 @@ export const ja: Dict = {
   "settings.dark": "ダーク",
   "settings.light": "ライト",
   "settings.source": "ソースコード",
+  "settings.feedback": "問題の報告",
   "settings.copyright":
     "© 2026 BoothDex コントリビューター · AGPL-3.0-or-later",
   "common.close": "閉じる",
@@ -260,6 +261,6 @@ export const ja: Dict = {
   "settings.currencyDesc":
     "円以外の価格は為替レートで換算し、≈ を付けて表示します。",
   "settings.about": "バージョン情報",
-  "settings.aboutDesc": "ライセンス、ソースコード、フォントです。",
+  "settings.aboutDesc": "ライセンス、ソースコード、問題の報告です。",
   "settings.open": "開く",
 };

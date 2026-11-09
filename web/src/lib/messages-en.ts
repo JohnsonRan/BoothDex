@@ -219,6 +219,7 @@ export const en: Dict = {
   "settings.dark": "Dark",
   "settings.light": "Light",
   "settings.source": "Source code",
+  "settings.feedback": "Report an issue",
   "settings.copyright": "© 2026 BoothDex contributors · AGPL-3.0-or-later",
   "common.close": "Close",
   "common.delete": "Delete",
@@ -259,6 +260,6 @@ export const en: Dict = {
   "settings.currencyDesc":
     "Prices other than yen are converted at the exchange rate and marked ≈.",
   "settings.about": "About",
-  "settings.aboutDesc": "Licence, source code and font.",
+  "settings.aboutDesc": "Licence, source code and issue reporting.",
   "settings.open": "Open",
 };

@@ -192,6 +192,11 @@ function LanguagePanel() {
 
 const LINKS = [
   {
+    title: "settings.feedback",
+    icon: "site:feedback",
+    href: "https://github.com/JohnsonRan/BoothDex/issues",
+  },
+  {
     title: "settings.source",
     icon: "site:code",
     href: "https://github.com/JohnsonRan/BoothDex",

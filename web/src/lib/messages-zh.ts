@@ -214,6 +214,7 @@ export const zh = {
   "settings.dark": "深色",
   "settings.light": "浅色",
   "settings.source": "源代码",
+  "settings.feedback": "问题反馈",
   "settings.copyright": "© 2026 BoothDex 贡献者 · AGPL-3.0-or-later",
   "common.close": "关闭",
   "common.delete": "删除",
@@ -249,6 +250,6 @@ export const zh = {
   "settings.contentDesc": "商品标题和介绍显示的语言，没有译文时显示原文。",
   "settings.currencyDesc": "日元以外的价格按汇率换算，前面标 ≈。",
   "settings.about": "关于",
-  "settings.aboutDesc": "许可证、源代码和字体。",
+  "settings.aboutDesc": "许可证、源代码和问题反馈。",
   "settings.open": "打开",
 };

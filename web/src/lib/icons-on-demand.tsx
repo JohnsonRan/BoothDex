@@ -12,6 +12,7 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  MessageSquare,
   Minus,
   Monitor,
   Palette,
@@ -36,6 +37,7 @@ registerIcons({
   "site:itemText": <Type {...glyph} />,
   "site:currency": <Coins {...glyph} />,
   "site:code": <Code {...glyph} />,
+  "site:feedback": <MessageSquare {...glyph} />,
   "site:tag": <Hash {...glyph} />,
   // a search word read as a category (catalog/search-suggest.tsx)
   "site:category": <Shapes {...glyph} />,

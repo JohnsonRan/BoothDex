@@ -218,6 +218,7 @@ export const ko: Dict = {
   "settings.dark": "다크",
   "settings.light": "라이트",
   "settings.source": "소스 코드",
+  "settings.feedback": "문제 신고",
   "settings.copyright": "© 2026 BoothDex 기여자 · AGPL-3.0-or-later",
   "common.close": "닫기",
   "common.delete": "삭제",
@@ -257,6 +258,6 @@ export const ko: Dict = {
   "settings.currencyDesc":
     "엔 이외의 가격은 환율로 환산해 ≈ 표시와 함께 보여 줍니다.",
   "settings.about": "정보",
-  "settings.aboutDesc": "라이선스, 소스 코드, 글꼴입니다.",
+  "settings.aboutDesc": "라이선스, 소스 코드, 문제 신고입니다.",
   "settings.open": "열기",
 };
