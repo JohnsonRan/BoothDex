@@ -18,7 +18,7 @@
 // `shape="ellipse"`, AspectRatio.tsx:68-78), the caption fades out and the chip's name in, the selected one
 // semibold on a filled capsule with no ring (app/globals.css). All of it is transform and
 // opacity, so the compositor runs it with the scroll. Shrunk and in use (a pointer, a touch, focus or a wheel on
-// it), the chips are laid out for real (`data-chips`), as they were drawn, so the row scrolls and snaps chip by chip. The cards are memoised: the band's state changes around them
+// it, or the toggle folding it), the chips are laid out for real (`data-chips`), as they were drawn, so the row scrolls and snaps chip by chip. The cards are memoised: the band's state changes around them
 // without drawing them again.
 
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
@@ -32,6 +32,7 @@ import {
   type CSSProperties,
   memo,
   type RefObject,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -68,7 +69,11 @@ const TOUCH = "(hover: none) and (pointer: coarse)";
 
 /** Where the page's scroll has the strip (band.tsx): full size, shrinking, or shrunk and at rest. */
 export type StripState = "none" | "part" | "rest";
-export type StripMorph = { settle: (state: StripState) => void };
+export type StripMorph = {
+  settle: (state: StripState) => void;
+  /** The strip is in use: shrunk and at rest, its chips are laid out for real. */
+  use: () => void;
+};
 
 // The Carousel's scroll area, its documented scroll-area group; it exposes no scroller, only its edge queries.
 const scrollArea = (strip: HTMLElement) =>
@@ -288,6 +293,9 @@ const Cards = memo(function Cards({
     state: folded ? "rest" : "none",
     chips: folded,
   });
+  const use = useCallback(() => {
+    if (row.current.state === "rest") lay(strip.current, row.current, true);
+  }, []);
   useImperativeHandle(
     morph,
     () => ({
@@ -296,8 +304,9 @@ const Cards = memo(function Cards({
         r.state = state;
         if (state !== "rest") lay(strip.current, r, false);
       },
+      use,
     }),
-    [],
+    [use],
   );
   // the cards rendered and their names set the chips' places; a resize sets the row's end, a font the names' widths
   // biome-ignore lint/correctness/useExhaustiveDependencies: what is rendered changes the tiles measure reads
@@ -319,9 +328,6 @@ const Cards = memo(function Cards({
     };
     const end = "onscrollend" in window ? "scrollend" : "scroll";
     const moved = end === "scroll" ? later : place;
-    const use = () => {
-      if (row.current.state === "rest") lay(el, row.current, true);
-    };
     const sized = new ResizeObserver(place);
     sized.observe(area);
     area.addEventListener(end, moved);
@@ -335,7 +341,7 @@ const Cards = memo(function Cards({
       document.fonts.removeEventListener("loadingdone", again);
       for (const e of USE) el.removeEventListener(e, use, { capture: true });
     };
-  }, []);
+  }, [use]);
 
   return (
     <Carousel

@@ -168,16 +168,23 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
    the scroll; without scroll timelines (Firefox) the same keyframes stand paused at the band's `--strip-p`. It runs
    once the band knows where the shrink starts (`data-morph`, set as it hydrates, or from the server for a start
    past page 1); until then the strip stands whole. Where the scroll has the strip (`data-shrink`: none, part, all)
-   is read only by the Carousel's buttons and under reduced motion, so its changes restyle none of the parts.
+   is read by the Carousel's buttons, and shrunk all the way it draws the strip as the morph ends, under the morph
+   while one runs (each keyframes rule states its start, so that look never enters the morph): it changes only at
+   the shrink's ends, so it restyles the parts there, never as the scroll goes.
    Shrunk and in use, the strip lays its chips out for real (`data-chips`): each tile as wide as its chip, the card drawn as at the shrink's end with no move left. Under
-   reduced motion nothing runs: `data-shrink` shows the strip whole or shrunk. Opened by hand, the strip is drawn
-   at full size. */
+   reduced motion nothing runs: `data-shrink` shows the strip whole or shrunk. Folded in place by the toolbar's
+   toggle (`data-strip-tucked`, band.tsx) the scroll morphs nothing and `data-shrink` shows it shrunk as well. Opened
+   by hand, the strip is drawn at full size. */
 @property --strip-d {
   syntax: "<length>";
   inherits: true;
   initial-value: 0px;
 }
 @keyframes strip-thumb {
+  from {
+    translate: none;
+    scale: none;
+  }
   to {
     translate: calc(var(--chip-dx) - var(--_face-in))
       calc(var(--strip-dy) - var(--_face-in));
@@ -185,23 +192,33 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   }
 }
 @keyframes strip-out {
+  from {
+    opacity: 1;
+  }
   50%,
   to {
     opacity: 0;
   }
 }
 @keyframes strip-caption {
+  from {
+    opacity: 1;
+  }
   25%,
   to {
     opacity: 0;
   }
 }
 @keyframes strip-in {
+  from {
+    opacity: 0;
+  }
   to {
     opacity: 1;
   }
 }
 @keyframes strip-face {
+  from,
   70% {
     opacity: 0;
   }
@@ -211,6 +228,7 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   }
 }
 @keyframes strip-behind {
+  from,
   75% {
     opacity: 1;
   }
@@ -220,6 +238,7 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   }
 }
 @keyframes strip-name {
+  from,
   90% {
     opacity: 0;
   }
@@ -401,23 +420,8 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
     ) {
     animation: none;
   }
-  [data-shrink="all"]:not([data-strip-open]) .strip-thumb {
-    translate: calc(var(--chip-dx) - var(--_face-in))
-      calc(var(--strip-dy) - var(--_face-in));
-    scale: var(--strip-scale);
-  }
-  [data-shrink="all"]:not([data-strip-open])
-    :is(.strip-card, .strip-caption, .strip-label) {
-    opacity: 0;
-  }
-  [data-shrink="all"]:not([data-strip-open]) :is(.strip-face, .strip-name) {
-    opacity: 1;
-  }
-  [data-shrink="all"]:not([data-strip-open]) .strip-surface {
-    opacity: 1;
-  }
 }
-[data-strip-open]
+:is([data-strip-open], [data-strip-tucked])
   :is(
     .strip-thumb,
     .strip-face,
@@ -431,6 +435,21 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 }
 [data-strip-open] .strip-surface {
   inset: 0;
+  opacity: 1;
+}
+[data-shrink="all"]:not([data-strip-open]) .strip-thumb {
+  translate: calc(var(--chip-dx) - var(--_face-in))
+    calc(var(--strip-dy) - var(--_face-in));
+  scale: var(--strip-scale);
+}
+[data-shrink="all"]:not([data-strip-open])
+  :is(.strip-card, .strip-caption, .strip-label) {
+  opacity: 0;
+}
+[data-shrink="all"]:not([data-strip-open]) :is(.strip-face, .strip-name) {
+  opacity: 1;
+}
+[data-shrink="all"]:not([data-strip-open]) .strip-surface {
   opacity: 1;
 }
 

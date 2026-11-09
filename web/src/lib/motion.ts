@@ -184,3 +184,42 @@ export function glide(
   }
   return running;
 }
+
+/** Each part's scroll morph (its CSS animation), its keyframes resolved as the part stands now. */
+export const morphsOf = (parts: HTMLElement[]) =>
+  new Map(
+    parts.flatMap((el) => {
+      const a = el.getAnimations().find((x) => x instanceof CSSAnimation);
+      return a?.effect instanceof KeyframeEffect
+        ? [[el, a.effect.getKeyframes()] as const]
+        : [];
+    }),
+  );
+
+/**
+ * The avatar strip folded or grown back where it stands (catalog/band.tsx), along the scroll's path: each part runs
+ * its scroll morph's keyframes over time (`morphs`, to their end folding, back to their start growing), while the
+ * strip and the results after it slide from where the strip stood (`top`), in step.
+ */
+export function turnInPlace(
+  box: HTMLElement,
+  top: number,
+  morphs: ReturnType<typeof morphsOf>,
+  after: HTMLElement,
+  folding: boolean,
+): Animation[] {
+  if (prefersReducedMotion()) return [];
+  const timing = { id: TURN_ID, duration: MOTION.turnDuration, easing: EASE };
+  const dy = top - box.getBoundingClientRect().top;
+  const running = [box, after].map((el) =>
+    el.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], timing),
+  );
+  for (const [el, frames] of morphs) {
+    const path = frames.map(({ computedOffset, ...k }) => ({
+      ...k,
+      offset: folding ? computedOffset : 1 - computedOffset,
+    }));
+    running.push(el.animate(folding ? path : path.reverse(), timing));
+  }
+  return running;
+}
