@@ -419,15 +419,20 @@ impl Catalog {
         let count = hits.len();
         let total_pages = (count as usize).div_ceil(page_size).max(1);
         let page = p.num::<usize>("page").unwrap_or(1).clamp(1, total_pages);
+        let start = (page - 1) * page_size;
         let end = (page * page_size).min(count as usize);
         let mut docs: Vec<u32> = hits.iter().collect();
-        // only the prefix up to this page needs ordering
+        // Partition at both page boundaries so deep pages don't sort every preceding result.
         if end < docs.len() && end > 0 {
             docs.select_nth_unstable_by(end - 1, cmp);
             docs.truncate(end);
         }
-        docs.sort_unstable_by(cmp);
-        let ids = docs.iter().skip((page - 1) * page_size).take(page_size).map(|&d| self.ids[d as usize]).collect();
+        if start > 0 {
+            docs.select_nth_unstable_by(start, cmp);
+        }
+        let page_docs = &mut docs[start..];
+        page_docs.sort_unstable_by(cmp);
+        let ids = page_docs.iter().map(|&d| self.ids[d as usize]).collect();
 
         Ok(SearchResult {
             count,
@@ -713,6 +718,39 @@ mod tests {
         assert_eq!(r.total_pages, 3);
         let r = c.search_plain(&Params::parse("adult=include&page=99"), 0, None).unwrap();
         assert_eq!(r.page, 1);
+    }
+
+    #[test]
+    fn every_sort_pages_like_a_full_sort() {
+        let docs = (1..=73).map(|id| {
+            let mut d = doc(id);
+            d.title = format!("item {}", id % 11);
+            d.price = (id % 7 != 0).then_some((id % 9) as i32 * 100);
+            d.likes = (id % 5) as i32;
+            d.published = (id % 6 != 0).then_some(id % 13 * 86_400);
+            d
+        }).collect();
+        let c = Catalog::build(docs, 2_000_000, None).unwrap();
+        for query in ["", "q=item", "free=1", "q=missing"] {
+            for sort in ["trending", "newest", "price", "likes", "title", "relevant"] {
+                for dir in ["asc", "desc"] {
+                    let base = format!("{query}&sort={sort}&dir={dir}");
+                    // Fewer than 100 hits: page 1 sorts the entire set without either partition.
+                    let full = c.search(&Params::parse(&format!("{base}&pageSize=100")), 0, None, None, false).unwrap();
+                    for size in [1, 7, 20, 100] {
+                        let pages = full.ids.len().div_ceil(size).max(1);
+                        for page in [0, 1, 2, 5, pages, pages + 1, usize::MAX] {
+                            let params = Params::parse(&format!("{base}&pageSize={size}&page={page}"));
+                            let r = c.search(&params, 0, None, None, false).unwrap();
+                            let page = page.clamp(1, pages);
+                            let expected: Vec<_> = full.ids.iter().skip((page - 1) * size).take(size).copied().collect();
+                            assert_eq!(r.ids, expected, "{base}, size {size}, page {page}");
+                            assert_eq!((r.count, r.page, r.total_pages), (full.count, page, pages));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

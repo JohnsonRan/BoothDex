@@ -92,8 +92,9 @@ macro_rules! admin {
 
 mod trends;
 
-async fn overview_json(s: &AppState) -> Result<Value, ApiError> {
-    let data: Value = sqlx::query_scalar(
+async fn data_json(pool: &PgPool) -> Result<Value, sqlx::Error> {
+    // booth_images.item_id is unique: one join checks image coverage without per-item index probes.
+    sqlx::query_scalar(
         "select jsonb_build_object(
             'items', count(*),
             'listed', count(*) filter (where status = 'ok'),
@@ -102,15 +103,19 @@ async fn overview_json(s: &AppState) -> Result<Value, ApiError> {
             'published_24h', count(*) filter (where published_at > now() - interval '24 hours'),
             'refreshed_24h', count(*) filter (where scraped_at > now() - interval '24 hours'),
             'stalest_scrape', min(scraped_at) filter (where status = 'ok'),
-            'missing_images', count(*) filter (where status = 'ok' and not exists (select 1 from booth_images b where b.item_id = items.id)),
+            'missing_images', count(*) filter (where status = 'ok' and b.item_id is null),
             'users', (select count(*) from users),
             'favourites', (select count(*) from favourites),
             'saved_searches', (select count(*) from saved_searches),
             'db_bytes', pg_database_size(current_database()))
-         from items",
+         from items left join booth_images b on b.item_id = items.id",
     )
-    .fetch_one(&s.pool)
-    .await?;
+    .fetch_one(pool)
+    .await
+}
+
+async fn overview_json(s: &AppState) -> Result<Value, ApiError> {
+    let data = data_json(&s.pool).await?;
     let worker: Value = sqlx::query_scalar(
         "select to_jsonb(w) || jsonb_build_object('alive', coalesce(heartbeat_at > now() - interval '20 seconds', false)) from worker_status w",
     )
@@ -458,6 +463,36 @@ mod tests {
         db.sort();
         ours.sort();
         assert_eq!(ours, db);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn overview_counts_items_once_and_only_listed_items_missing_images(pool: sqlx::PgPool) {
+        let empty = super::data_json(&pool).await.unwrap();
+        for key in ["items", "listed", "delisted", "needs_enrichment", "published_24h", "refreshed_24h", "missing_images"] {
+            assert_eq!(empty[key], 0, "empty {key}");
+        }
+        assert!(empty["stalest_scrape"].is_null());
+        sqlx::raw_sql(
+            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, published_at, needs_enrichment) values
+               (1, 'with images', 'c', 'https://example.test', false, 'ok', now(), now(), true),
+               (2, 'without images', 'c', 'https://example.test', false, 'ok', now() - interval '2 days', now() - interval '2 days', false),
+               (3, 'empty gallery', 'c', 'https://example.test', false, 'ok', now(), null, false),
+               (4, 'delisted without images', 'c', 'https://example.test', false, 'delisted', now(), null, true),
+               (5, 'delisted with images', 'c', 'https://example.test', false, 'delisted', now(), null, false);
+             insert into booth_images (item_id, images, complete) values (1, '{a,b,c}', true), (3, '{}', false), (5, '{d}', true), (999, '{orphan}', true);",
+        ).execute(&pool).await.unwrap();
+        let data = super::data_json(&pool).await.unwrap();
+        for (key, count) in [
+            ("items", 5), ("listed", 3), ("delisted", 2), ("needs_enrichment", 2),
+            ("published_24h", 1), ("refreshed_24h", 4), ("missing_images", 1),
+            ("users", 0), ("favourites", 0), ("saved_searches", 0),
+        ] {
+            assert_eq!(data[key], count, "{key}");
+        }
+        let stalest: chrono::DateTime<chrono::Utc> = sqlx::query_scalar("select min(scraped_at) from items where status = 'ok'")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(data["stalest_scrape"].as_str().unwrap().parse::<chrono::DateTime<chrono::Utc>>().unwrap(), stalest);
     }
 
     #[test]
