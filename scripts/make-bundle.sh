@@ -3,7 +3,7 @@
 #   catalogue.dump    pg_dump (custom format) of the dev database, without user/test data
 #   images.tar        archived <sha1>.webp images of delisted items
 #   SHA256SUMS
-# Usage: ARCHIVE_IMAGES=<archived images dir> [PG_CONTAINER=boothdex-pg] scripts/make-bundle.sh <out-dir>   (takes a few minutes; run via scripts/detach.sh)
+# Usage: ARCHIVE_IMAGES=<archived images dir> [PG_CONTAINER=boothdex-pg] scripts/make-bundle.sh <out-dir>   (takes a few minutes)
 set -euo pipefail
 out="${1:?usage: scripts/make-bundle.sh <out-dir>}"
 images="${ARCHIVE_IMAGES:?set ARCHIVE_IMAGES to the archived images dir}"

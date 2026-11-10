@@ -184,7 +184,7 @@ flowchart TD
 | `crates/imgproxy` | `/b/{size}/...` で BOOTH 画像を WebP に変換・キャッシュ配信し、`/v/{sha1}.webp` でアーカイブ画像を配信します |
 | `web` | Next.js フロントエンドおよび `/admin` 管理画面 |
 | `deploy` | Dockerfile、`docker-bake.hcl`、`compose.yaml`、および `.env.example` |
-| `scripts` | ローカル開発用起動スクリプト (Windows / Git Bash)、データバンドル作成ツール、モック AI サーバー |
+| `scripts` | データバンドル作成ツール、モック AI サーバー |
 
 32 スレッド環境で約 21.6 万件の商品を検索した場合、API 内部の処理時間は 1～6 ミリ秒、リクエスト全体では 5～40 ミリ秒で応答し、32 クライアント同時接続時に毎秒約 550 リクエストを処理します。Linux コンテナー上での `api` のメモリ使用量は通常時で約 0.4～1 GB (メモリマップされた Tantivy インデックスはページ キャッシュ側)、カタログ再読み込み時のピークで約 1.8 GB です (`mem_limit: 4g`)。
 
@@ -212,7 +212,6 @@ target/release/worker run &
 target/release/worker once incremental '{"max_pages": 3, "full": true}'
 ```
 
-- **Windows (Git Bash)**: `scripts/dev-up.sh`、`scripts/dev-down.sh`、`scripts/dev-restart.sh` で 4 つのサービスをまとめてバックグラウンド起動・停止できます。ログは `<service>.log` に出力されます。
 - **モック AI プロバイダー**: API キーがない場合でも、`bun scripts/mock-ai.ts` を起動して管理画面の AI 接続先に `http://127.0.0.1:3555/v1` を指定すると AI ジョブの動作を確認できます。
 
 テストと静的解析:

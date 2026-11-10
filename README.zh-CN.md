@@ -187,7 +187,7 @@ flowchart TD
 | `crates/imgproxy` | `/b/{size}/...` 将 BOOTH 图片转码为 WebP 并缓存；`/v/{sha1}.webp` 提供下架商品存档图片 |
 | `web` | Next.js 前端站点与 `/admin` 管理后台 |
 | `deploy` | 容器构建文件、`docker-bake.hcl`、`compose.yaml` 与 `.env.example` |
-| `scripts` | 本地开发启停脚本（Windows / Git Bash）、数据包打包校验脚本与模拟 AI 服务 |
+| `scripts` | 数据包打包校验脚本与模拟 AI 服务 |
 
 在 32 线程机器上面对 21.6 万件商品时，API 内部检索耗时 1–6 毫秒，单次请求端到端耗时 5–40 毫秒，32 并发下吞吐约 550 请求/秒。在 Linux 容器环境中，`api` 常驻内存约 0.4–1 GB（mmap 映射的 Tantivy 索引另计在页缓存中），热重载双份目录快照时峰值约 1.8 GB（容器限制 `4g`）。
 
@@ -215,7 +215,6 @@ target/release/worker run &
 target/release/worker once incremental '{"max_pages": 3, "full": true}'
 ```
 
-- **Windows（Git Bash）**：使用 `scripts/dev-up.sh`、`scripts/dev-down.sh` 和 `scripts/dev-restart.sh` 可在后台一键启停全部四个服务，日志输出至 `<service>.log`。
 - **模拟 AI 服务**：没有 API 密钥时，运行 `bun scripts/mock-ai.ts` 并在管理后台将服务地址设为 `http://127.0.0.1:3555/v1` 即可联调 AI 任务。
 
 运行测试与静态检查：

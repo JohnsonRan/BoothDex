@@ -233,4 +233,4 @@ Safe to lose (rebuilt automatically): `imgcache` (re-fetched from BOOTH on deman
 
 ## 8. Local development
 
-See [`README.md`](../README.md#development) (`scripts/dev-up.sh`, `scripts/dev-down.sh`, `scripts/dev-restart.sh`). The dev scripts use a local `dev` password and are never used in production deployments.
+See [`README.md`](../README.md#development).

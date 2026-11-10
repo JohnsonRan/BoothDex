@@ -209,7 +209,7 @@ flowchart TD
 | `crates/imgproxy` | `/b/{size}/...` transcodes and caches BOOTH images as WebP; `/v/{sha1}.webp` serves archived images |
 | `web` | Next.js website and `/admin` console |
 | `deploy` | Dockerfiles, `docker-bake.hcl`, `compose.yaml` and `.env.example` |
-| `scripts` | Local dev launcher (Windows / Git Bash), data bundle scripts and mock AI server |
+| `scripts` | Data bundle scripts and mock AI server |
 
 On a 32-thread machine with 216k items, searches take 1–6 ms inside the API and 5–40 ms per request (~550 req/s
 across 32 concurrent clients). On Linux containers, `api` uses ~0.4–1 GB RSS steady (plus the
@@ -239,8 +239,6 @@ Register the account `admin`, open `http://localhost:3100/admin`, and crawl a fe
 target/release/worker once incremental '{"max_pages": 3, "full": true}'
 ```
 
-- **Windows (Git Bash)**: `scripts/dev-up.sh`, `scripts/dev-down.sh` and `scripts/dev-restart.sh` manage all
-  four services in the background and log to `<service>.log`.
 - **Mock AI provider**: run `bun scripts/mock-ai.ts` and set the AI base URL to `http://127.0.0.1:3555/v1` in
   `/admin` to test enrichment and embeddings without an API key.
 
