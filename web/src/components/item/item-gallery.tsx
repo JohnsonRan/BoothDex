@@ -137,12 +137,14 @@ export function ItemGallery({
               >
                 {/* The original (1024 px at most): Booth's 620 px variant is stretched by any screen denser than
                     1x, and the Lightbox below asks for the original of the current image even while closed, so
-                    one file serves both. */}
+                    one file serves both. The first image is what a shared link paints largest: asked for ahead
+                    of the grid behind. */}
                 <img
                   style={HERO}
                   src={imgUrl(item, i, "orig")}
                   alt={alt(i)}
                   loading={i < 2 ? "eager" : "lazy"}
+                  fetchPriority={i === 0 ? "high" : undefined}
                   decoding="async"
                 />
               </ClickableCard>

@@ -3,11 +3,12 @@
 // module out of client bundles.
 import { cacheLife } from "next/cache";
 import { cookies, headers } from "next/headers";
-import type { SearchResponse } from "./api-types";
+import type { ItemResponse, SearchResponse } from "./api-types";
 import {
   type Avatar,
   type Category,
   type Filters,
+  imgUrl,
   searchQuery,
   tagName,
 } from "./catalog";
@@ -92,6 +93,23 @@ export async function searchItems(
     return { state: "ok", result, ms: performance.now() - start };
   } catch {
     return { state: (await apiReady()) ? "error" : "starting" };
+  }
+}
+
+/**
+ * The main image of the item a shared link opens (`?item=`), as the dialog will ask for it (item-gallery.tsx);
+ * null when the item cannot be read (the dialog reports that itself). Sent with the visitor's headers, as the
+ * dialog's own request for the item is.
+ */
+export async function itemHero(id: number): Promise<string | null> {
+  try {
+    const { items } = await getJson<{ items: ItemResponse[] }>(
+      `/api/items?ids=${id}`,
+      { cache: "no-store", headers: visitorHeaders(await headers()) },
+    );
+    return (items[0] && imgUrl(items[0], 0, "orig")) || null;
+  } catch {
+    return null;
   }
 }
 

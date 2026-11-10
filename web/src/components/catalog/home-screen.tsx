@@ -14,6 +14,8 @@ import { Suspense } from "react";
 import { RecentCount, RecentResults } from "@/components/account/recent-view";
 import { ViewActions } from "@/components/account/view-actions";
 import { SiteFrame } from "@/components/frame/site-frame";
+import { itemParam } from "@/components/item/item-data";
+import { PreloadHero } from "@/components/item/item-preload";
 import { Providers } from "@/components/providers";
 import type { SearchResponse } from "@/lib/api-types";
 import {
@@ -31,6 +33,7 @@ import { MESSAGES, translator } from "@/lib/dictionaries";
 import {
   componentCatalogue,
   exchangeRates,
+  itemHero,
   listAvatars,
   listCategories,
   readSettings,
@@ -68,12 +71,20 @@ export async function HomeScreen({
     settings.currency === "JPY"
       ? Promise.resolve({} as Rates)
       : exchangeRates().catch((): Rates => ({}));
+  // a shared link opens an item's dialog over the page
+  const opened = itemParam(`item=${params.item ?? ""}`);
   return (
     <Providers
       settings={settings}
       messages={MESSAGES[settings.ui]}
       catalogue={await componentCatalogue(settings.ui)}
     >
+      {opened > 0 && (
+        // nothing waits for it: the hint streams in when the item is read
+        <Suspense>
+          <OpenedItemImage id={opened} />
+        </Suspense>
+      )}
       <FilterUrlProvider filters={filters}>
         <SiteFrame rates={rates}>
           {/* no fallback: the frame waits only for the cached avatar and category lists */}
@@ -90,6 +101,12 @@ export async function HomeScreen({
       </FilterUrlProvider>
     </Providers>
   );
+}
+
+/** Asks for the opened item's main image from the first HTML (item-preload.tsx). */
+async function OpenedItemImage({ id }: { id: number }) {
+  const src = await itemHero(id);
+  return src && <PreloadHero src={src} />;
 }
 
 /**
