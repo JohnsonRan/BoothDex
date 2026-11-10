@@ -47,14 +47,19 @@ export type Feature = keyof typeof FEATURES;
 
 type Size = "48x48" | "72x72_a2_g5" | "300x300_a2_g5" | "620x620" | "orig";
 
-/** Proxied, WebP-encoded image URL; delisted items fall back to our archived copies. */
+// The proxy's answers are immutable for a year, so the address names the format: the same paths once answered
+// with WebP, and a cache still holding that copy must not answer for the AVIF.
+const proxied = (u: string, size: Size) =>
+  `${u.replace("https://booth.pximg.net/", `/img/b/${size}/`)}?format=avif`;
+
+/** Proxied, AVIF-encoded image URL; delisted items fall back to our archived copies (WebP). */
 export function imgUrl(
   it: Pick<ItemResponse, "booth_images" | "media">,
   i = 0,
   size: Size = "300x300_a2_g5",
 ): string {
   const b = it.booth_images?.[i];
-  if (b) return b.replace("https://booth.pximg.net/", `/img/b/${size}/`);
+  if (b) return proxied(b, size);
   const m = it.media?.[i];
   return m && ARCHIVED.test(m) ? imageSrc(m) : "";
 }
@@ -72,7 +77,7 @@ export function imageSrc(
     u.startsWith("https://booth.pximg.net/") &&
     !u.startsWith("https://booth.pximg.net/c/")
   )
-    return u.replace("https://booth.pximg.net/", `/img/b/${size}/`);
+    return proxied(u, size);
   return u;
 }
 export const imageCount = (it: Pick<ItemResponse, "booth_images" | "media">) =>

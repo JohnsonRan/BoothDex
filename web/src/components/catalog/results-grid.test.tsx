@@ -75,7 +75,9 @@ test("the server HTML carries the first screen's covers, the first ones loading 
   }));
   const html = render(items);
   expect(html.match(/<img /g)).toHaveLength(FIRST_TILES);
-  expect(html).toContain('src="/img/b/300x300_a2_g5/u/i/1/cover.jpg"');
+  expect(html).toContain(
+    'src="/img/b/300x300_a2_g5/u/i/1/cover.jpg?format=avif"',
+  );
   expect(html.match(/<img [^>]*fetchPriority="high"/gi)).toHaveLength(6);
   expect(html.match(/loading="eager"/g)).toHaveLength(18);
 });

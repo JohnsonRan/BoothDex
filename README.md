@@ -98,7 +98,7 @@ VRCatalogue. Item data and images belong to their creators; every item links bac
   content rating, features and title translations (Chinese, English, Japanese, Korean) to new items, links
   avatars by name, and localizes category and tag names. Embeddings for semantic search come from the same
   provider.
-- A proxy re-encodes BOOTH images to WebP and caches them; archived copies cover delisted items.
+- A proxy re-encodes BOOTH images to AVIF and caches them; archived copies cover delisted items.
 
 ### Administration
 
@@ -160,7 +160,7 @@ flowchart LR
 
   subgraph stack["BoothDex Services"]
     web -- "/api/*" --> api["api (Rust, Axum :3000)<br/>Roaring bitmaps · Tantivy"]
-    web -- "/img/*" --> imgproxy["imgproxy (Rust :3001)<br/>foyer WebP cache"]
+    web -- "/img/*" --> imgproxy["imgproxy (Rust :3001)<br/>foyer AVIF cache"]
     worker["worker (Rust)<br/>booth · ai · embed lanes"]
     pg[("PostgreSQL 17<br/>+ pgvector")]
 
@@ -206,7 +206,7 @@ flowchart TD
 | `crates/core` | Shared types, BOOTH client and PostgreSQL `migrations/`, applied automatically by services on startup |
 | `crates/api` | Search API. Facets are Roaring bitmaps in memory; the Tantivy text index lives on disk (`INDEX_DIR`) and is reused across restarts; page payloads come from PostgreSQL |
 | `crates/worker` | Job runner across 3 lanes: `incremental` (new items), `sweep` (full listing), `details`, `refresh`, `enrich`, `localize` and `embed` (AI). `worker run` is the daemon; `worker once <kind> [params-json]` runs a single job |
-| `crates/imgproxy` | `/b/{size}/...` transcodes and caches BOOTH images as WebP; `/v/{sha1}.webp` serves archived images |
+| `crates/imgproxy` | `/b/{size}/...` transcodes and caches BOOTH images as AVIF; `/v/{sha1}.webp` serves archived images |
 | `web` | Next.js website and `/admin` console |
 | `deploy` | Dockerfiles, `docker-bake.hcl`, `compose.yaml` and `.env.example` |
 | `scripts` | Data bundle scripts and mock AI server |
@@ -224,6 +224,7 @@ podman run -d --name boothdex-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalog
   -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql/data docker.io/pgvector/pgvector:pg17
 
 cargo build --release            # first build downloads the IPADIC dictionary; rerun if download fails
+# with nasm installed, add --features imgproxy/asm: AVIF encoding is about three times faster (the container images are built with it)
 (cd web && bun install)
 
 export DATABASE_URL=postgres://postgres:dev@localhost:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin

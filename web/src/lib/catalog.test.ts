@@ -106,7 +106,7 @@ test("image URLs go through the proxy, delisted items through the archive", () =
       booth_images: ["https://booth.pximg.net/u/i/1/a.jpg"],
       media: [],
     }),
-  ).toBe("/img/b/300x300_a2_g5/u/i/1/a.jpg");
+  ).toBe("/img/b/300x300_a2_g5/u/i/1/a.jpg?format=avif");
   expect(
     imgUrl(
       {
@@ -131,10 +131,10 @@ test("imageSrc avoids the closed VRCatalogue CDN", () => {
     `/img/v/${sha}.webp`,
   );
   expect(imageSrc("https://booth.pximg.net/u/i/1/a.jpg")).toBe(
-    "/img/b/72x72_a2_g5/u/i/1/a.jpg",
+    "/img/b/72x72_a2_g5/u/i/1/a.jpg?format=avif",
   );
   expect(imageSrc("https://booth.pximg.net/u/i/1/a.jpg", "300x300_a2_g5")).toBe(
-    "/img/b/300x300_a2_g5/u/i/1/a.jpg",
+    "/img/b/300x300_a2_g5/u/i/1/a.jpg?format=avif",
   );
   const icon = "https://booth.pximg.net/c/48x48/users/1/icon_image/x.jpg";
   expect(imageSrc(icon)).toBe(icon);

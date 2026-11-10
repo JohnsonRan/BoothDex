@@ -3,8 +3,10 @@
 # Dependencies are compiled in their own layer (cargo-chef), so a change to our code only recompiles our crates;
 # CI keeps that layer in its build cache. The lindera-ipadic build script downloads the IPADIC dictionary
 # (network needed; it fails now and then, so it is retried twice) and embeds it in the api binary.
+# nasm assembles rav1e's x86_64 routines (imgproxy's asm feature): without them AVIF encoding is about 3x slower.
 FROM docker.io/library/rust:1-trixie AS chef
-RUN cargo install cargo-chef --version 0.1.78 --locked
+RUN apt-get update && apt-get install -y --no-install-recommends nasm && rm -rf /var/lib/apt/lists/* \
+ && cargo install cargo-chef --version 0.1.78 --locked
 WORKDIR /src
 
 FROM chef AS planner
@@ -14,10 +16,10 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS build
 COPY --from=planner /src/recipe.json recipe.json
-RUN for i in 1 2 3; do cargo chef cook --release --recipe-path recipe.json -p api -p imgproxy -p worker && break; [ $i = 3 ] && exit 1; sleep 10; done
+RUN for i in 1 2 3; do cargo chef cook --release --recipe-path recipe.json -p api -p imgproxy -p worker --features imgproxy/asm && break; [ $i = 3 ] && exit 1; sleep 10; done
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
-RUN cargo build --release -p api -p imgproxy -p worker \
+RUN cargo build --release -p api -p imgproxy -p worker --features imgproxy/asm \
  && mkdir -p /out && cp target/release/api target/release/imgproxy target/release/worker /out/
 
 FROM docker.io/library/debian:trixie-slim AS runtime

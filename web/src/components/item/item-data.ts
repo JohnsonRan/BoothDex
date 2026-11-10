@@ -60,14 +60,15 @@ export function commonPrice(variations: Variation[]): number | null {
   return prices.size === 1 ? [...prices][0] : null;
 }
 
-export type Format = "webp" | "png" | "jpeg";
+export type Format = "avif" | "webp" | "png" | "jpeg";
 
 /** The image proxy re-encodes Booth originals; archived copies of delisted items exist as WebP only. */
 export const downloadFormats = (orig: string): Format[] =>
-  orig.startsWith("/img/v/") ? ["webp"] : ["webp", "png", "jpeg"];
+  orig.startsWith("/img/v/") ? ["webp"] : ["avif", "png", "jpeg"];
 
+/** `orig` is the address the page shows, which already names AVIF. */
 export const downloadUrl = (orig: string, format: Format) =>
-  orig.startsWith("/img/v/") ? orig : `${orig}?format=${format}`;
+  orig.startsWith("/img/v/") ? orig : `${orig.split("?")[0]}?format=${format}`;
 
 /** booth-<id>-<n>.<ext>, n counted from 1 */
 export const downloadName = (id: number, index: number, format: Format) =>

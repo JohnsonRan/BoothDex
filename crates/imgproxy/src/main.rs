@@ -1,9 +1,10 @@
 //! Image proxy meant to sit behind Cloudflare.
-//!   GET /b/{size}/{uuid}/i/{item}/{file}[?format=webp|png|jpeg]  Booth image (booth.pximg.net), re-encoded
+//!   GET /b/{size}/{uuid}/i/{item}/{file}[?format=avif|png|jpeg]  Booth image (booth.pximg.net), re-encoded
 //!   GET /v/{sha1}.webp                                         archived VRCatalogue image (delisted items)
-//! Output defaults to lossy WebP. Results are cached in foyer (memory + disk); responses are immutable so
-//! the CDN keeps them. Only booth.pximg.net is ever fetched, and only Booth-shaped paths with Booth's own
-//! sizes are accepted, so this is not an open proxy.
+//! Output defaults to AVIF with full-resolution chroma (4:4:4); the archived files are WebP and served as they
+//! are. Results are cached in foyer (memory + disk); responses are immutable so the CDN keeps them, which is
+//! why the site names the format in its URLs. Only booth.pximg.net is ever fetched, and only Booth-shaped paths
+//! with Booth's own sizes are accepted, so this is not an open proxy.
 //!
 //! Env: BIND (127.0.0.1:3001), CACHE_DIR (./imgcache), CACHE_DISK_MB (10240), CACHE_MEM_MB (256),
 //!      ARCHIVE_IMAGES (dir of <sha1>.webp files)
@@ -21,6 +22,7 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use foyer::{BlockEngineConfig, DeviceBuilder, FsDeviceBuilder, HybridCache, HybridCacheBuilder};
+use image::codecs::avif::AvifEncoder;
 use image::{DynamicImage, ImageFormat, ImageReader, Limits};
 use tokio::sync::Semaphore;
 
@@ -30,10 +32,26 @@ const MAX_UPSTREAM_BYTES: usize = 25 * 1024 * 1024;
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 /// Upstream 404s are cached (as an empty value) — Booth image paths are content-addressed and never come back
 const NOT_FOUND_CACHE: &str = "public, max-age=86400";
+/// AVIF quality by size, on ravif's own 1..=100 scale, which is not the one libavif-style tools use: its 75
+/// measured softer than the WebP this replaced. Measured on 12 Booth images with SSIMULACRA2 against the WebP
+/// 80 (sized) and 88 (original) served before:
+/// - thumbnails load by the dozen on every list page, so they stay the size they were: 83 is 2% smaller at
+///   300 px and scores level (85 would be 20% larger);
+/// - the item dialog's images are looked at closely: 85 scores 3.5 points higher at 620 px for 16% more bytes,
+///   and at the original size is 22% smaller for a level score.
+fn avif_quality(size: &str) -> u8 {
+    match size {
+        "620x620" | "orig" => 85,
+        _ => 83,
+    }
+}
+/// 1 (slowest) ..= 10; 6 costs about 60 ms for a 300 px thumbnail and 430 ms for an original (asm, 2 threads),
+/// 8 saves a quarter of that for 3% larger files, 10 is over a third larger
+const AVIF_SPEED: u8 = 6;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Format {
-    Webp,
+    Avif,
     Png,
     Jpeg,
 }
@@ -41,7 +59,7 @@ enum Format {
 impl Format {
     fn parse(s: Option<&str>) -> Option<Self> {
         match s {
-            None | Some("webp") => Some(Self::Webp),
+            None | Some("avif") => Some(Self::Avif),
             Some("png") => Some(Self::Png),
             Some("jpeg" | "jpg") => Some(Self::Jpeg),
             _ => None,
@@ -49,7 +67,7 @@ impl Format {
     }
     fn mime(self) -> &'static str {
         match self {
-            Self::Webp => "image/webp",
+            Self::Avif => "image/avif",
             Self::Png => "image/png",
             Self::Jpeg => "image/jpeg",
         }
@@ -106,13 +124,14 @@ fn decode(bytes: &[u8]) -> Result<DynamicImage> {
     Ok(reader.decode()?)
 }
 
-fn encode(img: &DynamicImage, format: Format, quality: f32) -> Result<Vec<u8>> {
+fn encode(img: &DynamicImage, format: Format, quality: u8) -> Result<Vec<u8>> {
     Ok(match format {
-        Format::Webp => {
-            // the webp crate only takes 8-bit RGB/RGBA
+        Format::Avif => {
+            // ravif takes 8-bit RGB/RGBA and never subsamples chroma: the output is always 4:4:4
             let img = if img.color().has_alpha() { DynamicImage::ImageRgba8(img.to_rgba8()) } else { DynamicImage::ImageRgb8(img.to_rgb8()) };
-            let enc = webp::Encoder::from_image(&img).map_err(|e| anyhow::anyhow!("webp: {e}"))?;
-            enc.encode(quality).to_vec()
+            let mut out = Vec::new();
+            img.write_with_encoder(AvifEncoder::new_with_speed_quality(&mut out, AVIF_SPEED, quality))?;
+            out
         }
         Format::Png => {
             let mut out = Cursor::new(Vec::new());
@@ -121,7 +140,7 @@ fn encode(img: &DynamicImage, format: Format, quality: f32) -> Result<Vec<u8>> {
         }
         Format::Jpeg => {
             let mut out = Vec::new();
-            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality as u8).encode_image(&DynamicImage::ImageRgb8(img.to_rgb8()))?;
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality).encode_image(&DynamicImage::ImageRgb8(img.to_rgb8()))?;
             out
         }
     })
@@ -157,11 +176,11 @@ async fn fetch_upstream(client: &reqwest::Client, url: &str) -> Result<Option<Ve
     Ok(Some(body))
 }
 
-fn image_response(bytes: Vec<u8>, format: Format) -> Response {
+fn image_response(bytes: Vec<u8>, mime: &'static str) -> Response {
     if bytes.is_empty() {
         return (StatusCode::NOT_FOUND, [(header::CACHE_CONTROL, NOT_FOUND_CACHE)], "not found").into_response();
     }
-    ([(header::CONTENT_TYPE, format.mime()), (header::CACHE_CONTROL, IMMUTABLE)], bytes).into_response()
+    ([(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, IMMUTABLE)], bytes).into_response()
 }
 
 fn bad_request() -> Response {
@@ -182,7 +201,11 @@ async fn booth(
         return bad_request();
     };
     let key = format!("{size}/{uuid}/{item}/{file}:{format:?}");
-    let quality = if size == "orig" { 88.0 } else { 80.0 };
+    let quality = match format {
+        Format::Avif => avif_quality(&size),
+        _ if size == "orig" => 88,
+        _ => 80,
+    };
     s.stats.requests.fetch_add(1, Ordering::Relaxed);
     let st = s.clone();
     let result = s
@@ -201,7 +224,7 @@ async fn booth(
                 s.stats.not_found.fetch_add(1, Ordering::Relaxed);
             }
             s.stats.bytes_out.fetch_add(bytes.len() as u64, Ordering::Relaxed);
-            image_response(bytes, format)
+            image_response(bytes, format.mime())
         }
         Err(e) => {
             s.stats.errors.fetch_add(1, Ordering::Relaxed);
@@ -217,7 +240,7 @@ async fn archived(State(s): State<Arc<AppState>>, Path(name): Path<String>) -> R
     };
     let Some(dir) = &s.archive else { return (StatusCode::NOT_FOUND, "archive not configured").into_response() };
     match tokio::fs::read(dir.join(format!("{sha1}.webp"))).await {
-        Ok(bytes) => image_response(bytes, Format::Webp),
+        Ok(bytes) => image_response(bytes, "image/webp"),
         Err(_) => (StatusCode::NOT_FOUND, [(header::CACHE_CONTROL, NOT_FOUND_CACHE)], "not found").into_response(),
     }
 }
@@ -299,12 +322,38 @@ mod tests {
         let mut png = Cursor::new(Vec::new());
         img.write_to(&mut png, ImageFormat::Png).unwrap();
         let decoded = decode(png.get_ref()).unwrap();
-        let webp = encode(&decoded, Format::Webp, 80.0).unwrap();
-        assert_eq!(&webp[0..4], b"RIFF");
-        assert_eq!(&webp[8..12], b"WEBP");
-        assert_eq!(&encode(&decoded, Format::Jpeg, 90.0).unwrap()[0..2], &[0xFF, 0xD8]);
-        assert_eq!(&encode(&decoded, Format::Png, 0.0).unwrap()[1..4], b"PNG");
+        let avif = encode(&decoded, Format::Avif, avif_quality("orig")).unwrap();
+        assert_eq!(&avif[4..12], b"ftypavif");
+        // av1C, third byte: monochrome, chroma_subsampling_x, chroma_subsampling_y, then the sample position.
+        // All clear is colour at full chroma resolution (4:4:4).
+        let av1c = avif.windows(4).position(|w| w == b"av1C").unwrap();
+        assert_eq!(avif[av1c + 6] & 0b0001_1100, 0);
+        assert_eq!(&encode(&decoded, Format::Jpeg, 90).unwrap()[0..2], &[0xFF, 0xD8]);
+        assert_eq!(&encode(&decoded, Format::Png, 0).unwrap()[1..4], b"PNG");
         assert!(decode(b"not an image").is_err());
         assert_eq!(Format::parse(Some("gif")), None);
+    }
+
+    #[test]
+    fn avif_is_the_default_and_webp_is_gone() {
+        assert_eq!(Format::parse(None), Some(Format::Avif));
+        assert_eq!(Format::parse(Some("avif")), Some(Format::Avif));
+        assert_eq!(Format::parse(Some("webp")), None);
+        assert_eq!(Format::Avif.mime(), "image/avif");
+    }
+
+    #[test]
+    fn list_sizes_get_the_lighter_quality() {
+        assert!(avif_quality("300x300_a2_g5") < avif_quality("620x620"));
+        assert_eq!(avif_quality("72x72_a2_g5"), avif_quality("300x300_a2_g5"));
+        assert_eq!(avif_quality("orig"), avif_quality("620x620"));
+    }
+
+    #[test]
+    fn transparency_survives_avif() {
+        let img = DynamicImage::ImageRgba8(image::RgbaImage::from_fn(16, 16, |x, _| image::Rgba([200, 40, 40, if x < 8 { 0 } else { 255 }])));
+        let avif = encode(&img, Format::Avif, avif_quality("300x300_a2_g5")).unwrap();
+        // the colour item and its alpha auxiliary item: two AV1 configurations
+        assert_eq!(avif.windows(4).filter(|w| *w == b"av1C").count(), 2);
     }
 }

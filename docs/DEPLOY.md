@@ -19,7 +19,7 @@ flowchart LR
 
       pg --- pgdata[("pgdata volume")]
       api --- textindex[("textindex volume<br/>(Tantivy mmap)")]
-      imgproxy --- imgcache[("imgcache volume<br/>(foyer WebP)")]
+      imgproxy --- imgcache[("imgcache volume<br/>(foyer AVIF)")]
       imgproxy --- archive[("/archive:ro<br/>(delisted images)")]
     end
   end
@@ -56,7 +56,7 @@ flowchart TD
 | Resource | Minimum | Recommended | Why |
 |---|---|---|---|
 | RAM | **6 GB** (or 4 GB + 4 GB swap) | **8 GB** | On Linux, `api` uses ~0.4–1 GB steady (plus the memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while hot-reloading a new catalogue (`mem_limit: 4g`); `postgres` ~1 GB; `imgproxy` up to 1 GB; `worker` <512 MB; `web` ~200 MB |
-| CPU | 2 vCPU | 4 vCPU | WebP transcoding and Tantivy index rebuilds are CPU-bound |
+| CPU | 2 vCPU | 4 vCPU | AVIF transcoding and Tantivy index rebuilds are CPU-bound |
 | Disk | 40 GB SSD | 60 GB+ SSD | Database ~3 GB (~4 GB with embeddings), archived images ~1 GB, `imgcache` 10 GB (configurable), container images and backups |
 | OS | Linux with Docker or Podman (+ Compose) | — | Prebuilt `linux/amd64` images are published to `ghcr.io` |
 
@@ -119,7 +119,7 @@ $EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, and (with a bundl
 | `POSTGRES_PASSWORD` | `postgres`, `api`, `worker` | Long random secret, e.g. `openssl rand -base64 32` |
 | `ADMIN_USERNAMES` | `api` | Comma-separated usernames synced at every `api` start (unlisted accounts lose admin) |
 | `ARCHIVE_IMAGES_DIR` | `imgproxy` | `/srv/boothdex/images` when using a data bundle; leave empty without a bundle (uses an empty volume) |
-| `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | `imgproxy` | Transcoded WebP cache budget (`10240` MB disk / `256` MB RAM by default) |
+| `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | `imgproxy` | Transcoded AVIF cache budget (`10240` MB disk / `256` MB RAM by default) |
 | `BOOTHDEX_TAG` | `api`, `worker`, `imgproxy`, `web` | Image tag on `ghcr.io`: `latest` (default, tracks `master`), `0.1.0`, or `sha-<commit>` |
 | `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` / `AI_EMBED_MODEL` | `api`, `worker` | Optional; override and lock the `/admin` AI settings so API keys stay out of PostgreSQL |
 

@@ -61,10 +61,10 @@ test("one shared price, or null when variations differ", () => {
 
 test("downloads: archived copies are WebP only, names count from 1", () => {
   expect(downloadFormats("/img/v/abc.webp")).toEqual(["webp"]);
-  expect(downloadFormats("/img/b/orig/x.jpg")).toEqual(["webp", "png", "jpeg"]);
-  expect(downloadUrl("/img/b/orig/x.jpg", "png")).toBe(
-    "/img/b/orig/x.jpg?format=png",
-  );
+  const orig = "/img/b/orig/x.jpg?format=avif";
+  expect(downloadFormats(orig)).toEqual(["avif", "png", "jpeg"]);
+  expect(downloadUrl(orig, "png")).toBe("/img/b/orig/x.jpg?format=png");
+  expect(downloadUrl(orig, "avif")).toBe(orig);
   expect(downloadUrl("/img/v/abc.webp", "webp")).toBe("/img/v/abc.webp");
   expect(downloadName(42, 0, "jpeg")).toBe("booth-42-1.jpg");
 });
