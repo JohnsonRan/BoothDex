@@ -1,6 +1,6 @@
 "use client";
 // The overview's first band: whether the site is working and what waits on the operator. The worker, what runs
-// now, the month's failed runs, Booth's answers since the worker started, the AI and image backlogs and the
+// now, the month's unresolved failed runs, Booth's answers since the worker started, the AI and image backlogs and the
 // search index, with the index rebuild in the band heading. The order is fixed, so no tile moves when data
 // arrives; a tile asking for attention says so with its own status dot.
 
@@ -42,9 +42,7 @@ export function StatusBand({ trends }: { trends?: Trends }) {
   const w = ov.worker;
   const stale = ov.catalog.version < ov.catalog.db_version;
   const runs = trends?.runs ?? [];
-  const failed = runs
-    .filter((r) => r.status === "failed")
-    .reduce((a, r) => a + r.n, 0);
+  const failed = trends?.unresolved_failures ?? 0;
   const total = runs.reduce((a, r) => a + r.n, 0);
 
   const reload = () => {

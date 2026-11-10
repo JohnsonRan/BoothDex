@@ -105,6 +105,8 @@ export type Overview = {
 
 /** GET /api/admin/trends: the last 30 UTC days, oldest first (crates/api/src/admin/trends.rs). */
 export type Trends = {
+  /** Failed runs with no later successful run of the same kind; historical runs stay unchanged. */
+  unresolved_failures: number;
   /** `fetched`: item pages fetched by the details and refresh runs that finished that day */
   days: { day: string; published: number; fetched: number }[];
   runs: { day: string; kind: Kind; status: JobStatus; n: number }[];
