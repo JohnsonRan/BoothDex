@@ -135,9 +135,12 @@ export function ItemGallery({
                   setZoom(true);
                 }}
               >
+                {/* The original (1024 px at most): Booth's 620 px variant is stretched by any screen denser than
+                    1x, and the Lightbox below asks for the original of the current image even while closed, so
+                    one file serves both. */}
                 <img
                   style={HERO}
-                  src={imgUrl(item, i, "620x620")}
+                  src={imgUrl(item, i, "orig")}
                   alt={alt(i)}
                   loading={i < 2 ? "eager" : "lazy"}
                   decoding="async"
