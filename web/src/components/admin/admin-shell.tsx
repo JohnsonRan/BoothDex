@@ -13,7 +13,6 @@ import {
   SideNavItem,
   SideNavSection,
 } from "@astryxdesign/core/SideNav";
-import { HStack } from "@astryxdesign/core/Stack";
 import { usePathname } from "next/navigation";
 import {
   ColorModeToggle,
@@ -78,11 +77,13 @@ export function AdminShell({
           footer={
             <SideNavSection title={t("nav.site")} isHeaderHidden>
               <SideNavItem label={t("nav.site")} icon="admin:site" href="/" />
-              <HStack gap={1}>
-                <LanguageMenu />
-                <ColorModeToggle />
-              </HStack>
             </SideNavSection>
+          }
+          footerIcons={
+            <>
+              <LanguageMenu />
+              <ColorModeToggle />
+            </>
           }
         >
           {GROUPS.map((g) => (

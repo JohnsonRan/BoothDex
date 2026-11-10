@@ -160,28 +160,30 @@ function SettingsNarrowShell({
         <CloseButton onClose={onClose} />
       </HStack>
       <Divider />
-      <HStack
-        as="nav"
-        aria-label={t("settings.sections")}
-        gap={1}
-        wrap="nowrap"
-        isScrollable
-        paddingInline={3}
-        paddingBlock={2}
-      >
-        {PANELS.map((panel) => (
-          <Button
-            key={panel.id}
-            label={t(panel.label)}
-            icon={<Icon icon={panel.icon} size="sm" />}
-            variant={panel.id === activePanel ? "secondary" : "ghost"}
-            size="sm"
-            // the strip scrolls; its tabs keep their whole names
-            style={{ flexShrink: 0 }}
-            onClick={() => onSelectPanel(panel.id)}
-          />
-        ))}
-      </HStack>
+      <StackItem size="static">
+        <HStack
+          as="nav"
+          aria-label={t("settings.sections")}
+          gap={1}
+          wrap="nowrap"
+          isScrollable
+          paddingInline={3}
+          paddingBlock={2}
+        >
+          {PANELS.map((panel) => (
+            <Button
+              key={panel.id}
+              label={t(panel.label)}
+              icon={<Icon icon={panel.icon} size="sm" />}
+              variant={panel.id === activePanel ? "secondary" : "ghost"}
+              size="sm"
+              // the strip scrolls; its tabs keep their whole names
+              style={{ flexShrink: 0 }}
+              onClick={() => onSelectPanel(panel.id)}
+            />
+          ))}
+        </HStack>
+      </StackItem>
       <Divider />
       <StackItem size="fill">
         <VStack
