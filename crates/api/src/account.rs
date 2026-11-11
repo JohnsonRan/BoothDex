@@ -517,8 +517,52 @@ async fn put_preferences(State(s): State<Arc<AppState>>, headers: HeaderMap, Jso
     Ok(Json(prefs).into_response())
 }
 
-pub async fn favourite_ids(pool: &PgPool, user_id: i64) -> Result<Vec<i64>, ApiError> {
-    Ok(sqlx::query_scalar("select item_id from favourites where user_id = $1 order by created_at desc").bind(user_id).fetch_all(pool).await?)
+/// Each account's favourite item ids, newest first, so paging through the favourites view does not read them every
+/// time. A change made through this API drops them at once; one made through another API instance shows after a
+/// minute.
+pub struct FavouriteCache {
+    ids: moka::sync::Cache<i64, Arc<[i64]>>,
+    /// changes so far: ids read while one came in are not kept, they may predate it
+    writes: Mutex<u64>,
+}
+
+impl FavouriteCache {
+    pub fn new() -> Self {
+        Self { ids: moka::sync::Cache::builder().max_capacity(10_000).time_to_live(Duration::from_secs(60)).build(), writes: Mutex::new(0) }
+    }
+
+    fn writes(&self) -> u64 {
+        *self.writes.lock().unwrap()
+    }
+
+    /// After a change to the account's favourites.
+    fn changed(&self, user_id: i64) {
+        let mut w = self.writes.lock().unwrap();
+        *w += 1;
+        self.ids.invalidate(&user_id);
+    }
+
+    /// Keeps `ids`, read when `writes()` was `writes`, unless a change came in since.
+    fn keep(&self, user_id: i64, ids: Arc<[i64]>, writes: u64) {
+        let w = self.writes.lock().unwrap();
+        if *w == writes {
+            self.ids.insert(user_id, ids);
+        }
+    }
+}
+
+pub async fn favourite_ids(s: &AppState, user_id: i64) -> Result<Arc<[i64]>, ApiError> {
+    if let Some(ids) = s.favourites.ids.get(&user_id) {
+        return Ok(ids);
+    }
+    let writes = s.favourites.writes();
+    let ids: Arc<[i64]> = sqlx::query_scalar::<_, i64>("select item_id from favourites where user_id = $1 order by created_at desc")
+        .bind(user_id)
+        .fetch_all(&s.pool)
+        .await?
+        .into();
+    s.favourites.keep(user_id, ids.clone(), writes);
+    Ok(ids)
 }
 
 async fn list_favourites(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
@@ -526,7 +570,7 @@ async fn list_favourites(State(s): State<Arc<AppState>>, headers: HeaderMap) -> 
         Ok(u) => u,
         Err(r) => return Ok(r),
     };
-    Ok(Json(json!({ "ids": favourite_ids(&s.pool, u.id).await? })).into_response())
+    Ok(Json(json!({ "ids": &*favourite_ids(&s, u.id).await? })).into_response())
 }
 
 async fn add_favourite(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(item): Path<i64>) -> Result<Response, ApiError> {
@@ -535,7 +579,10 @@ async fn add_favourite(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(
         Err(r) => return Ok(r),
     };
     match sqlx::query("insert into favourites (user_id, item_id) values ($1, $2) on conflict do nothing").bind(u.id).bind(item).execute(&s.pool).await {
-        Ok(_) => Ok(Json(json!({ "ok": true })).into_response()),
+        Ok(_) => {
+            s.favourites.changed(u.id);
+            Ok(Json(json!({ "ok": true })).into_response())
+        }
         Err(e) if e.as_database_error().and_then(|d| d.code()).as_deref() == Some("23503") => Ok(err(StatusCode::NOT_FOUND, "Unknown item.")),
         Err(e) => Err(e.into()),
     }
@@ -547,6 +594,7 @@ async fn remove_favourite(State(s): State<Arc<AppState>>, headers: HeaderMap, Pa
         Err(r) => return Ok(r),
     };
     sqlx::query("delete from favourites where user_id = $1 and item_id = $2").bind(u.id).bind(item).execute(&s.pool).await?;
+    s.favourites.changed(u.id);
     Ok(Json(json!({ "ok": true })).into_response())
 }
 
@@ -877,6 +925,62 @@ mod tests {
         let (ids, ats) = dedupe_views(b.views);
         assert_eq!(ids, vec![1, 2]);
         assert_eq!(ats, vec![Some(2.0), None]);
+    }
+
+    #[test]
+    fn favourites_read_before_a_change_are_not_cached() {
+        let c = FavouriteCache::new();
+        let read_at = c.writes();
+        c.changed(1);
+        c.keep(1, Arc::from([5]), read_at);
+        assert!(c.ids.get(&1).is_none());
+        c.keep(1, Arc::from([5]), c.writes());
+        assert_eq!(c.ids.get(&1).as_deref(), Some(&[5][..]));
+        c.changed(1);
+        assert!(c.ids.get(&1).is_none());
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn favourites_list_follows_changes_at_once(pool: PgPool) {
+        let user: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', 'x') returning id")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+            .bind(token_hash("tok-a"))
+            .bind(user)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+             select g, 't', 'c', 'https://example.test', false, 'ok', now() from generate_series(1, 3) g",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let state = test_state(pool.clone());
+        let headers = || {
+            let mut h = HeaderMap::new();
+            h.insert(header::COOKIE, "session=tok-a".parse().unwrap());
+            h
+        };
+        let list = || async {
+            let r = list_favourites(State(state.clone()), headers()).await.ok().unwrap();
+            let body: Value = serde_json::from_slice(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap();
+            serde_json::from_value::<Vec<i64>>(body["ids"].clone()).unwrap()
+        };
+
+        add_favourite(State(state.clone()), headers(), Path(1)).await.ok().unwrap();
+        assert_eq!(list().await, [1]);
+        add_favourite(State(state.clone()), headers(), Path(2)).await.ok().unwrap();
+        assert_eq!(list().await, [2, 1]);
+        remove_favourite(State(state.clone()), headers(), Path(1)).await.ok().unwrap();
+        assert_eq!(list().await, [2]);
+        // a change that does not pass through this API is not seen until the cache expires
+        sqlx::query("insert into favourites (user_id, item_id) values ($1, 3)").bind(user).execute(&pool).await.unwrap();
+        assert_eq!(list().await, [2]);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

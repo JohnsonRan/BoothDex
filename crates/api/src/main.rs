@@ -53,6 +53,7 @@ struct AppState {
     gallery: gallery::Fetcher,
     /// item opens not yet written to item_stats; see `gallery::flush_views`
     view_counts: gallery::ViewCounts,
+    favourites: account::FavouriteCache,
     sys: admin::SysMetrics,
     http: reqwest::Client,
     imgproxy_url: Option<String>,
@@ -97,6 +98,7 @@ impl AppState {
             dummy_hash,
             gallery,
             view_counts: Default::default(),
+            favourites: account::FavouriteCache::new(),
             sys: admin::SysMetrics::new(),
             http,
             imgproxy_url,

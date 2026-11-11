@@ -139,7 +139,7 @@ pub(crate) async fn search(
         let Some(u) = account::current_user(&s.pool, &headers).await? else {
             return Ok((StatusCode::UNAUTHORIZED, Json(json!({ "ok": false, "error": "Sign in required" }))).into_response());
         };
-        let f = s.snap().catalog.docs_for(&account::favourite_ids(&s.pool, u.id).await?);
+        let f = s.snap().catalog.docs_for(&account::favourite_ids(&s, u.id).await?);
         trace.step("favourites");
         Some(f)
     } else {
