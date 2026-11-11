@@ -1,6 +1,7 @@
 "use client";
-// Master's "viewed" treatment (item-card.tsx:72-79) drawn with Astryx: a light scrim over the cover with a
-// "Viewed" Badge in it, as block OverlayBottomStrip lays a Badge over media with Overlay. As on master, a
+// Master's "viewed" treatment (item-card.tsx:72-79) drawn with Astryx: a veil over the cover with a "Viewed"
+// Badge in it, as block OverlayBottomStrip lays a Badge over media with Overlay. The veil is the page's own
+// background (app/globals.css `viewed-cover`), not the light scrim, which is white on a dark page too. As on master, a
 // mouse over the tile lifts the scrim so the cover can be seen. Only a viewed tile mounts the Overlay, whose
 // code loads with the first one; the others render their cover as given.
 
@@ -21,7 +22,8 @@ export default function ViewedOverlay({
   const [hover, setHover] = useState(false);
   return (
     <Overlay
-      scrim="light"
+      scrim={false}
+      className="viewed-cover"
       position="fill"
       align="start"
       isOpen={!hover}

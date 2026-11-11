@@ -137,6 +137,16 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   fill: currentColor;
 }
 
+/* A viewed cover's veil (catalog/viewed-overlay.tsx): the cover fades toward the page behind it, white in light
+   mode and dark in dark mode (pure black included), where Overlay's light scrim is white in every mode. */
+.viewed-cover > .astryx-overlay-scrim {
+  background-color: color-mix(
+    in srgb,
+    var(--color-background-surface) 60%,
+    transparent
+  );
+}
+
 /* The top bar's account slots (account/account-button.tsx): both are in the server HTML, and `data-account`,
    set by the head script from the last session and kept by the session, shows one before the first paint. */
 [data-account-slot] {
