@@ -1,6 +1,6 @@
 // The item dialog's records, kept apart from the card itself (item-dialog.tsx drops the rendered card once it
 // closes): an item opened again, or brought back by Back and Forward, shows at once. A record is fetched when the
-// visitor opens the item, or already when they point at its tile (item-host.tsx), and kept for a few minutes;
+// visitor opens the item, already as they press its tile (item-host.tsx), and kept for a few minutes;
 // the last 50 are kept. Only the record (`/api/items`, a plain read): the gallery request counts a view and may
 // ask Booth, so it is sent by the dialog, once per open, and only its answer is kept.
 // Before any record, the card draws what the item's tile showed (keepTiles): the shop, the cover, the title and

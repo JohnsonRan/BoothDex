@@ -7,8 +7,8 @@
 // favourite button excepted. The dialog's code loads once the page is idle (lib/lazy), so the first item opened
 // does not wait for the network, nor for next/dynamic's Suspense reveal, which React holds back up to 300 ms.
 // Closing closes at once and lets the history step follow: a Back the router answers first re-renders the page
-// before the dialog would. Pointing at a tile fetches its record (item-cache.ts), so the card mostly has it by
-// the click: a mouse resting on a tile a moment (one passing over the grid fetches nothing), a press at once.
+// before the dialog would. Pressing a tile fetches its record (item-cache.ts), so the fetch starts before the
+// click lands; a mouse resting on a tile fetches nothing.
 
 import {
   createContext,
@@ -23,8 +23,6 @@ import { Lazy, lazySurface, preloadWhenIdle } from "@/lib/lazy";
 import type { Rates } from "@/lib/settings-core";
 import { prefetchItem } from "./item-cache";
 import { itemHref, itemParam } from "./item-data";
-
-const HOVER_MS = 120;
 
 const ItemDialog = lazySurface(() =>
   import("./item-dialog").then((m) => m.default),
@@ -131,27 +129,12 @@ export function ItemHost({
       const tile = el?.closest<HTMLElement>("[data-item]");
       return tile && !el?.closest("[data-fav]") ? Number(tile.dataset.item) : 0;
     };
-    let over = 0;
-    let timer = 0;
-    const onOver = (e: PointerEvent) => {
-      if (e.pointerType !== "mouse") return;
-      const n = tileOf(e);
-      if (n === over) return;
-      over = n;
-      clearTimeout(timer);
-      if (n) timer = window.setTimeout(() => prefetchItem(n), HOVER_MS);
-    };
     const onDown = (e: PointerEvent) => {
       const n = tileOf(e);
       if (n) prefetchItem(n);
     };
-    document.addEventListener("pointerover", onOver);
     document.addEventListener("pointerdown", onDown);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("pointerover", onOver);
-      document.removeEventListener("pointerdown", onDown);
-    };
+    return () => document.removeEventListener("pointerdown", onDown);
   }, []);
 
   // mounted from the first item on, so the dialog can play its closing transition
