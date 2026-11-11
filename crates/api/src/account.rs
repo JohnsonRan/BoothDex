@@ -6,6 +6,7 @@
 //! requests can't carry it; body-carrying mutations additionally require JSON.
 
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -440,7 +441,33 @@ struct ChangePassword {
     new: String,
 }
 
-async fn change_password(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<ChangePassword>) -> Result<Response, ApiError> {
+/// The signed-in account's own password, checked under the same limits as a sign-in: each check is an Argon2 hash
+/// drawn from the IP's `auth` bucket, and failures count against the username, so a session cookie alone can't be
+/// used to guess the password and take the account over.
+async fn check_own_password(s: &AppState, ip: IpAddr, user_id: i64, password: String, wrong: &str) -> Result<Result<(), Response>, ApiError> {
+    if let Err(r) = s.limits.auth.check(ip) {
+        return Ok(Err(r.into_response()));
+    }
+    let (username, hash): (String, String) =
+        sqlx::query_as("select username, password_hash from users where id = $1").bind(user_id).fetch_one(&s.pool).await?;
+    let key = username.to_lowercase();
+    if s.throttle.blocked(&key) {
+        return Ok(Err(err(StatusCode::TOO_MANY_REQUESTS, "Too many attempts. Try again later.")));
+    }
+    if !verify_password(password, hash).await? {
+        s.throttle.fail(&key);
+        return Ok(Err(err(StatusCode::FORBIDDEN, wrong)));
+    }
+    s.throttle.clear(&key);
+    Ok(Ok(()))
+}
+
+async fn change_password(
+    State(s): State<Arc<AppState>>,
+    crate::limit::ClientIp(ip): crate::limit::ClientIp,
+    headers: HeaderMap,
+    Json(b): Json<ChangePassword>,
+) -> Result<Response, ApiError> {
     let u = match require_user(&s, &headers).await? {
         Ok(u) => u,
         Err(r) => return Ok(r),
@@ -448,9 +475,8 @@ async fn change_password(State(s): State<Arc<AppState>>, headers: HeaderMap, Jso
     if !valid_password(&b.new) {
         return Ok(err(StatusCode::BAD_REQUEST, "Your password must be at least 10 characters."));
     }
-    let hash: String = sqlx::query_scalar("select password_hash from users where id = $1").bind(u.id).fetch_one(&s.pool).await?;
-    if !verify_password(b.current, hash).await? {
-        return Ok(err(StatusCode::FORBIDDEN, "Current password is incorrect."));
+    if let Err(r) = check_own_password(&s, ip, u.id, b.current, "Current password is incorrect.").await? {
+        return Ok(r);
     }
     let new_hash = hash_password(b.new).await?;
     let mut tx = s.pool.begin().await?;
@@ -467,14 +493,18 @@ struct DeleteAccount {
     password: String,
 }
 
-async fn delete_account(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<DeleteAccount>) -> Result<Response, ApiError> {
+async fn delete_account(
+    State(s): State<Arc<AppState>>,
+    crate::limit::ClientIp(ip): crate::limit::ClientIp,
+    headers: HeaderMap,
+    Json(b): Json<DeleteAccount>,
+) -> Result<Response, ApiError> {
     let u = match require_user(&s, &headers).await? {
         Ok(u) => u,
         Err(r) => return Ok(r),
     };
-    let hash: String = sqlx::query_scalar("select password_hash from users where id = $1").bind(u.id).fetch_one(&s.pool).await?;
-    if !verify_password(b.password, hash).await? {
-        return Ok(err(StatusCode::FORBIDDEN, "Password is incorrect."));
+    if let Err(r) = check_own_password(&s, ip, u.id, b.password, "Password is incorrect.").await? {
+        return Ok(r);
     }
     // sessions, favourites, viewed items and saved searches cascade
     sqlx::query("delete from users where id = $1").bind(u.id).execute(&s.pool).await?;
@@ -1212,6 +1242,34 @@ mod tests {
         assert!(!registration_open(&pool).await.unwrap());
         assert_eq!(status(sign_up("bob").await), StatusCode::FORBIDDEN);
         assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from users").fetch_one(&pool).await.unwrap(), 1);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn password_checks_are_limited_like_sign_ins(pool: PgPool) {
+        signed_in(&pool).await;
+        let state = test_state(pool.clone());
+        let change = |ip: [u8; 4]| {
+            change_password(State(state.clone()), crate::limit::ClientIp(ip.into()), headers(), Json(ChangePassword {
+                current: "not-the-password".into(),
+                new: "0123456789".into(),
+            }))
+        };
+        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+
+        // an IP out of sign-in attempts can't check passwords either
+        let busy = [203, 0, 113, 1];
+        while state.limits.auth.check(busy.into()).is_ok() {}
+        assert_eq!(status(change(busy).await), StatusCode::TOO_MANY_REQUESTS);
+        let delete = delete_account(State(state.clone()), crate::limit::ClientIp(busy.into()), headers(), Json(DeleteAccount { password: "x".into() }));
+        assert_eq!(status(delete.await), StatusCode::TOO_MANY_REQUESTS);
+
+        // wrong guesses from many IPs lock the account's name, as failed sign-ins do
+        for i in 0..MAX_FAILURES as u8 {
+            assert_eq!(status(change([198, 51, 100, i]).await), StatusCode::FORBIDDEN);
+        }
+        assert_eq!(status(change([198, 51, 100, 200]).await), StatusCode::TOO_MANY_REQUESTS);
+        assert!(state.throttle.blocked("a"));
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
