@@ -229,7 +229,7 @@ cargo build --release            # first build downloads the IPADIC dictionary; 
 # Without it the encoder is rav1e; with nasm installed, --features imgproxy/asm makes that about three times faster.
 (cd web && bun install)
 
-export DATABASE_URL=postgres://postgres:dev@localhost:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
+export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
 target/release/api &             # :3000
 target/release/imgproxy &        # :3001
 target/release/worker run &
@@ -248,8 +248,8 @@ target/release/worker once incremental '{"max_pages": 3, "full": true}'
 Tests and checks:
 
 ```sh
-cargo test
-cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check src
+cargo test --workspace -- --include-ignored && cargo clippy --workspace --all-targets -- -D warnings
+cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 ```
 
 ## API

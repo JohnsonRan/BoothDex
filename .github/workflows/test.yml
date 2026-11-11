@@ -1,17 +1,16 @@
 name: test
 
+# Pushes to master run these checks from images.yml, which builds the images only after they pass.
 on:
-  push:
-    branches: [master]
-    paths: &paths
+  pull_request:
+    paths:
       - "Cargo.toml"
       - "Cargo.lock"
       - "crates/**"
       - "web/**"
       - ".github/workflows/test.yml"
       - "!**/*.md"
-  pull_request:
-    paths: *paths
+  workflow_call:
   workflow_dispatch:
 
 jobs:
@@ -34,10 +33,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace -- --include-ignored
         env:
           DATABASE_URL: postgres://postgres:dev@localhost:5432/catalogue
+      - run: cargo clippy --workspace --all-targets -- -D warnings
       # the container images encode AVIF with libaom (imgproxy's libavif feature); the plain build above uses rav1e
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libavif-dev pkg-config
       - run: cargo test -p imgproxy --features libavif
@@ -56,3 +58,4 @@ jobs:
       # PageProps / LayoutProps are generated route types (normally written by next dev/build)
       - run: bunx next typegen
       - run: bunx tsc --noEmit
+      - run: bunx biome check

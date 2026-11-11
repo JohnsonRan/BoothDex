@@ -695,7 +695,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(300)).await;
                 "done"
             }))
-            .route("/hang", axum::routing::get(|| std::future::pending::<&'static str>()));
+            .route("/hang", axum::routing::get(std::future::pending::<&'static str>));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();

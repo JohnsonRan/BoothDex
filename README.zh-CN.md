@@ -205,7 +205,7 @@ cargo build --release            # 首次构建会下载 IPADIC 词典；若网�
 # 不加时使用 rav1e；已安装 nasm 时可加上 --features imgproxy/asm，编码速度约为原来的三倍。
 (cd web && bun install)
 
-export DATABASE_URL=postgres://postgres:dev@localhost:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
+export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
 target/release/api &             # :3000
 target/release/imgproxy &        # :3001
 target/release/worker run &
@@ -223,8 +223,8 @@ target/release/worker once incremental '{"max_pages": 3, "full": true}'
 运行测试与静态检查：
 
 ```sh
-cargo test
-cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check src
+cargo test --workspace -- --include-ignored && cargo clippy --workspace --all-targets -- -D warnings
+cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 ```
 
 ## API

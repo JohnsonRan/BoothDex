@@ -8,10 +8,14 @@ Run the checks for the parts a change touches. A suite that runs past its limit 
 
 | Part | Commands | Time limit |
 |---|---|---|
-| Rust | `cargo test --workspace -- --include-ignored`, with `DATABASE_URL` set as in the README | 3 min, not counting the build |
+| Rust | `cargo test --workspace -- --include-ignored`, with `DATABASE_URL` set as in the README, and `cargo clippy --workspace --all-targets -- -D warnings` | 3 min for the tests, not counting the build |
 | Web | `bun test`, `bunx tsc --noEmit` and `bunx biome check` in `web/` | 15 s for `bun test` |
 
-On 2026-11-11 the Rust suite ran 107 tests in 89–116 s, and `bun test` ran 103 tests in 3 s.
+CI runs all of these (`.github/workflows/test.yml`) and builds the images only after they pass.
+
+On 2026-11-11 the Rust suite ran 109 tests in 4 s, and `bun test` ran 103 tests in 3 s. Point `DATABASE_URL` at
+`127.0.0.1`, not `localhost`: on Windows `localhost` tries IPv6 first, and every new connection to the Postgres
+container then waits about 2 s, which made the same run take 104 s.
 
 ## Performance baseline
 

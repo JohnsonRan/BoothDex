@@ -125,125 +125,129 @@ export function SignInDialog({
   const label = mode === "login" ? t("account.signIn") : t("account.register");
   return (
     <>
-    <Dialog isOpen={isOpen} onOpenChange={onOpenChange} purpose="form">
-      <Layout
-        header={
-          <DialogHeader
-            title={gate?.title ?? t("account.title")}
-            subtitle={gate?.description ?? t("account.desc")}
-            onOpenChange={onOpenChange}
-          />
-        }
-        content={
-          <LayoutContent>
-            <VStack gap={4} hAlign="stretch">
-              {!gate && canRegister && (
-                <TabList
-                  value={mode}
-                  onChange={(v) => {
-                    setMode(v as Mode);
-                    setChecked(false);
+      <Dialog isOpen={isOpen} onOpenChange={onOpenChange} purpose="form">
+        <Layout
+          header={
+            <DialogHeader
+              title={gate?.title ?? t("account.title")}
+              subtitle={gate?.description ?? t("account.desc")}
+              onOpenChange={onOpenChange}
+            />
+          }
+          content={
+            <LayoutContent>
+              <VStack gap={4} hAlign="stretch">
+                {!gate && canRegister && (
+                  <TabList
+                    value={mode}
+                    onChange={(v) => {
+                      setMode(v as Mode);
+                      setChecked(false);
+                    }}
+                    layout="fill"
+                    role="tablist"
+                  >
+                    <Tab value="login" label={t("account.signIn")} />
+                    <Tab value="register" label={t("account.register")} />
+                  </TabList>
+                )}
+                {/* a form, so Enter submits and password managers recognise it */}
+                <form
+                  noValidate
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submit();
                   }}
-                  layout="fill"
-                  role="tablist"
                 >
-                  <Tab value="login" label={t("account.signIn")} />
-                  <Tab value="register" label={t("account.register")} />
-                </TabList>
-              )}
-              {/* a form, so Enter submits and password managers recognise it */}
-              <form
-                noValidate
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  submit();
-                }}
-              >
-                <VStack gap={4} hAlign="stretch">
-                  <VStack gap={2}>
-                    {FIELDS[mode].map((f) => {
-                      const { label: name, type, auto } = INPUT[f];
-                      const error = errorOf(f);
-                      return (
-                        <TextInput
-                          key={`${mode}-${f}`}
-                          label={t(name)}
-                          isLabelHidden
-                          placeholder={
-                            f === "password" && mode === "register"
-                              ? t("account.newPassword")
-                              : t(name)
-                          }
-                          // the rule stays readable while typing (template form-wizard, page.tsx:453)
-                          description={
-                            f === "username" && mode === "register"
-                              ? t("account.usernameRule")
-                              : undefined
-                          }
-                          type={type}
-                          autoComplete={
-                            f === "password"
-                              ? mode === "login"
-                                ? "current-password"
-                                : "new-password"
-                              : auto
-                          }
-                          value={value(f)}
-                          onChange={(v: string) =>
-                            setValues((s) => ({ ...s, [f]: v }))
-                          }
-                          size="lg"
-                          status={
-                            error
-                              ? { type: "error", message: t(error) }
-                              : undefined
-                          }
-                        />
-                      );
-                    })}
-                  </VStack>
-                  <HStack>
-                    <Button
-                      type="submit"
-                      label={label}
-                      variant="primary"
-                      size="lg"
-                      width="100%"
-                      isLoading={busy}
-                    />
-                  </HStack>
-                  {mode === "register" && (
-                    <Text type="supporting" color="secondary" justify="center">
-                      {rich(t("legal.consent"), {
-                        terms: (
-                          <Link
-                            href="/terms"
-                            type="supporting"
-                            onClick={legal.open("terms")}
-                          >
-                            {t("legal.terms")}
-                          </Link>
-                        ),
-                        privacy: (
-                          <Link
-                            href="/privacy"
-                            type="supporting"
-                            onClick={legal.open("privacy")}
-                          >
-                            {t("legal.privacy")}
-                          </Link>
-                        ),
+                  <VStack gap={4} hAlign="stretch">
+                    <VStack gap={2}>
+                      {FIELDS[mode].map((f) => {
+                        const { label: name, type, auto } = INPUT[f];
+                        const error = errorOf(f);
+                        return (
+                          <TextInput
+                            key={`${mode}-${f}`}
+                            label={t(name)}
+                            isLabelHidden
+                            placeholder={
+                              f === "password" && mode === "register"
+                                ? t("account.newPassword")
+                                : t(name)
+                            }
+                            // the rule stays readable while typing (template form-wizard, page.tsx:453)
+                            description={
+                              f === "username" && mode === "register"
+                                ? t("account.usernameRule")
+                                : undefined
+                            }
+                            type={type}
+                            autoComplete={
+                              f === "password"
+                                ? mode === "login"
+                                  ? "current-password"
+                                  : "new-password"
+                                : auto
+                            }
+                            value={value(f)}
+                            onChange={(v: string) =>
+                              setValues((s) => ({ ...s, [f]: v }))
+                            }
+                            size="lg"
+                            status={
+                              error
+                                ? { type: "error", message: t(error) }
+                                : undefined
+                            }
+                          />
+                        );
                       })}
-                    </Text>
-                  )}
-                </VStack>
-              </form>
-            </VStack>
-          </LayoutContent>
-        }
-      />
-    </Dialog>
-    {legal.dialog}
+                    </VStack>
+                    <HStack>
+                      <Button
+                        type="submit"
+                        label={label}
+                        variant="primary"
+                        size="lg"
+                        width="100%"
+                        isLoading={busy}
+                      />
+                    </HStack>
+                    {mode === "register" && (
+                      <Text
+                        type="supporting"
+                        color="secondary"
+                        justify="center"
+                      >
+                        {rich(t("legal.consent"), {
+                          terms: (
+                            <Link
+                              href="/terms"
+                              type="supporting"
+                              onClick={legal.open("terms")}
+                            >
+                              {t("legal.terms")}
+                            </Link>
+                          ),
+                          privacy: (
+                            <Link
+                              href="/privacy"
+                              type="supporting"
+                              onClick={legal.open("privacy")}
+                            >
+                              {t("legal.privacy")}
+                            </Link>
+                          ),
+                        })}
+                      </Text>
+                    )}
+                  </VStack>
+                </form>
+              </VStack>
+            </LayoutContent>
+          }
+        />
+      </Dialog>
+      {legal.dialog}
     </>
   );
 }
