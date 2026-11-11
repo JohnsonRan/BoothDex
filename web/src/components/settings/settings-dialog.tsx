@@ -241,7 +241,7 @@ export default function SettingsDialog({
       padding={0}
       aria-labelledby={titleId}
     >
-      <VStack style={{ height: DIALOG_MAX_HEIGHT }}>
+      <VStack height={DIALOG_MAX_HEIGHT}>
         {isNarrow ? (
           <SettingsNarrowShell
             titleId={titleId}

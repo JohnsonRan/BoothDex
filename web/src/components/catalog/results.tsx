@@ -5,6 +5,7 @@
 
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { type Filters, filtersToQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
 import { drawnWith, pageQuery } from "@/lib/result-pages";
@@ -16,15 +17,6 @@ import { KeepResults, Swap } from "./refresh";
 import { PageInView, ResultPages } from "./result-pages";
 import { EmptyResults, SemanticNote } from "./result-states";
 import { SearchTrace } from "./search-trace";
-
-const VISUALLY_HIDDEN = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  overflow: "hidden",
-  clipPath: "inset(50%)",
-  whiteSpace: "nowrap",
-} as const;
 
 export async function ResultCount({
   outcome,
@@ -123,7 +115,7 @@ export async function Results({
             <SemanticNote text={t("list.semanticUnavailable")} />
           )}
           {/* plain links for crawlers and screen readers' link lists; out of the tab order, the scroll reads on */}
-          <nav aria-label={t("page.nav")} style={VISUALLY_HIDDEN}>
+          <VisuallyHidden as="nav" aria-label={t("page.nav")}>
             {result.page > 1 && (
               <a href={href(result.page - 1)} tabIndex={-1}>
                 {t("page.prev")}
@@ -134,7 +126,7 @@ export async function Results({
                 {t("page.next")}
               </a>
             )}
-          </nav>
+          </VisuallyHidden>
         </VStack>
       </Swap>
     </KeepResults>

@@ -13,28 +13,14 @@ import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import type { Tile } from "@/components/catalog/item-tile";
+import { TextSilhouette } from "@/components/catalog/silhouette";
 import { useUi } from "@/components/providers";
 import { DIALOG_MAX_HEIGHT } from "@/lib/dialog-height";
 import type { remColumns } from "@/lib/grid";
 import { HERO } from "./item-data";
 
-type TextType = "display-2" | "heading-1" | "body" | "large" | "supporting";
-
 // what the tile showed is on screen at once, inside a silhouette still hidden for the wait
 const SHOWN = { visibility: "visible" } as const;
-
-function Line({ type, width }: { type: TextType; width: string }) {
-  return (
-    <VStack
-      style={{
-        height: `calc(var(--text-${type}-leading) * var(--text-${type}-size))`,
-        justifyContent: "center",
-      }}
-    >
-      <Skeleton height={`var(--text-${type}-size)`} width={width} />
-    </VStack>
-  );
-}
 
 /** The price as ItemInfo and PhoneBar draw it. */
 const Price = ({ price }: { price: string }) => (
@@ -80,7 +66,11 @@ export const PhoneBarSilhouette = ({
     style={{ visibility: shown ? "visible" : "hidden" }}
   >
     <VStack style={{ flex: 1 }}>
-      {price ? <Price price={price} /> : <Line type="large" width="4rem" />}
+      {price ? (
+        <Price price={price} />
+      ) : (
+        <TextSilhouette type="large" width="4rem" />
+      )}
     </VStack>
     <Control size="lg" width="var(--size-element-lg)" />
     <Control size="lg" width="8rem" />
@@ -152,15 +142,14 @@ export function DetailSilhouette({
             </Heading>
           ) : (
             <VStack>
-              <Line type={title} width="100%" />
-              <Line type={title} width="55%" />
+              <TextSilhouette type={title} lines={2} width="55%" />
             </VStack>
           )}
-          <Line type="body" width="3rem" />
+          <TextSilhouette type="body" width="3rem" />
           {tile ? (
             <Price price={tile.price} />
           ) : (
-            <Line type="large" width="6rem" />
+            <TextSilhouette type="large" width="6rem" />
           )}
         </VStack>
         <HStack gap={1}>

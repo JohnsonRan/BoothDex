@@ -49,7 +49,7 @@ export function TagPicker({
 
   return (
     // the popup floors its width at the trigger's; tag rows need this much
-    <VStack gap={3} style={{ width: EDITOR_WIDTH }}>
+    <VStack gap={3} width={EDITOR_WIDTH}>
       {tags.length + extags.length > 0 && (
         <HStack gap={1} wrap="wrap">
           {tags.map((name) => (

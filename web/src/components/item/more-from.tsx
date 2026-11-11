@@ -17,7 +17,7 @@ import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { useEffect, useRef, useState } from "react";
 import { useFilterUrl } from "@/components/catalog/filter-url";
-import { SkeletonImage } from "@/components/catalog/silhouette";
+import { SkeletonImage, TextSilhouette } from "@/components/catalog/silhouette";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { ItemResponse, SearchResponse } from "@/lib/api-types";
@@ -163,16 +163,6 @@ function Caption({ title, price }: { title: string; price: string }) {
 
 /** A card's boxes while the shop's items load; the bars appear only once the wait has lasted (use-delayed). */
 function CardSilhouette({ shown, label }: { shown: boolean; label?: string }) {
-  const bar = (type: "supporting" | "body", width: string) => (
-    <VStack
-      style={{
-        height: `calc(var(--text-${type}-leading) * var(--text-${type}-size))`,
-        justifyContent: "center",
-      }}
-    >
-      <Skeleton height={`var(--text-${type}-size)`} width={width} />
-    </VStack>
-  );
   return (
     <VStack
       gap={2}
@@ -186,10 +176,9 @@ function CardSilhouette({ shown, label }: { shown: boolean; label?: string }) {
       </AspectRatio>
       <VStack gap={1}>
         <VStack>
-          {bar("supporting", "100%")}
-          {bar("supporting", "60%")}
+          <TextSilhouette type="supporting" lines={2} width="60%" />
         </VStack>
-        {bar("body", "40%")}
+        <TextSilhouette type="body" width="40%" />
       </VStack>
     </VStack>
   );

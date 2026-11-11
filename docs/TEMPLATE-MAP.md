@@ -438,6 +438,29 @@ Checked and kept as the template:
   `:not(#\#)`); shown only above 1024 px (`NO_RAIL_QUERY`, as `docs layout/responsive` recommends for a side
   panel), the row keeping the filters below that.
 
+## Inline styles kept (rule check, 2026-11-11)
+
+`web/AGENTS.md` asks for component props, then token-backed utilities, and no `style` objects or raw `<div>`/`<span>`.
+This site compiles neither StyleX nor Tailwind, so `xstyle` and utility classes are not available. Where Astryx has a
+prop, the prop is used. Where it has none, a `style` object stays, holding tokens or values computed at run time, never
+a raw colour. Each one is converted when its file is next changed and a prop covers it (owner). 72 remain:
+
+- Positioning: the sticky filter band, item columns and settings tabs; the refresh bar and the boxes' probe
+  (`absolute`).
+- Showing and hiding without moving anything: `visibility` on silhouettes and the folded filter readout, `display:
+  contents` wrappers, the item dialog's subtitle while it waits.
+- Flex and grid escapes: `flexShrink`, `flex` and `minWidth: 0` outside a `StackItem`, `gridArea`, a title's
+  `min-block-size: 2lh`.
+- Scrolling: the saved views row, the gallery's thumbnails and the variations list (`overflow`, no scroll bar,
+  `overscrollBehavior`).
+- Token colours: the theme previews in Settings, the admin chart's legend dots, the search trace's failed steps, the
+  pressed chips.
+- Values known only at run time: the results grid's masks and the heights of boxes not drawn (`result-pages.tsx`), the
+  strip's custom properties (`band.tsx`, `avatar-strip.tsx`), rotations.
+
+Raw elements kept: the tile's shop icon (above), `SkeletonImage`'s wrapper (server markup that needs no script), the
+account slots `globals.css` shows by `data-account`, and the item dialog's waiting subtitle.
+
 ## Remaining Tailwind or shadcn files
 
 None. The rewrite removed Tailwind, shadcn and their dependencies.

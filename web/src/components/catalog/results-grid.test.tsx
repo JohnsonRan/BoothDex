@@ -94,7 +94,7 @@ test("a full page renders the first screen on the server and the rest in the bro
 test("every tile reserves two title lines and a badge row, as its loading silhouette does", () => {
   const html = render([item, { ...item, id: 2 }]);
   expect(html.match(/min-block-size:2lh/g)).toHaveLength(2);
-  expect(html.match(/min-block-size:var\(--spacing-5\)/g)).toHaveLength(2);
+  expect(html.match(/min-height:var\(--spacing-5\)/g)).toHaveLength(2);
 });
 
 test("tiles show the title in the chosen language, the shop and the price", () => {

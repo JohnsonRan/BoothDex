@@ -9,7 +9,13 @@ import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import type { ComponentProps, CSSProperties, Ref } from "react";
 
-type TextType = "heading-1" | "heading-4" | "supporting" | "body" | "large";
+type TextType =
+  | "display-2"
+  | "heading-1"
+  | "heading-4"
+  | "supporting"
+  | "body"
+  | "large";
 
 /** `lines` lines of `type` text, each a bar of the font's size centred in the text's line box. */
 export function TextSilhouette({
@@ -25,10 +31,8 @@ export function TextSilhouette({
     <VStack
       // biome-ignore lint/suspicious/noArrayIndexKey: fixed lines, never reordered
       key={i}
-      style={{
-        height: `calc(var(--text-${type}-leading) * var(--text-${type}-size))`,
-        justifyContent: "center",
-      }}
+      height={`calc(var(--text-${type}-leading) * var(--text-${type}-size))`}
+      vAlign="center"
     >
       <Skeleton
         height={`var(--text-${type}-size)`}
@@ -68,15 +72,12 @@ export function TileSilhouette({
             <TextSilhouette type="body" width="50%" />
           </StackItem>
         </HStack>
-        <HStack
-          vAlign="center"
-          style={{ minBlockSize: "var(--size-element-sm)" }}
-        >
+        <HStack vAlign="center" minHeight="var(--size-element-sm)">
           <StackItem size="fill">
             <TextSilhouette type="large" width="35%" />
           </StackItem>
         </HStack>
-        <HStack style={{ minBlockSize: "var(--spacing-5)" }}>
+        <HStack minHeight="var(--spacing-5)">
           <Skeleton height="var(--spacing-5)" width="40%" radius="rounded" />
         </HStack>
       </VStack>

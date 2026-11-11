@@ -31,19 +31,13 @@ export function SavedViewsBar({
 }) {
   const { t } = useUi();
   return (
-    <HStack
-      gap={2}
-      vAlign="center"
-      wrap="nowrap"
-      minHeight={32}
-      style={{ rowGap: 6 }}
-    >
+    <HStack gap={2} vAlign="center" wrap="nowrap" minHeight={32}>
       {/* outside the scroller, so the row keeps saying what it is (savedViewsLabel, :1411) */}
       <Text type="label" style={{ flexShrink: 0 }}>
         {t("saved.barLabel")}
       </Text>
       {/* savedViewsSlot + savedViewsScroller (:1417-1434): scrolled, not folded, so every name stays browsable */}
-      <StackItem style={{ flexShrink: 1, minWidth: 0 }}>
+      <StackItem style={{ flexShrink: 1 }}>
         <HStack
           gap={2}
           vAlign="center"

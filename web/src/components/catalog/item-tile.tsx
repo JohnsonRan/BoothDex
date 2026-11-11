@@ -158,7 +158,7 @@ export function ItemTile({
         </Heading>
         <HStack gap={1.5} vAlign="center">
           <ShopIcon src={tile.shopIcon} />
-          <StackItem size="fill" style={{ minWidth: 0 }}>
+          <StackItem size="fill">
             <Text
               type="body"
               color="secondary"
@@ -170,11 +170,7 @@ export function ItemTile({
           </StackItem>
         </HStack>
         {/* as tall as the favourite button, in the silhouette too */}
-        <HStack
-          gap={2}
-          vAlign="center"
-          style={{ minBlockSize: "var(--size-element-sm)" }}
-        >
+        <HStack gap={2} vAlign="center" minHeight="var(--size-element-sm)">
           <StackItem size="fill">
             <Text type="large" weight="bold" hasTabularNumbers>
               {tile.price}
@@ -191,11 +187,7 @@ export function ItemTile({
           />
         </HStack>
         {/* kept when empty: one badge tall, as in the silhouette */}
-        <HStack
-          gap={1}
-          wrap="wrap"
-          style={{ minBlockSize: "var(--spacing-5)" }}
-        >
+        <HStack gap={1} wrap="wrap" minHeight="var(--spacing-5)">
           {tile.marks.map((m) => (
             <Badge
               key={m}

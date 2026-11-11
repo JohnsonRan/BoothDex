@@ -180,7 +180,7 @@ function SavedSummary({
           <Text type="body">{t("saved.none")}</Text>
         ) : (
           // tokenWrap + filterToken (:1442-1451): a long clause wraps and ellipsises inside the dialog
-          <HStack gap={1} style={{ flexWrap: "wrap", rowGap: 4 }}>
+          <HStack gap={1} wrap="wrap">
             {tokens.map((label) => (
               <Token
                 key={label}
