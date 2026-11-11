@@ -3,7 +3,8 @@
 // a SideNav rail (title, sections of panels) beside the scrolling panel with its sticky close button, below
 // 640 px a title row, a tab strip of the panels and the panel under it. Filled with BoothDex's panels
 // (panels.tsx; Devices only when signed in). The template's settings search is left out: four panels of six rows
-// are read at a glance.
+// are read at a glance. Nothing in the panels is typed, so a click on the backdrop closes it like Escape does;
+// the account deletion form opens its own dialog, which keeps that click from losing a half-typed password.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog } from "@astryxdesign/core/Dialog";
@@ -227,7 +228,6 @@ export default function SettingsDialog({
     <Dialog
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      purpose="form"
       width="70rem"
       maxHeight={DIALOG_MAX_HEIGHT}
       padding={0}
