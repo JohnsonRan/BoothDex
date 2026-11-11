@@ -6,11 +6,7 @@
 // Saved searches belong to the account: signed out, both open the sign-in dialog. They are not offered in the
 // favourites view, whose list is the account's own.
 
-import {
-  DropdownMenu,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-} from "@astryxdesign/core/DropdownMenu";
+import { Button } from "@astryxdesign/core/Button";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
@@ -20,10 +16,10 @@ import dynamic from "next/dynamic";
 import { type ReactNode, useEffect, useState } from "react";
 import { useAccount } from "@/components/account/session";
 import { useUi } from "@/components/providers";
-import { FILTER_RESET, parseFilters } from "@/lib/catalog";
+import { FILTER_RESET, type Filters, parseFilters } from "@/lib/catalog";
 import { preloadOn, preloadWhenIdle } from "@/lib/lazy";
-import { MENU_MAX_HEIGHT } from "@/lib/menu-height";
-import { type ClauseNames, SORTS, sortKey, sortLabel } from "./clause-text";
+import type { Translate } from "@/lib/settings-core";
+import { type ClauseNames, sortLabel } from "./clause-text";
 import { FilterBar } from "./filter-bar";
 import {
   COMPACT_SURFACE_QUERY,
@@ -39,6 +35,26 @@ import {
 } from "./saved-searches";
 import { StripToggle } from "./strip-toggle";
 
+/** The sort's button, as DropdownMenu draws it: the current sort and a chevron (sort-menu.tsx). */
+export const sortButton = (filters: Filters, t: Translate) =>
+  ({
+    label: sortLabel(filters, t),
+    variant: "ghost",
+    size: CONTROL_SIZE,
+    endContent: <Icon icon="chevronDown" size="sm" color="inherit" />,
+  }) as const;
+
+function SortButton() {
+  const { t } = useUi();
+  const { filters } = useFilterUrl();
+  return <Button {...sortButton(filters, t)} />;
+}
+
+// the sort menu's code loads after the page, as the top bar's menus (frame/header-controls.tsx)
+const SortMenu = dynamic(() => import("./sort-menu").then((m) => m.SortMenu), {
+  ssr: false,
+  loading: () => <SortButton />,
+});
 const loadBar = () => import("./saved-views");
 const loadForms = () => import("./saved-view-forms");
 const SavedViewsBar = dynamic(() => loadBar().then((m) => m.SavedViewsBar), {
@@ -125,33 +141,7 @@ export function Toolbar({
       <HStack gap={3} vAlign="center" style={{ marginInlineStart: "auto" }}>
         {!(isBarOpen && hasSaved) && (
           <>
-            {/* a radio group, as the top bar's language and currency menus (frame/header-controls.tsx) */}
-            <DropdownMenu
-              button={{
-                label: sortLabel(filters, t),
-                variant: "ghost",
-                size: CONTROL_SIZE,
-              }}
-              alignment="end"
-              menuMaxHeight={MENU_MAX_HEIGHT}
-            >
-              <DropdownMenuRadioGroup
-                label={t("sort.label")}
-                value={sortKey(filters)}
-                onChange={(v) => {
-                  const picked = SORTS.find(([, , key]) => key === v);
-                  if (picked) apply({ sort: picked[0], dir: picked[1] });
-                }}
-              >
-                {SORTS.map(([, , key]) => (
-                  <DropdownMenuRadioItem
-                    key={key}
-                    value={key}
-                    label={sortLabel(filters, t, key)}
-                  />
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenu>
+            <SortMenu filters={filters} apply={apply} />
             {hasSaved && (
               <IconButton
                 label={t("saved.create")}
