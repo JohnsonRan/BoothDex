@@ -17,6 +17,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { useAccount } from "@/components/account/session";
 import { useUi } from "@/components/providers";
 import { FILTER_RESET, type Filters, parseFilters } from "@/lib/catalog";
+import { lateMenuButton } from "@/lib/late-menu";
 import { preloadOn, preloadWhenIdle } from "@/lib/lazy";
 import type { Translate } from "@/lib/settings-core";
 import { type ClauseNames, sortLabel } from "./clause-text";
@@ -47,10 +48,11 @@ export const sortButton = (filters: Filters, t: Translate) =>
 function SortButton() {
   const { t } = useUi();
   const { filters } = useFilterUrl();
-  return <Button {...sortButton(filters, t)} />;
+  return <Button {...sortButton(filters, t)} {...lateMenuButton("sort")} />;
 }
 
-// the sort menu's code loads after the page, as the top bar's menus (frame/header-controls.tsx)
+// the sort menu's code loads after the page, as the top bar's menus (frame/header-controls.tsx); its button keeps
+// a press for it
 const SortMenu = dynamic(() => import("./sort-menu").then((m) => m.SortMenu), {
   ssr: false,
   loading: () => <SortButton />,

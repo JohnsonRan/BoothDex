@@ -16,6 +16,7 @@ import { useUi } from "@/components/providers";
 import { type Me, useAccount } from "./session";
 import { AccountTrigger } from "./trigger";
 import "@/lib/icons-on-demand";
+import { useLateMenu } from "@/lib/late-menu";
 import { MENU_MAX_HEIGHT } from "@/lib/menu-height";
 
 const icon = (name: `site:${string}`) => <Icon icon={name} size="sm" />;
@@ -82,6 +83,7 @@ export default function AccountMenu({
       onClick: signOut,
     },
   ];
+  const late = useLateMenu("account");
   return (
     <DropdownMenu
       placement="below"
@@ -90,7 +92,9 @@ export default function AccountMenu({
       // page's 115 % scale; a short menu should show whole, and the viewport still bounds it (lib/menu-height)
       menuMaxHeight={MENU_MAX_HEIGHT}
       items={items}
-      renderTrigger={(props) => <AccountTrigger {...props} name={name} />}
+      renderTrigger={(props) => (
+        <AccountTrigger {...props} {...late} name={name} />
+      )}
     />
   );
 }

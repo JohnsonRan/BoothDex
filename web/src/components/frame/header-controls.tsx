@@ -10,6 +10,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import dynamic from "next/dynamic";
 import { useUi } from "@/components/providers";
+import { lateMenuButton } from "@/lib/late-menu";
 import {
   type Currency,
   LOCALES,
@@ -69,16 +70,21 @@ export function useCurrencyButton() {
 }
 
 function CurrencyButton() {
-  return <Button {...useCurrencyButton().button} />;
+  return (
+    <Button {...useCurrencyButton().button} {...lateMenuButton("currency")} />
+  );
 }
 
 // The menus' code loads after the page, as the account menu's (account-button.tsx); until then each shows the
-// button it opens from.
+// button it opens from, which keeps a press for the menu (lib/late-menu.ts).
 
 /** Interface language, a radio group (the item-text language is in Settings only). */
 export const LanguageMenu = dynamic(
   () => loadMenus().then((m) => m.LanguageMenu),
-  { ssr: false, loading: () => <LanguageButton /> },
+  {
+    ssr: false,
+    loading: () => <LanguageButton {...lateMenuButton("language")} />,
+  },
 );
 
 /** Display currency, a radio group. */

@@ -8,6 +8,7 @@ import {
   DropdownMenuRadioItem,
 } from "@astryxdesign/core/DropdownMenu";
 import { useUi } from "@/components/providers";
+import { useLateMenu } from "@/lib/late-menu";
 import { MENU_MAX_HEIGHT } from "@/lib/menu-height";
 import { LANG_NAMES, UI_LANGS, type UiLang } from "@/lib/messages";
 import { CURRENCIES, type Currency } from "@/lib/settings-core";
@@ -19,12 +20,13 @@ import {
 
 export function LanguageMenu() {
   const { t, settings, update } = useUi();
+  const late = useLateMenu("language");
   return (
     <DropdownMenu
       placement="below"
       alignment="end"
       menuMaxHeight={MENU_MAX_HEIGHT}
-      renderTrigger={(props) => <LanguageButton {...props} />}
+      renderTrigger={(props) => <LanguageButton {...props} {...late} />}
     >
       <DropdownMenuRadioGroup
         label={t("settings.ui")}
@@ -42,12 +44,13 @@ export function LanguageMenu() {
 export function CurrencyMenu() {
   const { t, update } = useUi();
   const { button, names } = useCurrencyButton();
+  const late = useLateMenu("currency");
   return (
     <DropdownMenu
       placement="below"
       alignment="end"
       hasChevron={false}
-      button={button}
+      button={{ ...button, ...late }}
     >
       <DropdownMenuRadioGroup
         label={t("settings.currency")}

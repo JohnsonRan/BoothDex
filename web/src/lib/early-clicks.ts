@@ -4,7 +4,9 @@
 // stops the event and drops it. This inline script (app/layout.tsx) watches clicks on controls from the document's
 // capture phase, ahead of React's listener: a click React did not handle (it was not listening yet, or it stopped
 // the event in that phase) is kept, and the control is clicked again once React listens and has hydrated it, until
-// one click gets through (attempts at least 300 ms apart, for 10 s at most).
+// one click gets through (attempts at least 300 ms apart, for 10 s at most). A late menu's button (lib/late-menu.ts)
+// is drawn again by the client in place of the server's, which React never hydrates and may let a click through
+// without a handler: a click kept on it waits for its replacement and goes there.
 // It relies on two names React DOM gives its expandos: `_reactListening…` on the document when its listeners are
 // attached, and `__reactProps…` on each element it has hydrated.
 
@@ -15,8 +17,9 @@ const EARLY_CONTROLS =
 export const EARLY_CLICKS = `;(function(){var d=document,c,t,last=0,until=0;
 function has(o,p){return Object.keys(o).some(function(k){return k.indexOf(p)===0})}
 function stop(){clearInterval(t);t=0;c=null}
-function tick(){var now=Date.now();if(!c||!c.isConnected||now>until)return stop();
-if(!has(d,"_reactListening")||now-last<300)return;if(last&&!has(c,"__reactProps"))return;last=now;c.click()}
+function again(x){var k=x.getAttribute("data-late-menu");return k?d.querySelector('[data-late-menu="'+k+'"]'):null}
+function tick(){var now=Date.now();if(c&&!c.isConnected)c=again(c);if(!c||now>until)return stop();
+if(!has(d,"_reactListening")||now-last<300)return;if((last||c.hasAttribute("data-late-menu"))&&!has(c,"__reactProps"))return;last=now;c.click()}
 d.addEventListener("click",function(e){var x=e.target&&e.target.closest&&e.target.closest(${JSON.stringify(EARLY_CONTROLS)});if(!x)return;
 var listening=has(d,"_reactListening"),blocked=0,sp=e.stopPropagation;
 if(listening&&has(x,"__reactProps")&&x!==c)return;

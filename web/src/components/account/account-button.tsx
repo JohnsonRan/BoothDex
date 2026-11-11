@@ -14,6 +14,7 @@ import { IconButton } from "@astryxdesign/core/IconButton";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { useUi } from "@/components/providers";
+import { lateMenuButton } from "@/lib/late-menu";
 import { Lazy, lazySurface, preloadOn, preloadWhenIdle } from "@/lib/lazy";
 import { SIGNED_IN } from "@/lib/session-hint";
 import { useAccount } from "./session";
@@ -22,8 +23,8 @@ import { AccountTrigger } from "./trigger";
 const loadMenu = () => import("./menu");
 const AccountMenu = dynamic(loadMenu, {
   ssr: false,
-  // the same button until the menu's code is there
-  loading: () => <AccountTrigger />,
+  // the same button until the menu's code is there, keeping a press for the menu (lib/late-menu.ts)
+  loading: () => <AccountTrigger {...lateMenuButton("account")} />,
 });
 const SignInDialog = lazySurface(() =>
   import("@/components/frame/sign-in").then((m) => m.SignInDialog),
@@ -59,7 +60,8 @@ export function Account() {
         {me ? (
           <AccountMenu me={me} onSettings={() => setSettings(true)} />
         ) : (
-          <AccountTrigger />
+          // until the session answers
+          <AccountTrigger {...lateMenuButton("account")} />
         )}
       </span>
       <span data-account-slot="out">

@@ -9,6 +9,7 @@ import {
 } from "@astryxdesign/core/DropdownMenu";
 import { useUi } from "@/components/providers";
 import type { Filters } from "@/lib/catalog";
+import { useLateMenu } from "@/lib/late-menu";
 import { MENU_MAX_HEIGHT } from "@/lib/menu-height";
 import { SORTS, sortKey, sortLabel } from "./clause-text";
 import { sortButton } from "./toolbar";
@@ -21,9 +22,10 @@ export function SortMenu({
   apply: (patch: Partial<Filters>) => void;
 }) {
   const { t } = useUi();
+  const late = useLateMenu("sort");
   return (
     <DropdownMenu
-      button={sortButton(filters, t)}
+      button={{ ...sortButton(filters, t), ...late }}
       alignment="end"
       menuMaxHeight={MENU_MAX_HEIGHT}
     >
