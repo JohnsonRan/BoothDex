@@ -60,3 +60,8 @@
 [data-astryx-theme="y2k"] .astryx-complex-selector-popup > div {
   max-height: min(720px, calc(100dvh - 2 * var(--spacing-4)));
 }
+
+/* Secondary text at 4.5:1 on the periwinkle page (WCAG 1.4.3): Astryx 0.7.13's own fix (meta/astryx#10932). */
+[data-astryx-theme="y2k"] {
+  --color-text-secondary: light-dark(#5a5146, #a6acd6);
+}

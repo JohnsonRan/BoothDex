@@ -28,3 +28,11 @@
 [data-astryx-theme="matcha"] .astryx-complex-selector-popup > div {
   max-height: min(720px, calc(100dvh - 2 * var(--spacing-4)));
 }
+
+/* Text at 4.5:1 on every Matcha background (WCAG 1.4.3). Light secondary text: Astryx 0.7.13's own fix
+   (meta/astryx#10932). Dark secondary and error text: one palette stop lighter (neutral and red 70 and 80), since the
+   olive of popovers and muted cards (#3e481d) left them at 3.6:1 and 3.9:1. */
+[data-astryx-theme="matcha"] {
+  --color-text-secondary: light-dark(#5a6b2a, #a8bf6a);
+  --color-text-error: light-dark(#cc0000, #ff9794);
+}
