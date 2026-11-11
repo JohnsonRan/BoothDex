@@ -1019,6 +1019,39 @@ mod tests {
 
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
+    async fn item_stats_count_favourites_through_adds_removes_and_deleted_accounts(pool: PgPool) {
+        let users: Vec<i64> = sqlx::query_scalar(
+            "insert into users (username, email, display_name, password_hash)
+             values ('a', 'a@example.test', 'A', 'x'), ('b', 'b@example.test', 'B', 'x') returning id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+             values (1, 't', 'c', 'https://example.test', false, 'ok', now()), (2, 't', 'c', 'https://example.test', false, 'ok', now())",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let fav = |user: i64, item: i64| sqlx::query("insert into favourites (user_id, item_id) values ($1, $2) on conflict do nothing").bind(user).bind(item).execute(&pool);
+        fav(users[0], 1).await.unwrap();
+        fav(users[1], 1).await.unwrap();
+        fav(users[0], 2).await.unwrap();
+        // already a favourite: nothing inserted, nothing counted
+        fav(users[0], 1).await.unwrap();
+        sqlx::query("delete from favourites where user_id = $1 and item_id = 2").bind(users[0]).execute(&pool).await.unwrap();
+        // the account's favourites go with it
+        sqlx::query("delete from users where id = $1").bind(users[1]).execute(&pool).await.unwrap();
+
+        let counts: Vec<(i64, i64)> = sqlx::query_as("select item_id, favourites from item_stats order by item_id").fetch_all(&pool).await.unwrap();
+        assert_eq!(counts, [(1, 1), (2, 0)]);
+        let ranked: i64 = sqlx::query_scalar("select count(*) from refresh_priority").fetch_one(&pool).await.unwrap();
+        assert_eq!(ranked, 2);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
     async fn a_view_moved_up_while_trimming_is_kept(pool: PgPool) {
         let user: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', 'x') returning id")
             .fetch_one(&pool)
