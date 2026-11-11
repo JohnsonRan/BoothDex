@@ -45,7 +45,7 @@ import type { Rates, Settings } from "@/lib/settings-core";
 import { Arrival } from "./arrival";
 import { FilterBand } from "./band";
 import type { ClauseNames } from "./clause-text";
-import { FilterRail } from "./filter-rail";
+import { FilterRail } from "./filter-rail-slot";
 import type { Facets, SearchMark } from "./filter-style";
 import { FilterUrlProvider } from "./filter-url";
 import { CountSilhouette, ResultsSilhouette } from "./loading";
