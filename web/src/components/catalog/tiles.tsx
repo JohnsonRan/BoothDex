@@ -4,7 +4,8 @@
 // data, about 0.3 KB, instead of its rendered Astryx elements and class names, about 4.5 KB; the server HTML is
 // the same.
 
-import { memo } from "react";
+import { memo, useEffect } from "react";
+import { keepTiles } from "@/components/item/item-cache";
 import { ItemTile, type Tile } from "./item-tile";
 
 // a tile renders again only when its own data changes: a page drawn a few tiles a frame (result-pages.tsx
@@ -23,6 +24,8 @@ export function Tiles({
   markViewed: boolean;
   favLabel: string;
 }) {
+  // the item card draws them while its record loads
+  useEffect(() => keepTiles(tiles), [tiles]);
   return tiles.map((tile, i) => (
     <Item
       key={tile.id}

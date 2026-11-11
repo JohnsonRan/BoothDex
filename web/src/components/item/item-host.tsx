@@ -4,9 +4,12 @@
 // it just drops the parameter. The browser history API is used directly (it integrates with the Next router),
 // so opening an item never renders the page again on the server.
 // Tiles stay server markup: one document listener opens whatever carries `data-item` (item-tile.tsx), the
-// favourite button excepted. The dialog's code loads with the first item opened.
+// favourite button excepted. The dialog's code loads once the page is idle (lib/lazy), so the first item opened
+// does not wait for the network, nor for next/dynamic's Suspense reveal, which React holds back up to 300 ms.
+// Closing closes at once and lets the history step follow: a Back the router answers first re-renders the page
+// before the dialog would. Pointing at a tile fetches its record (item-cache.ts), so the card mostly has it by
+// the click: a mouse resting on a tile a moment (one passing over the grid fetches nothing), a press at once.
 
-import dynamic from "next/dynamic";
 import {
   createContext,
   useCallback,
@@ -16,10 +19,16 @@ import {
   useRef,
   useState,
 } from "react";
+import { Lazy, lazySurface, preloadWhenIdle } from "@/lib/lazy";
 import type { Rates } from "@/lib/settings-core";
+import { prefetchItem } from "./item-cache";
 import { itemHref, itemParam } from "./item-data";
 
-const ItemDialog = dynamic(() => import("./item-dialog"), { ssr: false });
+const HOVER_MS = 120;
+
+const ItemDialog = lazySurface(() =>
+  import("./item-dialog").then((m) => m.default),
+);
 
 type Opener = {
   /** shows item `id`, in place of the one open */
@@ -49,43 +58,52 @@ export function ItemHost({
   const [id, setId] = useState(0);
   // the open entry was pushed here, so closing steps back instead of leaving a duplicate entry
   const pushed = useRef(false);
+  // a close's step back has not landed yet
+  const leaving = useRef(false);
 
   useEffect(() => {
     const sync = () => {
+      leaving.current = false;
       const n = itemParam(location.search);
       if (!n) pushed.current = false;
       setId(n);
     };
     sync();
     addEventListener("popstate", sync);
+    preloadWhenIdle(ItemDialog.preload);
     return () => removeEventListener("popstate", sync);
   }, []);
 
-  const opener = useMemo<Opener>(
-    () => ({
-      open: (next) => {
-        const href = itemHref(location.href, next);
-        if (itemParam(location.search)) history.replaceState(null, "", href);
-        else {
-          history.pushState(null, "", href);
-          pushed.current = true;
-        }
-        setId(next);
-      },
-      close: (then) => {
-        if (pushed.current) {
-          pushed.current = false;
-          if (then) addEventListener("popstate", then, { once: true });
-          history.back();
-          return;
-        }
-        history.replaceState(null, "", itemHref(location.href, 0));
-        setId(0);
-        then?.();
-      },
-    }),
-    [],
-  );
+  const opener = useMemo<Opener>(() => {
+    const open = (next: number) => {
+      // the dialog closes before its history entry goes: an item opened in between waits for it, or the step
+      // back would take the new item's entry
+      if (leaving.current) {
+        addEventListener("popstate", () => open(next), { once: true });
+        return;
+      }
+      const href = itemHref(location.href, next);
+      if (itemParam(location.search)) history.replaceState(null, "", href);
+      else {
+        history.pushState(null, "", href);
+        pushed.current = true;
+      }
+      setId(next);
+    };
+    const close = (then?: () => void) => {
+      setId(0);
+      if (pushed.current) {
+        pushed.current = false;
+        leaving.current = true;
+        if (then) addEventListener("popstate", then, { once: true });
+        history.back();
+        return;
+      }
+      history.replaceState(null, "", itemHref(location.href, 0));
+      then?.();
+    };
+    return { open, close };
+  }, []);
 
   const { open } = opener;
   const onTile = useCallback(
@@ -107,6 +125,35 @@ export function ItemHost({
     return () => document.removeEventListener("click", onTile);
   }, [onTile]);
 
+  useEffect(() => {
+    const tileOf = (e: Event) => {
+      const el = e.target instanceof Element ? e.target : null;
+      const tile = el?.closest<HTMLElement>("[data-item]");
+      return tile && !el?.closest("[data-fav]") ? Number(tile.dataset.item) : 0;
+    };
+    let over = 0;
+    let timer = 0;
+    const onOver = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      const n = tileOf(e);
+      if (n === over) return;
+      over = n;
+      clearTimeout(timer);
+      if (n) timer = window.setTimeout(() => prefetchItem(n), HOVER_MS);
+    };
+    const onDown = (e: PointerEvent) => {
+      const n = tileOf(e);
+      if (n) prefetchItem(n);
+    };
+    document.addEventListener("pointerover", onOver);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("pointerover", onOver);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, []);
+
   // mounted from the first item on, so the dialog can play its closing transition
   const [used, setUsed] = useState(false);
   if (id && !used) setUsed(true);
@@ -114,7 +161,7 @@ export function ItemHost({
   return (
     <Ctx value={opener}>
       <RatesCtx value={rates}>{children}</RatesCtx>
-      {used && <ItemDialog id={id} rates={rates} />}
+      {used && <Lazy surface={ItemDialog} id={id} rates={rates} />}
     </Ctx>
   );
 }

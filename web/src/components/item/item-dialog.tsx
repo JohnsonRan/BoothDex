@@ -26,6 +26,7 @@ import { remColumns } from "@/lib/grid";
 import type { Rates } from "@/lib/settings-core";
 import { useDelayed } from "@/lib/use-delayed";
 import { PhoneBar } from "./item-actions";
+import { keepGallery, keptItem, keptTile, loadItem } from "./item-cache";
 import { shopHost } from "./item-data";
 import { ItemGallery } from "./item-gallery";
 import { useItemOpener } from "./item-host";
@@ -62,34 +63,44 @@ function useItem(id: number): ItemResponse | null {
   const viewed = useRef(recordView);
   viewed.current = recordView;
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      // Closed: the item leaves once the closing frame is painted. Kept, the next item's open would first take
+      // the whole card down, which doubled the time from a click to the dialog on screen.
+      let timer = 0;
+      const frame = requestAnimationFrame(() => {
+        timer = window.setTimeout(() => setItem(null));
+      });
+      return () => {
+        cancelAnimationFrame(frame);
+        clearTimeout(timer);
+      };
+    }
     let live = true;
-    let gallery: string[] | null = null;
-    const withGallery = (it: ItemResponse): ItemResponse =>
-      gallery ? { ...it, booth_images: gallery, media: [] } : it;
+    const show = () => {
+      const it = keptItem(id);
+      if (live && it) setItem(it);
+    };
     const fail = () => live && failed.current();
-    api<{ items: ItemResponse[] }>(`/api/items?ids=${id}`)
-      .then((r) => {
-        const it = r.items[0];
-        if (!it) return fail();
-        if (!live) return;
-        setItem(withGallery(it));
-        viewed.current(id);
-      })
-      .catch(fail);
+    loadItem(id).then((it) => {
+      if (!it) return fail();
+      show();
+      if (live) viewed.current(id);
+    }, fail);
+    // once per open: it counts the view
     api<Gallery>(`/api/items/${id}/gallery`)
       .then((g) => {
-        if (!live || !g.complete || !g.images.length) return;
-        gallery = g.images;
-        setItem((it) => (it?.id === id ? withGallery(it) : it));
+        if (!g.complete || !g.images.length) return;
+        keepGallery(id, g.images);
+        show();
       })
       .catch(() => {});
     return () => {
       live = false;
     };
   }, [id]);
-  // while closing (id 0) the last item stays on screen
-  return item && (item.id === id || !id) ? item : null;
+  // while closing (id 0) the last item stays until it is cleared above; a kept record shows at once
+  if (!id) return item;
+  return item?.id === id ? item : (keptItem(id) ?? null);
 }
 
 export default function ItemDialog({
@@ -105,6 +116,11 @@ export default function ItemDialog({
   const phone = useMediaQuery(PHONE);
   const item = useItem(id);
   const shown = useDelayed(!!id && !item);
+  // until the record arrives, what the item's tile showed
+  const tile = item || !id ? undefined : keptTile(id);
+  const shop = item
+    ? { name: item.author_name, icon: imageSrc(item.author_icon) }
+    : tile && { name: tile.shop, icon: tile.shopIcon };
 
   return (
     <Dialog
@@ -113,24 +129,31 @@ export default function ItemDialog({
       variant={phone ? "fullscreen" : "standard"}
       width={WIDTH}
       maxHeight={DIALOG_MAX_HEIGHT}
-      aria-label={item?.title ?? t("detail.label")}
+      aria-label={item?.title ?? tile?.title ?? t("detail.label")}
     >
       <Layout
         header={
-          item ? (
+          shop ? (
             <DialogHeader
-              title={item.author_name}
+              title={shop.name}
               subtitle={
-                <>
-                  {shopHost(item.author_uri)}
-                  {" · "}
-                  <ShopLink name={item.author_name} />
-                </>
+                item ? (
+                  <>
+                    {shopHost(item.author_uri)}
+                    {" · "}
+                    <ShopLink name={item.author_name} />
+                  </>
+                ) : (
+                  // the tile has no shop address: the line waits for it, as tall as it will be
+                  <span style={{ visibility: "hidden" }}>
+                    <ShopLink name={shop.name} />
+                  </span>
+                )
               }
               startContent={
                 <Avatar
-                  src={imageSrc(item.author_icon) || undefined}
-                  name={item.author_name}
+                  src={shop.icon || undefined}
+                  name={shop.name}
                   size="md"
                   tooltip={false}
                 />
@@ -175,6 +198,7 @@ export default function ItemDialog({
                 shown={shown}
                 columns={COLUMNS}
                 isWide={!phone}
+                tile={tile}
               />
             )}
           </LayoutContent>
@@ -185,7 +209,7 @@ export default function ItemDialog({
               {item ? (
                 <PhoneBar item={item} rates={known} />
               ) : (
-                <PhoneBarSilhouette shown={shown} />
+                <PhoneBarSilhouette shown={shown} price={tile?.price} />
               )}
             </LayoutFooter>
           ) : undefined

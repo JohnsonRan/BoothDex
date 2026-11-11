@@ -115,3 +115,12 @@ export const STICKY: CSSProperties = {
   top: 0,
   alignSelf: "start",
 };
+
+/** The gallery's hero image: template heroImage, but contained, so a product photo is never cropped (the card's
+ *  muted surface shows around a non-square one). */
+export const HERO: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "contain",
+  display: "block",
+};

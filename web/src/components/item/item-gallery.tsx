@@ -19,23 +19,15 @@ import { Lightbox } from "@astryxdesign/core/Lightbox";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SkeletonImage, THUMB_RADIUS } from "@/components/catalog/silhouette";
 import { useUi } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
 import { imageCount, imgUrl } from "@/lib/catalog";
 import { remColumns } from "@/lib/grid";
-import { STICKY } from "./item-data";
+import { HERO, STICKY } from "./item-data";
 import { Download } from "./item-download";
 
-// template heroImage, but contained: a product photo is never cropped (the card's muted surface shows around a
-// non-square one)
-const HERO: CSSProperties = {
-  width: "100%",
-  height: "100%",
-  objectFit: "contain",
-  display: "block",
-};
 // the thumbnails' floor width: master's 64 px grid cells, in rem
 const THUMBS = remColumns("4rem");
 // about three rows of thumbnails at the dialog's width
@@ -58,6 +50,9 @@ export function ItemGallery({
   const count = Math.max(imageCount(item), 1);
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(false);
+  // the first image once it has loaded, which then needs no cover behind it
+  const hero = imgUrl(item, 0, "orig");
+  const [loaded, setLoaded] = useState("");
   const carousel = useRef<CarouselHandle>(null);
   const strip = useRef<HTMLDivElement>(null);
 
@@ -139,8 +134,18 @@ export function ItemGallery({
                     1x, and the Lightbox below asks for the original of the current image even while closed, so
                     one file serves both. The first image is what a shared link paints largest: asked for ahead
                     of the grid behind. */}
+                {/* The first one shows the tile's cover behind it until it has loaded: the browser has that
+                    copy, and the card drew it while the record loaded (item-silhouette.tsx). */}
                 <img
-                  style={HERO}
+                  style={
+                    i === 0 && loaded !== hero
+                      ? {
+                          ...HERO,
+                          background: `url("${imgUrl(item, 0)}") center / contain no-repeat`,
+                        }
+                      : HERO
+                  }
+                  onLoad={i === 0 ? () => setLoaded(hero) : undefined}
                   src={imgUrl(item, i, "orig")}
                   alt={alt(i)}
                   loading={i < 2 ? "eager" : "lazy"}
