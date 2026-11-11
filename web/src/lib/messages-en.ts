@@ -86,7 +86,7 @@ export const en: Dict = {
   "list.retry": "Try again",
   "nav.main": "Main navigation",
   "nav.language": "Language",
-  "nav.currency": "Currency: {name} ({c})",
+  "nav.currency": "Currency: {c} ({name})",
   "theme.toLight": "Switch to light mode",
   "theme.toDark": "Switch to dark mode",
   "list.emptyHint": "Clear the filters and try again.",

@@ -86,7 +86,7 @@ export const ja: Dict = {
   "list.retry": "再試行",
   "nav.main": "メインナビゲーション",
   "nav.language": "言語",
-  "nav.currency": "通貨：{name} ({c})",
+  "nav.currency": "通貨：{c} ({name})",
   "theme.toLight": "ライトモードに切り替え",
   "theme.toDark": "ダークモードに切り替え",
   "list.emptyHint": "絞り込み条件をクリアしてもう一度お試しください。",

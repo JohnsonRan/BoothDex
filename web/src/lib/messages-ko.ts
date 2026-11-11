@@ -86,7 +86,7 @@ export const ko: Dict = {
   "list.retry": "다시 시도",
   "nav.main": "기본 탐색",
   "nav.language": "언어",
-  "nav.currency": "통화: {name} ({c})",
+  "nav.currency": "통화: {c} ({name})",
   "theme.toLight": "라이트 모드로 전환",
   "theme.toDark": "다크 모드로 전환",
   "list.emptyHint": "필터를 지우고 다시 시도해 주세요.",

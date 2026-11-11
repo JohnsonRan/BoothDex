@@ -83,7 +83,7 @@ export const zh = {
   "list.retry": "重试",
   "nav.main": "主导航",
   "nav.language": "语言",
-  "nav.currency": "货币：{name} ({c})",
+  "nav.currency": "货币：{c} ({name})",
   "theme.toLight": "切换到浅色模式",
   "theme.toDark": "切换到深色模式",
   "list.emptyHint": "清除筛选条件后再试。",
