@@ -31,6 +31,9 @@ const LOCKOUT: Duration = Duration::from_secs(15 * 60);
 const MAX_SAVED_SEARCHES: i64 = 100;
 /// viewed items kept per user (the web keeps the same number in a signed-out browser)
 const MAX_VIEWS: i64 = 500;
+/// One item open in this many also trims the account to `MAX_VIEWS`, as every import does. In between an account can
+/// hold a few more, which `list_views` never returns.
+const TRIM_VIEWS_ONE_IN: u32 = 20;
 
 /// Failed logins per lowercased login name: (count, window start)
 #[derive(Default)]
@@ -602,10 +605,8 @@ async fn add_views(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): 
     }
     let (ids, ats) = dedupe_views(entries);
 
-    let mut tx = s.pool.begin().await?;
-    // serialize per account so concurrent imports cannot skip the retention trim
-    sqlx::query("select 1 from users where id = $1 for update").bind(u.id).execute(&mut *tx).await?;
-
+    // no transaction or lock, so an item open is one statement; concurrent writes can at worst leave a few rows
+    // over the cap until the next trim
     // missing at defaults to now(); future timestamps are clamped to server now()
     sqlx::query(
         "insert into item_views (user_id, item_id, viewed_at)
@@ -616,17 +617,18 @@ async fn add_views(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): 
     .bind(u.id)
     .bind(&ids)
     .bind(&ats)
-    .execute(&mut *tx)
+    .execute(&s.pool)
     .await?;
-    sqlx::query(
-        "delete from item_views where user_id = $1 and item_id not in
-         (select item_id from item_views where user_id = $1 order by viewed_at desc limit $2)",
-    )
-    .bind(u.id)
-    .bind(MAX_VIEWS)
-    .execute(&mut *tx)
-    .await?;
-    tx.commit().await?;
+    if ids.len() > 1 || getrandom::u32().is_ok_and(|r| r % TRIM_VIEWS_ONE_IN == 0) {
+        sqlx::query(
+            "delete from item_views where user_id = $1 and item_id not in
+             (select item_id from item_views where user_id = $1 order by viewed_at desc limit $2)",
+        )
+        .bind(u.id)
+        .bind(MAX_VIEWS)
+        .execute(&s.pool)
+        .await?;
+    }
     Ok(Json(json!({ "ok": true })).into_response())
 }
 
@@ -956,6 +958,52 @@ mod tests {
         // another account's search is left as it was
         assert_eq!(status(rename(Some("session=tok-a"), ids[1], "stolen").await), StatusCode::OK);
         assert_eq!(names().await.unwrap(), ["renamed", "theirs"]);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn imports_trim_viewed_items_and_the_list_keeps_the_newest(pool: PgPool) {
+        let user: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', 'x') returning id")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+            .bind(token_hash("tok-a"))
+            .bind(user)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+             select g, 't', 'c', 'https://example.test', false, 'ok', now() from generate_series(1, 501) g",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let state = test_state(pool.clone());
+        let headers = || {
+            let mut h = HeaderMap::new();
+            h.insert(header::COOKIE, "session=tok-a".parse().unwrap());
+            h
+        };
+        // newest first, item n viewed at n ms past a fixed time
+        let add = |ids: Vec<i64>| {
+            let views = ids.into_iter().map(|id| ViewEntry { id, at: Some(1_700_000_000_000 + id) }).collect();
+            add_views(State(state.clone()), headers(), Json(Views { views }))
+        };
+        let count = || sqlx::query_scalar::<_, i64>("select count(*) from item_views where user_id = $1").bind(user).fetch_one(&pool);
+
+        add((1..=300).rev().collect()).await.ok().unwrap();
+        add((301..=501).rev().collect()).await.ok().unwrap();
+        assert_eq!(count().await.unwrap(), 500, "an import trims to the newest MAX_VIEWS");
+
+        // a single open is one upsert; the account may stay a row over until the next trim
+        add_views(State(state.clone()), headers(), Json(Views { views: vec![ViewEntry { id: 1, at: None }] })).await.ok().unwrap();
+        assert!((500..=501).contains(&count().await.unwrap()));
+        let body = axum::body::to_bytes(list_views(State(state.clone()), headers()).await.ok().unwrap().into_body(), usize::MAX).await.unwrap();
+        let ids: Vec<i64> = serde_json::from_value(serde_json::from_slice::<Value>(&body).unwrap()["ids"].take()).unwrap();
+        assert_eq!(ids.len(), 500);
+        assert_eq!(ids[..2], [1, 501]);
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
