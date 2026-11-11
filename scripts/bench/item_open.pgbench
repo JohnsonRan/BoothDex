@@ -1,0 +1,13 @@
+-- A signed-in visitor opens an item: POST /api/account/views with one item (account.rs add_views), which trims the
+-- account one time in 20. The item's view count (gallery.rs) is written in batches every 10 s, not per open.
+\set uid random(1, 2000)
+\set iid random_zipfian(1, 200000, 1.1)
+\set r random(1, 20)
+insert into item_views (user_id, item_id, viewed_at)
+select :uid, v.id, now()
+from unnest(array[:iid]::bigint[]) as v(id) join items i on i.id = v.id
+on conflict (user_id, item_id) do update set viewed_at = greatest(item_views.viewed_at, excluded.viewed_at);
+\if :r = 1
+delete from item_views where user_id = :uid and viewed_at <
+(select viewed_at from item_views where user_id = :uid order by viewed_at desc offset 499 limit 1);
+\endif
