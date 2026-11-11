@@ -1,8 +1,9 @@
 "use client";
 // Settings, template settings-dialog (page.tsx:2271-2603) as is: a 1120 px Dialog of fixed height; on a laptop
 // a SideNav rail (title, sections of panels) beside the scrolling panel with its sticky close button, below
-// 640 px a title row, a tab strip of the panels and the panel under it. Filled with BoothDex's three panels
-// (panels.tsx). The template's settings search is left out: three panels of six rows are read at a glance.
+// 640 px a title row, a tab strip of the panels and the panel under it. Filled with BoothDex's panels
+// (panels.tsx; Devices only when signed in). The template's settings search is left out: four panels of six rows
+// are read at a glance.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog } from "@astryxdesign/core/Dialog";
@@ -21,7 +22,12 @@ import { Heading, Text } from "@astryxdesign/core/Text";
 import { useId, useState } from "react";
 import { useUi } from "@/components/providers";
 import { DIALOG_MAX_HEIGHT } from "@/lib/dialog-height";
-import { PANEL_GROUPS, type PanelId, SettingsPanelBody } from "./panels";
+import {
+  PANEL_GROUPS,
+  type PanelId,
+  SettingsPanelBody,
+  usePanelGroups,
+} from "./panels";
 import "@/lib/icons-on-demand";
 
 const NARROW_VIEWPORT = "(max-width: 640px)";
@@ -65,6 +71,7 @@ function SettingsSideNav({
   onSelectPanel: (panel: PanelId) => void;
 }) {
   const { t } = useUi();
+  const groups = usePanelGroups();
   return (
     <SideNav
       aria-label={t("settings.sections")}
@@ -77,7 +84,7 @@ function SettingsSideNav({
         </HStack>
       }
     >
-      {PANEL_GROUPS.map((group) => (
+      {groups.map((group) => (
         <SideNavSection
           key={group.label}
           title={t(group.label)}
@@ -149,6 +156,7 @@ function SettingsNarrowShell({
   onClose: () => void;
 }) {
   const { t } = useUi();
+  const panels = usePanelGroups().flatMap((group) => group.panels);
   return (
     <VStack gap={0} height="100%">
       <HStack gap={2} vAlign="center" paddingInline={3} paddingBlock={3}>
@@ -170,7 +178,7 @@ function SettingsNarrowShell({
           paddingInline={3}
           paddingBlock={2}
         >
-          {PANELS.map((panel) => (
+          {panels.map((panel) => (
             <Button
               key={panel.id}
               label={t(panel.label)}
@@ -208,7 +216,10 @@ export default function SettingsDialog({
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [activePanel, setActivePanel] = useState<PanelId>("appearance");
+  const [chosen, setActivePanel] = useState<PanelId>("appearance");
+  // a panel that went away (Devices after signing out) falls back to the first
+  const shown = usePanelGroups().flatMap((group) => group.panels);
+  const activePanel = shown.some((p) => p.id === chosen) ? chosen : shown[0].id;
   const titleId = useId();
   const isNarrow = useMediaQuery(NARROW_VIEWPORT);
   const close = () => onOpenChange(false);

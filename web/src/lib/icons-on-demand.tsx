@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Minus,
   Monitor,
+  MonitorSmartphone,
   Palette,
   Pencil,
   Plus,
@@ -34,6 +35,7 @@ registerIcons({
   // the Astryx theme's row: the template's accent row icon (settings-dialog page.tsx:1288, SwatchIcon)
   "site:style": <SwatchBook {...glyph} />,
   "site:system": <Monitor {...glyph} />,
+  "site:devices": <MonitorSmartphone {...glyph} />,
   "site:itemText": <Type {...glyph} />,
   "site:currency": <Coins {...glyph} />,
   "site:code": <Code {...glyph} />,

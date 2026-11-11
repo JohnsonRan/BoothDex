@@ -1,6 +1,7 @@
 "use client";
-// Reset a user's password (master reset-password-card.tsx): the two-click arm button becomes an AlertDialog.
-// The new password is shown once in a success Banner with Copy and Hide; an unknown name is the field's error.
+// Reset one user's password from their details (master reset-password-card.tsx): the button, after the row's
+// other actions, asks first through an AlertDialog; the new password is shown once in a success Banner under the
+// row, with Copy and Hide.
 
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
@@ -8,24 +9,30 @@ import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
 import { HStack, VStack } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
-import { TextInput } from "@astryxdesign/core/TextInput";
 import { useState } from "react";
 import { useToast } from "@/components/toasts";
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { errorText, useAdminT } from "./messages";
 
 type Result = { username: string; password: string; sessions_revoked: number };
 
-export function ResetPassword() {
+export function ResetPassword({
+  username,
+  onReset,
+  children,
+}: {
+  username: string;
+  /** the user's sessions are gone: read the details again */
+  onReset: () => void;
+  /** the row's other actions, before this one */
+  children?: React.ReactNode;
+}) {
   const t = useAdminT();
   const toast = useToast();
-  const [username, setUsername] = useState("");
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [notFound, setNotFound] = useState(false);
   const [result, setResult] = useState<Result>();
-  const name = username.trim();
 
   const reset = async () => {
     setBusy(true);
@@ -33,13 +40,12 @@ export function ResetPassword() {
       setResult(
         await api<Result>("/api/admin/users/reset-password", {
           method: "POST",
-          json: { username: name },
+          json: { username },
         }),
       );
-      setUsername("");
+      onReset();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 404) setNotFound(true);
-      else toast({ type: "error", body: errorText(t, e) });
+      toast({ type: "error", body: errorText(t, e) });
     } finally {
       setBusy(false);
       setConfirm(false);
@@ -47,24 +53,12 @@ export function ResetPassword() {
   };
 
   return (
-    <VStack gap={4}>
-      <TextInput
-        label={t("reset.username")}
-        autoComplete="off"
-        value={username}
-        onChange={(v) => {
-          setUsername(v);
-          setNotFound(false);
-        }}
-        status={
-          notFound ? { type: "error", message: t("reset.notFound") } : undefined
-        }
-      />
-      <HStack>
+    <VStack gap={3}>
+      <HStack gap={2} wrap="wrap">
+        {children}
         <Button
           label={t("reset.submit")}
-          variant="destructive"
-          isDisabled={!name}
+          variant="secondary"
           onClick={() => setConfirm(true)}
         />
       </HStack>
@@ -106,7 +100,7 @@ export function ResetPassword() {
       <AlertDialog
         isOpen={confirm}
         onOpenChange={setConfirm}
-        title={t("reset.confirmTitle", { name })}
+        title={t("reset.confirmTitle", { name: username })}
         description={t("reset.confirmDesc")}
         actionLabel={t("reset.submit")}
         actionVariant="destructive"

@@ -6,7 +6,8 @@
 // DialogWithSubtitle (templates/blocks/DialogWithSubtitle.tsx:21-27) has them, with its close button: a form
 // dialog is not dismissed from its scrim, so on a touch screen that button is the way out. Tabs switch between the two forms. Requests and fields are master's
 // (account-menu.tsx): sign-in keeps the session (`keep: true`); errors from the server arrive as a toast.
-// The admin gate opens it sign-in only, under its own heading (`gate`).
+// The admin gate opens it sign-in only, under its own heading (`gate`); so does a closed registration, which the
+// dialog asks about each time it opens (the server refuses sign-up either way).
 
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
@@ -14,7 +15,7 @@ import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { TextInput } from "@astryxdesign/core/TextInput";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
@@ -67,7 +68,20 @@ export function SignInDialog({
   const [values, setValues] = useState<Partial<Record<Field, string>>>({});
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [canRegister, setCanRegister] = useState(true);
   const value = (f: Field) => values[f] ?? "";
+
+  useEffect(() => {
+    if (!isOpen || gate) return;
+    api<{ open: boolean }>("/api/account/registration").then(
+      ({ open }) => {
+        setCanRegister(open);
+        if (!open) setMode("login");
+      },
+      // unknown: keep offering it
+      () => setCanRegister(true),
+    );
+  }, [isOpen, gate]);
   const errorOf = (f: Field) =>
     checked ? problem(mode, f, value(f)) : undefined;
 
@@ -115,7 +129,7 @@ export function SignInDialog({
         content={
           <LayoutContent>
             <VStack gap={4} hAlign="stretch">
-              {!gate && (
+              {!gate && canRegister && (
                 <TabList
                   value={mode}
                   onChange={(v) => {

@@ -3,16 +3,27 @@
 // card (page.tsx:1269-1306: the colour theme cards, then a second row, here the Astryx theme's cards), Language & region as its LanguagePanel
 // (page.tsx:1797-1885, a Selector per row; more than three choices each), and About with master's credits
 // (settings-menu.tsx:128-157) as rows whose control opens the link (a Button: an action, not a value). The
-// values are the same settings the top-bar menus change (Providers' `update`), so both always agree.
+// values are the same settings the top-bar menus change (Providers' `update`), so both always agree. Signed in,
+// Devices lists the account's sessions as rows of the same card, each with a Sign out Button but this one,
+// which carries a Token instead.
 
+import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Selector } from "@astryxdesign/core/Selector";
+import { Spinner } from "@astryxdesign/core/Spinner";
 import { Switch } from "@astryxdesign/core/Switch";
+import { Timestamp } from "@astryxdesign/core/Timestamp";
+import { Token } from "@astryxdesign/core/Token";
+import { useCallback, useEffect, useState } from "react";
+import { useAccount } from "@/components/account/session";
 import { CURRENCY_SYMBOLS } from "@/components/frame/header-controls";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
+import { api, errorKey } from "@/lib/api";
+import { type AccountSession, deviceName } from "@/lib/device";
 import {
+  API_ERRORS,
   LANG_NAMES,
   type MessageKey,
   UI_LANGS,
@@ -28,10 +39,9 @@ import {
 import { CONTROL_WIDTH, SettingsCard, SettingsRow } from "./rows";
 import { StyleChoiceCards, ThemeChoiceCards } from "./theme-choice";
 
-export type PanelId = "appearance" | "language" | "about";
+export type PanelId = "appearance" | "language" | "devices" | "about";
 
-/** The one list both shells read (page.tsx:372-450): the side navigation's sections and the tab strip. */
-export const PANEL_GROUPS: {
+type PanelGroup = {
   label: MessageKey;
   panels: {
     id: PanelId;
@@ -39,7 +49,12 @@ export const PANEL_GROUPS: {
     description: MessageKey;
     icon: `site:${string}` | "info";
   }[];
-}[] = [
+  /** shown only to a signed-in visitor */
+  signedIn?: true;
+};
+
+/** The one list both shells read (page.tsx:372-450): the side navigation's sections and the tab strip. */
+export const PANEL_GROUPS: PanelGroup[] = [
   {
     label: "settings.preferences",
     panels: [
@@ -54,6 +69,18 @@ export const PANEL_GROUPS: {
         label: "settings.language",
         description: "settings.languageDesc",
         icon: "site:language",
+      },
+    ],
+  },
+  {
+    label: "settings.account",
+    signedIn: true,
+    panels: [
+      {
+        id: "devices",
+        label: "settings.devices",
+        description: "settings.devicesDesc",
+        icon: "site:devices",
       },
     ],
   },
@@ -235,12 +262,100 @@ function AboutPanel() {
   );
 }
 
+/** The groups this visitor sees. */
+export function usePanelGroups(): PanelGroup[] {
+  const signedIn = !!useAccount().me;
+  return PANEL_GROUPS.filter((g) => signedIn || !g.signedIn);
+}
+
+function DevicesPanel() {
+  const { t } = useUi();
+  const toast = useToast();
+  const [sessions, setSessions] = useState<AccountSession[]>();
+  const [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState<number>();
+
+  const load = useCallback(
+    () =>
+      api<{ sessions: AccountSession[] }>("/api/account/sessions").then(
+        (r) => {
+          setSessions(r.sessions);
+          setFailed(false);
+        },
+        () => setFailed(true),
+      ),
+    [],
+  );
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const signOut = async (id: number) => {
+    setBusy(id);
+    try {
+      await api(`/api/account/sessions/${id}`, { method: "DELETE" });
+      toast({ body: t("settings.signedOutDevice"), uniqueID: "devices" });
+      await load();
+    } catch (e) {
+      toast({
+        type: "error",
+        body: t(errorKey(e, API_ERRORS, "error.failed")),
+        uniqueID: "devices",
+      });
+    } finally {
+      setBusy(undefined);
+    }
+  };
+
+  if (failed)
+    return <Banner status="error" title={t("settings.devicesFailed")} />;
+  if (!sessions) return <Spinner label={t("settings.devices")} />;
+  return (
+    <SettingsCard>
+      {sessions.map((s) => (
+        <SettingsRow
+          key={s.id}
+          title={deviceName(s.user_agent) ?? t("settings.unknownDevice")}
+          icon="site:devices"
+          description={
+            <>
+              {s.ip && `${s.ip} · `}
+              <Timestamp
+                value={s.created_at}
+                format="relative"
+                type="supporting"
+                color="secondary"
+              />
+            </>
+          }
+          control={
+            s.current ? (
+              <Token size="sm" label={t("settings.thisDevice")} />
+            ) : (
+              <Button
+                label={t("settings.signOutDevice")}
+                variant="secondary"
+                size="sm"
+                isLoading={busy === s.id}
+                isDisabled={busy !== undefined}
+                onClick={() => signOut(s.id)}
+              />
+            )
+          }
+        />
+      ))}
+    </SettingsCard>
+  );
+}
+
 export function SettingsPanelBody({ panel }: { panel: PanelId }) {
   switch (panel) {
     case "appearance":
       return <AppearancePanel />;
     case "language":
       return <LanguagePanel />;
+    case "devices":
+      return <DevicesPanel />;
     case "about":
       return <AboutPanel />;
   }

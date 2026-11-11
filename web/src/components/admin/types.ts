@@ -1,5 +1,7 @@
 // Shapes of the admin API (crates/api/src/admin.rs, worker jobs.rs) and the fixed choices the console offers.
 
+import type { AccountSession } from "@/lib/device";
+
 export const KINDS = [
   "incremental",
   "details",
@@ -125,6 +127,25 @@ export type Ai = {
       boolean
     >
   >;
+};
+
+/** An account row (admin/users.rs). */
+export type AdminUser = {
+  id: number;
+  username: string;
+  display_name: string;
+  email: string;
+  is_admin: boolean;
+  disabled_at: string | null;
+  created_at: string;
+  last_sign_in_at: string | null;
+};
+
+export type AdminUserDetail = AdminUser & {
+  favourites: number;
+  saved_searches: number;
+  views: number;
+  sessions: AccountSession[];
 };
 
 /** The 8 schedule presets, in minutes. */

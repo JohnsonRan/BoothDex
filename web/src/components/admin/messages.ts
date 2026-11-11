@@ -38,6 +38,8 @@ const ADMIN_ERRORS: ApiErrors<AdminKey> = {
     "A job of this kind is already queued or running": "error.jobBusy",
     "Job is not queued or running": "error.jobIdle",
     "Set the base URL and API key first": "error.aiUnset",
+    "No such user": "error.noUser",
+    "Admins can't be disabled.": "error.adminDisable",
   },
   statuses: {
     401: "gate.signInTitle",

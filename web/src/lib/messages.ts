@@ -20,6 +20,8 @@ export const API_ERRORS: ApiErrors<MessageKey> = {
   messages: {
     "Incorrect username or password.": "error.credentials",
     "Username or email is already taken.": "error.taken",
+    "This account is disabled.": "error.disabled",
+    "Registration is closed.": "error.registrationClosed",
     "Saved search limit reached.": "saved.limit",
   },
   statuses: {

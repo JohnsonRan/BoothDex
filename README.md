@@ -104,7 +104,8 @@ VRCatalogue. Item data and images belong to their creators; every item links bac
 
 - The admin console at `/admin` shows an overview with live status (SSE) and 30-day trend charts.
 - Run and stop jobs and follow each job's live log; turn schedules on and off; browse the job history.
-- Configure the AI provider and reset user passwords.
+- Configure the AI provider and open or close registration.
+- Find users, see where they are signed in, sign out a device, disable an account or reset its password.
 - The console is available in Chinese, English and Japanese.
 
 <details>

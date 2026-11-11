@@ -186,6 +186,8 @@ export const ja: Dict = {
   "error.tooMany":
     "リクエストが多すぎます。しばらくしてからもう一度お試しください",
   "error.failed": "問題が発生しました。もう一度お試しください",
+  "error.disabled": "このアカウントは無効になっています",
+  "error.registrationClosed": "現在、新規登録は受け付けていません",
   "account.login": "ユーザー名またはメール",
   "account.password": "パスワード",
   "account.displayName": "表示名",
@@ -264,5 +266,14 @@ export const ja: Dict = {
     "円以外の価格は為替レートで換算し、≈ を付けて表示します。",
   "settings.about": "バージョン情報",
   "settings.aboutDesc": "ライセンス、ソースコード、問題の報告です。",
+  "settings.account": "アカウント",
+  "settings.devices": "ログイン中の端末",
+  "settings.devicesDesc":
+    "このアカウントにログインしているブラウザーと端末です。",
+  "settings.thisDevice": "この端末",
+  "settings.unknownDevice": "不明な端末",
+  "settings.signOutDevice": "ログアウト",
+  "settings.signedOutDevice": "その端末をログアウトしました",
+  "settings.devicesFailed": "端末を読み込めませんでした",
   "settings.open": "開く",
 };

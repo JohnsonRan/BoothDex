@@ -12,7 +12,7 @@ import { Heading, Text } from "@astryxdesign/core/Text";
 import { AiSettings } from "./ai-settings";
 import { useAdminT } from "./messages";
 import { PageFrame } from "./page-frame";
-import { ResetPassword } from "./reset-password";
+import { Registration } from "./registration";
 
 function Section({
   title,
@@ -46,8 +46,8 @@ export function SettingsPage() {
         <AiSettings />
       </Section>
       <Divider />
-      <Section title={t("reset.title")} desc={t("reset.desc")}>
-        <ResetPassword />
+      <Section title={t("registration.title")} desc={t("registration.desc")}>
+        <Registration />
       </Section>
     </PageFrame>
   );
