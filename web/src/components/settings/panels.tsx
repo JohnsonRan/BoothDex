@@ -217,6 +217,22 @@ function LanguagePanel() {
   );
 }
 
+/** this site's own pages, opened in place (app/privacy, app/terms) */
+const LEGAL = [
+  {
+    title: "legal.privacy",
+    description: "legal.privacyDesc",
+    icon: "site:privacy",
+    href: "/privacy",
+  },
+  {
+    title: "legal.terms",
+    description: "legal.termsDesc",
+    icon: "site:terms",
+    href: "/terms",
+  },
+] as const;
+
 const LINKS = [
   {
     title: "settings.feedback",
@@ -239,6 +255,22 @@ function AboutPanel() {
         icon="info"
         description={t("settings.copyright")}
       />
+      {LEGAL.map((link) => (
+        <SettingsRow
+          key={link.href}
+          title={t(link.title)}
+          icon={link.icon}
+          description={t(link.description)}
+          control={
+            <Button
+              label={t("settings.open")}
+              variant="secondary"
+              size="sm"
+              href={link.href}
+            />
+          }
+        />
+      ))}
       {LINKS.map((link) => (
         <SettingsRow
           key={link.href}

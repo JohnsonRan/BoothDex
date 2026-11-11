@@ -108,13 +108,15 @@ tar -xf images.tar -C /srv/boothdex    # extracts to /srv/boothdex/images/*.webp
 Edit `.env` in the directory holding `compose.yaml` (`/srv/boothdex/.env` or `/srv/boothdex/app/deploy/.env`):
 
 ```sh
-$EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, and (with a bundle) ARCHIVE_IMAGES_DIR
+$EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, CONTACT_EMAIL, and (with a bundle) ARCHIVE_IMAGES_DIR
 ```
 
 | Variable | Used by | Notes |
 |---|---|---|
 | `WEB_LISTEN` | `web` | Host `[address:]port` for the site; set `127.0.0.1:3100` when the reverse proxy runs on the same host |
 | `SITE_URL` | `api`, `web` | Public HTTP(S) origin without a path, e.g. `https://boothdex.example.com`; used in RSS links, canonical/share URLs, `robots.txt` and `sitemap.xml`. Read at runtime, so changing domains needs no image rebuild |
+| `OPERATOR_NAME` | `web` | Who runs the site, as named in `/privacy` and `/terms`; defaults to the `SITE_URL` host |
+| `CONTACT_EMAIL` | `web` | Contact address shown in `/privacy` and `/terms` for data, account deletion and takedown requests. Set it before opening registration; without it the pages show a placeholder |
 | `COOKIE_SECURE` | `api` | `1` (default): session cookies over HTTPS only. Set `0` only while testing over plain `http://` |
 | `POSTGRES_PASSWORD` | `postgres`, `api`, `worker` | Long random secret, e.g. `openssl rand -base64 32` |
 | `ADMIN_USERNAMES` | `api` | Comma-separated usernames synced at every `api` start (unlisted accounts lose admin) |
@@ -147,6 +149,7 @@ Then complete onboarding:
 2. Add that username to `ADMIN_USERNAMES` in `.env`, then run `docker compose up -d api`.
 3. Open `/admin`: verify `worker` shows as running. The hourly incremental crawl, the daily full sweep (03:00 JST) and the daily `details` pass (fetches missing galleries) are enabled by default.
 4. Configure the AI provider in `/admin` (and click **Test**) or via `AI_*` in `.env`.
+5. Read `/privacy` and `/terms`. They describe what the software does and are a starting point, not legal advice: if you change what the site collects (analytics, another network provider) or your jurisdiction needs more, update `web/src/lib/legal-*.ts` and `LEGAL_UPDATED` in `web/src/lib/legal.ts`. The site sets only strictly necessary and preference cookies, so it shows no consent banner; adding analytics or ads would need one.
 
 ### Worker job lanes & catalogue reload
 
@@ -226,7 +229,7 @@ Safe to lose (rebuilt automatically): `imgcache` (re-fetched from BOOTH on deman
 - [ ] `WEB_LISTEN` bound to `127.0.0.1:3100` behind your TLS proxy, with `COOKIE_SECURE=1`
 - [ ] `ADMIN_USERNAMES` lists only your account
 - [ ] `https://<domain>/api/categories` returns JSON; `/img/v/<sha1>.webp` serves an archived image (if using a bundle)
-- [ ] `/robots.txt` points to `/sitemap.xml` on your public domain; the sitemap lists only the homepage. Submit it to your search engine's webmaster tools. Search/filter/item-modal URLs use `noindex`; `/admin` and `/api/` are excluded from crawling (not an access-control mechanism)
+- [ ] `/robots.txt` points to `/sitemap.xml` on your public domain; the sitemap lists the homepage, `/privacy` and `/terms`. Submit it to your search engine's webmaster tools. Search/filter/item-modal URLs use `noindex`; `/admin` and `/api/` are excluded from crawling (not an access-control mechanism)
 - [ ] `/admin` shows `worker` online and a succeeded `incremental` job within an hour
 - [ ] Off-server daily `pg_dump` backup is scheduled
 - [ ] AI provider is configured (otherwise newly crawled items lack smart categories, avatar-fit links and translated titles)

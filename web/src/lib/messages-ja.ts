@@ -265,7 +265,8 @@ export const ja: Dict = {
   "settings.currencyDesc":
     "円以外の価格は為替レートで換算し、≈ を付けて表示します。",
   "settings.about": "バージョン情報",
-  "settings.aboutDesc": "ライセンス、ソースコード、問題の報告です。",
+  "settings.aboutDesc":
+    "プライバシー、利用規約、ソースコード、問題の報告です。",
   "settings.account": "アカウント",
   "settings.devices": "ログイン中の端末",
   "settings.devicesDesc":
@@ -276,4 +277,11 @@ export const ja: Dict = {
   "settings.signedOutDevice": "その端末をログアウトしました",
   "settings.devicesFailed": "端末を読み込めませんでした",
   "settings.open": "開く",
+  "legal.privacy": "プライバシーポリシー",
+  "legal.terms": "利用規約",
+  "legal.privacyDesc": "このサイトでのデータの取り扱いです。",
+  "legal.termsDesc": "このサイトの利用ルールと免責事項です。",
+  "legal.updated": "最終更新日：{date}",
+  "legal.consent":
+    "アカウントを作成すると、{terms}と{privacy}に同意したものとみなされます。",
 };

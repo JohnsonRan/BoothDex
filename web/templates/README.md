@@ -23,3 +23,4 @@ not. Do not edit them: copy a newer version over them when Astryx is upgraded.
 | `blocks/LightboxGallery.tsx` (zoom) | `src/components/item/item-gallery.tsx` |
 | `blocks/CarouselSnap.tsx` (gallery swipe, "More from" strip) | `src/components/item/item-gallery.tsx`, `more-from.tsx` |
 | `blocks/ListBasicList.tsx` (variations), `MetadataListBasicMetadata.tsx` (info) | `src/components/item/item-sections.tsx` |
+| `pages/documentation-technical/page.tsx` (reading column, headings, disc lists) | `src/components/legal/legal-screen.tsx` |

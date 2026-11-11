@@ -122,7 +122,7 @@ flowchart LR
 mkdir -p /srv/boothdex && cd /srv/boothdex
 curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
 curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
-$EDITOR .env    # POSTGRES_PASSWORD、SITE_URL、WEB_LISTEN を設定 (バンドル利用時は ARCHIVE_IMAGES_DIR も指定)
+$EDITOR .env    # POSTGRES_PASSWORD、SITE_URL、WEB_LISTEN、CONTACT_EMAIL を設定 (バンドル利用時は ARCHIVE_IMAGES_DIR も指定)
 docker compose pull && docker compose up -d
 ```
 

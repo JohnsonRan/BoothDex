@@ -8,6 +8,7 @@ import {
   Code,
   Coins,
   Eye,
+  FileText,
   Hash,
   History,
   LayoutDashboard,
@@ -21,6 +22,7 @@ import {
   Plus,
   Rss,
   Shapes,
+  ShieldCheck,
   SwatchBook,
   Type,
 } from "lucide-react";
@@ -40,6 +42,8 @@ registerIcons({
   "site:currency": <Coins {...glyph} />,
   "site:code": <Code {...glyph} />,
   "site:feedback": <MessageSquare {...glyph} />,
+  "site:privacy": <ShieldCheck {...glyph} />,
+  "site:terms": <FileText {...glyph} />,
   "site:tag": <Hash {...glyph} />,
   // a search word read as a category (catalog/search-suggest.tsx)
   "site:category": <Shapes {...glyph} />,

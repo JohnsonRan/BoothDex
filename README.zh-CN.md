@@ -125,7 +125,7 @@ flowchart LR
 mkdir -p /srv/boothdex && cd /srv/boothdex
 curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
 curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
-$EDITOR .env    # 配置 POSTGRES_PASSWORD、SITE_URL、WEB_LISTEN，使用数据包时还需设置 ARCHIVE_IMAGES_DIR
+$EDITOR .env    # 配置 POSTGRES_PASSWORD、SITE_URL、WEB_LISTEN、CONTACT_EMAIL，使用数据包时还需设置 ARCHIVE_IMAGES_DIR
 docker compose pull && docker compose up -d
 ```
 

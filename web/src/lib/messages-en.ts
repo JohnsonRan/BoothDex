@@ -264,7 +264,7 @@ export const en: Dict = {
   "settings.currencyDesc":
     "Prices other than yen are converted at the exchange rate and marked ≈.",
   "settings.about": "About",
-  "settings.aboutDesc": "Licence, source code and issue reporting.",
+  "settings.aboutDesc": "Privacy, terms, source code and issue reporting.",
   "settings.account": "Account",
   "settings.devices": "Devices",
   "settings.devicesDesc": "Browsers and devices signed in to this account.",
@@ -274,4 +274,11 @@ export const en: Dict = {
   "settings.signedOutDevice": "Signed out that device",
   "settings.devicesFailed": "Couldn't load your devices",
   "settings.open": "Open",
+  "legal.privacy": "Privacy Policy",
+  "legal.terms": "Terms of Use",
+  "legal.privacyDesc": "How this site handles your data.",
+  "legal.termsDesc": "The rules for using this site, and disclaimers.",
+  "legal.updated": "Last updated {date}",
+  "legal.consent":
+    "By creating an account, you agree to the {terms} and the {privacy}.",
 };

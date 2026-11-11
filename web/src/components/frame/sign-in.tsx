@@ -7,19 +7,23 @@
 // dialog is not dismissed from its scrim, so on a touch screen that button is the way out. Tabs switch between the two forms. Requests and fields are master's
 // (account-menu.tsx): sign-in keeps the session (`keep: true`); errors from the server arrive as a toast.
 // The admin gate opens it sign-in only, under its own heading (`gate`); so does a closed registration, which the
-// dialog asks about each time it opens (the server refuses sign-up either way).
+// dialog asks about each time it opens (the server refuses sign-up either way). Under the register button, the
+// template's terms line (page.tsx:196-209) links the terms and the privacy policy, in a new tab so the form stays.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
+import { Link } from "@astryxdesign/core/Link";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
+import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useEffect, useState } from "react";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
 import { API_ERRORS, type MessageKey } from "@/lib/messages";
+import { rich } from "@/lib/rich";
 
 type Mode = "login" | "register";
 type Field = "login" | "password" | "display_name" | "username" | "email";
@@ -204,6 +208,26 @@ export function SignInDialog({
                       isLoading={busy}
                     />
                   </HStack>
+                  {mode === "register" && (
+                    <Text type="supporting" color="secondary" justify="center">
+                      {rich(t("legal.consent"), {
+                        terms: (
+                          <Link href="/terms" target="_blank" type="supporting">
+                            {t("legal.terms")}
+                          </Link>
+                        ),
+                        privacy: (
+                          <Link
+                            href="/privacy"
+                            target="_blank"
+                            type="supporting"
+                          >
+                            {t("legal.privacy")}
+                          </Link>
+                        ),
+                      })}
+                    </Text>
+                  )}
                 </VStack>
               </form>
             </VStack>

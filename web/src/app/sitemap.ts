@@ -5,5 +5,9 @@ import { getSiteUrl } from "@/lib/seo";
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   await connection();
   const url = getSiteUrl();
-  return url ? [{ url: url.href }] : [];
+  return url
+    ? ["/", "/privacy", "/terms"].map((path) => ({
+        url: new URL(path, url).href,
+      }))
+    : [];
 }

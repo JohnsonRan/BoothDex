@@ -65,14 +65,17 @@ export function FilterUrlProvider({
   const [current, setCurrent] = useOptimistic(filters);
   const shown = useDelayed(pending);
   const refresh = useMemo(() => ({ pending, shown }), [pending, shown]);
+  // other pages (/privacy, /terms) carry the frame's account menu, whose views open the home page
+  const home = pathname === "/";
 
   // A bare visit gets the avatar this browser picked last; a shared link shows exactly what it encodes. The
   // account's pick (made on another device) follows, unless the visitor has moved on meanwhile, as on master.
   useEffect(() => {
+    if (!home) return;
     const query = (avatar: string) =>
       `?${filtersToQuery({ ...DEFAULT_FILTERS, avatar })}`;
     const restore = (avatar: string) =>
-      router.replace(`${pathname}${query(avatar)}`, { scroll: false });
+      router.replace(`/${query(avatar)}`, { scroll: false });
     const local = remembered();
     if (location.search.length <= 1 && local) restore(local);
     fetchAccount<{ preferences: Record<string, string> }>().then(
@@ -85,11 +88,12 @@ export function FilterUrlProvider({
       },
       () => {},
     );
-  }, [pathname, router]);
+  }, [home, router]);
 
   const value = useMemo<FilterUrl>(() => {
     const go = (query: string, next: Filters) => {
-      const url = query ? `${pathname}?${query}` : pathname;
+      const url = query ? `/?${query}` : "/";
+      if (!home) return router.push(url);
       startTransition(() => {
         setCurrent(next);
         router.replace(url, { scroll: false });
@@ -110,7 +114,7 @@ export function FilterUrlProvider({
         }
       },
     };
-  }, [current, setCurrent, pathname, router]);
+  }, [current, setCurrent, home, router]);
 
   return (
     <Ctx value={value}>

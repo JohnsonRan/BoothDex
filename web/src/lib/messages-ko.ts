@@ -262,7 +262,7 @@ export const ko: Dict = {
   "settings.currencyDesc":
     "엔 이외의 가격은 환율로 환산해 ≈ 표시와 함께 보여 줍니다.",
   "settings.about": "정보",
-  "settings.aboutDesc": "라이선스, 소스 코드, 문제 신고입니다.",
+  "settings.aboutDesc": "개인정보, 약관, 소스 코드, 문제 신고입니다.",
   "settings.account": "계정",
   "settings.devices": "로그인한 기기",
   "settings.devicesDesc": "이 계정에 로그인한 브라우저와 기기입니다.",
@@ -272,4 +272,11 @@ export const ko: Dict = {
   "settings.signedOutDevice": "해당 기기에서 로그아웃했습니다",
   "settings.devicesFailed": "기기 목록을 불러오지 못했습니다",
   "settings.open": "열기",
+  "legal.privacy": "개인정보 처리방침",
+  "legal.terms": "이용약관",
+  "legal.privacyDesc": "이 사이트의 데이터 처리 방식입니다.",
+  "legal.termsDesc": "이 사이트 이용 규칙과 면책 조항입니다.",
+  "legal.updated": "최종 업데이트: {date}",
+  "legal.consent":
+    "계정을 만들면 {terms} 및 {privacy}에 동의하는 것으로 간주됩니다.",
 };
