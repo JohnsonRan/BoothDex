@@ -99,7 +99,7 @@ test("homepage canonical and share metadata use the runtime origin", () => {
     description: metadata.description,
   });
   expect(metadata.twitter).toMatchObject({
-    card: "summary",
+    card: "summary_large_image",
     title: metadata.title,
     description: metadata.description,
   });

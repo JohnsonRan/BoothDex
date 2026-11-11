@@ -62,6 +62,7 @@ export function homeMetadata(hasQuery: boolean): Metadata {
       description,
       ...(url && { url: url.href }),
     },
-    twitter: { card: "summary", title, description },
+    // the picture is app/opengraph-image.tsx, which Next also gives twitter:image
+    twitter: { card: "summary_large_image", title, description },
   };
 }
