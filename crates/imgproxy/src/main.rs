@@ -1,7 +1,8 @@
 //! Image proxy meant to sit behind Cloudflare.
 //!   GET /b/{size}/{uuid}/i/{item}/{file}[?format=avif|png|jpeg]  Booth image (booth.pximg.net), re-encoded
 //!   GET /v/{sha1}.webp                                         archived VRCatalogue image (delisted items)
-//! Output defaults to AVIF with full-resolution chroma (4:4:4); the archived files are WebP and served as they
+//! Output defaults to AVIF with full-resolution chroma (4:4:4), from libaom when built with the `libavif`
+//! feature (the container images are) and from rav1e otherwise; the archived files are WebP and served as they
 //! are. Results are cached in foyer (memory + disk); responses are immutable so the CDN keeps them, which is
 //! why the site names the format in its URLs. Only booth.pximg.net is ever fetched, and only Booth-shaped paths
 //! with Booth's own sizes are accepted, so this is not an open proxy.
@@ -22,7 +23,6 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use foyer::{BlockEngineConfig, DeviceBuilder, FsDeviceBuilder, HybridCache, HybridCacheBuilder};
-use image::codecs::avif::AvifEncoder;
 use image::{DynamicImage, ImageFormat, ImageReader, Limits};
 use tokio::sync::Semaphore;
 
@@ -32,22 +32,47 @@ const MAX_UPSTREAM_BYTES: usize = 25 * 1024 * 1024;
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 /// Upstream 404s are cached (as an empty value) — Booth image paths are content-addressed and never come back
 const NOT_FOUND_CACHE: &str = "public, max-age=86400";
-/// AVIF quality by size, on ravif's own 1..=100 scale, which is not the one libavif-style tools use: its 75
-/// measured softer than the WebP this replaced. Measured on 12 Booth images with SSIMULACRA2 against the WebP
-/// 80 (sized) and 88 (original) served before:
-/// - thumbnails load by the dozen on every list page, so they stay the size they were: 83 is 2% smaller at
-///   300 px and scores level (85 would be 20% larger);
-/// - the item dialog's images are looked at closely: 85 scores 3.5 points higher at 620 px for 16% more bytes,
-///   and at the original size is 22% smaller for a level score.
+
+/// AVIF quality by size, on libavif's 0..=100 scale. Both values are smaller and closer to the source than the
+/// WebP served before (80 for the sized variants, 88 for the original), measured through this service on 24 Booth
+/// images with SSIMULACRA2, medians:
+/// - 60 for the sized variants: 10% fewer bytes and 2.8 points higher at 300 px (21 of 24 images better), 11%
+///   and 3.1 at 620 px. 55 would be 23% smaller but half the thumbnails would score below their WebP.
+/// - 75 for the original, the image the item dialog shows: 14% fewer bytes and 2.5 points higher (20 of 24).
+///   70 would be 23% smaller for a level score.
+#[cfg(feature = "libavif")]
+fn avif_quality(size: &str) -> u8 {
+    match size {
+        "orig" => 75,
+        _ => 60,
+    }
+}
+
+/// AVIF quality by size for a build without libavif, on ravif's own 1..=100 scale, which is neither libaom's nor
+/// the one libavif-style tools use: its 75 measured softer than the WebP this replaced. On 12 Booth images,
+/// scored with SSIMULACRA2 against the WebP 80 (sized) and 88 (original) served before, rav1e's 83 is 2% smaller
+/// at 300 px for a level score, and its 85 scores 3.5 points higher at 620 px for 16% more bytes and is 22%
+/// smaller at the original size for about the same score.
+#[cfg(not(feature = "libavif"))]
 fn avif_quality(size: &str) -> u8 {
     match size {
         "620x620" | "orig" => 85,
         _ => 83,
     }
 }
-/// 1 (slowest) ..= 10; 6 costs about 60 ms for a 300 px thumbnail and 430 ms for an original (asm, 2 threads),
-/// 8 saves a quarter of that for 3% larger files, 10 is over a third larger
+
+/// Both encoders: 1 (slowest) ..= 10. On 2 CPUs, libaom at 6 takes about 40 ms for a 300 px thumbnail and 180 ms
+/// for an original; rav1e at 6 about 50 ms and 420 ms (asm, 2 threads), its 8 a quarter less for 3% larger files,
+/// its 10 over a third larger.
 const AVIF_SPEED: u8 = 6;
+/// libaom's threads for one image; several images are encoded at once (MAX_TRANSCODES below)
+#[cfg(feature = "libavif")]
+const AOM_THREADS: std::ffi::c_int = 2;
+/// Images libaom encodes at once, at most one per core. It holds about 60 MB for an original, and the container
+/// is limited to 1 GB with a 256 MB memory cache in it: a burst of 24 originals peaked at 260 MB with 2 at once,
+/// about 400 MB with 4 and 630 MB with 8 (the test's memory cache was 64 MB).
+#[cfg(feature = "libavif")]
+const MAX_TRANSCODES: usize = 4;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Format {
@@ -124,15 +149,43 @@ fn decode(bytes: &[u8]) -> Result<DynamicImage> {
     Ok(reader.decode()?)
 }
 
+/// 8-bit AVIF with full-resolution chroma (4:4:4), from libaom through the system's libavif (src/aom.c).
+#[cfg(feature = "libavif")]
+fn encode_avif(img: &DynamicImage, quality: u8) -> Result<Vec<u8>> {
+    use std::ffi::{CStr, c_char, c_int};
+    unsafe extern "C" {
+        fn boothdex_avif_encode(pixels: *const u8, width: u32, height: u32, has_alpha: c_int, quality: c_int, speed: c_int, threads: c_int, out: *mut *mut u8, out_len: *mut usize) -> c_int;
+        fn boothdex_avif_free(data: *mut u8);
+        fn boothdex_avif_error(code: c_int) -> *const c_char;
+    }
+    let has_alpha = img.color().has_alpha();
+    let pixels = if has_alpha { img.to_rgba8().into_raw() } else { img.to_rgb8().into_raw() };
+    let (mut data, mut len) = (std::ptr::null_mut(), 0usize);
+    // SAFETY: `pixels` holds width * height packed RGB or RGBA pixels and is only read; on 0 the callee has set
+    // `data` and `len` to a buffer it allocated, copied here and then released with its own allocator.
+    unsafe {
+        let code = boothdex_avif_encode(pixels.as_ptr(), img.width(), img.height(), has_alpha.into(), quality.into(), AVIF_SPEED.into(), AOM_THREADS, &mut data, &mut len);
+        if code != 0 {
+            bail!("libavif: {}", CStr::from_ptr(boothdex_avif_error(code)).to_string_lossy());
+        }
+        let out = std::slice::from_raw_parts(data, len).to_vec();
+        boothdex_avif_free(data);
+        Ok(out)
+    }
+}
+
+/// 8-bit AVIF from rav1e; ravif never subsamples chroma, so the output is always 4:4:4.
+#[cfg(not(feature = "libavif"))]
+fn encode_avif(img: &DynamicImage, quality: u8) -> Result<Vec<u8>> {
+    let img = if img.color().has_alpha() { DynamicImage::ImageRgba8(img.to_rgba8()) } else { DynamicImage::ImageRgb8(img.to_rgb8()) };
+    let mut out = Vec::new();
+    img.write_with_encoder(image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut out, AVIF_SPEED, quality))?;
+    Ok(out)
+}
+
 fn encode(img: &DynamicImage, format: Format, quality: u8) -> Result<Vec<u8>> {
     Ok(match format {
-        Format::Avif => {
-            // ravif takes 8-bit RGB/RGBA and never subsamples chroma: the output is always 4:4:4
-            let img = if img.color().has_alpha() { DynamicImage::ImageRgba8(img.to_rgba8()) } else { DynamicImage::ImageRgb8(img.to_rgb8()) };
-            let mut out = Vec::new();
-            img.write_with_encoder(AvifEncoder::new_with_speed_quality(&mut out, AVIF_SPEED, quality))?;
-            out
-        }
+        Format::Avif => encode_avif(img, quality)?,
         Format::Png => {
             let mut out = Cursor::new(Vec::new());
             img.write_to(&mut out, ImageFormat::Png)?;
@@ -261,8 +314,20 @@ fn env_num(key: &str, default: usize) -> usize {
     std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    // while this is the only thread (src/aom.c says why); the environment's own setting wins
+    #[cfg(feature = "libavif")]
+    if std::env::var_os("MALLOC_ARENA_MAX").is_none() {
+        unsafe extern "C" {
+            fn boothdex_limit_malloc_arenas();
+        }
+        // SAFETY: sets one malloc parameter, before any other thread exists
+        unsafe { boothdex_limit_malloc_arenas() };
+    }
+    tokio::runtime::Builder::new_multi_thread().enable_all().build()?.block_on(serve())
+}
+
+async fn serve() -> Result<()> {
     rustls::crypto::ring::default_provider().install_default().ok();
     let dir = std::env::var("CACHE_DIR").unwrap_or_else(|_| "imgcache".into());
     std::fs::create_dir_all(&dir)?;
@@ -275,13 +340,16 @@ async fn main() -> Result<()> {
         .with_engine_config(BlockEngineConfig::new(device))
         .build()
         .await?;
+    let transcodes = std::thread::available_parallelism().map_or(4, |n| n.get());
+    #[cfg(feature = "libavif")]
+    let transcodes = transcodes.min(MAX_TRANSCODES);
     let state = Arc::new(AppState {
         stats: Stats::default(),
         mem_mb,
         disk_mb,
         cache,
         client: reqwest::Client::builder().timeout(Duration::from_secs(20)).build()?,
-        transcode: Semaphore::new(std::thread::available_parallelism().map_or(4, |n| n.get())),
+        transcode: Semaphore::new(transcodes),
         archive: std::env::var("ARCHIVE_IMAGES").ok().map(PathBuf::from),
     });
     let app = Router::new()
@@ -344,9 +412,9 @@ mod tests {
 
     #[test]
     fn list_sizes_get_the_lighter_quality() {
-        assert!(avif_quality("300x300_a2_g5") < avif_quality("620x620"));
+        assert!(avif_quality("300x300_a2_g5") < avif_quality("orig"));
         assert_eq!(avif_quality("72x72_a2_g5"), avif_quality("300x300_a2_g5"));
-        assert_eq!(avif_quality("orig"), avif_quality("620x620"));
+        assert!(avif_quality("300x300_a2_g5") <= avif_quality("620x620") && avif_quality("620x620") <= avif_quality("orig"));
     }
 
     #[test]

@@ -197,7 +197,8 @@ podman run -d --name boothdex-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalog
   -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql/data docker.io/pgvector/pgvector:pg17
 
 cargo build --release            # 初回ビルド時に IPADIC 辞書をダウンロードします (失敗した場合は再実行してください)
-# nasm がある場合は --features imgproxy/asm を追加すると、AVIF のエンコードが約 3 倍速くなります (コンテナー イメージでは有効)
+# コンテナー イメージでは libaom で AVIF をエンコードします: --features imgproxy/libavif (libavif-dev と pkg-config が必要)。
+# 指定しない場合は rav1e を使用します。nasm がある場合は --features imgproxy/asm を追加すると、エンコードが約 3 倍速くなります。
 (cd web && bun install)
 
 export DATABASE_URL=postgres://postgres:dev@localhost:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin

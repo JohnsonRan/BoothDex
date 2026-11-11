@@ -6,8 +6,12 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-# rav1e's hand-written assembly: about three times faster AVIF encoding. On x86_64 it needs nasm at build time, so it
-# is off by default (cargo build works on a bare toolchain) and the container build turns it on.
+# AVIF from libaom, through the system's libavif, instead of rav1e: at the same score its files are about a sixth
+# smaller, and it encodes faster. It needs libavif (1.0 or later) and pkg-config at build time and libavif at run
+# time, so it is off by default (cargo build works on a bare toolchain) and the container build turns it on.
+libavif = ["dep:cc", "dep:pkg-config"]
+# rav1e's hand-written assembly, for a build without libavif: about three times faster AVIF encoding. On x86_64
+# it needs nasm at build time.
 asm = ["image/nasm"]
 
 [dependencies]
@@ -20,3 +24,7 @@ serde.workspace = true
 serde_json.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 tokio = { workspace = true, features = ["fs", "sync"] }
+
+[build-dependencies]
+cc = { version = "1", optional = true }
+pkg-config = { version = "0.3", optional = true }

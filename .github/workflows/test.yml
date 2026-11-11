@@ -38,6 +38,9 @@ jobs:
       - run: cargo test --workspace -- --include-ignored
         env:
           DATABASE_URL: postgres://postgres:dev@localhost:5432/catalogue
+      # the container images encode AVIF with libaom (imgproxy's libavif feature); the plain build above uses rav1e
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libavif-dev pkg-config
+      - run: cargo test -p imgproxy --features libavif
 
   web:
     name: web
