@@ -130,6 +130,34 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 .astryx-dialog .astryx-layout-content {
   scrollbar-width: none;
 }
+/* A dialog's body is cut anywhere, also through its last row's padding, where it read as clipped (owner, the
+   Settings panel's last switch): while more is below, its lower edge fades as a Carousel's edges do (core
+   Carousel.tsx `fadeEnd`), over the last steps of its scroll the fade goes. Scroll-driven, so a body that does
+   not scroll has no timeline and no fade; without scroll timelines (Firefox) the animation ends at once, with no
+   fade either. */
+@property --body-fade {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes body-fade {
+  from {
+    --body-fade: var(--spacing-8);
+  }
+  to {
+    --body-fade: 0px;
+  }
+}
+.astryx-dialog .astryx-layout-content {
+  mask-image: linear-gradient(
+    to bottom,
+    black calc(100% - var(--body-fade)),
+    transparent
+  );
+  animation: body-fade linear both;
+  animation-timeline: scroll(self);
+  animation-range: calc(100% - var(--spacing-8)) 100%;
+}
 
 /* A saved favourite (account/favourites.tsx sets aria-pressed): the same lucide heart, filled, as the pressed
    icon of block ToggleButtonShowcase (ToggleButtonShowcase.tsx:30). One rule, so server-rendered buttons need no client state. */
