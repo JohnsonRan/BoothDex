@@ -927,6 +927,45 @@ mod tests {
         assert_eq!(ats, vec![Some(2.0), None]);
     }
 
+    /// Account 'a', signed in with the cookie `headers()` sends.
+    async fn signed_in(pool: &PgPool) -> i64 {
+        let user = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', 'x') returning id")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+            .bind(token_hash("tok-a"))
+            .bind(user)
+            .execute(pool)
+            .await
+            .unwrap();
+        user
+    }
+
+    fn headers() -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(header::COOKIE, "session=tok-a".parse().unwrap());
+        h
+    }
+
+    /// Listed items 1 to n.
+    async fn items(pool: &PgPool, n: i64) {
+        sqlx::query(
+            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+             select g, 't', 'c', 'https://example.test', false, 'ok', now() from generate_series(1, $1) g",
+        )
+        .bind(n)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    /// The `ids` of a list answer.
+    async fn ids(r: Response) -> Vec<i64> {
+        let body: Value = serde_json::from_slice(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap();
+        serde_json::from_value(body["ids"].clone()).unwrap()
+    }
+
     #[test]
     fn favourites_read_before_a_change_are_not_cached() {
         let c = FavouriteCache::new();
@@ -943,34 +982,10 @@ mod tests {
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
     async fn favourites_list_follows_changes_at_once(pool: PgPool) {
-        let user: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', 'x') returning id")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
-            .bind(token_hash("tok-a"))
-            .bind(user)
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query(
-            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
-             select g, 't', 'c', 'https://example.test', false, 'ok', now() from generate_series(1, 3) g",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
+        let user = signed_in(&pool).await;
+        items(&pool, 3).await;
         let state = test_state(pool.clone());
-        let headers = || {
-            let mut h = HeaderMap::new();
-            h.insert(header::COOKIE, "session=tok-a".parse().unwrap());
-            h
-        };
-        let list = || async {
-            let r = list_favourites(State(state.clone()), headers()).await.ok().unwrap();
-            let body: Value = serde_json::from_slice(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap();
-            serde_json::from_value::<Vec<i64>>(body["ids"].clone()).unwrap()
-        };
+        let list = || async { ids(list_favourites(State(state.clone()), headers()).await.ok().unwrap()).await };
 
         add_favourite(State(state.clone()), headers(), Path(1)).await.ok().unwrap();
         assert_eq!(list().await, [1]);
@@ -1078,29 +1093,9 @@ mod tests {
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
     async fn imports_trim_viewed_items_and_the_list_keeps_the_newest(pool: PgPool) {
-        let user: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', 'x') returning id")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
-            .bind(token_hash("tok-a"))
-            .bind(user)
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query(
-            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
-             select g, 't', 'c', 'https://example.test', false, 'ok', now() from generate_series(1, 501) g",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
+        let user = signed_in(&pool).await;
+        items(&pool, 501).await;
         let state = test_state(pool.clone());
-        let headers = || {
-            let mut h = HeaderMap::new();
-            h.insert(header::COOKIE, "session=tok-a".parse().unwrap());
-            h
-        };
         // newest first, item n viewed at n ms past a fixed time
         let add = |ids: Vec<i64>| {
             let views = ids.into_iter().map(|id| ViewEntry { id, at: Some(1_700_000_000_000 + id) }).collect();
@@ -1115,10 +1110,9 @@ mod tests {
         // a single open is one upsert; the account may stay a row over until the next trim
         add_views(State(state.clone()), headers(), Json(Views { views: vec![ViewEntry { id: 1, at: None }] })).await.ok().unwrap();
         assert!((500..=501).contains(&count().await.unwrap()));
-        let body = axum::body::to_bytes(list_views(State(state.clone()), headers()).await.ok().unwrap().into_body(), usize::MAX).await.unwrap();
-        let ids: Vec<i64> = serde_json::from_value(serde_json::from_slice::<Value>(&body).unwrap()["ids"].take()).unwrap();
-        assert_eq!(ids.len(), 500);
-        assert_eq!(ids[..2], [1, 501]);
+        let listed = ids(list_views(State(state.clone()), headers()).await.ok().unwrap()).await;
+        assert_eq!(listed.len(), 500);
+        assert_eq!(listed[..2], [1, 501]);
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
@@ -1131,13 +1125,7 @@ mod tests {
         .fetch_all(&pool)
         .await
         .unwrap();
-        sqlx::query(
-            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
-             values (1, 't', 'c', 'https://example.test', false, 'ok', now()), (2, 't', 'c', 'https://example.test', false, 'ok', now())",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
+        items(&pool, 2).await;
         let fav = |user: i64, item: i64| sqlx::query("insert into favourites (user_id, item_id) values ($1, $2) on conflict do nothing").bind(user).bind(item).execute(&pool);
         fav(users[0], 1).await.unwrap();
         fav(users[1], 1).await.unwrap();
@@ -1157,17 +1145,11 @@ mod tests {
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
     async fn a_view_moved_up_while_trimming_is_kept(pool: PgPool) {
-        let user: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', 'x') returning id")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let user = signed_in(&pool).await;
+        items(&pool, 501).await;
         // item n viewed n seconds past a fixed time: item 1 is the one past the cap
-        sqlx::query(
-            "with i as (insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
-                        select g, 't', 'c', 'https://example.test', false, 'ok', now() from generate_series(1, 501) g returning id)
-             insert into item_views (user_id, item_id, viewed_at) select $1, id, to_timestamp(1700000000 + id) from i",
-        )
-        .bind(user)
+        sqlx::query("insert into item_views (user_id, item_id, viewed_at) select $1, g, to_timestamp(1700000000 + g) from generate_series(1, 501) g")
+            .bind(user)
         .execute(&pool)
         .await
         .unwrap();
