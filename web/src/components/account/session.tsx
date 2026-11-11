@@ -24,7 +24,7 @@ import {
   setPreferenceAccount,
   setPreferenceSync,
 } from "@/lib/preferences";
-import { keepSessionHint } from "@/lib/session-hint";
+import { keepSessionHint, SIGNED_IN } from "@/lib/session-hint";
 import {
   addViewed,
   loadViewed,
@@ -45,7 +45,7 @@ export type Me = {
 type Session = {
   /** undefined until the first answer, then the account or null (signed out) */
   me: Me | null | undefined;
-  /** the account's favourites; null signed out */
+  /** the favourites the hearts show: the account's, or while they load, the hearts pressed meanwhile; null signed out */
   favs: Set<number> | null;
   /** opened items, newest first; null until read */
   viewed: number[] | null;
@@ -70,6 +70,8 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   ui.current = { settings, update };
   const [me, setMe] = useState<Me | null>();
   const [favs, setFavs] = useState<Set<number> | null>(null);
+  // hearts pressed before the account's favourites were read, and the state each was left in
+  const [early, setEarly] = useState<Map<number, boolean> | null>(null);
   const [viewed, setViewed] = useState<number[] | null>(null);
   // info confirms or explains, error reports a failure; one toast per message: raising it again replaces it
   const notify = useCallback(
@@ -137,10 +139,57 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     load();
   }, [load]);
 
+  // saves favourite `id` as `on`: shown at once, put back if the API refuses
+  const saveFav = useCallback(
+    (id: number, on: boolean) => {
+      const set = (s: Set<number> | null, add: boolean) => {
+        const next = new Set(s);
+        if (add) next.add(id);
+        else next.delete(id);
+        return next;
+      };
+      setFavs((s) => set(s, on));
+      api(`/api/account/favourites/${id}`, {
+        method: on ? "PUT" : "DELETE",
+      }).catch((e) => {
+        setFavs((s) => set(s, !on));
+        notify(
+          e instanceof ApiError && e.status === 401
+            ? "fav.needSignIn"
+            : "fav.failed",
+          "error",
+        );
+      });
+    },
+    [notify],
+  );
+
+  // once the session has answered, the hearts pressed while it loaded are saved where they differ from the account
+  useEffect(() => {
+    if (!early || me === undefined || (me && !favs)) return;
+    setEarly(null);
+    if (!me || !favs) {
+      notify("fav.needSignIn");
+      return;
+    }
+    for (const [id, on] of early) if (favs.has(id) !== on) saveFav(id, on);
+  }, [early, me, favs, notify, saveFav]);
+
+  // the hearts pressed meanwhile turn at once when this browser's last session was signed in; otherwise they wait
+  // for the session's answer, which is most likely the sign-in notice
+  const shownFavs = useMemo(
+    () =>
+      favs ??
+      (early && document.documentElement.dataset.account === SIGNED_IN
+        ? new Set([...early].filter(([, on]) => on).map(([id]) => id))
+        : null),
+    [favs, early],
+  );
+
   const value = useMemo<Session>(
     () => ({
       me,
-      favs,
+      favs: shownFavs,
       viewed,
       notify,
       reload: () => {
@@ -156,26 +205,11 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         else router.refresh();
       },
       toggleFav: (id) => {
-        if (!favs) return notify("fav.needSignIn");
-        const on = favs.has(id);
-        const flip = (s: Set<number> | null, add: boolean) => {
-          const next = new Set(s);
-          if (add) next.add(id);
-          else next.delete(id);
-          return next;
-        };
-        setFavs((s) => flip(s, !on));
-        api(`/api/account/favourites/${id}`, {
-          method: on ? "DELETE" : "PUT",
-        }).catch((e) => {
-          setFavs((s) => flip(s, on));
-          notify(
-            e instanceof ApiError && e.status === 401
-              ? "fav.needSignIn"
-              : "fav.failed",
-            "error",
-          );
-        });
+        if (favs) return saveFav(id, !favs.has(id));
+        if (me === null) return notify("fav.needSignIn");
+        // the session or the favourites still loading: kept until they are read, then saved or answered with the
+        // sign-in notice
+        setEarly((m) => new Map(m).set(id, !(m?.get(id) ?? false)));
       },
       recordView: (id) => {
         openedDuringLoad.current?.push(id);
@@ -203,7 +237,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         }
       },
     }),
-    [me, favs, viewed, notify, load, router],
+    [me, favs, shownFavs, saveFav, viewed, notify, load, router],
   );
 
   return <Ctx value={value}>{children}</Ctx>;
