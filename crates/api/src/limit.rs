@@ -192,6 +192,8 @@ pub struct Limits {
     pub rss: RateLimiter,
     /// /api/items: 1 req/s, burst 20
     pub items: RateLimiter,
+    /// /api/items with one id, the item dialog's record, also fetched when a tile is pointed at: 4 req/s, burst 40
+    pub item: RateLimiter,
     /// /api/items/{id}/gallery: 1 req/s, burst 20
     pub gallery: RateLimiter,
     /// /api/{avatars,authors,tags,booth-tags,categories}: 5 req/s, burst 40
@@ -210,6 +212,7 @@ impl Default for Limits {
             palette: RateLimiter::new(5.0, 40.0, 8192),
             rss: RateLimiter::new(0.5, 20.0, 8192),
             items: RateLimiter::new(1.0, 20.0, 8192),
+            item: RateLimiter::new(4.0, 40.0, 8192),
             gallery: RateLimiter::new(1.0, 20.0, 8192),
             lookup: RateLimiter::new(5.0, 40.0, 8192),
             embed_ip: RateLimiter::new(0.25, 8.0, 8192),

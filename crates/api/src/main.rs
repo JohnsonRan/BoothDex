@@ -232,12 +232,13 @@ async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cli
     .into_response())
 }
 
-/// Full records by id (favourites list, palette picks): `/api/items?ids=1+2+3`, at most 100.
+/// Full records by id (favourites list, palette picks, the item dialog): `/api/items?ids=1+2+3`, at most 100.
 async fn items_by_id(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
-    if let Err(r) = s.limits.items.check(ip) {
+    let ids = item_ids(q.as_deref().unwrap_or(""));
+    let limit = if ids.len() == 1 { &s.limits.item } else { &s.limits.items };
+    if let Err(r) = limit.check(ip) {
         return Ok(r.into_response());
     }
-    let ids = item_ids(q.as_deref().unwrap_or(""));
     if ids.is_empty() {
         return Ok(Json(json!({ "items": [] })).into_response());
     }
@@ -403,6 +404,7 @@ mod tests {
                     palette: super::limit::RateLimiter::new(5.0, 2.0, 64),
                     rss: super::limit::RateLimiter::new(0.5, 2.0, 64),
                     items: super::limit::RateLimiter::new(1.0, 2.0, 64),
+                    item: super::limit::RateLimiter::new(4.0, 2.0, 64),
                     gallery: super::limit::RateLimiter::new(1.0, 2.0, 64),
                     lookup: super::limit::RateLimiter::new(5.0, 2.0, 64),
                     embed_ip: super::limit::RateLimiter::new(0.25, 8.0, 64),
