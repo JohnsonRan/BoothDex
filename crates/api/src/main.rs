@@ -158,6 +158,19 @@ async fn lookup_rate_limit(
     next.run(req).await
 }
 
+/// Account changes are database writes; reading the account is not limited.
+async fn account_write_rate_limit(
+    State(s): State<Arc<AppState>>,
+    limit::ClientIp(ip): limit::ClientIp,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if req.method() != axum::http::Method::GET && let Err(r) = s.limits.account.check(ip) {
+        return r.into_response();
+    }
+    next.run(req).await
+}
+
 async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
     if let Err(r) = s.limits.rss.check(ip) {
         return Ok(r.into_response());
@@ -336,7 +349,7 @@ async fn main() -> Result<()> {
         .route("/api/items", get(items_by_id))
         .route("/api/items/{id}/gallery", get(gallery::gallery))
         .merge(lookups)
-        .merge(account::routes())
+        .merge(account::routes().route_layer(axum::middleware::from_fn_with_state(state.clone(), account_write_rate_limit)))
         .merge(admin::routes())
         // gzip would buffer the admin SSE stream
         .layer(tower_http::compression::CompressionLayer::new().compress_when(
@@ -418,6 +431,7 @@ mod tests {
                     embed_ip: super::limit::RateLimiter::new(0.25, 8.0, 64),
                     embed_global: super::limit::RateLimiter::new(2.0, 20.0, 1),
                     auth: super::limit::RateLimiter::new(0.2, 5.0, 64),
+                    account: super::limit::RateLimiter::new(2.0, 2.0, 64),
                 },
                 "http://127.0.0.1:3000".into(),
                 None,
@@ -617,5 +631,28 @@ mod tests {
         // a child name two parents share only counts together with its parent
         assert_eq!(m.get("other"), None);
         assert_eq!(m.get("otherclothing").map(String::as_str), Some("clothing--other"));
+    }
+
+    #[tokio::test]
+    async fn account_writes_are_limited_per_visitor_and_reads_are_not() {
+        let state = test_state();
+        let app = axum::Router::new()
+            .route("/x", axum::routing::get(|| async { "ok" }).post(|| async { "ok" }))
+            .route_layer(axum::middleware::from_fn_with_state(state.clone(), super::account_write_rate_limit))
+            .with_state(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/x", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await });
+        let http = reqwest::Client::new();
+        let status = |r: reqwest::RequestBuilder| async move { r.send().await.unwrap().status().as_u16() };
+
+        for _ in 0..2 {
+            assert_eq!(status(http.post(&url)).await, 200);
+        }
+        assert_eq!(status(http.post(&url)).await, 429);
+        for _ in 0..5 {
+            assert_eq!(status(http.get(&url)).await, 200);
+        }
+        assert_eq!(status(http.post(&url).header("x-forwarded-for", "203.0.113.5")).await, 200);
     }
 }
