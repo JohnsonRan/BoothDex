@@ -8,12 +8,14 @@
 
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
+import { usePathname, useRouter } from "next/navigation";
 import { Activity } from "react";
 import { Account } from "@/components/account/account-button";
 import { Favourites } from "@/components/account/favourites";
 import { AccountProvider } from "@/components/account/session";
 import { ItemHost } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
+import { prefersReducedMotion } from "@/lib/motion";
 import type { Rates } from "@/lib/settings-core";
 import { ColorModeToggle, CurrencyMenu, LanguageMenu } from "./header-controls";
 import { Logo } from "./logo";
@@ -27,6 +29,20 @@ export function SiteFrame({
   children: React.ReactNode;
 }) {
   const { t } = useUi();
+  const router = useRouter();
+  const pathname = usePathname();
+  // On the home page the logo clears the filters and glides back to the top. Next scrolls a navigation only when
+  // the page's first element is off screen (layout-router.js), which it is not here, and jumps when it does.
+  const home = (e: React.MouseEvent) => {
+    if (pathname !== "/" || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+      return;
+    e.preventDefault();
+    router.push("/", { scroll: false });
+    scrollTo({
+      top: 0,
+      behavior: prefersReducedMotion() ? "instant" : "smooth",
+    });
+  };
   return (
     <AccountProvider>
       {/* the item dialog (`?item=`) opens from tiles and the dialog itself */}
@@ -51,6 +67,7 @@ export function SiteFrame({
                   heading="BoothDex"
                   headingHref="/"
                   logo={<Logo />}
+                  onClick={home}
                 />
               }
               endContent={
