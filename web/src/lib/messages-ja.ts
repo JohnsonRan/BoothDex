@@ -244,9 +244,9 @@ export const ja: Dict = {
   "settings.black": "純黒モード",
   "settings.blackDesc":
     "ダークモードで純黒の背景を使います。OLED 画面に適しています。",
-  "settings.filters": "サイドバーで絞り込み",
+  "settings.filters": "上部で絞り込み",
   "settings.filtersDesc":
-    "広い画面では、絞り込みを左のサイドバーに表示します。検索と並び替えは上部に残ります。",
+    "広い画面では、絞り込みを左のサイドバーではなく、検索と並び替えと同じ上部に表示します。",
   "style.neutral": "ニュートラル",
   "style.stone": "ストーン",
   "style.matcha": "抹茶",

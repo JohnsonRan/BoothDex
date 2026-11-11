@@ -235,8 +235,9 @@ export const zh = {
   "settings.styleFailed": "无法加载此风格",
   "settings.black": "纯黑模式",
   "settings.blackDesc": "深色模式下使用纯黑背景，适合 OLED 屏幕。",
-  "settings.filters": "侧栏筛选",
-  "settings.filtersDesc": "宽屏下把筛选项放到左侧栏，搜索和排序仍在顶部。",
+  "settings.filters": "顶部筛选",
+  "settings.filtersDesc":
+    "宽屏下把筛选项和搜索、排序一起放在顶部，不用左侧栏。",
   "style.neutral": "中性",
   "style.stone": "岩石",
   "style.matcha": "抹茶",

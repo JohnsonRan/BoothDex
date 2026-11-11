@@ -254,8 +254,9 @@ pub fn validate_preferences(v: &Value) -> Result<(), &'static str> {
             "style" => (1..=20).contains(&s.len()) && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
             // pure black in dark mode (web lib/settings-core.ts BLACK)
             "black" => ["on", "off"].contains(&s),
-            // the filters in the toolbar's row or a rail at the side (web lib/settings-core.ts FILTER_PLACES)
-            "filters" => ["top", "side"].contains(&s),
+            // the filters in a rail at the side or the toolbar's row (web lib/settings-core.ts FILTER_PLACES); "top",
+            // the row's old name, from a page still open on the earlier site, which now reads it as the rail
+            "filters" => ["side", "row", "top"].contains(&s),
             // "my avatar" for the avatar-fit view; empty clears it
             "avatar" => s.len() <= 100 && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
             "adult" => ["safe", "suggestive", "include", "adult_only"].contains(&s),
@@ -884,6 +885,7 @@ mod tests {
         assert!(validate_preferences(&json!({"black": "on"})).is_ok());
         assert!(validate_preferences(&json!({"black": "yes"})).is_err());
         assert!(validate_preferences(&json!({"filters": "side"})).is_ok());
+        assert!(validate_preferences(&json!({"filters": "row"})).is_ok());
         assert!(validate_preferences(&json!({"filters": "left"})).is_err());
         assert!(validate_preferences(&json!({"evil": ""})).is_err());
         assert!(validate_preferences(&json!({"language": "fr"})).is_err());

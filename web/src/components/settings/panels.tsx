@@ -154,14 +154,14 @@ function AppearancePanel() {
       />
       <SettingsRow
         title={t("settings.filters")}
-        icon="site:sidebar"
+        icon="site:filterRow"
         description={t("settings.filtersDesc")}
         control={
           <Switch
             label={t("settings.filters")}
             isLabelHidden
-            value={settings.filters === "side"}
-            onChange={(on) => update({ filters: on ? "side" : "top" })}
+            value={settings.filters === "row"}
+            onChange={(on) => update({ filters: on ? "row" : "side" })}
           />
         }
       />

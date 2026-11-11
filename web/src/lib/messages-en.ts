@@ -242,9 +242,9 @@ export const en: Dict = {
   "settings.black": "Pure black",
   "settings.blackDesc":
     "Uses a pure black background in dark mode, suited to OLED screens.",
-  "settings.filters": "Filters in a sidebar",
+  "settings.filters": "Filters at the top",
   "settings.filtersDesc":
-    "On wide screens, shows the filters in a sidebar on the left. Search and sort stay at the top.",
+    "On wide screens, shows the filters at the top with search and sort, instead of in a sidebar on the left.",
   "style.neutral": "Neutral",
   "style.stone": "Stone",
   "style.matcha": "Matcha",

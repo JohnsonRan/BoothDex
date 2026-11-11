@@ -24,7 +24,7 @@ test("stored settings win, invalid fields fall back", () => {
     content: "en",
     style: "neutral",
     black: "off",
-    filters: "top",
+    filters: "side",
   });
   expect(
     parseSettings('{"ui":"fr","currency":"XYZ","theme":"neon"}', "ja-JP"),
@@ -39,10 +39,12 @@ test("pure black is off unless turned on", () => {
   expect(parseSettings('{"black":true}').black).toBe("off");
 });
 
-test("filters sit on top unless put at the side", () => {
-  expect(DEFAULT_SETTINGS.filters).toBe("top");
-  expect(parseSettings('{"filters":"side"}').filters).toBe("side");
-  expect(parseSettings('{"filters":"left"}').filters).toBe("top");
+test("filters sit at the side unless put in the row", () => {
+  expect(DEFAULT_SETTINGS.filters).toBe("side");
+  expect(parseSettings('{"filters":"row"}').filters).toBe("row");
+  // the row's old value, stored while it was the default
+  expect(parseSettings('{"filters":"top"}').filters).toBe("side");
+  expect(parseSettings('{"filters":"left"}').filters).toBe("side");
 });
 
 test("item text follows the interface language unless a language is chosen", () => {
