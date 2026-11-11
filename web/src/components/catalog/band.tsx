@@ -72,7 +72,8 @@ const BAR: CSSProperties = {
   zIndex: 1,
   pointerEvents: "auto",
   backgroundColor: "var(--color-background-surface)",
-  borderBlockEnd: "1px solid var(--color-border)",
+  // none beside the filters' rail over the avatar strip, whose own edge is the band's there (app/filter-row.css)
+  borderBlockEnd: "var(--band-edge, 1px solid var(--color-border))",
 };
 // its own layer of the band, so the surface behind it stays behind its cards
 const STRIP: CSSProperties = { position: "relative", isolation: "isolate" };

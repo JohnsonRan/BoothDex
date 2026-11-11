@@ -215,6 +215,8 @@ async function Catalog({
     <Layout
       height="auto"
       padding={6}
+      // where the filters sit, for the band's edge beside the rail (app/filter-row.css)
+      data-filters={settings.filters}
       // the filters at the side (Settings), beside the band and the results; the recent view has none
       start={
         settings.filters === "side" && !recent ? (

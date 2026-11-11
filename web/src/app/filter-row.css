@@ -161,6 +161,17 @@
     display: none;
   }
 }
+/* Beside the rail the toolbar draws no edge of its own over the avatar strip, the shrunk strip's being the band's
+   (catalog/band.tsx `--band-edge`). Without a strip it keeps its edge. */
+@media (min-width: 1025px) {
+  [data-filters="side"]:has([data-strip]) {
+    --band-edge: none;
+  }
+  /* the rail holds the clauses: the row keeps its search and readout, its slot empty (catalog/filter-bar.tsx) */
+  [data-filters="side"] .filter-slot > * {
+    display: none;
+  }
+}
 /* The rail scrolls with no bar beside it, as a dialog's body does (app/globals.css). */
 .filter-rail {
   scrollbar-width: none;

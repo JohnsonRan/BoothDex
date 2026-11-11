@@ -1,8 +1,10 @@
 "use client";
 // The filters in a rail left of the results, for a visitor who puts them at the side (Settings, settings-core
 // FILTER_PLACES): the page Layout's start panel (Layout `start` with LayoutPanel, Layout.doc "Page with a
-// sidebar"). The fields are a compact CollapsibleGroup with dividers, every section open (block
-// CollapsibleGroupAccordion: compact for sidebars, triggers in body semibold, not the trigger's own `large`), its
+// sidebar"), set apart from the results by space, not a divider: the divider met the band's lower edge and the
+// shrunk avatar strip's in a grid of lines. The fields are a compact CollapsibleGroup with dividers, every
+// section open (block CollapsibleGroupAccordion: compact for sidebars, triggers in body semibold, not the
+// trigger's own `large`), its
 // choices laid out as a shop's sidebar does: one of many as a RadioList led by its "any" choice, the features as
 // a CheckboxList, both with the result counts the row's menus show. The models are too many to lay out and the tags
 // have no fixed list, so those keep their pickers. The search, the count and the sort stay in the toolbar
@@ -112,7 +114,6 @@ export function FilterRail({
 
   return (
     <LayoutPanel
-      hasDivider
       role="region"
       label={t("filter.rail")}
       width="16rem"
