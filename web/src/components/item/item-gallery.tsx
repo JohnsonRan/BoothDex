@@ -1,8 +1,8 @@
 "use client";
 // The gallery column, from the product-detail template's ImageGallery (page.tsx:116-153): the hero image in an
 // AspectRatio above a Grid of thumbnails, each thumbnail a transparent SelectableCard filling a square
-// AspectRatio (page.tsx:131-150), with the avatar strip's padding 0.5 so the image leaves the selection ring
-// visible (catalog/silhouette.tsx, THUMB_RADIUS). Master's gallery features on top of it:
+// AspectRatio (page.tsx:131-150), with the avatar strip's padding so the image leaves the selection ring
+// visible (catalog/silhouette.tsx, THUMB_PADDING). Master's gallery features on top of it:
 // - the hero is a snapping Carousel (block CarouselSnap) without its own buttons, which float in the top layer
 //   over the page behind the dialog: swipe on touch, ←/→ keys while the dialog is open;
 // - a click on the image opens it full size in a Lightbox gallery (block LightboxGallery, with zoom);
@@ -20,7 +20,11 @@ import { SelectableCard } from "@astryxdesign/core/SelectableCard";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { useEffect, useRef, useState } from "react";
-import { SkeletonImage, THUMB_RADIUS } from "@/components/catalog/silhouette";
+import {
+  SkeletonImage,
+  THUMB_PADDING,
+  THUMB_RADIUS,
+} from "@/components/catalog/silhouette";
 import { useUi } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
 import { imageCount, imgUrl } from "@/lib/catalog";
@@ -206,7 +210,7 @@ export function ItemGallery({
                   isSelected={index === i}
                   onChange={() => go(i)}
                   variant="transparent"
-                  padding={0.5}
+                  padding={THUMB_PADDING}
                   width="100%"
                   height="100%"
                 >

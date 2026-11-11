@@ -268,9 +268,10 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
      the chip's place, flush with the capsule and inside the Carousel's clip (it stood 0.6-1 px low and right) */
   --_face-in: calc(var(--spacing-0-5) * var(--strip-scale));
 }
-/* the chip's face: the card's image clipped round, where the card draws it (inside the card's padding), with no
-   ring: a selected chip is its capsule and semibold name, as Astryx marks a selected Token or item (a fill, no
-   ring), so its avatar is as large as the others */
+/* the chip's face: the card's image clipped round, with no ring: a selected chip is its capsule and semibold name,
+   as Astryx marks a selected Token or item (a fill, no ring), so its avatar is as large as the others. It stands
+   inside the ring only, not the card's wider padding (silhouette.tsx THUMB_PADDING), so the shrunk face keeps the
+   chip's size; it overlaps the image's edge by a step only while the two cross-fade, at half size. */
 .strip-face {
   position: absolute;
   inset: var(--spacing-0-5);

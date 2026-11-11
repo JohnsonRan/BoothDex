@@ -2,9 +2,9 @@
 // Avatar picker (Carousel Snap template block, CarouselSnap.tsx:22-27: a label above a snapping row of cards with
 // prev/next buttons and the Carousel's own edge fade). Each card is Product Detail's selectable image thumbnail as
 // is (a transparent SelectableCard filling a square AspectRatio; its corner radius and selection ring are the
-// card's own, the image only fills and covers, inset by the ring's width so the ring shows); the name sits under it
-// as the caption of the Top Nav template's category tiles. Its toggle is in the filter toolbar (strip-toggle.tsx),
-// so the cards take the whole row.
+// card's own, the image only fills and covers, inset past the ring so the ring shows on any image); the name sits
+// under it as the caption of the Top Nav template's category tiles. Its toggle is in the filter toolbar
+// (strip-toggle.tsx), so the cards take the whole row.
 // A mouse wheel over the strip scrolls it sideways while it can move that way, as on the old strip; the
 // Carousel maps only Shift + wheel itself (Carousel.d.ts:5-8).
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
@@ -51,7 +51,7 @@ import {
 } from "@/lib/catalog";
 import { type Facets, useFacets } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
-import { SkeletonImage, THUMB_RADIUS } from "./silhouette";
+import { SkeletonImage, THUMB_PADDING, THUMB_RADIUS } from "./silhouette";
 
 // a card's square at full size and a chip's round avatar (Avatar's 32 px size), in rem at a 16 px root; Booth's
 // avatar thumbnails are square. The band's shrink (band.tsx `--strip-d`, `--strip-scale`) is reckoned from these.
@@ -448,7 +448,7 @@ function Tile({
           isSelected={selected}
           onChange={onSelect}
           variant={src ? "transparent" : "muted"}
-          padding={0.5}
+          padding={THUMB_PADDING}
           width="100%"
           height="100%"
           className="strip-card"

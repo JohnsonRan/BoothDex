@@ -120,12 +120,14 @@ export function silhouetteMask(
   } as CSSProperties;
 }
 
-// Product Detail's thumbImage in a selectable card (avatar strip, item gallery), inset by the card's padding 0.5:
-// the card draws its selection ring as an inset shadow, which an edge-to-edge image covers, so the image leaves
-// the ring a frame. The padding is the ring's width (2 px), so the ring meets the image with no band of card
-// between them; the corner stays concentric with the card: its radius minus that padding.
-export const THUMB_RADIUS =
-  "calc(var(--radius-container) - var(--spacing-0-5))";
+// Product Detail's thumbImage in a selectable card (avatar strip, item gallery), inset by the card's padding: the
+// card draws its selection ring as an inset shadow (2 px), which an edge-to-edge image covers, so the image leaves
+// the ring a frame. The padding is twice the ring's width, so a band of the page's surface (the card is
+// transparent) parts the ring from the image: flush against it, the ring vanished on an image whose edge is its
+// colour, as a light avatar under dark mode's near-white ring (owner). The corner stays concentric with the card:
+// its radius minus that padding.
+export const THUMB_PADDING = 1;
+export const THUMB_RADIUS = "calc(var(--radius-container) - var(--spacing-1))";
 
 /** An image filling and covering its box over a Skeleton, which shows until the image paints over it: no
  *  handler and no state, so server markup needs no script. `radius` rounds both. The image is positioned so it
