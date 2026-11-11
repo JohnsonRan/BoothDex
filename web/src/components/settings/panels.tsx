@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "@/components/account/session";
 import { CURRENCY_SYMBOLS } from "@/components/frame/header-controls";
 import { useUi } from "@/components/providers";
+import { useLegalDialog } from "@/components/legal/legal-dialog";
 import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
 import { type AccountSession, deviceName } from "@/lib/device";
@@ -224,19 +225,17 @@ function LanguagePanel() {
   );
 }
 
-/** this site's own pages, opened in place (app/privacy, app/terms) */
+/** this site's own texts (app/privacy, app/terms), opened in a dialog over this one (legal-dialog.tsx) */
 const LEGAL = [
   {
-    title: "legal.privacy",
+    kind: "privacy",
     description: "legal.privacyDesc",
     icon: "site:privacy",
-    href: "/privacy",
   },
   {
-    title: "legal.terms",
+    kind: "terms",
     description: "legal.termsDesc",
     icon: "site:terms",
-    href: "/terms",
   },
 ] as const;
 
@@ -255,7 +254,9 @@ const LINKS = [
 
 function AboutPanel() {
   const { t } = useUi();
+  const legal = useLegalDialog();
   return (
+    <>
     <SettingsCard>
       <SettingsRow
         title="BoothDex"
@@ -264,8 +265,8 @@ function AboutPanel() {
       />
       {LEGAL.map((link) => (
         <SettingsRow
-          key={link.href}
-          title={t(link.title)}
+          key={link.kind}
+          title={t(`legal.${link.kind}`)}
           icon={link.icon}
           description={t(link.description)}
           control={
@@ -273,7 +274,8 @@ function AboutPanel() {
               label={t("settings.open")}
               variant="secondary"
               size="sm"
-              href={link.href}
+              href={`/${link.kind}`}
+              onClick={legal.open(link.kind)}
             />
           }
         />
@@ -298,6 +300,8 @@ function AboutPanel() {
         />
       ))}
     </SettingsCard>
+    {legal.dialog}
+    </>
   );
 }
 

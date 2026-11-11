@@ -8,7 +8,8 @@
 // (account-menu.tsx): sign-in keeps the session (`keep: true`); errors from the server arrive as a toast.
 // The admin gate opens it sign-in only, under its own heading (`gate`); so does a closed registration, which the
 // dialog asks about each time it opens (the server refuses sign-up either way). Under the register button, the
-// template's terms line (page.tsx:196-209) links the terms and the privacy policy, in a new tab so the form stays.
+// template's terms line (page.tsx:196-209) links the terms and the privacy policy, which open in a dialog over this
+// one (legal-dialog.tsx), so the form stays as filled.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
@@ -19,6 +20,7 @@ import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useEffect, useState } from "react";
+import { useLegalDialog } from "@/components/legal/legal-dialog";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
@@ -68,6 +70,7 @@ export function SignInDialog({
 }) {
   const { t } = useUi();
   const toast = useToast();
+  const legal = useLegalDialog();
   const [mode, setMode] = useState<Mode>("login");
   const [values, setValues] = useState<Partial<Record<Field, string>>>({});
   const [checked, setChecked] = useState(false);
@@ -121,6 +124,7 @@ export function SignInDialog({
 
   const label = mode === "login" ? t("account.signIn") : t("account.register");
   return (
+    <>
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange} purpose="form">
       <Layout
         header={
@@ -212,15 +216,19 @@ export function SignInDialog({
                     <Text type="supporting" color="secondary" justify="center">
                       {rich(t("legal.consent"), {
                         terms: (
-                          <Link href="/terms" target="_blank" type="supporting">
+                          <Link
+                            href="/terms"
+                            type="supporting"
+                            onClick={legal.open("terms")}
+                          >
                             {t("legal.terms")}
                           </Link>
                         ),
                         privacy: (
                           <Link
                             href="/privacy"
-                            target="_blank"
                             type="supporting"
+                            onClick={legal.open("privacy")}
                           >
                             {t("legal.privacy")}
                           </Link>
@@ -235,5 +243,7 @@ export function SignInDialog({
         }
       />
     </Dialog>
+    {legal.dialog}
+    </>
   );
 }

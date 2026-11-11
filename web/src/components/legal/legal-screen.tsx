@@ -3,7 +3,8 @@
 // title with its "Last updated" line (page.tsx:79-84), then each section as a level-2 heading over its paragraphs
 // and disc lists (:146-154), a Divider between sections. The template's outline panel and its phone selector,
 // its assistant card and code blocks are not used: the texts are short and have no code. The cookie list is a
-// Table. Server-rendered in the site frame; the texts never reach the browser's bundle.
+// Table. Server-rendered in the site frame; the texts never reach the browser's bundle. The same body opens in a
+// dialog over the site (legal-dialog.tsx), fetched through a server action (legal-action.ts).
 
 import { Divider } from "@astryxdesign/core/Divider";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
@@ -82,7 +83,12 @@ function Block({
   );
 }
 
-export async function LegalScreen({ kind }: { kind: LegalKind }) {
+/** One text in the visitor's language: its title, the "Last updated" line and the body under them. */
+export async function legalDoc(kind: LegalKind): Promise<{
+  title: string;
+  updated: string;
+  body: ReactNode;
+}> {
   const settings = await readSettings();
   const t = translator(settings.ui);
   const texts = await legalTexts(settings.ui);
@@ -113,6 +119,40 @@ export async function LegalScreen({ kind }: { kind: LegalKind }) {
     dateStyle: "long",
     timeZone: "UTC",
   }).format(new Date(LEGAL_UPDATED));
+  return {
+    title: doc.title,
+    updated: t("legal.updated", { date: updated }),
+    body: (
+      <VStack gap={8}>
+        <Text as="p" type="body">
+          {rich(doc.summary, nodes)}
+        </Text>
+        {doc.sections.map((section) => (
+          <Fragment key={section.id}>
+            <Divider />
+            <VStack gap={4}>
+              <Heading id={section.id} level={2}>
+                {section.heading}
+              </Heading>
+              {section.body.map((block, i) => (
+                <Block
+                  // biome-ignore lint/suspicious/noArrayIndexKey: a fixed text, never reordered
+                  key={i}
+                  block={block}
+                  nodes={nodes}
+                />
+              ))}
+            </VStack>
+          </Fragment>
+        ))}
+      </VStack>
+    ),
+  };
+}
+
+export async function LegalScreen({ kind }: { kind: LegalKind }) {
+  const settings = await readSettings();
+  const { title, updated, body } = await legalDoc(kind);
   return (
     <Providers
       settings={settings}
@@ -129,32 +169,12 @@ export async function LegalScreen({ kind }: { kind: LegalKind }) {
               <LayoutContent isScrollable={false} padding={6}>
                 <VStack gap={8}>
                   <VStack gap={2}>
-                    <Heading level={1}>{doc.title}</Heading>
+                    <Heading level={1}>{title}</Heading>
                     <Text type="supporting" color="secondary">
-                      {t("legal.updated", { date: updated })}
+                      {updated}
                     </Text>
                   </VStack>
-                  <Text as="p" type="body">
-                    {rich(doc.summary, nodes)}
-                  </Text>
-                  {doc.sections.map((section) => (
-                    <Fragment key={section.id}>
-                      <Divider />
-                      <VStack gap={4}>
-                        <Heading id={section.id} level={2}>
-                          {section.heading}
-                        </Heading>
-                        {section.body.map((block, i) => (
-                          <Block
-                            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed text, never reordered
-                            key={i}
-                            block={block}
-                            nodes={nodes}
-                          />
-                        ))}
-                      </VStack>
-                    </Fragment>
-                  ))}
+                  {body}
                 </VStack>
               </LayoutContent>
             }
