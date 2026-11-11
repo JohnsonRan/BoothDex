@@ -1,4 +1,5 @@
-//! Admin console API: overview metrics and daily trends, job queue control, schedules, catalogue reload, live SSE stream.
+//! Admin console API: overview metrics and daily trends, job queue control, schedules, catalogue reload, live SSE stream,
+//! user management (admin/users.rs) and site settings (AI provider, open registration).
 //! Access: users.is_admin. `ADMIN_USERNAMES` (comma-separated) sets exactly who is admin at startup.
 
 use std::convert::Infallible;
@@ -91,6 +92,7 @@ macro_rules! admin {
 }
 
 mod trends;
+mod users;
 
 async fn data_json(pool: &PgPool) -> Result<Value, sqlx::Error> {
     // booth_images.item_id is unique: one join checks image coverage without per-item index probes.
@@ -309,7 +311,26 @@ fn public_ai(c: &AiConfig) -> Value {
 
 async fn get_settings(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
     admin!(s, headers);
-    Ok(Json(json!({ "ai": public_ai(&settings::ai(&s.pool).await?) })).into_response())
+    Ok(Json(json!({
+        "ai": public_ai(&settings::ai(&s.pool).await?),
+        "registration": { "open": account::registration_open(&s.pool).await? },
+    }))
+    .into_response())
+}
+
+#[derive(Deserialize)]
+struct Registration {
+    open: bool,
+}
+
+async fn put_registration(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<Registration>) -> Result<Response, ApiError> {
+    let who = admin!(s, headers);
+    sqlx::query("insert into app_settings (key, value) values ('registration', $1) on conflict (key) do update set value = excluded.value, updated_at = now()")
+        .bind(json!({ "open": b.open }))
+        .execute(&s.pool)
+        .await?;
+    println!("admin {who} {} registration", if b.open { "opened" } else { "closed" });
+    Ok(Json(json!({ "open": b.open })).into_response())
 }
 
 async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<AiSettings>) -> Result<Response, ApiError> {
@@ -432,8 +453,12 @@ async fn reset_password(State(s): State<Arc<AppState>>, headers: HeaderMap, Json
 
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/api/admin/users", get(users::list))
+        .route("/api/admin/users/{id}", get(users::get).patch(users::patch))
+        .route("/api/admin/users/{id}/sessions/{session}", axum::routing::delete(users::remove_session))
         .route("/api/admin/users/reset-password", post(reset_password))
         .route("/api/admin/settings", get(get_settings))
+        .route("/api/admin/settings/registration", put(put_registration))
         .route("/api/admin/settings/ai", put(put_ai))
         .route("/api/admin/settings/ai/test", post(test_ai))
         .route("/api/admin/overview", get(overview))

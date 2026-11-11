@@ -1,4 +1,5 @@
-//! Password accounts, cookie sessions, preferences, favourites and saved searches.
+//! Password accounts, cookie sessions (each listed and signed out on its own), preferences, favourites and saved
+//! searches. An admin can disable an account (admin/users.rs) or close registration (app_settings 'registration').
 //! Not yet: Discord/X OAuth (needs app credentials) and password-reset email (needs a mail service).
 //!
 //! CSRF: the session cookie is SameSite=Lax and CORS never allows credentials, so cross-site
@@ -66,7 +67,7 @@ fn err(status: StatusCode, msg: &str) -> Response {
     (status, Json(json!({ "ok": false, "error": msg }))).into_response()
 }
 
-fn token_hash(token: &str) -> Vec<u8> {
+pub(crate) fn token_hash(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
 }
 
@@ -117,9 +118,13 @@ async fn verify_password(password: String, hash: String) -> Result<bool, ApiErro
     argon2(move || Argon2::default().verify_password(password.as_bytes(), hash.as_str()).is_ok()).await
 }
 
+/// Inserts the session ($1-$5) and stamps the account's last sign-in.
+const INSERT_SESSION: &str = "with s as (insert into sessions (token_hash, user_id, expires_at, user_agent, ip) values ($1, $2, now() + $3, $4, $5) returning user_id)
+     update users set last_sign_in_at = now() from s where users.id = s.user_id";
+
 /// Creates a session row and returns the Set-Cookie value.
-/// If `verified_hash` is Some, the session is only inserted if the user's current password hash matches it,
-/// preventing an in-flight login from creating a session after a concurrent password reset.
+/// If `verified_hash` is Some, the session is only inserted if the user's current password hash matches it and the
+/// account isn't disabled, preventing an in-flight login from creating a session after a concurrent reset or disable.
 async fn start_session(
     pool: &PgPool,
     user_id: i64,
@@ -136,12 +141,12 @@ async fn start_session(
 
     match verified_hash {
         Some(expected_hash) => {
-            // Row lock on `users` serializes with admin `reset_password` (which runs `UPDATE users SET password_hash`):
-            // if reset commits first, `FOR UPDATE` sees the new hash and rejects;
-            // if login locks first, reset's UPDATE blocks until login commits, and then reset's DELETE removes this session.
+            // Row lock on `users` serializes with admin `reset_password` and disable (both `UPDATE users`, then delete sessions):
+            // if the admin commits first, `FOR UPDATE` sees the new hash or disabled_at and rejects;
+            // if login locks first, the admin's UPDATE blocks until login commits, and then its DELETE removes this session.
             let mut tx = pool.begin().await?;
             let current_hash: Option<String> = sqlx::query_scalar(
-                "select password_hash from users where id = $1 for update",
+                "select password_hash from users where id = $1 and disabled_at is null for update",
             )
             .bind(user_id)
             .fetch_optional(&mut *tx)
@@ -151,30 +156,26 @@ async fn start_session(
                 return Ok(None);
             }
 
-            sqlx::query(
-                "insert into sessions (token_hash, user_id, expires_at, user_agent, ip) values ($1, $2, now() + $3, $4, $5)",
-            )
-            .bind(token_hash(&token))
-            .bind(user_id)
-            .bind(ttl)
-            .bind(ua)
-            .bind(ip)
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query(INSERT_SESSION)
+                .bind(token_hash(&token))
+                .bind(user_id)
+                .bind(ttl)
+                .bind(ua)
+                .bind(ip)
+                .execute(&mut *tx)
+                .await?;
 
             tx.commit().await?;
         }
         None => {
-            sqlx::query(
-                "insert into sessions (token_hash, user_id, expires_at, user_agent, ip) values ($1, $2, now() + $3, $4, $5)",
-            )
-            .bind(token_hash(&token))
-            .bind(user_id)
-            .bind(ttl)
-            .bind(ua)
-            .bind(ip)
-            .execute(pool)
-            .await?;
+            sqlx::query(INSERT_SESSION)
+                .bind(token_hash(&token))
+                .bind(user_id)
+                .bind(ttl)
+                .bind(ua)
+                .bind(ip)
+                .execute(pool)
+                .await?;
         }
     }
 
@@ -204,6 +205,26 @@ fn valid_password(p: &str) -> bool {
 
 fn valid_display_name(n: &str) -> bool {
     (1..=50).contains(&n.trim().chars().count())
+}
+
+/// Open unless an admin closed it.
+pub async fn registration_open(pool: &PgPool) -> Result<bool, sqlx::Error> {
+    let open: Option<Option<bool>> =
+        sqlx::query_scalar("select (value->>'open')::boolean from app_settings where key = 'registration'").fetch_optional(pool).await?;
+    Ok(open.flatten().unwrap_or(true))
+}
+
+/// The account's live sessions, newest first; `current` marks the one making the request.
+pub async fn sessions_json(pool: &PgPool, user_id: i64, current: Option<Vec<u8>>) -> Result<Value, sqlx::Error> {
+    sqlx::query_scalar(
+        "select coalesce(jsonb_agg(jsonb_build_object('id', id, 'created_at', created_at, 'expires_at', expires_at,
+                  'user_agent', user_agent, 'ip', ip, 'current', coalesce(token_hash = $2, false)) order by created_at desc), '[]')
+         from sessions where user_id = $1 and expires_at > now()",
+    )
+    .bind(user_id)
+    .bind(current)
+    .fetch_one(pool)
+    .await
 }
 
 fn is_unique_violation(e: &sqlx::Error) -> bool {
@@ -258,6 +279,9 @@ pub(crate) async fn register(
 ) -> Result<Response, ApiError> {
     if let Err(r) = s.limits.auth.check(ip) {
         return Ok(r.into_response());
+    }
+    if !registration_open(&s.pool).await? {
+        return Ok(err(StatusCode::FORBIDDEN, "Registration is closed."));
     }
     if !valid_display_name(&b.display_name) {
         return Ok(err(StatusCode::BAD_REQUEST, "Display name is required."));
@@ -315,17 +339,22 @@ pub(crate) async fn login(
     if s.throttle.blocked(&key) {
         return Ok(err(StatusCode::TOO_MANY_REQUESTS, "Too many attempts. Try again later."));
     }
-    let row: Option<(i64, String)> = sqlx::query_as("select id, password_hash from users where lower(username) = $1 or lower(email) = $1")
-        .bind(&key)
-        .fetch_optional(&s.pool)
-        .await?;
+    let row: Option<(i64, String, bool)> =
+        sqlx::query_as("select id, password_hash, disabled_at is not null from users where lower(username) = $1 or lower(email) = $1")
+            .bind(&key)
+            .fetch_optional(&s.pool)
+            .await?;
     // verify against a dummy hash when the user is unknown, so timing doesn't reveal which logins exist
-    let (id, hash) = row.unwrap_or((0, s.dummy_hash.clone()));
+    let (id, hash, disabled) = row.unwrap_or((0, s.dummy_hash.clone(), false));
     if !verify_password(b.password, hash.clone()).await? || id == 0 {
         s.throttle.fail(&key);
         return Ok(err(StatusCode::UNAUTHORIZED, "Incorrect username or password."));
     }
     s.throttle.clear(&key);
+    // said only to someone who knows the password
+    if disabled {
+        return Ok(err(StatusCode::FORBIDDEN, "This account is disabled."));
+    }
     let cookie = match start_session(&s.pool, id, b.keep, &headers, Some(&hash)).await? {
         Some(c) => c,
         None => {
@@ -341,6 +370,28 @@ async fn logout(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Re
         sqlx::query("delete from sessions where token_hash = $1").bind(token_hash(&token)).execute(&s.pool).await?;
     }
     Ok(([(header::SET_COOKIE, clear_cookie())], Json(json!({ "ok": true }))).into_response())
+}
+
+async fn registration(State(s): State<Arc<AppState>>) -> Result<Response, ApiError> {
+    Ok(Json(json!({ "open": registration_open(&s.pool).await? })).into_response())
+}
+
+async fn list_sessions(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
+    let u = match require_user(&s, &headers).await? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    let current = cookie_token(&headers).map(|t| token_hash(&t));
+    Ok(Json(json!({ "sessions": sessions_json(&s.pool, u.id, current).await? })).into_response())
+}
+
+async fn remove_session(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>) -> Result<Response, ApiError> {
+    let u = match require_user(&s, &headers).await? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    sqlx::query("delete from sessions where id = $1 and user_id = $2").bind(id).bind(u.id).execute(&s.pool).await?;
+    Ok(Json(json!({ "ok": true })).into_response())
 }
 
 async fn me(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
@@ -668,6 +719,9 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/account/register", post(register))
         .route("/api/account/login", post(login))
         .route("/api/account/logout", post(logout))
+        .route("/api/account/registration", get(registration))
+        .route("/api/account/sessions", get(list_sessions))
+        .route("/api/account/sessions/{id}", axum::routing::delete(remove_session))
         .route("/api/account", get(me).delete(delete_account))
         .route("/api/account/profile", axum::routing::patch(update_profile))
         .route("/api/account/password", post(change_password))
@@ -682,6 +736,35 @@ pub fn routes() -> Router<Arc<AppState>> {
 /// Hash used to equalise login timing for unknown users.
 pub fn dummy_hash() -> String {
     Argon2::default().hash_password(b"timing-equaliser-not-a-password").expect("argon2").to_string()
+}
+
+/// An API over `pool` with an empty catalogue, for handler tests.
+#[cfg(test)]
+pub(crate) fn test_state(pool: PgPool) -> Arc<AppState> {
+    crate::install_tls();
+    Arc::new(
+        AppState::new(
+            pool,
+            crate::Snapshot {
+                catalog: crate::catalog::Catalog::build(Vec::new(), 0, None).unwrap(),
+                category_phrases: Default::default(),
+                avatars: crate::Lookup::new(Vec::new()),
+                authors: crate::Lookup::new(Vec::new()),
+                tags: crate::Lookup::new(Vec::new()),
+                booth_tags: crate::Lookup::new(Vec::new()),
+                categories: json!({ "categories": [] }),
+                version: 1,
+                loaded_at: chrono::Utc::now(),
+                build_secs: 0.0,
+            },
+            Default::default(),
+            "http://127.0.0.1:3000".into(),
+            None,
+            dummy_hash(),
+            Some(Duration::from_secs(2)),
+        )
+        .unwrap(),
+    )
 }
 
 #[cfg(test)]
@@ -854,28 +937,7 @@ mod tests {
             .fetch_all(&pool)
             .await
             .unwrap();
-        crate::install_tls();
-        let state = Arc::new(AppState::new(
-            pool.clone(),
-            crate::Snapshot {
-                catalog: crate::catalog::Catalog::build(Vec::new(), 0, None).unwrap(),
-                category_phrases: Default::default(),
-                avatars: crate::Lookup::new(Vec::new()),
-                authors: crate::Lookup::new(Vec::new()),
-                tags: crate::Lookup::new(Vec::new()),
-                booth_tags: crate::Lookup::new(Vec::new()),
-                categories: json!({ "categories": [] }),
-                version: 1,
-                loaded_at: chrono::Utc::now(),
-                build_secs: 0.0,
-            },
-            Default::default(),
-            "http://127.0.0.1:3000".into(),
-            None,
-            String::new(),
-            Some(Duration::from_secs(2)),
-        )
-        .unwrap());
+        let state = test_state(pool.clone());
         let rename = |cookie: Option<&str>, id: i64, name: &str| {
             let mut h = HeaderMap::new();
             if let Some(c) = cookie {
@@ -893,5 +955,75 @@ mod tests {
         // another account's search is left as it was
         assert_eq!(status(rename(Some("session=tok-a"), ids[1], "stolen").await), StatusCode::OK);
         assert_eq!(names().await.unwrap(), ["renamed", "theirs"]);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn disabled_accounts_and_closed_registration_keep_people_out(pool: PgPool) {
+        let state = test_state(pool.clone());
+        let ip = std::net::IpAddr::from([127, 0, 0, 1]);
+        let sign_up = |username: &str| {
+            register(State(state.clone()), crate::limit::ClientIp(ip), HeaderMap::new(), Json(Register {
+                display_name: "A".into(),
+                username: username.into(),
+                email: format!("{username}@example.test"),
+                password: "0123456789".into(),
+                keep: false,
+            }))
+        };
+        let sign_in = || {
+            login(State(state.clone()), crate::limit::ClientIp(ip), HeaderMap::new(), Json(Login { login: "ann".into(), password: "0123456789".into(), keep: false }))
+        };
+        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+
+        assert_eq!(status(sign_up("ann").await), StatusCode::OK);
+        assert!(sqlx::query_scalar::<_, bool>("select last_sign_in_at is not null from users").fetch_one(&pool).await.unwrap());
+        assert_eq!(status(sign_in().await), StatusCode::OK);
+        sqlx::query("update users set disabled_at = now()").execute(&pool).await.unwrap();
+        assert_eq!(status(sign_in().await), StatusCode::FORBIDDEN);
+
+        sqlx::query("insert into app_settings (key, value) values ('registration', '{\"open\": false}')").execute(&pool).await.unwrap();
+        assert!(!registration_open(&pool).await.unwrap());
+        assert_eq!(status(sign_up("bob").await), StatusCode::FORBIDDEN);
+        assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from users").fetch_one(&pool).await.unwrap(), 1);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn people_see_and_sign_out_only_their_own_sessions(pool: PgPool) {
+        let users: Vec<i64> = sqlx::query_scalar(
+            "insert into users (username, email, display_name, password_hash)
+             values ('a', 'a@example.test', 'A', 'x'), ('b', 'b@example.test', 'B', 'x') returning id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let ids: Vec<i64> = sqlx::query_scalar(
+            "insert into sessions (token_hash, user_id, expires_at) values ($1, $3, now() + interval '1 day'), ($2, $3, now() + interval '1 day'),
+               ($4, $5, now() + interval '1 day') returning id",
+        )
+        .bind(token_hash("tok-a"))
+        .bind(token_hash("tok-a2"))
+        .bind(users[0])
+        .bind(token_hash("tok-b"))
+        .bind(users[1])
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let state = test_state(pool.clone());
+        let mut a = HeaderMap::new();
+        a.insert(header::COOKIE, "session=tok-a".parse().unwrap());
+
+        let res = list_sessions(State(state.clone()), a.clone()).await.ok().unwrap();
+        let body: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), 1 << 20).await.unwrap()).unwrap();
+        let current: Vec<bool> = body["sessions"].as_array().unwrap().iter().map(|s| s["current"].as_bool().unwrap()).collect();
+        assert_eq!(current.len(), 2);
+        assert_eq!(current.iter().filter(|c| **c).count(), 1);
+
+        // b's session is left alone; a's other one goes
+        remove_session(State(state.clone()), a.clone(), Path(ids[2])).await.ok().unwrap();
+        remove_session(State(state.clone()), a.clone(), Path(ids[1])).await.ok().unwrap();
+        let left: Vec<i64> = sqlx::query_scalar("select id from sessions order by id").fetch_all(&pool).await.unwrap();
+        assert_eq!(left, [ids[0], ids[2]]);
     }
 }
