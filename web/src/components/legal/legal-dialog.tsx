@@ -80,8 +80,13 @@ function Loaded({ doc, onClose }: { doc: Promise<Doc>; onClose: () => void }) {
 export function useLegalDialog() {
   const { t, ui } = useUi();
   // a server action updates the router, so it is called from the click, not while rendering
-  const [shown, setShown] = useState<{ kind: LegalKind; doc: Promise<Doc> }>();
-  const show = (kind: LegalKind) => setShown({ kind, doc: load(kind, ui) });
+  const [shown, setShown] = useState<{
+    kind: LegalKind;
+    doc: Promise<Doc>;
+    n: number;
+  }>();
+  const show = (kind: LegalKind) =>
+    setShown((s) => ({ kind, doc: load(kind, ui), n: (s?.n ?? 0) + 1 }));
   const [isOpen, setOpen] = useState(false);
   const open = (next: LegalKind) => (e: MouseEvent) => {
     if (modified(e)) return;
@@ -109,8 +114,8 @@ export function useLegalDialog() {
       onClickCapture={follow}
     >
       <Suspense
-        // the other text starts at its top
-        key={shown.kind}
+        // each text shown, the same one opened again too, starts at its top (the dialog stays mounted)
+        key={shown.n}
         fallback={
           <Frame title={t(`legal.${shown.kind}`)} onClose={close}>
             <Spinner label={t(`legal.${shown.kind}`)} />

@@ -25,6 +25,7 @@ import { DIALOG_MAX_HEIGHT } from "@/lib/dialog-height";
 import { remColumns } from "@/lib/grid";
 import type { Rates } from "@/lib/settings-core";
 import { useDelayed } from "@/lib/use-delayed";
+import { useScrollTop } from "@/lib/use-scroll-top";
 import { PhoneBar } from "./item-actions";
 import { keepGallery, keptItem, keptTile, loadItem } from "./item-cache";
 import { shopHost } from "./item-data";
@@ -116,6 +117,8 @@ export default function ItemDialog({
   const phone = useMediaQuery(PHONE);
   const item = useItem(id);
   const shown = useDelayed(!!id && !item);
+  // each item opens at its top, also one picked from "More from" down the card
+  const body = useScrollTop(id);
   // until the record arrives, what the item's tile showed
   const tile = item || !id ? undefined : keptTile(id);
   const shop = item
@@ -173,7 +176,7 @@ export default function ItemDialog({
         content={
           // the dialog blocks' default inset (DialogFullscreenDialog.tsx:71), the header's and the footer's: one
           // edge for all three, where the page template's padding 6 put the body inside them
-          <LayoutContent>
+          <LayoutContent ref={body}>
             {item ? (
               <VStack gap={6}>
                 <Grid {...COLUMNS} gap={5}>
@@ -191,7 +194,12 @@ export default function ItemDialog({
                   />
                 </Grid>
                 {/* the sections end on their own Divider (template page.tsx:269) */}
-                <MoreFrom item={item} rates={known} isWide={!phone} />
+                <MoreFrom
+                  key={item.id}
+                  item={item}
+                  rates={known}
+                  isWide={!phone}
+                />
               </VStack>
             ) : (
               <DetailSilhouette

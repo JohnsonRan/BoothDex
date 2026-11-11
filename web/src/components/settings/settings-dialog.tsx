@@ -20,9 +20,10 @@ import {
 } from "@astryxdesign/core/SideNav";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import { useId, useState } from "react";
+import { type Ref, useId, useState } from "react";
 import { useUi } from "@/components/providers";
 import { DIALOG_MAX_HEIGHT } from "@/lib/dialog-height";
+import { useScrollTop } from "@/lib/use-scroll-top";
 import {
   PANEL_GROUPS,
   type PanelId,
@@ -108,13 +109,15 @@ function SettingsSideNav({
 
 function SettingsContentPane({
   panel,
+  scroller,
   onClose,
 }: {
   panel: PanelId;
+  scroller: Ref<HTMLDivElement>;
   onClose: () => void;
 }) {
   return (
-    <LayoutContent isScrollable padding={4}>
+    <LayoutContent ref={scroller} isScrollable padding={4}>
       {/* the close button stays at the pane's top-right corner while the panel scrolls (page.tsx:2366-2380) */}
       <HStack
         width="100%"
@@ -149,11 +152,13 @@ function SettingsNarrowShell({
   titleId,
   activePanel,
   onSelectPanel,
+  scroller,
   onClose,
 }: {
   titleId: string;
   activePanel: PanelId;
   onSelectPanel: (panel: PanelId) => void;
+  scroller: Ref<HTMLDivElement>;
   onClose: () => void;
 }) {
   const { t } = useUi();
@@ -196,6 +201,7 @@ function SettingsNarrowShell({
       <Divider />
       <StackItem size="fill">
         <VStack
+          ref={scroller}
           gap={4}
           padding={4}
           isScrollable
@@ -224,6 +230,8 @@ export default function SettingsDialog({
   const titleId = useId();
   const isNarrow = useMediaQuery(NARROW_VIEWPORT);
   const close = () => onOpenChange(false);
+  // a panel, picked or opened again, starts at its top
+  const scroller = useScrollTop(isOpen && activePanel);
   return (
     <Dialog
       isOpen={isOpen}
@@ -239,6 +247,7 @@ export default function SettingsDialog({
             titleId={titleId}
             activePanel={activePanel}
             onSelectPanel={setActivePanel}
+            scroller={scroller}
             onClose={close}
           />
         ) : (
@@ -251,7 +260,11 @@ export default function SettingsDialog({
               />
             }
             content={
-              <SettingsContentPane panel={activePanel} onClose={close} />
+              <SettingsContentPane
+                panel={activePanel}
+                scroller={scroller}
+                onClose={close}
+              />
             }
           />
         )}
