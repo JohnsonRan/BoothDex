@@ -77,7 +77,7 @@ const USE = ["pointerover", "touchstart", "focusin", "wheel"] as const;
 const TOUCH = "(hover: none) and (pointer: coarse)";
 
 /** Where the page's scroll has the strip (band.tsx): full size, shrinking, or shrunk and at rest. */
-export type StripState = "none" | "part" | "rest";
+type StripState = "none" | "part" | "rest";
 export type StripMorph = {
   settle: (state: StripState) => void;
   /** The strip is in use: shrunk and at rest, its chips are laid out for real. */

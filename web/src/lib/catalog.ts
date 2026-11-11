@@ -98,7 +98,7 @@ export const avatarName = (a: Avatar, ui: string = "ja") =>
 // ---------- filter state <-> URL ----------
 
 export const RANGES = ["7d", "30d", "90d", "1y"] as const;
-export type Range = (typeof RANGES)[number] | "";
+type Range = (typeof RANGES)[number] | "";
 
 export type Filters = {
   /** items, avatar bodies (API v=avatars), the signed-in user's favourites, or recently viewed (site only) */

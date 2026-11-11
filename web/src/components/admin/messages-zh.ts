@@ -207,7 +207,6 @@ export const adminZh = {
   "users.noMatch": "没有匹配的用户",
   "users.admin": "管理员",
   "users.disabled": "已禁用",
-  "users.username": "用户名",
   "users.email": "邮箱",
   "users.joined": "注册时间",
   "users.lastSignIn": "最后登录",

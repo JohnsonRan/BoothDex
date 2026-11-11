@@ -219,7 +219,6 @@ export const adminEn: AdminDict = {
   "users.noMatch": "No users match",
   "users.admin": "Admin",
   "users.disabled": "Disabled",
-  "users.username": "Username",
   "users.email": "Email",
   "users.joined": "Joined",
   "users.lastSignIn": "Last sign-in",

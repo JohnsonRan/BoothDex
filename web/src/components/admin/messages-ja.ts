@@ -217,7 +217,6 @@ export const adminJa: AdminDict = {
   "users.noMatch": "一致するユーザーはいません",
   "users.admin": "管理者",
   "users.disabled": "無効",
-  "users.username": "ユーザー名",
   "users.email": "メールアドレス",
   "users.joined": "登録日",
   "users.lastSignIn": "最終ログイン",
