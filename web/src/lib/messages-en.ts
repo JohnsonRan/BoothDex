@@ -276,6 +276,8 @@ export const en: Dict = {
   "delete.title": "Delete account",
   "delete.desc":
     "Permanently deletes your account, favourites, saved searches, viewing history and signed-in devices.",
+  "delete.admin":
+    "Admins are set by ADMIN_USERNAMES on the server, so their accounts can't be deleted here.",
   "delete.button": "Delete",
   "delete.confirm": "This can't be undone. Enter your password to confirm.",
   "delete.done": "Your account has been deleted",

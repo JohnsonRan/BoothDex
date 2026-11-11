@@ -503,6 +503,11 @@ async fn delete_account(
         Ok(u) => u,
         Err(r) => return Ok(r),
     };
+    // ADMIN_USERNAMES makes an account admin by its name: once deleted, whoever registered the name next would be one
+    let is_admin: bool = sqlx::query_scalar("select is_admin from users where id = $1").bind(u.id).fetch_one(&s.pool).await?;
+    if is_admin {
+        return Ok(err(StatusCode::CONFLICT, "Admins can't delete their account."));
+    }
     if let Err(r) = check_own_password(&s, ip, u.id, b.password, "Password is incorrect.").await? {
         return Ok(r);
     }
@@ -1270,6 +1275,18 @@ mod tests {
         }
         assert_eq!(status(change([198, 51, 100, 200]).await), StatusCode::TOO_MANY_REQUESTS);
         assert!(state.throttle.blocked("a"));
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn admins_cannot_delete_their_account(pool: PgPool) {
+        signed_in(&pool).await;
+        sqlx::query("update users set is_admin = true").execute(&pool).await.unwrap();
+        let state = test_state(pool.clone());
+        let ip = crate::limit::ClientIp([203, 0, 113, 9].into());
+        let r = delete_account(State(state), ip, headers(), Json(DeleteAccount { password: "x".into() })).await.ok().unwrap();
+        assert_eq!(r.status(), StatusCode::CONFLICT);
+        assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from users").fetch_one(&pool).await.unwrap(), 1);
     }
 
     #[sqlx::test(migrations = "../core/migrations")]

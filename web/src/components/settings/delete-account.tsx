@@ -24,18 +24,22 @@ import { SettingsCard, SettingsRow } from "./rows";
 
 export function DataPanel() {
   const { t } = useUi();
+  const { me } = useAccount();
   const [open, setOpen] = useState(false);
+  // the API refuses it too: a deleted admin's name would make whoever registers it next an admin
+  const isAdmin = !!me?.is_admin;
   return (
     <SettingsCard>
       <SettingsRow
         title={t("delete.title")}
         icon="site:clear"
-        description={t("delete.desc")}
+        description={t(isAdmin ? "delete.admin" : "delete.desc")}
         control={
           <Button
             label={t("delete.button")}
             variant="destructive"
             size="sm"
+            isDisabled={isAdmin}
             onClick={() => setOpen(true)}
           />
         }

@@ -274,6 +274,8 @@ export const ko: Dict = {
   "delete.title": "계정 삭제",
   "delete.desc":
     "계정, 즐겨찾기, 저장한 검색, 열람 기록, 로그인한 기기를 영구적으로 삭제합니다.",
+  "delete.admin":
+    "관리자는 서버의 ADMIN_USERNAMES로 정해지므로 여기서 삭제할 수 없습니다.",
   "delete.button": "삭제",
   "delete.confirm":
     "이 작업은 취소할 수 없습니다. 확인을 위해 비밀번호를 입력하세요.",

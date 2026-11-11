@@ -280,6 +280,8 @@ export const ja: Dict = {
   "delete.title": "アカウントを削除",
   "delete.desc":
     "アカウント、お気に入り、保存した検索、閲覧履歴、ログイン中の端末を完全に削除します。",
+  "delete.admin":
+    "管理者はサーバーの ADMIN_USERNAMES で決まるため、ここでは削除できません。",
   "delete.button": "削除",
   "delete.confirm":
     "この操作は元に戻せません。確認のためにパスワードを入力してください。",

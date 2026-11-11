@@ -264,6 +264,7 @@ export const zh = {
   "settings.dataDesc": "删除账号及其保存的所有数据。",
   "delete.title": "删除账号",
   "delete.desc": "永久删除你的账号、收藏、保存的搜索、浏览记录和登录设备。",
+  "delete.admin": "管理员由服务器的 ADMIN_USERNAMES 决定，不能在这里删除。",
   "delete.button": "删除",
   "delete.confirm": "此操作无法撤销。请输入密码以确认。",
   "delete.done": "账号已删除",
