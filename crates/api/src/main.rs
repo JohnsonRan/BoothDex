@@ -246,8 +246,16 @@ async fn items_by_id(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit:
         Ok(p) => p,
         Err(r) => return Ok(r.into_response()),
     };
-    Ok(Json(json!({ "items": db::load_items(&s.pool, &ids, false).await? })).into_response())
+    let items = db::load_items(&s.pool, &ids, false).await?;
+    // an id the catalogue lacks may come in later, so an answer missing one is not kept
+    let whole = items.len() == ids.len();
+    let body = Json(json!({ "items": items }));
+    Ok(if whole { ([(axum::http::header::CACHE_CONTROL, ITEMS_CACHE)], body).into_response() } else { body.into_response() })
 }
+
+/// Records are the same for everyone, and visitors come for the search: browsers and the CDN may keep them
+/// 12 hours, a price or title change included (owner). The CDN keeps them only through a cache rule (docs/DEPLOY.md).
+const ITEMS_CACHE: &str = "public, max-age=43200";
 
 /// `ids=` from a raw query, at most 100. Not `Params`: that caps lists at 10, and the web proxy re-encodes the
 /// separators (`,` -> `%2C`, `+` -> `%2B`), so they're split after decoding.
