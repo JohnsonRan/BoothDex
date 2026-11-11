@@ -60,7 +60,7 @@ test("typed text asks /api/palette with the adult setting and groups its answer"
   ).toEqual([
     [
       "Keyword",
-      "Search “dress”",
+      'Search "dress"',
       "1,234 results",
       { kind: "search", value: "dress" },
     ],

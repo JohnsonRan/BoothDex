@@ -36,7 +36,7 @@ export const en: Dict = {
   "filter.search": "Search",
   "suggest.empty": "No results",
   "suggest.query": "Keyword",
-  "suggest.searchFor": "Search “{q}”",
+  "suggest.searchFor": 'Search "{q}"',
   "suggest.results": "{n} results",
   "suggest.avatars": "Avatars",
   "suggest.items": "Items",
