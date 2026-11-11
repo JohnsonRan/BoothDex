@@ -241,7 +241,7 @@ pub fn validate_preferences(v: &Value) -> Result<(), &'static str> {
     for (k, val) in obj {
         let s = val.as_str().ok_or("preference values must be strings")?;
         // "" removes a known key
-        let ok = s.is_empty() && ["ui", "language", "currency", "theme", "style", "black", "avatar", "adult"].contains(&k.as_str())
+        let ok = s.is_empty() && ["ui", "language", "currency", "theme", "style", "black", "filters", "avatar", "adult"].contains(&k.as_str())
             || match k.as_str() {
             // interface language
             "ui" => ["zh", "en", "ja", "ko"].contains(&s),
@@ -253,6 +253,8 @@ pub fn validate_preferences(v: &Value) -> Result<(), &'static str> {
             "style" => (1..=20).contains(&s.len()) && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
             // pure black in dark mode (web lib/settings-core.ts BLACK)
             "black" => ["on", "off"].contains(&s),
+            // the filters in the toolbar's row or a rail at the side (web lib/settings-core.ts FILTER_PLACES)
+            "filters" => ["top", "side"].contains(&s),
             // "my avatar" for the avatar-fit view; empty clears it
             "avatar" => s.len() <= 100 && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
             "adult" => ["safe", "suggestive", "include", "adult_only"].contains(&s),
@@ -791,6 +793,8 @@ mod tests {
         assert!(validate_preferences(&json!({"style": "Y2K"})).is_err());
         assert!(validate_preferences(&json!({"black": "on"})).is_ok());
         assert!(validate_preferences(&json!({"black": "yes"})).is_err());
+        assert!(validate_preferences(&json!({"filters": "side"})).is_ok());
+        assert!(validate_preferences(&json!({"filters": "left"})).is_err());
         assert!(validate_preferences(&json!({"evil": ""})).is_err());
         assert!(validate_preferences(&json!({"language": "fr"})).is_err());
         assert!(validate_preferences(&json!({"language": "zh"})).is_ok());
