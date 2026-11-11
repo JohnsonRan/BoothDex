@@ -410,10 +410,12 @@ async fn me(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Respon
     Ok(Json(json!({ "id": u.id, "username": username, "email": email, "display_name": display_name, "preferences": preferences, "is_admin": is_admin })).into_response())
 }
 
+/// The username stays as registered: ADMIN_USERNAMES makes an account admin by its name, so taking over a listed name
+/// must not be possible. A body that still sends `username` is refused, not half applied.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Profile {
     display_name: Option<String>,
-    username: Option<String>,
 }
 
 async fn update_profile(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<Profile>) -> Result<Response, ApiError> {
@@ -424,20 +426,12 @@ async fn update_profile(State(s): State<Arc<AppState>>, headers: HeaderMap, Json
     if b.display_name.as_deref().is_some_and(|n| !valid_display_name(n)) {
         return Ok(err(StatusCode::BAD_REQUEST, "Display name is required."));
     }
-    if b.username.as_deref().is_some_and(|n| !valid_username(n)) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Username must be 3-24 letters, digits or underscores."));
-    }
-    match sqlx::query("update users set display_name = coalesce($2, display_name), username = coalesce($3, username) where id = $1")
+    sqlx::query("update users set display_name = coalesce($2, display_name) where id = $1")
         .bind(u.id)
         .bind(b.display_name.as_deref().map(str::trim))
-        .bind(&b.username)
         .execute(&s.pool)
-        .await
-    {
-        Ok(_) => Ok(Json(json!({ "ok": true })).into_response()),
-        Err(e) if is_unique_violation(&e) => Ok(err(StatusCode::CONFLICT, "Username is already taken.")),
-        Err(e) => Err(e.into()),
-    }
+        .await?;
+    Ok(Json(json!({ "ok": true })).into_response())
 }
 
 #[derive(Deserialize)]
@@ -837,6 +831,12 @@ mod tests {
         assert!(valid_email("a@b.co") && !valid_email("nope") && !valid_email("a @b.co") && !valid_email("@b.co"));
         assert!(valid_login("user@example.com") && valid_login(&"a".repeat(254)) && !valid_login(&"a".repeat(255)));
         assert!(valid_password("0123456789") && !valid_password("short"));
+    }
+
+    #[test]
+    fn profile_cannot_change_the_username() {
+        assert!(serde_json::from_value::<Profile>(json!({ "display_name": "Ann" })).is_ok());
+        assert!(serde_json::from_value::<Profile>(json!({ "username": "admin" })).is_err());
     }
 
     #[test]
