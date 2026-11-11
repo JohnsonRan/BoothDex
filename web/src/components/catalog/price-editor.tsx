@@ -12,19 +12,14 @@ import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useState } from "react";
 import { useUi } from "@/components/providers";
-import { priceText } from "./clause-text";
+import {
+  digits,
+  presetKey as key,
+  PRICE_PRESETS as PRESETS,
+  priceText,
+} from "./clause-text";
 import { EDITOR_WIDTH } from "./filter-style";
 import type { Price } from "./price-clause";
-
-// presets in yen, matching how Booth items are usually priced
-const PRESETS: [number, number][] = [
-  [0, 500],
-  [500, 1500],
-  [1500, 3000],
-  [3000, 0],
-];
-const key = ([lo, hi]: [number, number]) => `${lo}-${hi}`;
-const digits = (v: string) => Number.parseInt(v.replace(/\D/g, ""), 10) || 0;
 
 export function PriceEditor({
   value,

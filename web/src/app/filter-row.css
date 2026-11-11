@@ -154,13 +154,23 @@
   padding-inline-end: 3rem;
 }
 
-/* The filters' rail (catalog/filter-rail.tsx) is for wide screens: a compact surface (filter-style.ts
-   COMPACT_SURFACE_QUERY) keeps them in the row, and the server's rail is hidden there before the page knows. */
-@media (max-width: 768px),
-  (max-width: 1024px) and (pointer: coarse) and (hover: none) {
+/* The filters' rail (catalog/filter-rail.tsx) earns its width above 1024 px (filter-style.ts NO_RAIL_QUERY):
+   narrower, the row keeps them, and the server's rail is hidden there before the page knows. */
+@media (max-width: 1024px) {
   .filter-rail {
     display: none;
   }
+}
+/* The rail scrolls with no bar beside it, as a dialog's body does (app/globals.css). */
+.filter-rail {
+  scrollbar-width: none;
+}
+/* The rail's checkboxes start at its edge, as its radios do: a CheckboxList's items are List items, inset as a
+   list's rows are. Core's rules carry up to four :not(#\#), so this carries one class more. */
+.filter-rail
+  .astryx-checkbox-list
+  .astryx-list-item:not(#\#):not(#\#):not(#\#):not(#\#) {
+  padding-inline: 0;
 }
 
 /* searchSlot (:1500-1521): the search sits at the selectors' width and widens on focus; second to give way, after

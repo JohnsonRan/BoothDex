@@ -27,6 +27,7 @@ import {
   type Facets,
   FILTER_CHROME,
   FILTER_SURFACE,
+  NO_RAIL_QUERY,
   OVERFLOW_WIDTH,
   SHEET_TOP_INSET,
   useFacets,
@@ -51,7 +52,8 @@ export function FilterBar({
 }) {
   const { settings } = useUi();
   const isCompactSurface = useMediaQuery(COMPACT_SURFACE_QUERY);
-  const inRail = settings.filters === "side" && !isCompactSurface;
+  const isNarrow = useMediaQuery(NO_RAIL_QUERY);
+  const inRail = settings.filters === "side" && !isNarrow;
   const answered = useFacets(facets);
   const clauses = useClauses(answered, names);
   // the answer belongs to the query it was asked for: until the next one arrives, its marks would mark the

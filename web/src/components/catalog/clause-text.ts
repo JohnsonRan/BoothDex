@@ -46,6 +46,19 @@ export const sortKey = (f: Filters) =>
 
 const yen = (v: number) => `¥${v.toLocaleString("en")}`;
 
+/** The price presets in yen, [min, max] with 0 for no bound, as Booth items are usually priced (the price editor and
+ *  the rail offer them). */
+export const PRICE_PRESETS: [number, number][] = [
+  [0, 500],
+  [500, 1500],
+  [1500, 3000],
+  [3000, 0],
+];
+export const presetKey = ([lo, hi]: [number, number]) => `${lo}-${hi}`;
+/** A typed amount in yen: its digits, 0 for none. */
+export const digits = (v: string) =>
+  Number.parseInt(v.replace(/\D/g, ""), 10) || 0;
+
 /** "¥500–1,500", "¥3,000+", "≤ ¥500", or "" for no bound. */
 export function priceText({ pmin, pmax }: { pmin: number; pmax: number }) {
   if (pmin && pmax) return `${yen(pmin)}–${pmax.toLocaleString("en")}`;

@@ -30,6 +30,9 @@ export const CONTROL_SIZE = "sm";
 /** Below `md`, or a touch tablet: folded clauses and the forms open as sheets (COMPACT_SURFACE_QUERY, :1129). */
 export const COMPACT_SURFACE_QUERY =
   "(max-width: 768px), (max-width: 1024px) and (pointer: coarse) and (hover: none)";
+/** Too narrow for the filters' rail (catalog/filter-rail.tsx): a side panel earns its width above 1024 px
+ *  (`astryx docs layout/responsive`), below which the filters stay in the row. */
+export const NO_RAIL_QUERY = "(max-width: 1024px)";
 /** Sheet content starts below the grab pill's band (SHEET_TOP_INSET, :1142). */
 export const SHEET_TOP_INSET = 6;
 /** The panels' widths in rem, so they grow with the text they hold, as the controls beside them do (TEMPLATE-MAP

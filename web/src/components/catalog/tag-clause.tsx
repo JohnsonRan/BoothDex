@@ -16,8 +16,15 @@ const TagPicker = lazySurface(() =>
 
 export type TagSet = { tags: string[]; extags: string[] };
 
-/** `label`: the set clause's text (clause-text.ts); undefined while unset, so the trigger shows the field. */
-export function TagClause({ label }: { label?: string }) {
+/** `label`: the set clause's text (clause-text.ts); undefined while unset, so the trigger shows the field, or
+ *  `placeholder` where a heading names it (filter-rail.tsx). */
+export function TagClause({
+  label,
+  placeholder,
+}: {
+  label?: string;
+  placeholder?: string;
+}) {
   const { t } = useUi();
   const { filters: f, apply } = useFilterUrl();
   useEffect(() => preloadWhenIdle(TagPicker.preload), []);
@@ -25,7 +32,7 @@ export function TagClause({ label }: { label?: string }) {
     <ComplexSelector<TagSet>
       label={t("filter.tags")}
       isLabelHidden
-      placeholder={t("filter.tags")}
+      placeholder={placeholder ?? t("filter.tags")}
       triggerLabel={label}
       size={CONTROL_SIZE}
       value={{ tags: f.tags, extags: f.extags }}
