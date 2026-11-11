@@ -19,8 +19,11 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // painted silhouettes: JS 400,918, CSS 44,958, held to the next 500 B as before. The review fixes (tiles redrawn
 // after a settings change, the band's edge set as it attaches, Astryx parts for the boxes): JS 401,132, held to
 // the next 500 B as before. The strip's cards morphing into chips, kept shrunk through a filter change: JS 403,120,
-// CSS 45,330, held to the next 500 B as before.
-const BUDGET = { html: 48_000, js: 403_500, css: 45_500 };
+// CSS 45,330, held to the next 500 B as before. The account's view counts and favourites since then: JS 408,480; the
+// filter sidebar, its code loaded only where it is shown (the lazy import still costs 1,366 B: its components are
+// shared with other lazy surfaces, which splits a chunk of loaders into the first load): JS 409,846, CSS 45,367,
+// held to the next 500 B (owner, 2026-11-11).
+const BUDGET = { html: 48_000, js: 410_000, css: 45_500 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
