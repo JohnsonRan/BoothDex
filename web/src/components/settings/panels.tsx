@@ -18,8 +18,8 @@ import { Token } from "@astryxdesign/core/Token";
 import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "@/components/account/session";
 import { CURRENCY_SYMBOLS } from "@/components/frame/header-controls";
-import { useUi } from "@/components/providers";
 import { useLegalDialog } from "@/components/legal/legal-dialog";
+import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
 import { type AccountSession, deviceName } from "@/lib/device";
@@ -152,6 +152,19 @@ function AppearancePanel() {
           />
         }
       />
+      <SettingsRow
+        title={t("settings.filters")}
+        icon="site:sidebar"
+        description={t("settings.filtersDesc")}
+        control={
+          <Switch
+            label={t("settings.filters")}
+            isLabelHidden
+            value={settings.filters === "side"}
+            onChange={(on) => update({ filters: on ? "side" : "top" })}
+          />
+        }
+      />
     </SettingsCard>
   );
 }
@@ -257,50 +270,50 @@ function AboutPanel() {
   const legal = useLegalDialog();
   return (
     <>
-    <SettingsCard>
-      <SettingsRow
-        title="BoothDex"
-        icon="info"
-        description={t("settings.copyright")}
-      />
-      {LEGAL.map((link) => (
+      <SettingsCard>
         <SettingsRow
-          key={link.kind}
-          title={t(`legal.${link.kind}`)}
-          icon={link.icon}
-          description={t(link.description)}
-          control={
-            <Button
-              label={t("settings.open")}
-              variant="secondary"
-              size="sm"
-              href={`/${link.kind}`}
-              onClick={legal.open(link.kind)}
-            />
-          }
+          title="BoothDex"
+          icon="info"
+          description={t("settings.copyright")}
         />
-      ))}
-      {LINKS.map((link) => (
-        <SettingsRow
-          key={link.href}
-          title={t(link.title)}
-          icon={link.icon}
-          description={link.href.replace(/^https:\/\/|\/$/g, "")}
-          control={
-            <Button
-              label={t("settings.open")}
-              variant="secondary"
-              size="sm"
-              icon={<Icon icon="externalLink" size="sm" />}
-              href={link.href}
-              target="_blank"
-              rel="noopener"
-            />
-          }
-        />
-      ))}
-    </SettingsCard>
-    {legal.dialog}
+        {LEGAL.map((link) => (
+          <SettingsRow
+            key={link.kind}
+            title={t(`legal.${link.kind}`)}
+            icon={link.icon}
+            description={t(link.description)}
+            control={
+              <Button
+                label={t("settings.open")}
+                variant="secondary"
+                size="sm"
+                href={`/${link.kind}`}
+                onClick={legal.open(link.kind)}
+              />
+            }
+          />
+        ))}
+        {LINKS.map((link) => (
+          <SettingsRow
+            key={link.href}
+            title={t(link.title)}
+            icon={link.icon}
+            description={link.href.replace(/^https:\/\/|\/$/g, "")}
+            control={
+              <Button
+                label={t("settings.open")}
+                variant="secondary"
+                size="sm"
+                icon={<Icon icon="externalLink" size="sm" />}
+                href={link.href}
+                target="_blank"
+                rel="noopener"
+              />
+            }
+          />
+        ))}
+      </SettingsCard>
+      {legal.dialog}
     </>
   );
 }

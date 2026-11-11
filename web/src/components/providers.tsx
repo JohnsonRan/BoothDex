@@ -141,7 +141,8 @@ export function Providers({
         // pending content (site-frame's Activity) in one long task, up to 1 s at 4x CPU
         startTransition(() => setLook(shown));
       }
-      if (patch.ui || patch.content || patch.currency)
+      // the filters' place is the server's layout (catalog/home-screen.tsx)
+      if (patch.ui || patch.content || patch.currency || patch.filters)
         startTransition(() => router.refresh());
     };
     return {

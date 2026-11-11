@@ -13,6 +13,7 @@ const NAMES = {
   theme: "theme",
   style: "style",
   black: "black",
+  filters: "filters",
 } as const satisfies Record<keyof Settings, string>;
 
 let signedIn = false;

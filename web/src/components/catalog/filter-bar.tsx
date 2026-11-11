@@ -2,7 +2,8 @@
 // The Filterable Table template's filter row (page table-filter `filterBar`, page.tsx:3408-3493): the search
 // leading the row, then the clauses on one line, folding from the end into a "+N" control as the row narrows
 // (`FilterOverflow`, :2034-2105: a Popover with a pointer, a BottomSheet on a compact surface), then the readout
-// "{n} 件 • Clear all" right after the last clause.
+// "{n} 件 • Clear all" right after the last clause. With the filters at the side (filter-rail.tsx) the row keeps the
+// search and the readout on a wide screen; its slot stays, empty, so the readout keeps its place.
 
 import { Button } from "@astryxdesign/core/Button";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
@@ -48,7 +49,9 @@ export function FilterBar({
   /** the result count, rendered on the server when the search answers */
   count: ReactNode;
 }) {
+  const { settings } = useUi();
   const isCompactSurface = useMediaQuery(COMPACT_SURFACE_QUERY);
+  const inRail = settings.filters === "side" && !isCompactSurface;
   const answered = useFacets(facets);
   const clauses = useClauses(answered, names);
   // the answer belongs to the query it was asked for: until the next one arrives, its marks would mark the
@@ -75,19 +78,24 @@ export function FilterBar({
       <SearchBox marks={marks} />
       {/* filterOverflowSlot (:1350-1372): the slot, not the list, carries the sizing */}
       <StackItem className="filter-slot">
-        <OverflowList
-          behavior="observeParent"
-          gap={2}
-          className="filter-clauses"
-          data-unfolded={isFolded ? undefined : ""}
-          // one clause stays where there is width for it; a phone folds the whole set behind the count (:3447-3452)
-          minVisibleItems={isCompactSurface ? 0 : 1}
-          overflowRenderer={(items) => (
-            <FilterOverflow items={items} isCompactSurface={isCompactSurface} />
-          )}
-        >
-          {clauses}
-        </OverflowList>
+        {!inRail && (
+          <OverflowList
+            behavior="observeParent"
+            gap={2}
+            className="filter-clauses"
+            data-unfolded={isFolded ? undefined : ""}
+            // one clause stays where there is width for it; a phone folds the whole set behind the count (:3447-3452)
+            minVisibleItems={isCompactSurface ? 0 : 1}
+            overflowRenderer={(items) => (
+              <FilterOverflow
+                items={items}
+                isCompactSurface={isCompactSurface}
+              />
+            )}
+          >
+            {clauses}
+          </OverflowList>
+        )}
       </StackItem>
       {/* filterMeta (:1406-1410): drawn over the slot's reserve, against the last clause; the count and "Clear all"
           arrive together (results.tsx), so nothing in it moves when the count replaces its silhouette */}

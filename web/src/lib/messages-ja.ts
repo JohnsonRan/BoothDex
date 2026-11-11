@@ -57,6 +57,7 @@ export const ja: Dict = {
   "filter.avatar": "アバター",
   "filter.clearAll": "すべてクリア",
   "filter.region": "絞り込みと並び替え",
+  "filter.rail": "絞り込み",
   "filter.more": "ほか {n} 件のフィルター",
   "view.items": "商品",
   "view.avatars": "アバター本体",
@@ -250,6 +251,9 @@ export const ja: Dict = {
   "settings.black": "純黒モード",
   "settings.blackDesc":
     "ダークモードで純黒の背景を使います。OLED 画面に適しています。",
+  "settings.filters": "サイドバーで絞り込み",
+  "settings.filtersDesc":
+    "広い画面では、絞り込みを左のサイドバーに表示します。検索と並び替えは上部に残ります。",
   "style.neutral": "ニュートラル",
   "style.stone": "ストーン",
   "style.matcha": "抹茶",

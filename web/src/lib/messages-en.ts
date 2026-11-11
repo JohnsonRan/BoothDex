@@ -57,6 +57,7 @@ export const en: Dict = {
   "filter.avatar": "Avatar",
   "filter.clearAll": "Clear all",
   "filter.region": "Filters and sort",
+  "filter.rail": "Filters",
   "filter.more": "{n} more filters",
   "view.items": "Items",
   "view.avatars": "Avatar bodies",
@@ -248,6 +249,9 @@ export const en: Dict = {
   "settings.black": "Pure black",
   "settings.blackDesc":
     "Uses a pure black background in dark mode, suited to OLED screens.",
+  "settings.filters": "Filters in a sidebar",
+  "settings.filtersDesc":
+    "On wide screens, shows the filters in a sidebar on the left. Search and sort stay at the top.",
   "style.neutral": "Neutral",
   "style.stone": "Stone",
   "style.matcha": "Matcha",

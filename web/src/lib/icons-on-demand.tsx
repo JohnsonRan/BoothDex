@@ -18,6 +18,7 @@ import {
   Monitor,
   MonitorSmartphone,
   Palette,
+  PanelLeft,
   Pencil,
   Plus,
   Rss,
@@ -39,6 +40,8 @@ registerIcons({
   "site:system": <Monitor {...glyph} />,
   "site:devices": <MonitorSmartphone {...glyph} />,
   "site:itemText": <Type {...glyph} />,
+  // the filters' place (settings/panels.tsx)
+  "site:sidebar": <PanelLeft {...glyph} />,
   "site:currency": <Coins {...glyph} />,
   "site:code": <Code {...glyph} />,
   "site:feedback": <MessageSquare {...glyph} />,

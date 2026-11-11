@@ -57,6 +57,7 @@ export const ko: Dict = {
   "filter.avatar": "아바타",
   "filter.clearAll": "모두 초기화",
   "filter.region": "필터와 정렬",
+  "filter.rail": "필터",
   "filter.more": "필터 {n}개 더 보기",
   "view.items": "상품",
   "view.avatars": "아바타 본체",
@@ -247,6 +248,9 @@ export const ko: Dict = {
   "settings.black": "순수 검정 모드",
   "settings.blackDesc":
     "다크 모드에서 순수한 검은색 배경을 사용합니다. OLED 화면에 적합합니다.",
+  "settings.filters": "사이드바 필터",
+  "settings.filtersDesc":
+    "넓은 화면에서 필터를 왼쪽 사이드바에 표시합니다. 검색과 정렬은 위쪽에 남습니다.",
   "style.neutral": "뉴트럴",
   "style.stone": "스톤",
   "style.matcha": "말차",

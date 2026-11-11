@@ -24,6 +24,7 @@ test("stored settings win, invalid fields fall back", () => {
     content: "en",
     style: "neutral",
     black: "off",
+    filters: "top",
   });
   expect(
     parseSettings('{"ui":"fr","currency":"XYZ","theme":"neon"}', "ja-JP"),
@@ -36,6 +37,12 @@ test("pure black is off unless turned on", () => {
   expect(DEFAULT_SETTINGS.black).toBe("off");
   expect(parseSettings('{"black":"on"}').black).toBe("on");
   expect(parseSettings('{"black":true}').black).toBe("off");
+});
+
+test("filters sit on top unless put at the side", () => {
+  expect(DEFAULT_SETTINGS.filters).toBe("top");
+  expect(parseSettings('{"filters":"side"}').filters).toBe("side");
+  expect(parseSettings('{"filters":"left"}').filters).toBe("top");
 });
 
 test("item text follows the interface language unless a language is chosen", () => {

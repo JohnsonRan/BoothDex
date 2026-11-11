@@ -45,6 +45,7 @@ import type { Rates, Settings } from "@/lib/settings-core";
 import { Arrival } from "./arrival";
 import { FilterBand } from "./band";
 import type { ClauseNames } from "./clause-text";
+import { FilterRail } from "./filter-rail";
 import type { Facets, SearchMark } from "./filter-style";
 import { FilterUrlProvider } from "./filter-url";
 import { CountSilhouette, ResultsSilhouette } from "./loading";
@@ -214,6 +215,12 @@ async function Catalog({
     <Layout
       height="auto"
       padding={6}
+      // the filters at the side (Settings), beside the band and the results; the recent view has none
+      start={
+        settings.filters === "side" && !recent ? (
+          <FilterRail facets={facets} names={names} />
+        ) : undefined
+      }
       header={
         // padding 0 and a Section inside, as the template (:4339-4353); the Section keeps the page inset
         // (TEMPLATE-MAP rule 5) where the template has 16 px. The divider and the progress bar are the band's.

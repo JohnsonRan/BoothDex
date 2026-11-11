@@ -20,6 +20,10 @@ export type Theme = (typeof THEMES)[number];
 /** Pure black: in dark mode the page's backgrounds turn black (globals.css). */
 const BLACK = ["off", "on"] as const;
 export type Black = (typeof BLACK)[number];
+/** Where the filters sit on a wide screen: the toolbar's row, or a rail left of the results
+ *  (catalog/filter-rail.tsx). A compact surface always has the row. */
+const FILTER_PLACES = ["top", "side"] as const;
+export type FilterPlace = (typeof FILTER_PLACES)[number];
 /** The Astryx themes, neutral first (the default, built into every page); the others load when chosen
  *  (themes/index.tsx). */
 export const STYLES = [
@@ -82,6 +86,7 @@ export type Settings = {
   theme: Theme;
   style: Style;
   black: Black;
+  filters: FilterPlace;
 };
 
 export const SETTINGS_COOKIE = "settings";
@@ -92,6 +97,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   style: "neutral",
   black: "off",
+  filters: "top",
 };
 
 const pick = <T extends string>(
@@ -151,6 +157,7 @@ export function parseSettings(
     theme: pick(v.theme, THEMES) ?? DEFAULT_SETTINGS.theme,
     style: pick(v.style, STYLES) ?? DEFAULT_SETTINGS.style,
     black: pick(v.black, BLACK) ?? DEFAULT_SETTINGS.black,
+    filters: pick(v.filters, FILTER_PLACES) ?? DEFAULT_SETTINGS.filters,
   };
 }
 

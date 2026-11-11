@@ -154,6 +154,15 @@
   padding-inline-end: 3rem;
 }
 
+/* The filters' rail (catalog/filter-rail.tsx) is for wide screens: a compact surface (filter-style.ts
+   COMPACT_SURFACE_QUERY) keeps them in the row, and the server's rail is hidden there before the page knows. */
+@media (max-width: 768px),
+  (max-width: 1024px) and (pointer: coarse) and (hover: none) {
+  .filter-rail {
+    display: none;
+  }
+}
+
 /* searchSlot (:1500-1521): the search sits at the selectors' width and widens on focus; second to give way, after
    the clauses. 120 / 240 px in rem, so the field scales with the text. */
 .filter-search {
