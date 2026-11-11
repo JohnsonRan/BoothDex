@@ -23,6 +23,7 @@ export const API_ERRORS: ApiErrors<MessageKey> = {
     "This account is disabled.": "error.disabled",
     "Registration is closed.": "error.registrationClosed",
     "Saved search limit reached.": "saved.limit",
+    "Password is incorrect.": "error.password",
   },
   statuses: {
     401: "error.signIn",

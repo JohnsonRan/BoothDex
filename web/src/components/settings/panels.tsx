@@ -36,10 +36,11 @@ import {
   type ItemTextSetting,
   LOCALES,
 } from "@/lib/settings-core";
+import { DataPanel } from "./delete-account";
 import { CONTROL_WIDTH, SettingsCard, SettingsRow } from "./rows";
 import { StyleChoiceCards, ThemeChoiceCards } from "./theme-choice";
 
-export type PanelId = "appearance" | "language" | "devices" | "about";
+export type PanelId = "appearance" | "language" | "devices" | "data" | "about";
 
 type PanelGroup = {
   label: MessageKey;
@@ -81,6 +82,12 @@ export const PANEL_GROUPS: PanelGroup[] = [
         label: "settings.devices",
         description: "settings.devicesDesc",
         icon: "site:devices",
+      },
+      {
+        id: "data",
+        label: "settings.data",
+        description: "settings.dataDesc",
+        icon: "site:clear",
       },
     ],
   },
@@ -388,6 +395,8 @@ export function SettingsPanelBody({ panel }: { panel: PanelId }) {
       return <LanguagePanel />;
     case "devices":
       return <DevicesPanel />;
+    case "data":
+      return <DataPanel />;
     case "about":
       return <AboutPanel />;
   }

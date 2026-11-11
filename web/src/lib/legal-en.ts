@@ -138,7 +138,8 @@ const texts: LegalTexts = {
         heading: "Your choices and rights",
         body: [
           "You can change your settings at any time, and sign out other devices in Settings.",
-          "To get a copy of your data, correct it or delete your account, contact {contact}. Deleting an account immediately removes its devices, favourites, saved searches and viewing history.",
+          "You can delete your account at any time in Settings > Your data. This immediately removes its devices, favourites, saved searches and viewing history.",
+          "To get a copy of your data or correct it, or if you can't sign in to your account, contact {contact}.",
           "Depending on where you live (for example under the GDPR in the EU and UK, the APPI in Japan, PIPA in Korea or PIPL in China), you may have further rights, such as objecting to processing or complaining to a data protection authority.",
         ],
       },

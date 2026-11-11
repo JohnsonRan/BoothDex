@@ -14,6 +14,7 @@ The site's screens are built from Astryx page templates and template blocks (`@a
 | `src/components/account/saved-searches.tsx`                         | block `DialogFormDialog`                                                            |
 | `src/components/account/delete-saved.tsx`                           | block `PopoverConfirmAction`                                                        |
 | `src/components/settings/*`                                         | page `settings-dialog`                                                              |
+| `src/components/settings/delete-account.tsx`                        | page `settings-dialog`, block `DialogFormDialog`                                    |
 | `src/components/legal/legal-screen.tsx`                             | page `documentation-technical`                                                      |
 | `templates/**` (verbatim copies)                                    | the pages and blocks listed in `templates/README.md`                                |
 | `src/components/catalog/home-screen.tsx`                            | page `library` (Card Grid)                                                          |

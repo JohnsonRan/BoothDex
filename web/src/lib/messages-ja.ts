@@ -277,6 +277,17 @@ export const ja: Dict = {
   "settings.signedOutDevice": "その端末をログアウトしました",
   "settings.devicesFailed": "端末を読み込めませんでした",
   "settings.open": "開く",
+  "settings.data": "アカウントのデータ",
+  "settings.dataDesc":
+    "アカウントと、保存されているすべてのデータを削除します。",
+  "delete.title": "アカウントを削除",
+  "delete.desc":
+    "アカウント、お気に入り、保存した検索、閲覧履歴、ログイン中の端末を完全に削除します。",
+  "delete.button": "削除",
+  "delete.confirm":
+    "この操作は元に戻せません。確認のためにパスワードを入力してください。",
+  "delete.done": "アカウントを削除しました",
+  "error.password": "パスワードが正しくありません",
   "legal.privacy": "プライバシーポリシー",
   "legal.terms": "利用規約",
   "legal.privacyDesc": "このサイトでのデータの取り扱いです。",

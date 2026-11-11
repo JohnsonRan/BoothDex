@@ -272,6 +272,16 @@ export const ko: Dict = {
   "settings.signedOutDevice": "해당 기기에서 로그아웃했습니다",
   "settings.devicesFailed": "기기 목록을 불러오지 못했습니다",
   "settings.open": "열기",
+  "settings.data": "계정 데이터",
+  "settings.dataDesc": "계정과 계정에 저장된 모든 데이터를 삭제합니다.",
+  "delete.title": "계정 삭제",
+  "delete.desc":
+    "계정, 즐겨찾기, 저장한 검색, 열람 기록, 로그인한 기기를 영구적으로 삭제합니다.",
+  "delete.button": "삭제",
+  "delete.confirm":
+    "이 작업은 취소할 수 없습니다. 확인을 위해 비밀번호를 입력하세요.",
+  "delete.done": "계정을 삭제했습니다",
+  "error.password": "비밀번호가 올바르지 않습니다",
   "legal.privacy": "개인정보 처리방침",
   "legal.terms": "이용약관",
   "legal.privacyDesc": "이 사이트의 데이터 처리 방식입니다.",
