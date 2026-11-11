@@ -7,6 +7,18 @@ const VIEWED_MAX = 500;
 
 type ViewedPair = [id: number, at: number];
 
+/** Quick repeats of one item are sent once; after this another device may have opened newer items, so it is sent again. */
+const RESEND_AFTER_MS = 60_000;
+
+/** Whether opening `id` at `now` must reach the account, given the last view this tab sent. */
+export function sendView(
+  last: { id: number; at: number } | null,
+  id: number,
+  now: number,
+): boolean {
+  return last?.id !== id || now - last.at >= RESEND_AFTER_MS;
+}
+
 /** Newest first; opening an item again moves it to the top. */
 export function addViewed(
   list: number[],

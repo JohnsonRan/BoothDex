@@ -30,6 +30,7 @@ import {
   loadViewed,
   recordLocalView,
   saveViewed,
+  sendView,
 } from "@/lib/viewed";
 
 export type Me = {
@@ -80,9 +81,12 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   const loads = useRef(0);
   // while a load reads the account's views, the items opened meanwhile, oldest first: the read may predate them
   const openedDuringLoad = useRef<number[] | null>(null);
+  // the last view this tab sent to the account
+  const lastSent = useRef<{ id: number; at: number } | null>(null);
 
   const load = useCallback(async () => {
     const gen = ++loads.current;
+    lastSent.current = null;
     openedDuringLoad.current = [];
     // the first read shares the request other callers make on load; later ones (sign-in, sign-out) start fresh
     const user = await fetchAccount<Me>({ fresh: gen > 1 }).catch(() => null);
@@ -176,12 +180,18 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
       recordView: (id) => {
         openedDuringLoad.current?.push(id);
         setViewed((v) => addViewed(v ?? [], id));
-        if (me)
-          api("/api/account/views", {
-            method: "POST",
-            json: { views: [{ id }] },
-          }).catch(() => {});
-        else recordLocalView(id);
+        if (me) {
+          const now = Date.now();
+          if (sendView(lastSent.current, id, now)) {
+            lastSent.current = { id, at: now };
+            api("/api/account/views", {
+              method: "POST",
+              json: { views: [{ id }] },
+            }).catch(() => {
+              lastSent.current = null;
+            });
+          }
+        } else recordLocalView(id);
       },
       clearViewed: async () => {
         try {

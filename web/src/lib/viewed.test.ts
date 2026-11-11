@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { addViewed, parseViewed } from "./viewed";
+import { addViewed, parseViewed, sendView } from "./viewed";
+
+test("sendView skips quick repeats of the last item sent but not a later one", () => {
+  expect(sendView(null, 1, 0)).toBe(true);
+  expect(sendView({ id: 1, at: 0 }, 1, 59_999)).toBe(false);
+  expect(sendView({ id: 1, at: 0 }, 2, 1)).toBe(true);
+  // another device may have opened newer items meanwhile
+  expect(sendView({ id: 1, at: 0 }, 1, 60_000)).toBe(true);
+});
 
 test("addViewed keeps newest first, moves a repeat to the top and caps the list", () => {
   let v: number[] = [];
