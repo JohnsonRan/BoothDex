@@ -8,7 +8,9 @@
 // A mouse wheel over the strip scrolls it sideways while it can move that way, as on the old strip; the
 // Carousel maps only Shift + wheel itself (Carousel.d.ts:5-8).
 // The first page load renders only the cards a wide screen shows; the rest join on the first pointer, touch,
-// focus or scroll in the strip, before any of them can come into view.
+// focus or scroll in the strip, before any of them can come into view, and with a mouse also once the page is idle,
+// so a screen wider than the first cards fills in unasked. A touch screen shows a few cards and swipes the rest in,
+// its touch mounting them before they move: it is spared rendering them all at load.
 // The strip is one: under the filter band it shrinks with the page's scroll (band.tsx, app/globals.css `strip-*`)
 // into a row of chips, each the card's own image round at Avatar's 32 px size with its name beside it, as the
 // table-filter template's person cell (page.tsx:2862-2867: an Avatar and its name in an HStack, gap 2, centred).
@@ -63,8 +65,8 @@ const SIZES = {
   "--strip-name": "8rem",
   "--strip-glyph": 1 / (1.5 * (CHIP_REM / CARD_REM)),
 } as CSSProperties;
-// cards rendered before the strip is used: more than fit across 1440 px (with the "all" card)
-const FIRST_CARDS = 14;
+// cards rendered before the strip is used: more than fit across 2048 px (with the "all" card)
+const FIRST_CARDS = 20;
 const WAKE = ["pointerover", "touchstart", "focusin", "scroll"] as const;
 // what puts the shrunk strip to use: its chips are then laid out for real
 const USE = ["pointerover", "touchstart", "focusin", "wheel"] as const;
@@ -261,6 +263,14 @@ const Cards = memo(function Cards({
     const el = strip.current;
     if (all || !el) return;
     const wake = () => setUsed(true);
+    // read when it runs: the hook's first value is the server's, which is not a touch screen
+    const idle = () => {
+      if (!matchMedia(TOUCH).matches) wake();
+    };
+    const later =
+      typeof requestIdleCallback === "function"
+        ? requestIdleCallback(idle, { timeout: 2000 })
+        : window.setTimeout(idle, 500);
     for (const e of WAKE)
       el.addEventListener(e, wake, {
         once: true,
@@ -268,6 +278,8 @@ const Cards = memo(function Cards({
         capture: true,
       });
     return () => {
+      if (typeof cancelIdleCallback === "function") cancelIdleCallback(later);
+      else clearTimeout(later);
       for (const e of WAKE) el.removeEventListener(e, wake, { capture: true });
     };
   }, [all]);
