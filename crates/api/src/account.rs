@@ -402,10 +402,11 @@ async fn remove_session(State(s): State<Arc<AppState>>, headers: HeaderMap, Path
     Ok(Json(json!({ "ok": true })).into_response())
 }
 
+/// The signed-in account, or `null` without a session: every page asks on load, and a 401 would log a failed
+/// request in each signed-out visitor's console.
 async fn me(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
+    let Some(u) = current_user(&s.pool, &headers).await? else {
+        return Ok(Json(Value::Null).into_response());
     };
     let (username, email, display_name, preferences, is_admin): (String, String, String, Value, bool) =
         sqlx::query_as("select username, email, display_name, preferences, is_admin from users where id = $1").bind(u.id).fetch_one(&s.pool).await?;
@@ -1125,6 +1126,27 @@ mod tests {
         // another account's search is left as it was
         assert_eq!(status(rename(Some("session=tok-a"), ids[1], "stolen").await), StatusCode::OK);
         assert_eq!(names().await.unwrap(), ["renamed", "theirs"]);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn the_account_is_null_without_a_session(pool: PgPool) {
+        let user = signed_in(&pool).await;
+        let state = test_state(pool);
+        let account = |h: HeaderMap| {
+            let state = state.clone();
+            async move {
+                let r = me(State(state), h).await.ok().unwrap();
+                assert_eq!(r.status(), StatusCode::OK);
+                serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap()
+            }
+        };
+        let mut unknown = HeaderMap::new();
+        unknown.insert(header::COOKIE, "session=gone".parse().unwrap());
+
+        assert_eq!(account(HeaderMap::new()).await, Value::Null);
+        assert_eq!(account(unknown).await, Value::Null);
+        assert_eq!(account(headers()).await["id"], user);
     }
 
     #[sqlx::test(migrations = "../core/migrations")]

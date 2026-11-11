@@ -61,8 +61,11 @@ export async function api<T>(
 }
 
 let accountRequest: Promise<unknown> | null = null;
-/** `/api/account`, shared by callers asking at the same time (settings and the session both read it on load). */
-export function fetchAccount<T>(options?: { fresh?: boolean }): Promise<T> {
+/** `/api/account`, null signed out; shared by callers asking at the same time (the session and the home page's
+ *  avatar both read it on load). */
+export function fetchAccount<T>(options?: {
+  fresh?: boolean;
+}): Promise<T | null> {
   if (options?.fresh) accountRequest = null;
   if (!accountRequest) {
     const p: Promise<unknown> = api<T>("/api/account").finally(() => {
@@ -70,5 +73,5 @@ export function fetchAccount<T>(options?: { fresh?: boolean }): Promise<T> {
     });
     accountRequest = p;
   }
-  return accountRequest as Promise<T>;
+  return accountRequest as Promise<T | null>;
 }

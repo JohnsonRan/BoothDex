@@ -79,8 +79,8 @@ export function FilterUrlProvider({
     const local = remembered();
     if (location.search.length <= 1 && local) restore(local);
     fetchAccount<{ preferences: Record<string, string> }>().then(
-      ({ preferences }) => {
-        const saved = preferences.avatar;
+      (account) => {
+        const saved = account?.preferences.avatar;
         const untouched =
           location.search.length <= 1 ||
           (!!local && location.search === query(local));
