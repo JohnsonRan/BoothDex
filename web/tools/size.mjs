@@ -24,7 +24,10 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // shared with other lazy surfaces, which splits a chunk of loaders into the first load): JS 409,846, CSS 45,367,
 // held to the next 500 B (owner, 2026-11-11). The language, currency and sort menus' code loaded after the page,
 // their buttons drawn by the server as before: JS 395,598, the budget kept for what comes next (owner, 2026-11-11).
-const BUDGET = { html: 48_000, js: 410_000, css: 45_500 };
+// The filter sidebar shown by default, drawn by the server (HTML 47,500-49,000 over 7 reads, with the toolbar's row
+// 44,100), the dialogs' fading lower edge (CSS 45,503) and the presses kept for late menus and hearts (JS 396,067):
+// HTML to 49,500 and CSS to 45,750 (owner, 2026-11-12).
+const BUDGET = { html: 49_500, js: 410_000, css: 45_750 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
