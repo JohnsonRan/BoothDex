@@ -51,6 +51,8 @@ struct AppState {
     throttle: account::LoginThrottle,
     dummy_hash: String,
     gallery: gallery::Fetcher,
+    /// item opens not yet written to item_stats; see `gallery::flush_views`
+    view_counts: gallery::ViewCounts,
     sys: admin::SysMetrics,
     http: reqwest::Client,
     imgproxy_url: Option<String>,
@@ -94,6 +96,7 @@ impl AppState {
             throttle: Default::default(),
             dummy_hash,
             gallery,
+            view_counts: Default::default(),
             sys: admin::SysMetrics::new(),
             http,
             imgproxy_url,
@@ -308,6 +311,48 @@ async fn serve_starting(bind: &str, ready: tokio::sync::oneshot::Receiver<()>) -
     }))
 }
 
+/// Ctrl+C, or the SIGTERM of `docker stop`: as PID 1 the API would otherwise ignore it until it is killed.
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+/// Serves until `stop` resolves, then lets open requests finish for at most `drain`: an admin watching the live
+/// event stream would otherwise hold the process until it is killed, before view counts are written.
+async fn serve_until(
+    listener: tokio::net::TcpListener,
+    app: Router,
+    stop: impl Future<Output = ()> + Send + 'static,
+    drain: std::time::Duration,
+) -> std::io::Result<()> {
+    let (stopping, stopped) = tokio::sync::oneshot::channel();
+    let server = axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+        .with_graceful_shutdown(async move {
+            stop.await;
+            let _ = stopping.send(());
+        })
+        .into_future();
+    let mut server = std::pin::pin!(server);
+    tokio::select! {
+        r = &mut server => r,
+        _ = stopped => match tokio::time::timeout(drain, server).await {
+            Ok(r) => r,
+            Err(_) => {
+                eprintln!("shutdown: stopped waiting for open connections after {drain:?}");
+                Ok(())
+            }
+        },
+    }
+}
+
 /// reqwest is built without a default crypto provider: install ring once, before any client is built.
 fn install_tls() {
     rustls::crypto::ring::default_provider().install_default().ok();
@@ -332,6 +377,7 @@ async fn main() -> Result<()> {
     admin::queue_localize_if_needed(&pool, &boothdex_core::settings::ai(&pool).await?).await?;
     let state = Arc::new(build_state(pool).await?);
     tokio::spawn(reloader(state.clone()));
+    tokio::spawn(gallery::flush_views(state.clone()));
 
     let lookups = Router::new()
         .route("/api/avatars", get(lookup(|s| &s.avatars)))
@@ -358,14 +404,20 @@ async fn main() -> Result<()> {
         ))
         // no credentials cross-origin: the frontend is served same-origin (Next.js rewrites /api)
         .layer(tower_http::cors::CorsLayer::new().allow_origin(tower_http::cors::Any).allow_methods([axum::http::Method::GET]))
-        .with_state(state);
+        .with_state(state.clone());
 
     // hand the address over: the placeholder finishes its open requests and releases the port
     let _ = ready.send(());
     starting.await?;
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     println!("listening on http://{bind}");
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
+    // docker stop waits 10 s before it kills
+    serve_until(listener, app, shutdown_signal(), std::time::Duration::from_secs(5)).await?;
+    // the opens counted since the last write
+    if let Err(e) = state.view_counts.flush(&state.pool).await {
+        eprintln!("view counts: {e}");
+    }
+    println!("stopped");
     Ok(())
 }
 
@@ -631,6 +683,33 @@ mod tests {
         // a child name two parents share only counts together with its parent
         assert_eq!(m.get("other"), None);
         assert_eq!(m.get("otherclothing").map(String::as_str), Some("clothing--other"));
+    }
+
+    #[tokio::test]
+    async fn shutdown_lets_requests_finish_but_not_hold_it_for_ever() {
+        use std::time::{Duration, Instant};
+        let app = axum::Router::new()
+            .route("/slow", axum::routing::get(|| async {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                "done"
+            }))
+            .route("/hang", axum::routing::get(|| std::future::pending::<&'static str>()));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        let server = tokio::spawn(super::serve_until(listener, app, async { stopped.await.ok(); }, Duration::from_secs(1)));
+        super::install_tls();
+        let http = reqwest::Client::new();
+        let slow = tokio::spawn(http.get(format!("{base}/slow")).send());
+        let _hang = tokio::spawn(http.get(format!("{base}/hang")).send());
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let t0 = Instant::now();
+        stop.send(()).unwrap();
+        server.await.unwrap().unwrap();
+        let took = t0.elapsed();
+        assert!(took >= Duration::from_millis(900) && took < Duration::from_secs(3), "took {took:?}");
+        assert_eq!(slow.await.unwrap().unwrap().text().await.unwrap(), "done");
     }
 
     #[tokio::test]
