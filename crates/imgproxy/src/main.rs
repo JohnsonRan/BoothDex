@@ -1,5 +1,6 @@
 //! Image proxy meant to sit behind Cloudflare.
 //!   GET /b/{size}/{uuid}/i/{item}/{file}[?format=avif|png|jpeg]  Booth image (booth.pximg.net), re-encoded
+//!   GET /u/{size}/{user}/{file}[?format=…]                     Booth shop icon (users/{user}/icon_image), same
 //!   GET /v/{sha1}.webp                                         archived VRCatalogue image (delisted items)
 //! Output defaults to AVIF with full-resolution chroma (4:4:4), from libaom when built with the `libavif`
 //! feature (the container images are) and from rav1e otherwise; the archived files are WebP and served as they
@@ -139,6 +140,15 @@ fn upstream_url(size: &str, uuid: &str, item: &str, file: &str) -> Option<String
     Some(format!("https://booth.pximg.net/{prefix}{uuid}/i/{item}/{file}"))
 }
 
+/// Upstream URL for a shop icon; Booth names the file after a UUID, so a new icon is a new address.
+fn icon_upstream_url(size: &str, user: &str, file: &str) -> Option<String> {
+    if !SIZES.contains(&size) || user.is_empty() || user.len() > 12 || !user.bytes().all(|b| b.is_ascii_digit()) || !is_booth_file(file) {
+        return None;
+    }
+    let prefix = if size == "orig" { String::new() } else { format!("c/{size}/") };
+    Some(format!("https://booth.pximg.net/{prefix}users/{user}/icon_image/{file}"))
+}
+
 fn decode(bytes: &[u8]) -> Result<DynamicImage> {
     let mut reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
     let mut limits = Limits::default();
@@ -253,9 +263,23 @@ async fn booth(
     let (Some(url), Some(format)) = (upstream_url(&size, &uuid, &item, &file), Format::parse(q.format.as_deref())) else {
         return bad_request();
     };
-    let key = format!("{size}/{uuid}/{item}/{file}:{format:?}");
+    proxy(s, format!("{size}/{uuid}/{item}/{file}:{format:?}"), url, &size, format).await
+}
+
+async fn icon(
+    State(s): State<Arc<AppState>>,
+    Path((size, user, file)): Path<(String, String, String)>,
+    Query(q): Query<FormatQuery>,
+) -> Response {
+    let (Some(url), Some(format)) = (icon_upstream_url(&size, &user, &file), Format::parse(q.format.as_deref())) else {
+        return bad_request();
+    };
+    proxy(s, format!("u/{size}/{user}/{file}:{format:?}"), url, &size, format).await
+}
+
+async fn proxy(s: Arc<AppState>, key: String, url: String, size: &str, format: Format) -> Response {
     let quality = match format {
-        Format::Avif => avif_quality(&size),
+        Format::Avif => avif_quality(size),
         _ if size == "orig" => 88,
         _ => 80,
     };
@@ -354,6 +378,7 @@ async fn serve() -> Result<()> {
     });
     let app = Router::new()
         .route("/b/{size}/{uuid}/i/{item}/{file}", get(booth))
+        .route("/u/{size}/{user}/{file}", get(icon))
         .route("/v/{name}", get(archived))
         .route("/stats", get(stats))
         .with_state(state.clone());
@@ -382,6 +407,13 @@ mod tests {
         assert!(upstream_url("orig", uuid, "1", "../../etc.jpg").is_none());
         assert!(upstream_url("orig", uuid, "1", "a.svg").is_none());
         assert!(upstream_url("orig", uuid, "1", "a.jpg?x=@evil.com").is_none());
+        assert_eq!(
+            icon_upstream_url("48x48", "15037164", "5fa34b7c-9f3a-4123-889f-ab80a8f3a79d_base_resized.jpg").as_deref(),
+            Some("https://booth.pximg.net/c/48x48/users/15037164/icon_image/5fa34b7c-9f3a-4123-889f-ab80a8f3a79d_base_resized.jpg")
+        );
+        assert!(icon_upstream_url("48x48", "1x", "a.jpg").is_none());
+        assert!(icon_upstream_url("999x999", "1", "a.jpg").is_none());
+        assert!(icon_upstream_url("48x48", "1", "../a.jpg").is_none());
     }
 
     #[test]

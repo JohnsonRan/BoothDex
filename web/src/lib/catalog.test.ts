@@ -137,7 +137,7 @@ test("imageSrc avoids the closed VRCatalogue CDN", () => {
     "/img/b/300x300_a2_g5/u/i/1/a.jpg?format=avif",
   );
   const icon = "https://booth.pximg.net/c/48x48/users/1/icon_image/x.jpg";
-  expect(imageSrc(icon)).toBe(icon);
+  expect(imageSrc(icon)).toBe("/img/u/48x48/1/x.jpg?format=avif");
   expect(imageSrc(null)).toBe("");
 });
 

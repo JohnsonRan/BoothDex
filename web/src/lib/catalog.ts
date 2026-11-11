@@ -64,6 +64,9 @@ export function imgUrl(
   return m && ARCHIVED.test(m) ? imageSrc(m) : "";
 }
 const ARCHIVED = /\/booth\/([0-9a-f]{40})\.webp$/;
+// shop icons come already sized: https://booth.pximg.net/c/48x48/users/{user}/icon_image/{file}
+const ICON =
+  /^https:\/\/booth\.pximg\.net\/c\/([^/]+)\/users\/(\d+)\/icon_image\/([^/?#]+)$/;
 /** Avatar thumbnails and shop icons: Booth images through our proxy, VRCatalogue CDN links (gone) from our archive. */
 export function imageSrc(
   u: string | null | undefined,
@@ -72,7 +75,8 @@ export function imageSrc(
   if (!u) return "";
   const sha = u.match(ARCHIVED)?.[1];
   if (sha) return `/img/v/${sha}.webp`;
-  // already-sized links (shop icons under /c/48x48/) load from Booth as they are
+  const icon = u.match(ICON);
+  if (icon) return `/img/u/${icon[1]}/${icon[2]}/${icon[3]}?format=avif`;
   if (
     u.startsWith("https://booth.pximg.net/") &&
     !u.startsWith("https://booth.pximg.net/c/")
