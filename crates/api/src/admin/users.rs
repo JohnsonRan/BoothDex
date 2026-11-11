@@ -31,7 +31,8 @@ pub(super) struct ListQuery {
     offset: i64,
 }
 
-/// Newest first, `PAGE` at a time; `q` matches part of the username, email or display name, ignoring case.
+/// Admins first, then by sign-up, newest first; `PAGE` at a time. `q` matches part of the username, email or display
+/// name, ignoring case.
 pub(super) async fn list(State(s): State<Arc<AppState>>, headers: HeaderMap, Query(p): Query<ListQuery>) -> Result<Response, ApiError> {
     admin!(s, headers);
     let q: String = p.q.trim().to_lowercase().chars().take(100).collect();
@@ -41,8 +42,8 @@ pub(super) async fn list(State(s): State<Arc<AppState>>, headers: HeaderMap, Que
          select jsonb_build_object('total', (select count(*) from m),
            'users', coalesce((select jsonb_agg(",
         user_json!(),
-        " order by u.created_at desc, u.id desc)
-                              from (select * from m order by created_at desc, id desc limit $2 offset $3) u), '[]'))"
+        " order by u.is_admin desc, u.created_at desc, u.id desc)
+                              from (select * from m order by is_admin desc, created_at desc, id desc limit $2 offset $3) u), '[]'))"
     ))
     .bind(&q)
     .bind(PAGE)
@@ -154,5 +155,18 @@ mod tests {
         assert_eq!(status(disable(ids[1], false).await), StatusCode::OK);
         let disabled: bool = sqlx::query_scalar("select disabled_at is not null from users where id = $1").bind(ids[1]).fetch_one(&pool).await.unwrap();
         assert!(!disabled);
+
+        // admins first, then the newest sign-ups: boss and ann signed up together, cy a day before
+        sqlx::query(
+            "insert into users (username, email, display_name, password_hash, created_at)
+             values ('cy', 'cy@example.test', 'Cy', 'x', now() - interval '1 day')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let all = list(State(state.clone()), boss.clone(), Query(ListQuery { q: String::new(), offset: 0 })).await.ok().unwrap();
+        let body: Value = serde_json::from_slice(&axum::body::to_bytes(all.into_body(), 1 << 20).await.unwrap()).unwrap();
+        let names: Vec<&str> = body["users"].as_array().unwrap().iter().map(|u| u["username"].as_str().unwrap()).collect();
+        assert_eq!(names, ["boss", "ann", "cy"]);
     }
 }

@@ -214,11 +214,12 @@ pub async fn registration_open(pool: &PgPool) -> Result<bool, sqlx::Error> {
     Ok(open.flatten().unwrap_or(true))
 }
 
-/// The account's live sessions, newest first; `current` marks the one making the request.
+/// The account's live sessions: the one making the request first (`current`), then newest first.
 pub async fn sessions_json(pool: &PgPool, user_id: i64, current: Option<Vec<u8>>) -> Result<Value, sqlx::Error> {
     sqlx::query_scalar(
         "select coalesce(jsonb_agg(jsonb_build_object('id', id, 'created_at', created_at, 'expires_at', expires_at,
-                  'user_agent', user_agent, 'ip', ip, 'current', coalesce(token_hash = $2, false)) order by created_at desc), '[]')
+                  'user_agent', user_agent, 'ip', ip, 'current', coalesce(token_hash = $2, false))
+                  order by coalesce(token_hash = $2, false) desc, created_at desc, id desc), '[]')
          from sessions where user_id = $1 and expires_at > now()",
     )
     .bind(user_id)
@@ -1010,6 +1011,8 @@ mod tests {
         .fetch_all(&pool)
         .await
         .unwrap();
+        // this device signed in before the other one, and is still listed first
+        sqlx::query("update sessions set created_at = now() - interval '1 hour' where id = $1").bind(ids[0]).execute(&pool).await.unwrap();
         let state = test_state(pool.clone());
         let mut a = HeaderMap::new();
         a.insert(header::COOKIE, "session=tok-a".parse().unwrap());
@@ -1017,8 +1020,7 @@ mod tests {
         let res = list_sessions(State(state.clone()), a.clone()).await.ok().unwrap();
         let body: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), 1 << 20).await.unwrap()).unwrap();
         let current: Vec<bool> = body["sessions"].as_array().unwrap().iter().map(|s| s["current"].as_bool().unwrap()).collect();
-        assert_eq!(current.len(), 2);
-        assert_eq!(current.iter().filter(|c| **c).count(), 1);
+        assert_eq!(current, [true, false]);
 
         // b's session is left alone; a's other one goes
         remove_session(State(state.clone()), a.clone(), Path(ids[2])).await.ok().unwrap();
