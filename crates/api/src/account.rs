@@ -622,16 +622,23 @@ async fn add_views(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): 
     .execute(&s.pool)
     .await?;
     if ids.len() > 1 || getrandom::u32().is_ok_and(|r| r % TRIM_VIEWS_ONE_IN == 0) {
-        sqlx::query(
-            "delete from item_views where user_id = $1 and item_id not in
-             (select item_id from item_views where user_id = $1 order by viewed_at desc limit $2)",
-        )
-        .bind(u.id)
-        .bind(MAX_VIEWS)
-        .execute(&s.pool)
-        .await?;
+        trim_views(&s.pool, u.id).await?;
     }
     Ok(Json(json!({ "ok": true })).into_response())
+}
+
+/// Deletes the views older than the account's newest `MAX_VIEWS`. Compared by time, not by id: a view a concurrent
+/// open moves up is checked again with its new time and kept, so the cap can only be exceeded, never undercut.
+async fn trim_views(pool: &PgPool, user_id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "delete from item_views where user_id = $1 and viewed_at <
+         (select viewed_at from item_views where user_id = $1 order by viewed_at desc offset $2 limit 1)",
+    )
+    .bind(user_id)
+    .bind(MAX_VIEWS - 1)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn clear_views(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
@@ -1008,6 +1015,53 @@ mod tests {
         let ids: Vec<i64> = serde_json::from_value(serde_json::from_slice::<Value>(&body).unwrap()["ids"].take()).unwrap();
         assert_eq!(ids.len(), 500);
         assert_eq!(ids[..2], [1, 501]);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn a_view_moved_up_while_trimming_is_kept(pool: PgPool) {
+        let user: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', 'x') returning id")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        // item n viewed n seconds past a fixed time: item 1 is the one past the cap
+        sqlx::query(
+            "with i as (insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+                        select g, 't', 'c', 'https://example.test', false, 'ok', now() from generate_series(1, 501) g returning id)
+             insert into item_views (user_id, item_id, viewed_at) select $1, id, to_timestamp(1700000000 + id) from i",
+        )
+        .bind(user)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // another device opens item 1 again, on its own connection; its write is not committed yet when the trim starts
+        let mut conn = <sqlx::PgConnection as sqlx::Connection>::connect_with(&pool.connect_options()).await.unwrap();
+        let mut open = sqlx::Connection::begin(&mut conn).await.unwrap();
+        sqlx::query("update item_views set viewed_at = now() where user_id = $1 and item_id = 1").bind(user).execute(&mut *open).await.unwrap();
+        let trim = tokio::spawn({
+            let pool = pool.clone();
+            async move { trim_views(&pool, user).await }
+        });
+        // the trim waits for item 1's row
+        for _ in 0..250 {
+            if sqlx::query_scalar("select exists (select 1 from pg_locks where not granted)").fetch_one(&mut *open).await.unwrap() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(!trim.is_finished(), "the trim must have waited for the open");
+        open.commit().await.unwrap();
+        trim.await.unwrap().unwrap();
+
+        let newest: i64 = sqlx::query_scalar("select item_id from item_views where user_id = $1 order by viewed_at desc limit 1")
+            .bind(user)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(newest, 1, "the item just opened again must not be trimmed");
+        let count: i64 = sqlx::query_scalar("select count(*) from item_views where user_id = $1").bind(user).fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 501, "the cap is only ever exceeded until the next trim");
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
