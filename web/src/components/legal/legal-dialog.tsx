@@ -3,7 +3,7 @@
 // consent line), so nothing is left behind: Astryx block Dialog — Scrolling content
 // (templates/blocks/components/Dialog/DialogScrollingContent.tsx) without its footer, as the texts ask for no
 // answer; the "Last updated" line is the header's subtitle (block DialogWithSubtitle). The body is the page's
-// (legal-screen.tsx), rendered on the server (legal-action.ts) once per text and language. The links keep their
+// (legal-body.tsx), its data fetched from the server (legal-action.ts) once per text and language. The links keep their
 // href, so a modified click still opens /privacy or /terms in a new tab; the terms' link to the privacy policy
 // switches the dialog instead of leaving.
 
@@ -19,10 +19,9 @@ import {
 } from "react";
 import { useUi } from "@/components/providers";
 import { DIALOG_MAX_HEIGHT } from "@/lib/dialog-height";
-import type { LegalKind } from "@/lib/legal";
+import type { LegalView as Doc, LegalKind } from "@/lib/legal";
 import { loadLegal } from "./legal-action";
-
-type Doc = Awaited<ReturnType<typeof loadLegal>>;
+import { LegalBody } from "./legal-body";
 
 const docs = new Map<string, Promise<Doc>>();
 /** One request per text and language; a failed one opens the page instead. */
@@ -69,10 +68,10 @@ function Frame({
 }
 
 function Loaded({ doc, onClose }: { doc: Promise<Doc>; onClose: () => void }) {
-  const { title, updated, body } = use(doc);
+  const data = use(doc);
   return (
-    <Frame title={title} subtitle={updated} onClose={onClose}>
-      {body}
+    <Frame title={data.title} subtitle={data.updated} onClose={onClose}>
+      <LegalBody doc={data} />
     </Frame>
   );
 }

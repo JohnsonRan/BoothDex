@@ -1,6 +1,7 @@
 "use server";
-// The privacy policy's or the terms' body for the dialog (legal-dialog.tsx), rendered on the server as the pages
-// render it, so the texts and the operator's details stay out of the browser's bundle.
+// The privacy policy or the terms for the dialog (legal-dialog.tsx), as the data the pages render, so the texts
+// stay out of the browser's bundle. Data, not elements: elements would name client components that the calling
+// route's client manifest may not list, which only a production build enforces (React error #441).
 
 import type { LegalKind } from "@/lib/legal";
 import { legalDoc } from "./legal-screen";

@@ -30,6 +30,20 @@ export type LegalTexts = {
 
 export type LegalKind = "privacy" | "terms";
 
+/** One text as the browser gets it (legal-body.tsx): plain data, so a server action can return it. */
+export type LegalView = LegalDoc & {
+  /** the "Last updated" line */
+  updated: string;
+  /** what {operator}, {contact}, {source} and {privacy} stand for: the address without its link, the link's label */
+  fill: {
+    operator: string;
+    contact?: string;
+    noContact: string;
+    source: string;
+    privacy: string;
+  };
+};
+
 /** The day the texts last changed in substance; update it with them. */
 export const LEGAL_UPDATED = "2026-11-11";
 
