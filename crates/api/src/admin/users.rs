@@ -79,7 +79,8 @@ pub(super) struct Patch {
     disabled: bool,
 }
 
-/// Disabling signs the account out everywhere; enabling lets it sign in again with its old password.
+/// Disabling signs the account out everywhere; enabling lets it sign in again with its old password and lifts its
+/// sign-in lockout.
 pub(super) async fn patch(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>, Json(b): Json<Patch>) -> Result<Response, ApiError> {
     let who = require_admin(&s, &headers).await?;
     let mut tx = s.pool.begin().await?;
@@ -92,6 +93,9 @@ pub(super) async fn patch(State(s): State<Arc<AppState>>, headers: HeaderMap, Pa
     sqlx::query("update users set disabled_at = case when $2 then coalesce(disabled_at, now()) end where id = $1").bind(id).bind(b.disabled).execute(&mut *tx).await?;
     let revoked = if b.disabled { sqlx::query("delete from sessions where user_id = $1").bind(id).execute(&mut *tx).await?.rows_affected() } else { 0 };
     tx.commit().await?;
+    if !b.disabled {
+        s.throttle.clear(&username.to_lowercase());
+    }
     println!("admin {who} {} {username}", if b.disabled { "disabled" } else { "enabled" });
     Ok(Json(json!({ "ok": true, "sessions_revoked": revoked })).into_response())
 }
@@ -153,9 +157,18 @@ mod tests {
         assert_eq!(body["users"][0]["username"], "ann");
         assert!(body["users"][0]["disabled_at"].is_string());
 
+        // enabling and a password reset each lift a sign-in lockout
+        let lock = || while !state.throttle.fail("ann") {};
+        lock();
+        assert!(state.throttle.blocked("ann"));
         assert_eq!(status(disable(ids[1], false).await), StatusCode::OK);
         let disabled: bool = sqlx::query_scalar("select disabled_at is not null from users where id = $1").bind(ids[1]).fetch_one(&pool).await.unwrap();
         assert!(!disabled);
+        assert!(!state.throttle.blocked("ann"));
+        lock();
+        let reset = crate::admin::reset_password(State(state.clone()), boss.clone(), Json(crate::admin::ResetPassword { username: "ANN".into() }));
+        assert_eq!(status(reset.await), StatusCode::OK);
+        assert!(!state.throttle.blocked("ann"));
 
         // admins first, then the newest sign-ups: boss and ann signed up together, cy a day before
         sqlx::query(

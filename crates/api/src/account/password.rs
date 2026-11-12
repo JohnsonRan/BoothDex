@@ -12,29 +12,32 @@ use crate::{ApiError, AppState};
 pub(super) const MAX_FAILURES: u32 = 10;
 const LOCKOUT: Duration = Duration::from_secs(15 * 60);
 
-/// Failed logins per lowercased login name: (count, window start)
+/// Failed password checks per account (its lowercased username), or per typed name when no account matches: every
+/// refusal calls `fail`, so known and unknown names do the same work. (count, window start)
 #[derive(Default)]
 pub struct LoginThrottle(Mutex<HashMap<String, (u32, Instant)>>);
 
 impl LoginThrottle {
-    pub(super) fn blocked(&self, key: &str) -> bool {
+    pub(crate) fn blocked(&self, key: &str) -> bool {
         self.blocked_at(key, Instant::now())
     }
     fn blocked_at(&self, key: &str, now: Instant) -> bool {
         let map = self.0.lock().unwrap();
         map.get(key).is_some_and(|(n, t)| *n >= MAX_FAILURES && now.duration_since(*t) < LOCKOUT)
     }
-    pub(super) fn fail(&self, key: &str) {
-        self.fail_at(key, Instant::now());
+    /// True when this failure locks the key: once per window, at exactly `MAX_FAILURES`.
+    pub(crate) fn fail(&self, key: &str) -> bool {
+        self.fail_at(key, Instant::now())
     }
-    fn fail_at(&self, key: &str, now: Instant) {
+    fn fail_at(&self, key: &str, now: Instant) -> bool {
         let mut map = self.0.lock().unwrap();
         // Keep every active window: evicting one would reset its login lockout.
         map.retain(|_, (_, start)| now.duration_since(*start) < LOCKOUT);
         let e = map.entry(key.to_owned()).or_insert((0, now));
         e.0 += 1;
+        e.0 == MAX_FAILURES
     }
-    pub(super) fn clear(&self, key: &str) {
+    pub(crate) fn clear(&self, key: &str) {
         self.0.lock().unwrap().remove(key);
     }
 }
@@ -72,15 +75,35 @@ pub(super) async fn check_own_password(s: &AppState, ip: IpAddr, user_id: i64, p
     let (username, hash): (String, String) =
         sqlx::query_as("select username, password_hash from users where id = $1").bind(user_id).fetch_one(&s.pool).await?;
     let key = username.to_lowercase();
+    // its 429 is visible: the caller is signed in to this account
     if s.throttle.blocked(&key) {
         return Err(Refusal::TooManyAttempts.into());
     }
     if !verify_password(password, hash).await? {
-        s.throttle.fail(&key);
+        let locked_now = s.throttle.fail(&key);
+        log_failure("password check failed", Some(&key), ip, locked_now);
         return Err(wrong.into());
     }
     s.throttle.clear(&key);
     Ok(())
+}
+
+/// One sign-in log line on stdout: `{event}: {who} from {ip}`. `account` is the lowercased username from the
+/// database; no caller passes the typed name, because a member may type a password into the name field.
+pub(super) fn log_attempt(event: &str, account: Option<&str>, ip: IpAddr) {
+    println!("{event}: {} from {ip}", who(account));
+}
+
+/// A refused password check; `locked_now` comes from `LoginThrottle::fail` and adds a warning on stderr.
+pub(super) fn log_failure(event: &str, account: Option<&str>, ip: IpAddr, locked_now: bool) {
+    log_attempt(event, account, ip);
+    if locked_now {
+        eprintln!("warn: sign-in locked: {} after {MAX_FAILURES} failed password checks, the last from {ip}", who(account));
+    }
+}
+
+fn who(account: Option<&str>) -> String {
+    account.map_or_else(|| "unknown account".to_owned(), |a| format!("account {a}"))
 }
 
 /// Hash used to equalise login timing for unknown users.
@@ -104,11 +127,12 @@ mod tests {
     #[test]
     fn throttle_blocks_after_limit() {
         let t = LoginThrottle::default();
-        for _ in 0..MAX_FAILURES {
+        for n in 1..=MAX_FAILURES {
             assert!(!t.blocked("x"));
-            t.fail("x");
+            assert_eq!(t.fail("x"), n == MAX_FAILURES);
         }
         assert!(t.blocked("x"));
+        assert!(!t.fail("x"));
         t.clear("x");
         assert!(!t.blocked("x"));
     }

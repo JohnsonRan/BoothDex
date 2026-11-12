@@ -195,7 +195,7 @@ mod tests {
     }
 
     /// An answer as a client reads it: its status and its JSON body.
-    async fn answer(r: Result<Response, ApiError>) -> (StatusCode, Value) {
+    pub(super) async fn answer(r: Result<Response, ApiError>) -> (StatusCode, Value) {
         let r = r.into_response();
         let status = r.status();
         (status, serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap())
@@ -215,7 +215,7 @@ mod tests {
         for _ in 0..MAX_FAILURES {
             state.throttle.fail("locked");
         }
-        assert_eq!(answer(sign_in("locked").await).await, refused(StatusCode::TOO_MANY_REQUESTS, "too_many_attempts", "Too many attempts. Try again later."));
+        assert_eq!(answer(sign_in("locked").await).await, refused(StatusCode::UNAUTHORIZED, "bad_credentials", "Incorrect username or password."));
 
         // a sign-up form, from an address of its own: one address has five attempts
         let sign_up = |display_name: &str, username: &str, email: &str, password: &str| {

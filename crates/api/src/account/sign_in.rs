@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::json;
 use sqlx::PgPool;
 
-use super::password::{hash_password, valid_password, verify_password};
+use super::password::{hash_password, log_attempt, log_failure, valid_password, verify_password};
 use super::session::start_session;
 use crate::error::Refusal;
 use crate::{ApiError, AppState};
@@ -110,33 +110,41 @@ pub(crate) async fn login(
     if !valid_login(&b.login) {
         return Err(Refusal::BadCredentials.into());
     }
-    let key = b.login.trim().to_lowercase();
-    if s.throttle.blocked(&key) {
-        return Err(Refusal::TooManyAttempts.into());
-    }
-    let row: Option<(i64, String, bool)> =
-        sqlx::query_as("select id, password_hash, disabled_at is not null from users where lower(username) = $1 or lower(email) = $1")
-            .bind(&key)
+    let typed = b.login.trim().to_lowercase();
+    let row: Option<(i64, String, String, bool)> =
+        sqlx::query_as("select id, username, password_hash, disabled_at is not null from users where lower(username) = $1 or lower(email) = $1")
+            .bind(&typed)
             .fetch_optional(&s.pool)
             .await?;
+    let username = row.as_ref().map(|(_, u, _, _)| u.to_lowercase());
+    let account = username.as_deref();
+    // one budget per account, whichever name was typed; an unknown name counts under the typed text, never logged
+    let key = username.clone().unwrap_or(typed);
+    let locked = s.throttle.blocked(&key);
     // verify against a dummy hash when the user is unknown, so timing doesn't reveal which logins exist
-    let (id, hash, disabled) = row.unwrap_or((0, s.dummy_hash.clone(), false));
-    if !verify_password(b.password, hash.clone()).await? || id == 0 {
-        s.throttle.fail(&key);
+    let (id, _, hash, disabled) = row.unwrap_or((0, String::new(), s.dummy_hash.clone(), false));
+    let ok = verify_password(b.password, hash.clone()).await?;
+    // locked: answered and worked exactly as a wrong password
+    if locked || !ok || id == 0 {
+        let locked_now = s.throttle.fail(&key);
+        log_failure(if locked { "sign-in failed (locked)" } else { "sign-in failed" }, account, ip, locked_now);
         return Err(Refusal::BadCredentials.into());
     }
     s.throttle.clear(&key);
     // said only to someone who knows the password
     if disabled {
+        log_attempt("sign-in refused (disabled)", account, ip);
         return Err(Refusal::AccountDisabled.into());
     }
     let cookie = match start_session(&s.pool, id, b.keep, &headers, Some(&hash)).await? {
         Some(c) => c,
         None => {
-            s.throttle.fail(&key);
+            let locked_now = s.throttle.fail(&key);
+            log_failure("sign-in failed (changed during sign-in)", account, ip, locked_now);
             return Err(Refusal::BadCredentials.into());
         }
     };
+    log_attempt("sign-in ok", account, ip);
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({ "ok": true }))).into_response())
 }
 
@@ -150,6 +158,7 @@ mod tests {
 
     use super::*;
     use crate::account::test_state;
+    use crate::account::tests::answer;
 
     #[test]
     fn validators() {
@@ -188,5 +197,42 @@ mod tests {
         assert!(!registration_open(&pool).await.unwrap());
         assert_eq!(status(sign_up("bob").await), StatusCode::FORBIDDEN);
         assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from users").fetch_one(&pool).await.unwrap(), 1);
+    }
+
+    /// Failures by the username and by the email share one budget per account, and a locked account answers like a
+    /// wrong password. Bulk failures are seeded with `fail`, which skips Argon2 and the log.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn failed_sign_ins_count_against_the_account_and_stay_hidden(pool: PgPool) {
+        sqlx::query("insert into users (username, email, display_name, password_hash) values ('Ann', 'ann@example.test', 'Ann', $1)")
+            .bind(hash_password("0123456789".into()).await.ok().unwrap())
+            .execute(&pool)
+            .await
+            .unwrap();
+        let state = test_state(pool.clone());
+        let sign_in = |i: u8, name: &str, password: &str| {
+            let form = Login { login: name.into(), password: password.into(), keep: false };
+            login(State(state.clone()), crate::limit::ClientIp([198, 51, 100, i].into()), HeaderMap::new(), Json(form))
+        };
+        let seed = |key: &str, n: u32| (0..n).for_each(|_| _ = state.throttle.fail(key));
+        let ok = (StatusCode::OK, json!({ "ok": true }));
+        let wrong = (StatusCode::UNAUTHORIZED, json!({ "ok": false, "code": "bad_credentials", "error": "Incorrect username or password." }));
+
+        seed("ann", 9);
+        assert_eq!(answer(sign_in(1, " ANN@example.test ", "0123456789").await).await, ok);
+        assert_eq!(answer(sign_in(2, "ann", "wrong-password").await).await, wrong);
+        assert_eq!(answer(sign_in(3, "ann", "0123456789").await).await, ok);
+
+        seed("ann", 8);
+        assert_eq!(answer(sign_in(4, "Ann", "wrong-password").await).await, wrong);
+        assert_eq!(answer(sign_in(5, "ann@example.test", "wrong-password").await).await, wrong);
+        assert!(state.throttle.blocked("ann"));
+        assert_eq!(answer(sign_in(6, "ann", "0123456789").await).await, wrong);
+        assert_eq!(answer(sign_in(7, "ann@example.test", "0123456789").await).await, wrong);
+        assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from sessions").fetch_one(&pool).await.unwrap(), 2);
+
+        // the 10th failure of a name no account has, which may hold a password: the log must not show it
+        seed("hunter2-secret", 9);
+        assert_eq!(answer(sign_in(8, "hunter2-secret", "wrong-password").await).await, wrong);
     }
 }

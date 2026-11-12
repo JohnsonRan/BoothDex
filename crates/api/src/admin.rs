@@ -419,8 +419,8 @@ fn random_password() -> anyhow::Result<String> {
     Ok(raw.iter().map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char).collect())
 }
 
-/// Sets a random password for a user and signs them out everywhere. The password is returned once, to the admin,
-/// who passes it on; it is never stored in plain text.
+/// Sets a random password for a user, signs them out everywhere and lifts their sign-in lockout. The password is
+/// returned once, to the admin, who passes it on; it is never stored in plain text.
 async fn reset_password(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<ResetPassword>) -> Result<Response, ApiError> {
     let who = require_admin(&s, &headers).await?;
     let password = random_password()?;
@@ -434,6 +434,7 @@ async fn reset_password(State(s): State<Arc<AppState>>, headers: HeaderMap, Json
     let Some((id, username)) = user else { return Err(Refusal::NoSuchUser.into()) };
     let sessions = sqlx::query("delete from sessions where user_id = $1").bind(id).execute(&mut *tx).await?.rows_affected();
     tx.commit().await?;
+    s.throttle.clear(&username.to_lowercase());
     println!("admin {who} reset the password of {username}");
     Ok(Json(json!({ "username": username, "password": password, "sessions_revoked": sessions })).into_response())
 }
