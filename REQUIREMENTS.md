@@ -108,12 +108,12 @@ tagged rule marked as not applying needs the owner's approval, quoted in the com
 | AGENTS.md: Change risk | | `REVIEW.md`, "Scope" | |
 | AGENTS.md: Workflow | | `REVIEW.md`, "Pass bar" | |
 | AGENTS.md: When unsure | | `REVIEW.md`, "Scope" | |
-| AGENTS.md: Waiting | | | |
-| AGENTS.md: Reporting | | | |
+| AGENTS.md: Waiting | | `REVIEW.md`, "The writer's report", Waiting | |
+| AGENTS.md: Reporting | | `REVIEW.md`, "The writer's report", Reporting | |
 | AGENTS.md: Code quality | `cargo clippy --workspace --all-targets -- -D warnings`; in `web/`: `bunx biome check` | `REVIEW.md`, "Pass bar" | |
 | AGENTS.md: Impact and edge cases | | `REVIEW.md`, "Checking against the rules", Newly reachable defects | |
 | AGENTS.md: Secrets | | `REVIEW.md`, "Checking against the rules", Sensitive data | |
-| AGENTS.md: Performance baseline | | | |
+| AGENTS.md: Performance baseline | | `REVIEW.md`, "Checking against the rules", Performance | |
 | AGENTS.md: Tests (if present) | | `REVIEW.md`, "CI, docs and commits", CI | |
 | AGENTS.md: Merging | | `REVIEW.md`, "Report", verdict rule | |
 | AGENTS.md: Model usage | | `REVIEW.md`, "Before you start" | |
@@ -176,9 +176,6 @@ body.
 | Row | Current state | Plan | Due |
 | --- | --- | --- | --- |
 | Numbers: Page frame width; readable column width | widths are set per component; no shared value | measure the frames and set one width per kind of page | 2026-12-31 |
-| Enforcement: AGENTS.md: Waiting | the owner reads the agent's report; no `REVIEW.md` section covers it | the owner decides how it is checked | 2026-12-31 |
-| Enforcement: AGENTS.md: Reporting | the owner reads the agent's report; no `REVIEW.md` section covers it | the owner decides how it is checked | 2026-12-31 |
-| Enforcement: AGENTS.md: Performance baseline | `scripts/bench/run.sh` measures; nothing compares a change with the baseline | the owner decides between a review item and a gate | 2026-12-31 |
 
 ## Deferred options
 
