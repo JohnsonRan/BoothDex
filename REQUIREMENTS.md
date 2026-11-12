@@ -1,6 +1,6 @@
 # REQUIREMENTS.md: numbers, gates and exceptions
 
-Commands, numbers, gates and exceptions for this repository. The rules themselves are in `AGENTS.md`,
+Commands, numbers, gates and exceptions for this repository, and its deferred options and open questions. The rules themselves are in `AGENTS.md`,
 `.github/AGENTS.md`, `web/AGENTS.md` and `crates/AGENTS.md` and are not repeated here. When another
 file in this repository disagrees with this one on a command, a number, a gate or an exception, this
 file wins.
@@ -185,6 +185,26 @@ body.
 | Enforcement: AGENTS.md: Waiting | the owner reads the agent's report; no `REVIEW.md` section covers it | the owner decides how it is checked | 2026-12-31 |
 | Enforcement: AGENTS.md: Reporting | the owner reads the agent's report; no `REVIEW.md` section covers it | the owner decides how it is checked | 2026-12-31 |
 | Enforcement: AGENTS.md: Performance baseline | `scripts/bench/run.sh` measures; nothing compares a change with the baseline | the owner decides between a review item and a gate | 2026-12-31 |
+
+## Deferred options
+
+Options and findings set aside, with their source and the reason they wait. The owner decides from this list
+after a release.
+
+| Option | Source | Why it waits |
+| --- | --- | --- |
+| Move install and the shortest use in the three READMEs above "Capabilities", which runs for about 95 lines first | `AGENTS.md`, "Writing", README; review of 3045384 (2026-11-12) | rewriting the project page in three languages is a copy decision |
+| Re-sign the 15 unsigned commits from ed15fcf to a007c85 (2026-10-31 to 2026-11-05) | `AGENTS.md`, "Commits and pull requests"; review of 3045384 (2026-11-12) | it rewrites published history |
+
+## Open questions
+
+Questions no rule settles, for the owner. They are asked together at a stopping point; a ruling moves the item
+to the file it decides.
+
+| Question | Source | Raised |
+| --- | --- | --- |
+| The release tier has no release-only checks (a reproducible build, migrations on a copy of production data, a deploy rehearsal) and does not re-run a planted violation for each gate command. Add them, or record why the project does without? | `.github/AGENTS.md`, "Tiers, jobs and gates" | 2026-11-12 |
+| `scripts/check-requirements.py` (314 lines) and `scripts/test_check_requirements.py` (346 lines) are above the p90 file size (274 lines) with no reason given. Do they stay identical to the rules kit's copies, which would be that reason? | `REVIEW.md`, "Pass bar"; review of 3045384 | 2026-11-12 |
 
 ## Example (illustrative values; measure your own)
 
