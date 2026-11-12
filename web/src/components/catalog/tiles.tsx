@@ -8,7 +8,7 @@ import { memo, useEffect } from "react";
 import { keepTiles } from "@/components/item/item-cache";
 import { ItemTile, type Tile } from "./item-tile";
 
-// a tile renders again only when its own data changes: a page drawn a few tiles a frame (result-pages.tsx
+// a tile renders again only when its own data changes: a page drawn a few tiles a frame (page-tiles.tsx
 // PageTiles), or any change to the pages, would otherwise render every tile already drawn, again, each time
 const Item = memo(ItemTile);
 
