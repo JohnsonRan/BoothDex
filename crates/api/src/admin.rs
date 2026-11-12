@@ -530,4 +530,55 @@ mod tests {
         assert_ne!(a, b);
         assert!(a.chars().all(|c| c.is_ascii_alphanumeric() && !"0O1lI".contains(c)));
     }
+
+    /// What the console refuses a visitor, and its job buttons and forms, with: the status and the message.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn console_refusals_keep_their_status_and_message(pool: sqlx::PgPool) {
+        use super::*;
+
+        async fn refusal(r: Result<Response, ApiError>) -> (u16, String) {
+            let r = r.into_response();
+            let status = r.status().as_u16();
+            let body: Value = serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap();
+            (status, body["error"].as_str().unwrap().to_owned())
+        }
+
+        let boss: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash, is_admin) values ('boss', 'boss@example.test', 'Boss', 'x', true) returning id")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+            .bind(account::token_hash("tok-boss"))
+            .bind(boss)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let state = account::test_state(pool);
+        let mut headers = HeaderMap::new();
+        headers.insert(axum::http::header::COOKIE, "session=tok-boss".parse().unwrap());
+        let job = |kind: &str| create_job(State(state.clone()), headers.clone(), Json(NewJob { kind: kind.into(), params: Value::Null }));
+        let schedule = |kind: &str, interval_minutes: Option<i32>| {
+            update_schedule(State(state.clone()), headers.clone(), Path(kind.into()), Json(ScheduleUpdate { enabled: None, interval_minutes, params: None }))
+        };
+
+        // without a session, in the JSON shape of every refusal
+        let visitor = overview(State(state.clone()), HeaderMap::new()).await.into_response();
+        assert_eq!(visitor.status().as_u16(), 401);
+        let body: Value = serde_json::from_slice(&axum::body::to_bytes(visitor.into_body(), 1 << 20).await.unwrap()).unwrap();
+        assert_eq!(body, json!({ "ok": false, "error": "Sign in required" }));
+
+        assert_eq!(refusal(get_job(State(state.clone()), headers.clone(), Path(0)).await).await, (404, "No such job".into()));
+        assert_eq!(refusal(job("x").await).await, (400, "Unknown kind or invalid params".into()));
+        assert!(job("refresh").await.is_ok());
+        assert_eq!(refusal(job("refresh").await).await, (409, "A job of this kind is already queued or running".into()));
+        assert_eq!(refusal(cancel_job(State(state.clone()), headers.clone(), Path(0)).await).await, (409, "Job is not queued or running".into()));
+        assert_eq!(refusal(schedule("nope", None).await).await, (404, "No such schedule".into()));
+        assert_eq!(refusal(schedule("refresh", Some(1)).await).await, (400, "Interval must be 5–10080 minutes; params must be an object".into()));
+        let ai = AiSettings { base_url: Some("ftp://example.test".into()), model: None, api_key: None, reasoning_effort: None, embed_model: None };
+        assert_eq!(
+            refusal(put_ai(State(state.clone()), headers.clone(), Json(ai)).await).await,
+            (400, "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars; reasoning effort: none, minimal, low, medium, high or xhigh".into())
+        );
+    }
 }

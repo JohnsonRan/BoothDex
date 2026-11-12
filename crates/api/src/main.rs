@@ -740,4 +740,27 @@ mod tests {
         }
         assert_eq!(status(http.post(&url).header("x-forwarded-for", "203.0.113.5")).await, 200);
     }
+
+    /// What a client reads without a session, and when the API itself fails: the status and the JSON body.
+    #[tokio::test]
+    async fn missing_sessions_and_failures_keep_their_status_and_body() {
+        use axum::extract::{RawQuery, State};
+        use axum::http::{HeaderMap, StatusCode};
+        use axum::response::IntoResponse;
+        use serde_json::{Value, json};
+
+        async fn answer(r: impl IntoResponse) -> (StatusCode, Value) {
+            let r = r.into_response();
+            let status = r.status();
+            (status, serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap())
+        }
+
+        let ip = super::limit::ClientIp("203.0.113.60".parse().unwrap());
+        let favourites = super::search::search(State(test_state()), ip, HeaderMap::new(), RawQuery(Some("v=favourites".into()))).await;
+        assert_eq!(answer(favourites).await, (StatusCode::UNAUTHORIZED, json!({ "ok": false, "error": "Sign in required" })));
+
+        // the cause goes to the log, never to the caller
+        let failure: super::ApiError = std::io::Error::other("the cause").into();
+        assert_eq!(answer(failure).await, (StatusCode::INTERNAL_SERVER_ERROR, json!({ "ok": false, "error": "internal error" })));
+    }
 }

@@ -1378,4 +1378,62 @@ mod tests {
         let left: Vec<i64> = sqlx::query_scalar("select id from sessions order by id").fetch_all(&pool).await.unwrap();
         assert_eq!(left, [ids[0], ids[2]]);
     }
+
+    /// An answer as a client reads it: its status and its JSON body.
+    async fn answer(r: Result<Response, ApiError>) -> (StatusCode, Value) {
+        let r = r.into_response();
+        let status = r.status();
+        (status, serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap())
+    }
+
+    /// The site and other clients read a refusal's status and its `error` text (web lib/messages.ts matches the text).
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn refusals_keep_their_status_and_message(pool: PgPool) {
+        signed_in(&pool).await;
+        let state = test_state(pool.clone());
+        let ip = crate::limit::ClientIp([203, 0, 113, 20].into());
+        let refused = |status: StatusCode, message: &str| (status, json!({ "ok": false, "error": message }));
+        let sign_in = |name: &str| login(State(state.clone()), ip, HeaderMap::new(), Json(Login { login: name.into(), password: "0123456789".into(), keep: false }));
+
+        assert_eq!(answer(sign_in("nobody").await).await, refused(StatusCode::UNAUTHORIZED, "Incorrect username or password."));
+        for _ in 0..MAX_FAILURES {
+            state.throttle.fail("locked");
+        }
+        assert_eq!(answer(sign_in("locked").await).await, refused(StatusCode::TOO_MANY_REQUESTS, "Too many attempts. Try again later."));
+
+        // a sign-up form, from an address of its own: one address has five attempts
+        let sign_up = |display_name: &str, username: &str, email: &str, password: &str| {
+            let form = Register { display_name: display_name.into(), username: username.into(), email: email.into(), password: password.into(), keep: false };
+            register(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 21].into()), HeaderMap::new(), Json(form))
+        };
+        let bad = |message: &str| refused(StatusCode::BAD_REQUEST, message);
+        assert_eq!(answer(sign_up(" ", "ann", "ann@example.test", "0123456789").await).await, bad("Display name is required."));
+        assert_eq!(answer(sign_up("Ann", "an", "ann@example.test", "0123456789").await).await, bad("Username must be 3-24 letters, digits or underscores."));
+        assert_eq!(answer(sign_up("Ann", "ann", "ann", "0123456789").await).await, bad("Invalid email."));
+        assert_eq!(answer(sign_up("Ann", "ann", "ann@example.test", "short").await).await, bad("Your password must be at least 10 characters."));
+        // account 'a' has this email
+        assert_eq!(
+            answer(sign_up("Ann", "ann", "a@example.test", "0123456789").await).await,
+            refused(StatusCode::CONFLICT, "Username or email is already taken.")
+        );
+
+        let delete = delete_account(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 22].into()), headers(), Json(DeleteAccount { password: "x".into() }));
+        assert_eq!(answer(delete.await).await, refused(StatusCode::FORBIDDEN, "Password is incorrect."));
+
+        sqlx::query("insert into saved_searches (user_id, name, query) select u.id, 'n', 'q=' || g from users u, generate_series(1, $1) g")
+            .bind(MAX_SAVED_SEARCHES)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let one_more = add_search(State(state.clone()), headers(), Json(NewSearch { name: "n".into(), query: "q=x".into() }));
+        assert_eq!(answer(one_more.await).await, refused(StatusCode::CONFLICT, "Saved search limit reached."));
+
+        assert_eq!(answer(list_favourites(State(state.clone()), HeaderMap::new()).await).await, refused(StatusCode::UNAUTHORIZED, "Sign in required"));
+        assert_eq!(answer(add_favourite(State(state.clone()), headers(), Path(999)).await).await, refused(StatusCode::NOT_FOUND, "Unknown item."));
+        assert_eq!(
+            answer(put_preferences(State(state.clone()), headers(), Json(json!({ "evil": "x" }))).await).await,
+            refused(StatusCode::BAD_REQUEST, "unknown preference")
+        );
+    }
 }
