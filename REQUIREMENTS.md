@@ -130,6 +130,7 @@ after a release.
 
 | Option | Source | Why it waits |
 | --- | --- | --- |
+| Serve the share image under a content-hashed, long-cached URL; `/og.png` is served `public, max-age=0, must-revalidate`, while the old `/opengraph-image?<hash>` was hashed | review of PR #14 | the image changes only when `web/src/app/og.png/route.tsx` changes; a hash needs its own change to the route path and `SHARE_IMAGE` in `web/src/lib/seo.ts` |
 
 ## Open questions
 

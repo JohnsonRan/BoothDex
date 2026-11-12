@@ -1,15 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
+import { SHARE_IMAGE } from "@/lib/seo";
 
-// The link preview's picture (og:image, and twitter:image through Next's fallback), drawn once at build time: the
-// mark and name, what the site holds, its search box and its main categories.
+// The home page's link preview picture (SHARE_IMAGE in lib/seo.ts), drawn once at build time: the mark and name,
+// what the site holds, its search box and its main categories.
+// It is a route, not the opengraph-image convention: Next resolves that file against the root layout, which has
+// no metadataBase because SITE_URL is read per request, so every page but the home page linked it on localhost.
 // next/og lays out plain elements with inline styles only, so this file cannot use Astryx components or tokens:
 // the colours below are neutral's, named after their tokens.
-
-export const alt = "BoothDex — VRChat assets, avatars and clothing on BOOTH";
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
 
 // the site's typeface (layout.tsx); next/og reads WOFF but not WOFF2, which next/font serves
 const font = (weight: 500 | 700) =>
@@ -38,7 +37,7 @@ const CATEGORIES = [
   ["Tools", "#4fb1a0"],
 ] as const;
 
-export default function Image() {
+export function GET() {
   return new ImageResponse(
     <div
       style={{
@@ -55,7 +54,7 @@ export default function Image() {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
-        {/* the BoothDex mark, as components/frame/logo.tsx; the picture's text is `alt` */}
+        {/* the BoothDex mark, as components/frame/logo.tsx; the picture's text is SHARE_IMAGE.alt */}
         <svg
           viewBox="0 0 32 32"
           width={104}
@@ -146,7 +145,8 @@ export default function Image() {
       </div>
     </div>,
     {
-      ...size,
+      width: SHARE_IMAGE.width,
+      height: SHARE_IMAGE.height,
       fonts: [
         { name: "Figtree", data: medium, weight: 500 },
         { name: "Figtree", data: bold, weight: 700 },

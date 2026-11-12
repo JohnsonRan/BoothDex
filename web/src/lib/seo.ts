@@ -1,5 +1,14 @@
 import type { Metadata } from "next";
 
+/** The link preview picture, drawn by app/og.png/route.tsx. */
+export const SHARE_IMAGE = {
+  url: "/og.png",
+  width: 1200,
+  height: 630,
+  type: "image/png",
+  alt: "BoothDex — VRChat assets, avatars and clothing on BOOTH",
+};
+
 let warnedMissingSiteUrl = false;
 let warnedInvalidSiteUrl = false;
 
@@ -60,9 +69,9 @@ export function homeMetadata(hasQuery: boolean): Metadata {
       siteName: "BoothDex",
       title,
       description,
-      ...(url && { url: url.href }),
+      ...(url && { url: url.href, images: [SHARE_IMAGE] }),
     },
-    // the picture is app/opengraph-image.tsx, which Next also gives twitter:image
+    // Next gives twitter:image the openGraph picture
     twitter: { card: "summary_large_image", title, description },
   };
 }
