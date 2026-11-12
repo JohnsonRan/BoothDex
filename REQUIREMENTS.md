@@ -136,9 +136,7 @@ tagged rule marked as not applying needs the owner's approval, quoted in the com
 | crates/AGENTS.md: Security (if present) | | `REVIEW.md`, "Checking against the rules", Authorization and Sensitive data | |
 | crates/AGENTS.md#authz | `cargo test --workspace -- --include-ignored` (`crates/api/src/admin/authz.rs`: every admin route answers 401 signed out and 403 to a member) | `REVIEW.md`, "Checking against the rules", Authorization | |
 | crates/AGENTS.md#sensitive-values | | `REVIEW.md`, "Checking against the rules", Sensitive data | |
-| crates/AGENTS.md: Money and state (if present) | | `REVIEW.md`, "Checking against the rules", Money and state (retried worker jobs and requests) | |
-| crates/AGENTS.md#money-idempotent | | | BoothDex moves no money; item prices are catalogue data |
-| crates/AGENTS.md#ledger | | | BoothDex keeps no ledger |
+| crates/AGENTS.md: Retries and concurrency | | `REVIEW.md`, "Checking against the rules", Retries and concurrency | |
 | crates/AGENTS.md: Background work (if present) | | `REVIEW.md`, "Checking against the rules" | |
 | crates/AGENTS.md: Operations (if present) | | `REVIEW.md`, "Checking against the rules"; restore rehearsal `scripts/test-restore.sh` | |
 | crates/AGENTS.md: Admin panel (if present) | | `REVIEW.md`, "Checking against the rules" | |

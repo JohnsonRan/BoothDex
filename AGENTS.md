@@ -44,7 +44,7 @@ settle a conflict, write it into the open-questions list and ask the owner.
 | `AGENTS.md` (this file) | every agent, loaded automatically | priority, hard limits, workflow, reporting, writing, commits |
 | `.github/AGENTS.md` | agents changing CI files | CI tiers and gate rules |
 | `web/AGENTS.md` | agents changing frontend files (loaded for files under `web/`) | layout, type, loading, i18n, accessibility |
-| `crates/AGENTS.md` | agents changing backend files (loaded for files under `crates/`) | security, money, data, operations |
+| `crates/AGENTS.md` | agents changing backend files (loaded for files under `crates/`) | security, data, operations |
 | `REVIEW.md` | reviewers; a review brief names it | how to review and report |
 | `REQUIREMENTS.md` | everyone | numbers, gates, exceptions, deferred options, open questions |
 

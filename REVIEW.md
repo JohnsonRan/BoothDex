@@ -121,10 +121,8 @@ rule. This section only says how to verify the rules a diff cannot show.
   - A shot of an error boundary or an empty state does not count.
 - **Copy and i18n.** Run the project's i18n check. Read every changed string in every locale.
 - **Accessibility.** Tab through the changed flow. Measure contrast with a tool.
-- **Money and state.**
-  - Reproduce against a real database, with repeated and concurrent requests and out-of-order
-    callbacks.
-  - A mock-only test never proves a money path.
+- **Retries and concurrency.** Reproduce against a real database, with repeated and concurrent
+  requests. A mock-only test never proves a retried path.
 - **Authorization.** Call each changed endpoint as the wrong role and from the wrong surface.
   Check that every route without an authorization check is marked public.
 - **Sensitive data.** Write a planted card number through each changed free-text path, then search
