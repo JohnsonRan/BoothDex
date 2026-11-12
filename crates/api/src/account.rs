@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use argon2::Argon2;
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
+use crate::error::Refusal;
 use crate::{ApiError, AppState};
 
 const COOKIE: &str = "session";
@@ -67,10 +68,6 @@ pub struct User {
     pub id: i64,
 }
 
-fn err(status: StatusCode, msg: &str) -> Response {
-    (status, Json(json!({ "ok": false, "error": msg }))).into_response()
-}
-
 pub(crate) fn token_hash(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
 }
@@ -97,8 +94,8 @@ pub async fn current_user(pool: &PgPool, headers: &HeaderMap) -> Result<Option<U
     Ok(id.map(|id| User { id }))
 }
 
-async fn require_user(s: &AppState, headers: &HeaderMap) -> Result<Result<User, Response>, ApiError> {
-    Ok(current_user(&s.pool, headers).await?.ok_or_else(|| err(StatusCode::UNAUTHORIZED, "Sign in required")))
+async fn require_user(s: &AppState, headers: &HeaderMap) -> Result<User, ApiError> {
+    Ok(current_user(&s.pool, headers).await?.ok_or(Refusal::SignInRequired)?)
 }
 
 static ARGON2_SEMAPHORE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
@@ -285,23 +282,21 @@ pub(crate) async fn register(
     headers: HeaderMap,
     Json(b): Json<Register>,
 ) -> Result<Response, ApiError> {
-    if let Err(r) = s.limits.auth.check(ip) {
-        return Ok(r.into_response());
-    }
+    s.limits.auth.check(ip)?;
     if !registration_open(&s.pool).await? {
-        return Ok(err(StatusCode::FORBIDDEN, "Registration is closed."));
+        return Err(Refusal::RegistrationClosed.into());
     }
     if !valid_display_name(&b.display_name) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Display name is required."));
+        return Err(Refusal::DisplayNameRequired.into());
     }
     if !valid_username(&b.username) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Username must be 3-24 letters, digits or underscores."));
+        return Err(Refusal::BadUsername.into());
     }
     if !valid_email(&b.email) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Invalid email."));
+        return Err(Refusal::BadEmail.into());
     }
     if !valid_password(&b.password) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Your password must be at least 10 characters."));
+        return Err(Refusal::PasswordTooShort.into());
     }
     let hash = hash_password(b.password).await?;
     // listed in ADMIN_USERNAMES: admin right away, not only after the next api restart
@@ -316,7 +311,7 @@ pub(crate) async fn register(
         .await
     {
         Ok(id) => id,
-        Err(e) if is_unique_violation(&e) => return Ok(err(StatusCode::CONFLICT, "Username or email is already taken.")),
+        Err(e) if is_unique_violation(&e) => return Err(Refusal::NameTaken.into()),
         Err(e) => return Err(e.into()),
     };
     let cookie = start_session(&s.pool, id, b.keep, &headers, None).await?.expect("session insert on register");
@@ -337,15 +332,13 @@ pub(crate) async fn login(
     headers: HeaderMap,
     Json(b): Json<Login>,
 ) -> Result<Response, ApiError> {
-    if let Err(r) = s.limits.auth.check(ip) {
-        return Ok(r.into_response());
-    }
+    s.limits.auth.check(ip)?;
     if !valid_login(&b.login) {
-        return Ok(err(StatusCode::UNAUTHORIZED, "Incorrect username or password."));
+        return Err(Refusal::BadCredentials.into());
     }
     let key = b.login.trim().to_lowercase();
     if s.throttle.blocked(&key) {
-        return Ok(err(StatusCode::TOO_MANY_REQUESTS, "Too many attempts. Try again later."));
+        return Err(Refusal::TooManyAttempts.into());
     }
     let row: Option<(i64, String, bool)> =
         sqlx::query_as("select id, password_hash, disabled_at is not null from users where lower(username) = $1 or lower(email) = $1")
@@ -356,18 +349,18 @@ pub(crate) async fn login(
     let (id, hash, disabled) = row.unwrap_or((0, s.dummy_hash.clone(), false));
     if !verify_password(b.password, hash.clone()).await? || id == 0 {
         s.throttle.fail(&key);
-        return Ok(err(StatusCode::UNAUTHORIZED, "Incorrect username or password."));
+        return Err(Refusal::BadCredentials.into());
     }
     s.throttle.clear(&key);
     // said only to someone who knows the password
     if disabled {
-        return Ok(err(StatusCode::FORBIDDEN, "This account is disabled."));
+        return Err(Refusal::AccountDisabled.into());
     }
     let cookie = match start_session(&s.pool, id, b.keep, &headers, Some(&hash)).await? {
         Some(c) => c,
         None => {
             s.throttle.fail(&key);
-            return Ok(err(StatusCode::UNAUTHORIZED, "Incorrect username or password."));
+            return Err(Refusal::BadCredentials.into());
         }
     };
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({ "ok": true }))).into_response())
@@ -385,19 +378,13 @@ async fn registration(State(s): State<Arc<AppState>>) -> Result<Response, ApiErr
 }
 
 async fn list_sessions(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     let current = cookie_token(&headers).map(|t| token_hash(&t));
     Ok(Json(json!({ "sessions": sessions_json(&s.pool, u.id, current).await? })).into_response())
 }
 
 async fn remove_session(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     sqlx::query("delete from sessions where id = $1 and user_id = $2").bind(id).bind(u.id).execute(&s.pool).await?;
     Ok(Json(json!({ "ok": true })).into_response())
 }
@@ -422,12 +409,9 @@ struct Profile {
 }
 
 async fn update_profile(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<Profile>) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     if b.display_name.as_deref().is_some_and(|n| !valid_display_name(n)) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Display name is required."));
+        return Err(Refusal::DisplayNameRequired.into());
     }
     sqlx::query("update users set display_name = coalesce($2, display_name) where id = $1")
         .bind(u.id)
@@ -446,22 +430,20 @@ struct ChangePassword {
 /// The signed-in account's own password, checked under the same limits as a sign-in: each check is an Argon2 hash
 /// drawn from the IP's `auth` bucket, and failures count against the username, so a session cookie alone can't be
 /// used to guess the password and take the account over.
-async fn check_own_password(s: &AppState, ip: IpAddr, user_id: i64, password: String, wrong: &str) -> Result<Result<(), Response>, ApiError> {
-    if let Err(r) = s.limits.auth.check(ip) {
-        return Ok(Err(r.into_response()));
-    }
+async fn check_own_password(s: &AppState, ip: IpAddr, user_id: i64, password: String, wrong: Refusal) -> Result<(), ApiError> {
+    s.limits.auth.check(ip)?;
     let (username, hash): (String, String) =
         sqlx::query_as("select username, password_hash from users where id = $1").bind(user_id).fetch_one(&s.pool).await?;
     let key = username.to_lowercase();
     if s.throttle.blocked(&key) {
-        return Ok(Err(err(StatusCode::TOO_MANY_REQUESTS, "Too many attempts. Try again later.")));
+        return Err(Refusal::TooManyAttempts.into());
     }
     if !verify_password(password, hash).await? {
         s.throttle.fail(&key);
-        return Ok(Err(err(StatusCode::FORBIDDEN, wrong)));
+        return Err(wrong.into());
     }
     s.throttle.clear(&key);
-    Ok(Ok(()))
+    Ok(())
 }
 
 async fn change_password(
@@ -470,19 +452,14 @@ async fn change_password(
     headers: HeaderMap,
     Json(b): Json<ChangePassword>,
 ) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     if !valid_password(&b.new) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Your password must be at least 10 characters."));
+        return Err(Refusal::PasswordTooShort.into());
     }
     if b.new == b.current {
-        return Ok(err(StatusCode::BAD_REQUEST, "Your new password must be different from your current password."));
+        return Err(Refusal::PasswordUnchanged.into());
     }
-    if let Err(r) = check_own_password(&s, ip, u.id, b.current, "Current password is incorrect.").await? {
-        return Ok(r);
-    }
+    check_own_password(&s, ip, u.id, b.current, Refusal::WrongCurrentPassword).await?;
     let new_hash = hash_password(b.new).await?;
     let mut tx = s.pool.begin().await?;
     sqlx::query("update users set password_hash = $2 where id = $1").bind(u.id).bind(new_hash).execute(&mut *tx).await?;
@@ -504,40 +481,29 @@ async fn delete_account(
     headers: HeaderMap,
     Json(b): Json<DeleteAccount>,
 ) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     // ADMIN_USERNAMES makes an account admin by its name: once deleted, whoever registered the name next would be one
     let is_admin: bool = sqlx::query_scalar("select is_admin from users where id = $1").bind(u.id).fetch_one(&s.pool).await?;
     if is_admin {
-        return Ok(err(StatusCode::CONFLICT, "Admins can't delete their account."));
+        return Err(Refusal::AdminCannotDelete.into());
     }
-    if let Err(r) = check_own_password(&s, ip, u.id, b.password, "Password is incorrect.").await? {
-        return Ok(r);
-    }
+    check_own_password(&s, ip, u.id, b.password, Refusal::WrongPassword).await?;
     // sessions, favourites, viewed items and saved searches cascade
     sqlx::query("delete from users where id = $1").bind(u.id).execute(&s.pool).await?;
     Ok(([(header::SET_COOKIE, clear_cookie())], Json(json!({ "ok": true }))).into_response())
 }
 
 async fn get_preferences(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     let prefs: Value = sqlx::query_scalar("select preferences from users where id = $1").bind(u.id).fetch_one(&s.pool).await?;
     Ok(Json(prefs).into_response())
 }
 
 /// Merges the given keys; an empty string removes a key.
 async fn put_preferences(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<Value>) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     if let Err(msg) = validate_preferences(&b) {
-        return Ok(err(StatusCode::BAD_REQUEST, msg));
+        return Err(Refusal::BadPreferences.with(msg));
     }
     let prefs: Value = sqlx::query_scalar(
         "update users set preferences = jsonb_strip_nulls(preferences || (select coalesce(jsonb_object_agg(key, case when value = '\"\"' then 'null'::jsonb else value end), '{}')
@@ -600,43 +566,31 @@ pub async fn favourite_ids(s: &AppState, user_id: i64) -> Result<Arc<[i64]>, Api
 }
 
 async fn list_favourites(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     Ok(Json(json!({ "ids": &*favourite_ids(&s, u.id).await? })).into_response())
 }
 
 async fn add_favourite(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(item): Path<i64>) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     match sqlx::query("insert into favourites (user_id, item_id) values ($1, $2) on conflict do nothing").bind(u.id).bind(item).execute(&s.pool).await {
         Ok(_) => {
             s.favourites.changed(u.id);
             Ok(Json(json!({ "ok": true })).into_response())
         }
-        Err(e) if e.as_database_error().and_then(|d| d.code()).as_deref() == Some("23503") => Ok(err(StatusCode::NOT_FOUND, "Unknown item.")),
+        Err(e) if e.as_database_error().and_then(|d| d.code()).as_deref() == Some("23503") => Err(Refusal::UnknownItem.into()),
         Err(e) => Err(e.into()),
     }
 }
 
 async fn remove_favourite(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(item): Path<i64>) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     sqlx::query("delete from favourites where user_id = $1 and item_id = $2").bind(u.id).bind(item).execute(&s.pool).await?;
     s.favourites.changed(u.id);
     Ok(Json(json!({ "ok": true })).into_response())
 }
 
 async fn list_views(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     let ids: Vec<i64> = sqlx::query_scalar("select item_id from item_views where user_id = $1 order by viewed_at desc limit $2")
         .bind(u.id)
         .bind(MAX_VIEWS)
@@ -679,10 +633,7 @@ fn dedupe_views(entries: Vec<ViewEntry>) -> (Vec<i64>, Vec<Option<f64>>) {
 }
 
 async fn add_views(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<Views>) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     let entries: Vec<ViewEntry> = b.views.into_iter().take(MAX_VIEWS as usize).collect();
     if entries.is_empty() {
         return Ok(Json(json!({ "ok": true })).into_response());
@@ -724,19 +675,13 @@ async fn trim_views(pool: &PgPool, user_id: i64) -> Result<(), sqlx::Error> {
 }
 
 async fn clear_views(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     sqlx::query("delete from item_views where user_id = $1").bind(u.id).execute(&s.pool).await?;
     Ok(Json(json!({ "ok": true })).into_response())
 }
 
 async fn list_searches(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     let rows: Vec<(i64, String, String)> =
         sqlx::query_as("select id, name, query from saved_searches where user_id = $1 order by created_at desc").bind(u.id).fetch_all(&s.pool).await?;
     let items: Vec<Value> = rows
@@ -758,13 +703,10 @@ struct NewSearch {
 }
 
 async fn add_search(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<NewSearch>) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     let query = b.query.trim().trim_start_matches('?');
     if !valid_search_name(&b.name) || query.len() > 2000 || query.contains(char::is_whitespace) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Invalid name or query."));
+        return Err(Refusal::BadSavedSearch.into());
     }
     let id: Option<i64> = sqlx::query_scalar(
         "insert into saved_searches (user_id, name, query) select $1, $2, $3
@@ -778,15 +720,12 @@ async fn add_search(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b):
     .await?;
     match id {
         Some(id) => Ok(Json(json!({ "id": id, "rss": format!("{}/api/rss?{query}", s.site_url) })).into_response()),
-        None => Ok(err(StatusCode::CONFLICT, "Saved search limit reached.")),
+        None => Err(Refusal::SavedSearchLimit.into()),
     }
 }
 
 async fn remove_search(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     sqlx::query("delete from saved_searches where id = $1 and user_id = $2").bind(id).bind(u.id).execute(&s.pool).await?;
     Ok(Json(json!({ "ok": true })).into_response())
 }
@@ -797,12 +736,9 @@ struct SearchName {
 }
 
 async fn rename_search(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>, Json(b): Json<SearchName>) -> Result<Response, ApiError> {
-    let u = match require_user(&s, &headers).await? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
-    };
+    let u = require_user(&s, &headers).await?;
     if !valid_search_name(&b.name) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Invalid name or query."));
+        return Err(Refusal::BadSavedSearch.into());
     }
     sqlx::query("update saved_searches set name = $1 where id = $2 and user_id = $3").bind(b.name.trim()).bind(id).bind(u.id).execute(&s.pool).await?;
     Ok(Json(json!({ "ok": true })).into_response())
@@ -864,6 +800,8 @@ pub(crate) fn test_state(pool: PgPool) -> Arc<AppState> {
 
 #[cfg(test)]
 mod tests {
+    use axum::http::StatusCode;
+
     use super::*;
 
     #[test]
@@ -1120,7 +1058,7 @@ mod tests {
             }
             rename_search(State(state.clone()), h, Path(id), Json(SearchName { name: name.into() }))
         };
-        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
         let names = || sqlx::query_scalar::<_, String>("select name from saved_searches order by id").fetch_all(&pool);
 
         assert_eq!(status(rename(None, ids[0], "x").await), StatusCode::UNAUTHORIZED);
@@ -1263,7 +1201,7 @@ mod tests {
         let sign_in = || {
             login(State(state.clone()), crate::limit::ClientIp(ip), HeaderMap::new(), Json(Login { login: "ann".into(), password: "0123456789".into(), keep: false }))
         };
-        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
 
         assert_eq!(status(sign_up("ann").await), StatusCode::OK);
         assert!(sqlx::query_scalar::<_, bool>("select last_sign_in_at is not null from users").fetch_one(&pool).await.unwrap());
@@ -1288,7 +1226,7 @@ mod tests {
                 new: "0123456789".into(),
             }))
         };
-        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
 
         // an IP out of sign-in attempts can't check passwords either
         let busy = [203, 0, 113, 1];
@@ -1318,7 +1256,7 @@ mod tests {
                 new: new.into(),
             }))
         };
-        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
         let hash = || sqlx::query_scalar::<_, String>("select password_hash from users").fetch_one(&pool);
 
         assert_eq!(status(change("0123456789").await), StatusCode::BAD_REQUEST);
@@ -1334,7 +1272,7 @@ mod tests {
         sqlx::query("update users set is_admin = true").execute(&pool).await.unwrap();
         let state = test_state(pool.clone());
         let ip = crate::limit::ClientIp([203, 0, 113, 9].into());
-        let r = delete_account(State(state), ip, headers(), Json(DeleteAccount { password: "x".into() })).await.ok().unwrap();
+        let r = delete_account(State(state), ip, headers(), Json(DeleteAccount { password: "x".into() })).await.into_response();
         assert_eq!(r.status(), StatusCode::CONFLICT);
         assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from users").fetch_one(&pool).await.unwrap(), 1);
     }
@@ -1377,5 +1315,63 @@ mod tests {
         remove_session(State(state.clone()), a.clone(), Path(ids[1])).await.ok().unwrap();
         let left: Vec<i64> = sqlx::query_scalar("select id from sessions order by id").fetch_all(&pool).await.unwrap();
         assert_eq!(left, [ids[0], ids[2]]);
+    }
+
+    /// An answer as a client reads it: its status and its JSON body.
+    async fn answer(r: Result<Response, ApiError>) -> (StatusCode, Value) {
+        let r = r.into_response();
+        let status = r.status();
+        (status, serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap())
+    }
+
+    /// The site and other clients read a refusal's status and its `error` text (web lib/messages.ts matches the text).
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn refusals_keep_their_status_and_message(pool: PgPool) {
+        signed_in(&pool).await;
+        let state = test_state(pool.clone());
+        let ip = crate::limit::ClientIp([203, 0, 113, 20].into());
+        let refused = |status: StatusCode, message: &str| (status, json!({ "ok": false, "error": message }));
+        let sign_in = |name: &str| login(State(state.clone()), ip, HeaderMap::new(), Json(Login { login: name.into(), password: "0123456789".into(), keep: false }));
+
+        assert_eq!(answer(sign_in("nobody").await).await, refused(StatusCode::UNAUTHORIZED, "Incorrect username or password."));
+        for _ in 0..MAX_FAILURES {
+            state.throttle.fail("locked");
+        }
+        assert_eq!(answer(sign_in("locked").await).await, refused(StatusCode::TOO_MANY_REQUESTS, "Too many attempts. Try again later."));
+
+        // a sign-up form, from an address of its own: one address has five attempts
+        let sign_up = |display_name: &str, username: &str, email: &str, password: &str| {
+            let form = Register { display_name: display_name.into(), username: username.into(), email: email.into(), password: password.into(), keep: false };
+            register(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 21].into()), HeaderMap::new(), Json(form))
+        };
+        let bad = |message: &str| refused(StatusCode::BAD_REQUEST, message);
+        assert_eq!(answer(sign_up(" ", "ann", "ann@example.test", "0123456789").await).await, bad("Display name is required."));
+        assert_eq!(answer(sign_up("Ann", "an", "ann@example.test", "0123456789").await).await, bad("Username must be 3-24 letters, digits or underscores."));
+        assert_eq!(answer(sign_up("Ann", "ann", "ann", "0123456789").await).await, bad("Invalid email."));
+        assert_eq!(answer(sign_up("Ann", "ann", "ann@example.test", "short").await).await, bad("Your password must be at least 10 characters."));
+        // account 'a' has this email
+        assert_eq!(
+            answer(sign_up("Ann", "ann", "a@example.test", "0123456789").await).await,
+            refused(StatusCode::CONFLICT, "Username or email is already taken.")
+        );
+
+        let delete = delete_account(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 22].into()), headers(), Json(DeleteAccount { password: "x".into() }));
+        assert_eq!(answer(delete.await).await, refused(StatusCode::FORBIDDEN, "Password is incorrect."));
+
+        sqlx::query("insert into saved_searches (user_id, name, query) select u.id, 'n', 'q=' || g from users u, generate_series(1, $1) g")
+            .bind(MAX_SAVED_SEARCHES)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let one_more = add_search(State(state.clone()), headers(), Json(NewSearch { name: "n".into(), query: "q=x".into() }));
+        assert_eq!(answer(one_more.await).await, refused(StatusCode::CONFLICT, "Saved search limit reached."));
+
+        assert_eq!(answer(list_favourites(State(state.clone()), HeaderMap::new()).await).await, refused(StatusCode::UNAUTHORIZED, "Sign in required"));
+        assert_eq!(answer(add_favourite(State(state.clone()), headers(), Path(999)).await).await, refused(StatusCode::NOT_FOUND, "Unknown item."));
+        assert_eq!(
+            answer(put_preferences(State(state.clone()), headers(), Json(json!({ "evil": "x" }))).await).await,
+            refused(StatusCode::BAD_REQUEST, "unknown preference")
+        );
     }
 }

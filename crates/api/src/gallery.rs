@@ -8,7 +8,6 @@ use std::time::Duration;
 
 use axum::Json;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use boothdex_core::booth::{mark_delisted, store_item};
 use boothdex_core::booth_client::BoothClient;
@@ -16,6 +15,7 @@ use serde_json::{Value, json};
 use sqlx::PgPool;
 use tokio::sync::Semaphore;
 
+use crate::error::Refusal;
 use crate::{ApiError, AppState};
 
 const FLUSH_EVERY: Duration = Duration::from_secs(10);
@@ -91,11 +91,9 @@ pub async fn gallery(
     crate::limit::ClientIp(ip): crate::limit::ClientIp,
     Path(id): Path<i64>,
 ) -> Result<Response, ApiError> {
-    if let Err(r) = s.limits.gallery.check(ip) {
-        return Ok(r.into_response());
-    }
+    s.limits.gallery.check(ip)?;
     if s.snap().catalog.docs_for(&[id]).is_empty() {
-        return Ok((StatusCode::NOT_FOUND, Json(json!({ "ok": false, "error": "Unknown item." }))).into_response());
+        return Err(Refusal::UnknownItem.into());
     }
     s.view_counts.add(id);
 

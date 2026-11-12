@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
@@ -16,6 +16,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::PgPool;
 
+use crate::error::Refusal;
 use crate::{ApiError, AppState, account};
 
 // must match the jobs_kind_check constraint in the latest migration that redefines it (see the test below)
@@ -71,24 +72,11 @@ pub async fn apply_admin_env(pool: &PgPool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn err(status: StatusCode, msg: &str) -> Response {
-    (status, Json(json!({ "ok": false, "error": msg }))).into_response()
-}
-
-/// Ok(Ok(username)) for admins; Ok(Err(response)) otherwise.
-async fn require_admin(s: &AppState, headers: &HeaderMap) -> Result<Result<String, Response>, ApiError> {
-    let Some(u) = account::current_user(&s.pool, headers).await? else { return Ok(Err(err(StatusCode::UNAUTHORIZED, "Sign in required"))) };
+/// The admin's username; every handler of `routes()` starts here.
+async fn require_admin(s: &AppState, headers: &HeaderMap) -> Result<String, ApiError> {
+    let Some(u) = account::current_user(&s.pool, headers).await? else { return Err(Refusal::SignInRequired.into()) };
     let row: (bool, String) = sqlx::query_as("select is_admin, username from users where id = $1").bind(u.id).fetch_one(&s.pool).await?;
-    Ok(if row.0 { Ok(row.1) } else { Err(err(StatusCode::FORBIDDEN, "Admins only")) })
-}
-
-macro_rules! admin {
-    ($s:expr, $h:expr) => {
-        match require_admin(&$s, &$h).await? {
-            Ok(name) => name,
-            Err(r) => return Ok(r),
-        }
-    };
+    if row.0 { Ok(row.1) } else { Err(Refusal::AdminsOnly.into()) }
 }
 
 #[cfg(test)]
@@ -118,7 +106,7 @@ async fn data_json(pool: &PgPool) -> Result<Value, sqlx::Error> {
     .await
 }
 
-async fn overview_json(s: &AppState) -> Result<Value, ApiError> {
+async fn overview_json(s: &AppState) -> anyhow::Result<Value> {
     let data = data_json(&s.pool).await?;
     let worker: Value = sqlx::query_scalar(
         "select to_jsonb(w) || jsonb_build_object('alive', coalesce(heartbeat_at > now() - interval '20 seconds', false)) from worker_status w",
@@ -154,20 +142,20 @@ async fn overview_json(s: &AppState) -> Result<Value, ApiError> {
 }
 
 async fn overview(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     Ok(Json(overview_json(&s).await?).into_response())
 }
 
 /// Server-sent events: the overview every 2 s (the worker's progress writes are throttled to the same cadence).
 async fn stream(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     let events = futures_util::stream::unfold((s, true), |(s, first)| async move {
         if !first {
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
         let ev = match overview_json(&s).await {
             Ok(v) => Event::default().event("overview").data(v.to_string()),
-            Err(e) => Event::default().event("error").data(format!("{:#}", e.0)),
+            Err(e) => Event::default().event("error").data(format!("{e:#}")),
         };
         Some((Ok::<_, Infallible>(ev), (s, false)))
     });
@@ -180,7 +168,7 @@ async fn stream(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Re
 }
 
 async fn list_jobs(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     let jobs: Value = sqlx::query_scalar(
         "select coalesce(jsonb_agg(to_jsonb(j) order by j.id desc), '[]') from (select id, kind, status, params, done, total, message, error, created_by, created_at, started_at, finished_at from jobs order by id desc limit 100) j",
     )
@@ -191,12 +179,12 @@ async fn list_jobs(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result
 }
 
 async fn get_job(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     let job: Option<Value> = sqlx::query_scalar("select to_jsonb(j) from jobs j where id = $1").bind(id).fetch_optional(&s.pool).await?;
-    Ok(match job {
-        Some(j) => Json(j).into_response(),
-        None => err(StatusCode::NOT_FOUND, "No such job"),
-    })
+    match job {
+        Some(j) => Ok(Json(j).into_response()),
+        None => Err(Refusal::NoSuchJob.into()),
+    }
 }
 
 #[derive(Deserialize)]
@@ -211,9 +199,9 @@ fn valid_params(p: &Value) -> bool {
 }
 
 async fn create_job(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<NewJob>) -> Result<Response, ApiError> {
-    let who = admin!(s, headers);
+    let who = require_admin(&s, &headers).await?;
     if !KINDS.contains(&b.kind.as_str()) || !valid_params(&b.params) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Unknown kind or invalid params"));
+        return Err(Refusal::BadJob.into());
     }
     let params = if b.params.is_null() { json!({}) } else { b.params };
     let id: Option<i64> = sqlx::query_scalar("insert into jobs (kind, params, created_by) values ($1, $2, $3) on conflict do nothing returning id")
@@ -222,14 +210,14 @@ async fn create_job(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b):
         .bind(format!("admin:{who}"))
         .fetch_optional(&s.pool)
         .await?;
-    Ok(match id {
-        Some(id) => Json(json!({ "id": id })).into_response(),
-        None => err(StatusCode::CONFLICT, "A job of this kind is already queued or running"),
-    })
+    match id {
+        Some(id) => Ok(Json(json!({ "id": id })).into_response()),
+        None => Err(Refusal::JobAlreadyActive.into()),
+    }
 }
 
 async fn cancel_job(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     // queued jobs are dropped at once; running ones stop at their next progress check
     let status: Option<String> = sqlx::query_scalar(
         "update jobs set status = case when status = 'queued' then 'cancelled' else 'cancelling' end,
@@ -239,10 +227,10 @@ async fn cancel_job(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id)
     .bind(id)
     .fetch_optional(&s.pool)
     .await?;
-    Ok(match status {
-        Some(st) => Json(json!({ "status": st })).into_response(),
-        None => err(StatusCode::CONFLICT, "Job is not queued or running"),
-    })
+    match status {
+        Some(st) => Ok(Json(json!({ "status": st })).into_response()),
+        None => Err(Refusal::JobNotActive.into()),
+    }
 }
 
 #[derive(Deserialize)]
@@ -253,9 +241,9 @@ struct ScheduleUpdate {
 }
 
 async fn update_schedule(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(kind): Path<String>, Json(b): Json<ScheduleUpdate>) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     if b.interval_minutes.is_some_and(|m| !(5..=10080).contains(&m)) || b.params.as_ref().is_some_and(|p| !p.is_object() || !valid_params(p)) {
-        return Ok(err(StatusCode::BAD_REQUEST, "Interval must be 5–10080 minutes; params must be an object"));
+        return Err(Refusal::BadSchedule.into());
     }
     let row: Option<Value> = sqlx::query_scalar(
         "update job_schedules set enabled = coalesce($2, enabled), interval_minutes = coalesce($3, interval_minutes),
@@ -268,14 +256,14 @@ async fn update_schedule(State(s): State<Arc<AppState>>, headers: HeaderMap, Pat
     .bind(&b.params)
     .fetch_optional(&s.pool)
     .await?;
-    Ok(match row {
-        Some(r) => Json(r).into_response(),
-        None => err(StatusCode::NOT_FOUND, "No such schedule"),
-    })
+    match row {
+        Some(r) => Ok(Json(r).into_response()),
+        None => Err(Refusal::NoSuchSchedule.into()),
+    }
 }
 
 async fn reload(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     // bump so the reloader rebuilds even if nothing changed
     boothdex_core::bump_catalog_version(&s.pool).await?;
     s.reload.notify_one();
@@ -312,7 +300,7 @@ fn public_ai(c: &AiConfig) -> Value {
 }
 
 async fn get_settings(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     Ok(Json(json!({
         "ai": public_ai(&settings::ai(&s.pool).await?),
         "registration": { "open": account::registration_open(&s.pool).await? },
@@ -326,7 +314,7 @@ struct Registration {
 }
 
 async fn put_registration(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<Registration>) -> Result<Response, ApiError> {
-    let who = admin!(s, headers);
+    let who = require_admin(&s, &headers).await?;
     sqlx::query("insert into app_settings (key, value) values ('registration', $1) on conflict (key) do update set value = excluded.value, updated_at = now()")
         .bind(json!({ "open": b.open }))
         .execute(&s.pool)
@@ -336,14 +324,11 @@ async fn put_registration(State(s): State<Arc<AppState>>, headers: HeaderMap, Js
 }
 
 async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<AiSettings>) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     let url_ok = b.base_url.as_deref().is_none_or(|u| u.len() <= 300 && (u.starts_with("https://") || u.starts_with("http://")));
     let effort = b.reasoning_effort.as_deref().map(settings::reasoning_effort);
     if !url_ok || [&b.model, &b.embed_model].iter().any(|m| m.as_deref().is_some_and(|m| m.len() > 100)) || b.api_key.as_deref().is_some_and(|k| k.len() > 500) || effort == Some(None) {
-        return Ok(err(
-            StatusCode::BAD_REQUEST,
-            "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars; reasoning effort: none, minimal, low, medium, high or xhigh",
-        ));
+        return Err(Refusal::BadAiSettings.into());
     }
     let _guard = s.ai_save.lock().await;
     let mut v = settings::stored_ai(&s.pool).await?;
@@ -397,13 +382,13 @@ pub async fn queue_localize_if_needed(pool: &PgPool, c: &AiConfig) -> Result<(),
 /// Calls `GET {base_url}/models` with the stored key, so the admin can check the endpoint before enabling enrichment;
 /// with an embeddings model set, also embeds one word to check that model (access, 1024-dimension support).
 async fn test_ai(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     let c = settings::ai(&s.pool).await?;
     let (Some(base), Some(key)) = (c.base_url.as_deref(), c.api_key.as_deref()) else {
-        return Ok(err(StatusCode::BAD_REQUEST, "Set the base URL and API key first"));
+        return Err(Refusal::AiNotConfigured.into());
     };
     let res = s.http.get(format!("{base}/models")).bearer_auth(key).timeout(Duration::from_secs(10)).send().await;
-    Ok(match res {
+    match res {
         Ok(r) if r.status().is_success() => {
             let body: Value = r.json().await.unwrap_or(Value::Null);
             let models: Vec<&str> = body["data"].as_array().into_iter().flatten().filter_map(|m| m["id"].as_str()).take(50).collect();
@@ -412,12 +397,12 @@ async fn test_ai(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<R
                 Some(m) => boothdex_core::embed::embed(&s.http, base, key, m, &["test".into()], 1).await.err().map(|e| format!("{e:#}")),
                 None => None,
             };
-            Json(json!({ "ok": true, "models": models, "model_found": model.is_empty() || models.is_empty() || models.contains(&model), "embed_error": embed_error }))
-                .into_response()
+            Ok(Json(json!({ "ok": true, "models": models, "model_found": model.is_empty() || models.is_empty() || models.contains(&model), "embed_error": embed_error }))
+                .into_response())
         }
-        Ok(r) => err(StatusCode::BAD_GATEWAY, &format!("Provider answered {}", r.status())),
-        Err(e) => err(StatusCode::BAD_GATEWAY, &format!("Could not reach provider: {e}")),
-    })
+        Ok(r) => Err(Refusal::ProviderFailed.with(format!("Provider answered {}", r.status()))),
+        Err(e) => Err(Refusal::ProviderFailed.with(format!("Could not reach provider: {e}"))),
+    }
 }
 
 #[derive(Deserialize)]
@@ -437,7 +422,7 @@ fn random_password() -> anyhow::Result<String> {
 /// Sets a random password for a user and signs them out everywhere. The password is returned once, to the admin,
 /// who passes it on; it is never stored in plain text.
 async fn reset_password(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<ResetPassword>) -> Result<Response, ApiError> {
-    let who = admin!(s, headers);
+    let who = require_admin(&s, &headers).await?;
     let password = random_password()?;
     let hash = account::hash_password(password.clone()).await?;
     let mut tx = s.pool.begin().await?;
@@ -446,7 +431,7 @@ async fn reset_password(State(s): State<Arc<AppState>>, headers: HeaderMap, Json
         .bind(hash)
         .fetch_optional(&mut *tx)
         .await?;
-    let Some((id, username)) = user else { return Ok(err(StatusCode::NOT_FOUND, "No such user")) };
+    let Some((id, username)) = user else { return Err(Refusal::NoSuchUser.into()) };
     let sessions = sqlx::query("delete from sessions where user_id = $1").bind(id).execute(&mut *tx).await?.rows_affected();
     tx.commit().await?;
     println!("admin {who} reset the password of {username}");
@@ -529,5 +514,56 @@ mod tests {
         assert_eq!(a.chars().count(), 16);
         assert_ne!(a, b);
         assert!(a.chars().all(|c| c.is_ascii_alphanumeric() && !"0O1lI".contains(c)));
+    }
+
+    /// What the console refuses a visitor, and its job buttons and forms, with: the status and the message.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn console_refusals_keep_their_status_and_message(pool: sqlx::PgPool) {
+        use super::*;
+
+        async fn refusal(r: Result<Response, ApiError>) -> (u16, String) {
+            let r = r.into_response();
+            let status = r.status().as_u16();
+            let body: Value = serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap();
+            (status, body["error"].as_str().unwrap().to_owned())
+        }
+
+        let boss: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash, is_admin) values ('boss', 'boss@example.test', 'Boss', 'x', true) returning id")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+            .bind(account::token_hash("tok-boss"))
+            .bind(boss)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let state = account::test_state(pool);
+        let mut headers = HeaderMap::new();
+        headers.insert(axum::http::header::COOKIE, "session=tok-boss".parse().unwrap());
+        let job = |kind: &str| create_job(State(state.clone()), headers.clone(), Json(NewJob { kind: kind.into(), params: Value::Null }));
+        let schedule = |kind: &str, interval_minutes: Option<i32>| {
+            update_schedule(State(state.clone()), headers.clone(), Path(kind.into()), Json(ScheduleUpdate { enabled: None, interval_minutes, params: None }))
+        };
+
+        // without a session, in the JSON shape of every refusal
+        let visitor = overview(State(state.clone()), HeaderMap::new()).await.into_response();
+        assert_eq!(visitor.status().as_u16(), 401);
+        let body: Value = serde_json::from_slice(&axum::body::to_bytes(visitor.into_body(), 1 << 20).await.unwrap()).unwrap();
+        assert_eq!(body, json!({ "ok": false, "error": "Sign in required" }));
+
+        assert_eq!(refusal(get_job(State(state.clone()), headers.clone(), Path(0)).await).await, (404, "No such job".into()));
+        assert_eq!(refusal(job("x").await).await, (400, "Unknown kind or invalid params".into()));
+        assert!(job("refresh").await.is_ok());
+        assert_eq!(refusal(job("refresh").await).await, (409, "A job of this kind is already queued or running".into()));
+        assert_eq!(refusal(cancel_job(State(state.clone()), headers.clone(), Path(0)).await).await, (409, "Job is not queued or running".into()));
+        assert_eq!(refusal(schedule("nope", None).await).await, (404, "No such schedule".into()));
+        assert_eq!(refusal(schedule("refresh", Some(1)).await).await, (400, "Interval must be 5–10080 minutes; params must be an object".into()));
+        let ai = AiSettings { base_url: Some("ftp://example.test".into()), model: None, api_key: None, reasoning_effort: None, embed_model: None };
+        assert_eq!(
+            refusal(put_ai(State(state.clone()), headers.clone(), Json(ai)).await).await,
+            (400, "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars; reasoning effort: none, minimal, low, medium, high or xhigh".into())
+        );
     }
 }

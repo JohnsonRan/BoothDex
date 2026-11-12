@@ -6,10 +6,9 @@ use std::time::Instant;
 
 use axum::Json;
 use axum::extract::{RawQuery, State};
-use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde_json::json;
 
+use crate::error::Refusal;
 use crate::params::Params;
 use crate::{ApiError, AppState, account, catalog, db, limit};
 
@@ -128,17 +127,13 @@ pub(crate) async fn search(
     headers: axum::http::HeaderMap,
     RawQuery(q): RawQuery,
 ) -> Result<Response, ApiError> {
-    if let Err(r) = s.limits.search.check(ip) {
-        return Ok(r.into_response());
-    }
+    s.limits.search.check(ip)?;
     let t0 = Instant::now();
     let mut trace = Trace::default();
     trace.start();
     let p = Params::parse(q.as_deref().unwrap_or(""));
     let favourites = if p.get("v").as_deref() == Some("favourites") {
-        let Some(u) = account::current_user(&s.pool, &headers).await? else {
-            return Ok((StatusCode::UNAUTHORIZED, Json(json!({ "ok": false, "error": "Sign in required" }))).into_response());
-        };
+        let u = account::current_user(&s.pool, &headers).await?.ok_or(Refusal::SignInRequired)?;
         let f = s.snap().catalog.docs_for(&account::favourite_ids(&s, u.id).await?);
         trace.step("favourites");
         Some(f)
@@ -160,10 +155,7 @@ pub(crate) async fn search(
         None => EmbedPlan::Off,
     };
     // acquired after any external provider wait so slow embeddings cannot block keyword/filter searches
-    let _permit = match s.acquire_search().await {
-        Ok(p) => p,
-        Err(r) => return Ok(r.into_response()),
-    };
+    let _permit = s.acquire_search().await?;
     trace.step("queue");
     let (semantic, semantic_status) = match embed_plan {
         EmbedPlan::Vector(vector) => {
@@ -403,6 +395,8 @@ pub(crate) fn semantic_cutoff(best: f64, scoped: bool) -> f64 {
 
 #[cfg(test)]
 mod recognized_tests {
+    use serde_json::json;
+
     use super::*;
 
     #[test]

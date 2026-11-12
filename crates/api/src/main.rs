@@ -12,6 +12,7 @@ mod admin;
 mod api_types;
 mod catalog;
 mod db;
+mod error;
 mod gallery;
 mod limit;
 mod params;
@@ -37,6 +38,7 @@ use tower_http::compression::Predicate as _;
 use serde_json::{Value, json};
 use sqlx::PgPool;
 
+use error::ApiError;
 use params::Params;
 use search::{EMBED_CACHE_CAP, EmbedWatch};
 use snapshot::{Lookup, Snapshot, build_snapshot, catalog_version, reloader};
@@ -136,21 +138,6 @@ impl AppState {
     }
 }
 
-struct ApiError(anyhow::Error);
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        eprintln!("error: {:#}", self.0);
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error": "internal error" }))).into_response()
-    }
-}
-
-impl<E: Into<anyhow::Error>> From<E> for ApiError {
-    fn from(e: E) -> Self {
-        Self(e.into())
-    }
-}
-
 async fn lookup_rate_limit(
     State(s): State<Arc<AppState>>,
     limit::ClientIp(ip): limit::ClientIp,
@@ -177,13 +164,8 @@ async fn account_write_rate_limit(
 }
 
 async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
-    if let Err(r) = s.limits.rss.check(ip) {
-        return Ok(r.into_response());
-    }
-    let _permit = match s.acquire_search().await {
-        Ok(p) => p,
-        Err(r) => return Ok(r.into_response()),
-    };
+    s.limits.rss.check(ip)?;
+    let _permit = s.acquire_search().await?;
     let user_q = q.unwrap_or_default();
     // first occurrence wins in Params, so the prefix pins ordering and size
     let p = Params::parse(&format!("sort=newest&dir=desc&page=1&pageSize=50&{user_q}"));
@@ -196,19 +178,14 @@ async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cl
 
 /// Ctrl+K: one query across items, avatars, authors, tags and categories.
 async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
-    if let Err(r) = s.limits.palette.check(ip) {
-        return Ok(r.into_response());
-    }
+    s.limits.palette.check(ip)?;
     let raw = q.unwrap_or_default();
     let p = Params::parse(&raw);
     let text = p.get("q").unwrap_or_default();
     if text.trim().is_empty() {
         return Ok(Json(json!({ "items": [], "avatars": [], "authors": [], "tags": [], "categories": [] })).into_response());
     }
-    let _permit = match s.acquire_search().await {
-        Ok(p) => p,
-        Err(r) => return Ok(r.into_response()),
-    };
+    let _permit = s.acquire_search().await?;
     let small = Params::parse(&format!("limit=5&{raw}"));
     let needle = text.to_lowercase();
     let snap = s.snap();
@@ -254,16 +231,11 @@ async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cli
 async fn items_by_id(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
     let ids = item_ids(q.as_deref().unwrap_or(""));
     let limit = if ids.len() == 1 { &s.limits.item } else { &s.limits.items };
-    if let Err(r) = limit.check(ip) {
-        return Ok(r.into_response());
-    }
+    limit.check(ip)?;
     if ids.is_empty() {
         return Ok(Json(json!({ "items": [] })).into_response());
     }
-    let _permit = match s.acquire_search().await {
-        Ok(p) => p,
-        Err(r) => return Ok(r.into_response()),
-    };
+    let _permit = s.acquire_search().await?;
     let items = db::load_items(&s.pool, &ids, false).await?;
     // an id the catalogue lacks may come in later, so an answer missing one is not kept
     let whole = items.len() == ids.len();
@@ -502,6 +474,7 @@ mod tests {
     async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
         use axum::extract::{FromRequestParts, RawQuery, State};
         use axum::http::{HeaderMap, Request, StatusCode, header};
+        use axum::response::IntoResponse;
 
         let state = test_state();
 
@@ -534,9 +507,9 @@ mod tests {
         // exhausting palette, lookups, rss, items and gallery on a fresh IP never starves /api/search
         let ip = "203.0.113.99";
         for _ in 0..2 {
-            assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.ok().unwrap().status(), StatusCode::OK);
+            assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.into_response().status(), StatusCode::OK);
         }
-        assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
         for _ in 0..2 {
             assert!(state.limits.lookup.check(ip_of(ip).await.0).is_ok());
@@ -544,20 +517,20 @@ mod tests {
         assert!(state.limits.lookup.check(ip_of(ip).await.0).is_err());
 
         for _ in 0..2 {
-            assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::OK);
+            assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::OK);
         }
-        assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
         for _ in 0..2 {
-            assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::OK);
+            assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::OK);
         }
-        assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
         use axum::extract::Path;
         for _ in 0..2 {
-            assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.ok().unwrap().status(), StatusCode::NOT_FOUND);
+            assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.into_response().status(), StatusCode::NOT_FOUND);
         }
-        assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
         // /api/search for that same IP still succeeds with its full burst intact
         for _ in 0..3 {
@@ -613,6 +586,7 @@ mod tests {
     async fn auth_limiter_exhaustion_throttles_both_login_and_register() {
         use axum::extract::{Json, State};
         use axum::http::{HeaderMap, StatusCode};
+        use axum::response::IntoResponse;
 
         let state = test_state();
         let ip = super::limit::ClientIp("203.0.113.50".parse().unwrap());
@@ -649,10 +623,10 @@ mod tests {
         for (name, call) in cases {
             let res = match call {
                 AuthCall::Login(body) => {
-                    super::account::login(State(state.clone()), ip, HeaderMap::new(), Json(body)).await.ok().unwrap()
+                    super::account::login(State(state.clone()), ip, HeaderMap::new(), Json(body)).await.into_response()
                 }
                 AuthCall::Register(body) => {
-                    super::account::register(State(state.clone()), ip, HeaderMap::new(), Json(body)).await.ok().unwrap()
+                    super::account::register(State(state.clone()), ip, HeaderMap::new(), Json(body)).await.into_response()
                 }
             };
             assert_eq!(
@@ -737,5 +711,50 @@ mod tests {
             assert_eq!(status(http.get(&url)).await, 200);
         }
         assert_eq!(status(http.post(&url).header("x-forwarded-for", "203.0.113.5")).await, 200);
+    }
+
+    /// What a client reads without a session, and when the API itself fails: the status and the JSON body.
+    #[tokio::test]
+    async fn missing_sessions_and_failures_keep_their_status_and_body() {
+        use axum::extract::{RawQuery, State};
+        use axum::http::{HeaderMap, StatusCode};
+        use axum::response::IntoResponse;
+        use serde_json::{Value, json};
+
+        async fn answer(r: impl IntoResponse) -> (StatusCode, Value) {
+            let r = r.into_response();
+            let status = r.status();
+            (status, serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap())
+        }
+
+        let ip = super::limit::ClientIp("203.0.113.60".parse().unwrap());
+        let favourites = super::search::search(State(test_state()), ip, HeaderMap::new(), RawQuery(Some("v=favourites".into()))).await;
+        assert_eq!(answer(favourites).await, (StatusCode::UNAUTHORIZED, json!({ "ok": false, "error": "Sign in required" })));
+
+        // the cause goes to the log, never to the caller
+        let failure: super::ApiError = std::io::Error::other("the cause").into();
+        assert_eq!(answer(failure).await, (StatusCode::INTERNAL_SERVER_ERROR, json!({ "ok": false, "error": "internal error" })));
+    }
+
+    /// The feed, the palette and item records queue for the search's permits and answer 429 when none comes.
+    #[tokio::test]
+    async fn the_feed_the_palette_and_item_records_wait_for_a_search_permit() {
+        use axum::extract::{RawQuery, State};
+        use axum::http::{StatusCode, header};
+        use axum::response::IntoResponse;
+
+        let state = test_state();
+        // a closed semaphore refuses at once; a full one refuses the same way after two seconds
+        state.search_permits.close();
+        let ip = super::limit::ClientIp("203.0.113.70".parse().unwrap());
+        let answers = [
+            super::rss_feed(State(state.clone()), ip, RawQuery(None)).await.into_response(),
+            super::palette(State(state.clone()), ip, RawQuery(Some("q=dress".into()))).await.into_response(),
+            super::items_by_id(State(state.clone()), ip, RawQuery(Some("ids=1".into()))).await.into_response(),
+        ];
+        for r in answers {
+            assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+            assert_eq!(r.headers()[header::RETRY_AFTER], "2");
+        }
     }
 }

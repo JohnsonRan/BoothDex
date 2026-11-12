@@ -4,13 +4,14 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{err, require_admin};
+use super::require_admin;
+use crate::error::Refusal;
 use crate::{ApiError, AppState, account};
 
 const PAGE: i64 = 50;
@@ -34,7 +35,7 @@ pub(super) struct ListQuery {
 /// Admins first, then by sign-up, newest first; `PAGE` at a time. `q` matches part of the username, email or display
 /// name, ignoring case.
 pub(super) async fn list(State(s): State<Arc<AppState>>, headers: HeaderMap, Query(p): Query<ListQuery>) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     let q: String = p.q.trim().to_lowercase().chars().take(100).collect();
     let v: Value = sqlx::query_scalar(concat!(
         "with m as (select * from users u
@@ -55,7 +56,7 @@ pub(super) async fn list(State(s): State<Arc<AppState>>, headers: HeaderMap, Que
 
 /// One account with what it keeps and its live sessions.
 pub(super) async fn get(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     let user: Option<Value> = sqlx::query_scalar(concat!(
         "select ",
         user_json!(),
@@ -68,7 +69,7 @@ pub(super) async fn get(State(s): State<Arc<AppState>>, headers: HeaderMap, Path
     .bind(id)
     .fetch_optional(&s.pool)
     .await?;
-    let Some(mut user) = user else { return Ok(err(StatusCode::NOT_FOUND, "No such user")) };
+    let Some(mut user) = user else { return Err(Refusal::NoSuchUser.into()) };
     user["sessions"] = account::sessions_json(&s.pool, id, None).await?;
     Ok(Json(user).into_response())
 }
@@ -80,13 +81,13 @@ pub(super) struct Patch {
 
 /// Disabling signs the account out everywhere; enabling lets it sign in again with its old password.
 pub(super) async fn patch(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>, Json(b): Json<Patch>) -> Result<Response, ApiError> {
-    let who = admin!(s, headers);
+    let who = require_admin(&s, &headers).await?;
     let mut tx = s.pool.begin().await?;
     // the row lock orders this against a sign-in in flight (account.rs start_session)
     let row: Option<(String, bool)> = sqlx::query_as("select username, is_admin from users where id = $1 for update").bind(id).fetch_optional(&mut *tx).await?;
-    let Some((username, is_admin)) = row else { return Ok(err(StatusCode::NOT_FOUND, "No such user")) };
+    let Some((username, is_admin)) = row else { return Err(Refusal::NoSuchUser.into()) };
     if b.disabled && is_admin {
-        return Ok(err(StatusCode::CONFLICT, "Admins can't be disabled."));
+        return Err(Refusal::AdminCannotBeDisabled.into());
     }
     sqlx::query("update users set disabled_at = case when $2 then coalesce(disabled_at, now()) end where id = $1").bind(id).bind(b.disabled).execute(&mut *tx).await?;
     let revoked = if b.disabled { sqlx::query("delete from sessions where user_id = $1").bind(id).execute(&mut *tx).await?.rows_affected() } else { 0 };
@@ -96,14 +97,14 @@ pub(super) async fn patch(State(s): State<Arc<AppState>>, headers: HeaderMap, Pa
 }
 
 pub(super) async fn remove_session(State(s): State<Arc<AppState>>, headers: HeaderMap, Path((id, session)): Path<(i64, i64)>) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     sqlx::query("delete from sessions where id = $1 and user_id = $2").bind(session).bind(id).execute(&s.pool).await?;
     Ok(Json(json!({ "ok": true })).into_response())
 }
 
 #[cfg(test)]
 mod tests {
-    use axum::http::header;
+    use axum::http::{StatusCode, header};
 
     use super::*;
 
@@ -128,7 +129,7 @@ mod tests {
         let state = account::test_state(pool.clone());
         let mut boss = HeaderMap::new();
         boss.insert(header::COOKIE, "session=tok-boss".parse().unwrap());
-        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
         let disable = |id: i64, disabled: bool| patch(State(state.clone()), boss.clone(), Path(id), Json(Patch { disabled }));
 
         assert_eq!(status(disable(ids[0], true).await), StatusCode::CONFLICT);

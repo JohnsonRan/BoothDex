@@ -19,7 +19,7 @@ use crate::{ApiError, AppState};
 const DAYS: i32 = 30;
 
 pub(super) async fn trends(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    admin!(s, headers);
+    require_admin(&s, &headers).await?;
     Ok(Json(trends_json(&s.pool, DAYS).await?).into_response())
 }
 
