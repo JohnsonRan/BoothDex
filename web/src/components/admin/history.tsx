@@ -1,7 +1,7 @@
 "use client";
 // Crawler history: the API's last 100 jobs, filtered by kind and status in the browser, with the filters in the
 // URL (?kind=&status=) so a view can be shared and Back restores it. Rows are the Astryx template
-// incident-console's (templates/pages/incident-console/page.tsx:347-380: List with dividers, a status Token and
+// incident-console's (@astryxdesign/cli assets/templates/pages/incident-console/page.tsx:347-380: List with dividers, a status Token and
 // a relative Timestamp at the end, the row opens the details), and its EmptyState (:325-332) when nothing is
 // left. The filter Selectors sit above the list, as table-filter keeps its controls over the table.
 

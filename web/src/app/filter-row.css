@@ -1,5 +1,5 @@
 /* Documented deviation (docs/TEMPLATE-MAP.md): the table-filter template's StyleX rules that need a container query
-   or a pseudo-class (templates/pages/table-filter/page.tsx), written as plain classes because this app does not
+   or a pseudo-class (@astryxdesign/cli assets/templates/pages/table-filter/page.tsx), written as plain classes because this app does not
    compile StyleX. The rest of the row's rules are token-backed inline styles (components/catalog/filter-style.ts). */
 
 /* toolbarContainer (:1382-1385): the header is the toolbar's container, so the row responds to the width it has. */

@@ -1,5 +1,5 @@
 "use client";
-// "Run with options": the Astryx block Dialog — Form (templates/blocks/components/Dialog/DialogFormDialog.tsx):
+// "Run with options": the Astryx block Dialog — Form (@astryxdesign/cli assets/templates/blocks/components/Dialog/DialogFormDialog.tsx):
 // a DialogHeader with a subtitle, the fields in LayoutContent, Cancel and the primary action in LayoutFooter.
 // Fields are only the kind's safe options (types.ts RUN_PARAMS): flags as CheckboxInput, counts as NumberInput
 // with the worker's default as the placeholder; an empty field is left out of the job's params.

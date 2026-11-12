@@ -1,7 +1,7 @@
 "use client";
 // Beside the overview title: the stream's connection, the worker's state and the server time of the last
 // update. Reconnecting is a warning (EventSource retries by itself), an offline worker an error. A StatusDot with its text, as the Astryx template incident-console pairs them
-// (templates/pages/incident-console/page.tsx:398-411).
+// (@astryxdesign/cli assets/templates/pages/incident-console/page.tsx:398-411).
 
 import { HStack } from "@astryxdesign/core/Layout";
 import { StatusDot } from "@astryxdesign/core/StatusDot";

@@ -1,6 +1,6 @@
 "use client";
 // The crawler's two pages share one title with a tab row of links (Tasks, History) in the header, as the
-// Astryx template detail-page lays out its tabs (templates/pages/detail-page/page.tsx:252-260: size lg, full bleed).
+// Astryx template detail-page lays out its tabs (@astryxdesign/cli assets/templates/pages/detail-page/page.tsx:252-260: size lg, full bleed).
 
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { useAdminT } from "./messages";

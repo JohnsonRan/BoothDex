@@ -1,6 +1,6 @@
 // A titled band of the overview, from the Astryx template dashboard-scorecard: the section heading
-// (templates/pages/dashboard-scorecard/page.tsx:724-735) with the section's action at its end, as the template
-// dashboard puts "View more" (templates/pages/dashboard/page.tsx:766-768), then the body 24 px below
+// (@astryxdesign/cli assets/templates/pages/dashboard-scorecard/page.tsx:724-735) with the section's action at its end, as the template
+// dashboard puts "View more" (@astryxdesign/cli assets/templates/pages/dashboard/page.tsx:766-768), then the body 24 px below
 // (scorecard :818). Tiles sit in the scorecard's tight grid (:820, gap 8 px): up to four across on a desktop,
 // two on a phone, and a band with fewer tiles than columns shares the row out; the band's charts follow at the
 // same gap, so tiles and charts read as one block.

@@ -1,5 +1,5 @@
 // The privacy policy and the terms of use (lib/legal.ts), adapted from the Astryx page template
-// documentation-technical (templates/pages/documentation-technical): a reading column of contentWidth 960, the
+// documentation-technical (@astryxdesign/cli assets/templates/pages/documentation-technical): a reading column of contentWidth 960, the
 // title with its "Last updated" line (page.tsx:79-84), then each section as a level-2 heading over its paragraphs
 // and disc lists (:146-154), a Divider between sections. The template's outline panel and its phone selector,
 // its assistant card and code blocks are not used: the texts are short and have no code. The cookie list is a

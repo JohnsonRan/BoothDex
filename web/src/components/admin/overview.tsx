@@ -1,5 +1,5 @@
 "use client";
-// The overview, from the Astryx template dashboard-scorecard (templates/pages/dashboard-scorecard/page.tsx:
+// The overview, from the Astryx template dashboard-scorecard (@astryxdesign/cli assets/templates/pages/dashboard-scorecard/page.tsx:
 // 752-874): titled bands 40 px apart (:808), each a tight grid of number tiles. The bands run in the order an
 // operator reads them: status first (what is broken or waiting, sorted to the front), then the last 24 hours
 // with the daily trends under them, then what the catalogue holds, then the host. Tiles are live over the admin

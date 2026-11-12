@@ -1,8 +1,8 @@
 // A number tile: the Astryx template dashboard-scorecard's ScorecardTile
-// (templates/pages/dashboard-scorecard/page.tsx:461-477: label in label text, the value as a level-2 heading)
+// (@astryxdesign/cli assets/templates/pages/dashboard-scorecard/page.tsx:461-477: label in label text, the value as a level-2 heading)
 // with the label's icon, as the reference admin tags its tiles. A status dot beside the value only while the
 // number asks for attention, an optional usage bar (the template dashboard's ProgressBar,
-// templates/pages/dashboard/page.tsx:369-375) and one supporting line. The card fills its grid cell, so the
+// @astryxdesign/cli assets/templates/pages/dashboard/page.tsx:369-375) and one supporting line. The card fills its grid cell, so the
 // tiles of a row share one height.
 
 import { Card } from "@astryxdesign/core/Card";

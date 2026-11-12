@@ -1,7 +1,7 @@
 "use client";
 // The recharts plot behind trend-chart.tsx: a 2 px line per series over the same days with a wash of the series
 // colour under it that fades out downward, so series overlap without stacking or turning grey. The grid and
-// ticks follow the Astryx template dashboard-scorecard (templates/pages/dashboard-scorecard/page.tsx:101-115,
+// ticks follow the Astryx template dashboard-scorecard (@astryxdesign/cli assets/templates/pages/dashboard-scorecard/page.tsx:101-115,
 // :611-626): horizontal lines only, tick labels in the secondary text colour, no axis lines; five value ticks
 // on a desktop, three on a phone. Hovering a day, or focusing the plot and pressing the arrow keys (recharts'
 // keyboard layer), draws a guide line and one tooltip with every series' value for that day; a pointer press

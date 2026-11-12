@@ -1,7 +1,7 @@
 "use client";
 // One job's details and log: GET /api/admin/jobs/{id}, polled every 2 s while the job is live. The Astryx block
-// Dialog — Scrolling content (templates/blocks/components/Dialog/DialogScrollingContent.tsx) holds the facts as
-// the template incident-console's inspector lists them (templates/pages/incident-console/page.tsx:423-439:
+// Dialog — Scrolling content (@astryxdesign/cli assets/templates/blocks/components/Dialog/DialogScrollingContent.tsx) holds the facts as
+// the template incident-console's inspector lists them (@astryxdesign/cli assets/templates/pages/incident-console/page.tsx:423-439:
 // MetadataList with the labels at the start), the error as an error Banner and the log in a CodeBlock.
 
 import { Banner } from "@astryxdesign/core/Banner";
