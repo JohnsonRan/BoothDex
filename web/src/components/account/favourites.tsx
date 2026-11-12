@@ -1,7 +1,7 @@
 "use client";
 // Every favourite button's one handler and its saved state. The buttons carry `data-fav="<id>"` (item-tile.tsx,
 // the item dialog) and no handler, so server tiles stay server markup: one document listener toggles, and the
-// saved ones get `aria-pressed="true"`, which fills the heart (globals.css; the pressed icon of block
+// saved ones get `aria-pressed="true"`, which fills the heart (account.css; the pressed icon of block
 // ToggleButtonShowcase). Buttons added later (more tiles, another page, the dialog) are marked as they arrive.
 
 import { useEffect } from "react";

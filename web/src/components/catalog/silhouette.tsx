@@ -86,7 +86,7 @@ export function TileSilhouette({
 }
 
 /**
- * One tile's silhouette as a mask for a box of tiles not drawn (result-pages.tsx, app/globals.css `.page-box`):
+ * One tile's silhouette as a mask for a box of tiles not drawn (result-pages.tsx, app/catalog.css `.page-box`):
  * each Skeleton of a laid-out TileSilhouette as a rect at its place (the cover with its card's corners), in an
  * image of the tile's column width and row pitch that the box repeats across its columns and down its rows. The
  * box shows the tiles it stands for with no element per tile and nothing running.
@@ -170,7 +170,7 @@ export function SkeletonImage({
 
 /**
  * Marks an image over a Skeleton once it is decoded and can paint, and the Skeleton under it is dropped
- * (app/globals.css). A running Skeleton is a compositor layer, and so is every image over one: about 300 on a
+ * (app/catalog.css). A running Skeleton is a compositor layer, and so is every image over one: about 300 on a
  * screen of results, whose layerizing took most of every scrolled frame. One listener for the whole document, in
  * the head (app/layout.tsx) before any image; a load does not bubble, so it listens in the capture phase. An image
  * that fails to decode keeps its Skeleton.

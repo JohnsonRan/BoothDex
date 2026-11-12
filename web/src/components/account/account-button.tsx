@@ -3,7 +3,7 @@
 // The top bar's last actions. Signed out: Settings (a ghost IconButton with a tooltip, as the bar's other
 // preference controls) and Sign in, the ghost Button of template shell-top-nav's end actions (lines 186-194).
 // Signed in: the account IconButton (the user-circle glyph of template shell-side-nav's account row, line 180),
-// whose menu holds Settings too. Both are in the server HTML, each in a slot that globals.css shows by the
+// whose menu holds Settings too. Both are in the server HTML, each in a slot that account.css shows by the
 // `data-account` the head script sets from this browser's last session (session.tsx keeps it), so a returning
 // visitor sees the right one from the first paint and nothing swaps. The dialogs' code loads after the page
 // (lib/lazy), not with it; the menu's at once when the last session was signed in.

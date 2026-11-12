@@ -1,6 +1,6 @@
 // The last session's answer, kept in this browser for the next page load: only that the visitor was signed in
 // (no account data). The head script (app/layout.tsx) sets `<html data-account>` from it before the first paint,
-// so globals.css shows the account control instead of Sign in; session.tsx keeps both up to date.
+// so account.css shows the account control instead of Sign in; session.tsx keeps both up to date.
 
 export const SIGNED_IN = "in";
 const KEY = "account";
