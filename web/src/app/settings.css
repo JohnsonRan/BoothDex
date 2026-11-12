@@ -1,0 +1,28 @@
+/* Documented deviation (docs/TEMPLATE-MAP.md): template settings-dialog's StyleX rules for its rows
+   (page.tsx:259-292, `row.*`), written as plain classes because this app does not compile StyleX. The panel is
+   a size container; every row on it goes from two columns to one at the same 480 px, as in the template. */
+.settings-panel {
+  container: settings-panel / inline-size;
+}
+.settings-line {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+.settings-text {
+  max-width: 26.25rem;
+}
+.settings-control {
+  flex-shrink: 0;
+}
+@container settings-panel (max-width: 480px) {
+  .settings-line {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-2);
+  }
+  .settings-text {
+    max-width: none;
+  }
+}

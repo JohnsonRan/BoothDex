@@ -5,6 +5,10 @@ import { EARLY_CLICKS } from "@/lib/early-clicks";
 import { SESSION_HINT_SCRIPT } from "@/lib/session-hint";
 import { SINGLE_MODE, STYLES } from "@/lib/settings-core";
 import "./globals.css";
+import "./settings.css";
+import "./account.css";
+import "./catalog.css";
+import "./strip.css";
 import "./filter-row.css";
 
 // The neutral theme's Latin face, self-hosted and preloaded; globals.css points the theme's font tokens at it.

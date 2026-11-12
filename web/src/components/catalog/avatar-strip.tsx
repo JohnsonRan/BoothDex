@@ -11,14 +11,14 @@
 // focus or scroll in the strip, before any of them can come into view, and with a mouse also once the page is idle,
 // so a screen wider than the first cards fills in unasked. A touch screen shows a few cards and swipes the rest in,
 // its touch mounting them before they move: it is spared rendering them all at load.
-// The strip is one: under the filter band it shrinks with the page's scroll (band.tsx, app/globals.css `strip-*`)
+// The strip is one: under the filter band it shrinks with the page's scroll (band.tsx, app/strip.css `strip-*`)
 // into a row of chips, each the card's own image round at Avatar's 32 px size with its name beside it, as the
 // table-filter template's person cell (page.tsx:2862-2867: an Avatar and its name in an HStack, gap 2, centred).
 // Each card's square moves and shrinks to its chip's place, measured here once (and again on a resize, a font load
 // or a sideways scroll of the cards) as a distance per card (`--chip-x`) and one for the row (`--chip-ax`), which
 // brings the first card in view to the row's start; over it the same image fades in clipped round (AspectRatio
 // `shape="ellipse"`, AspectRatio.tsx:68-78), the caption fades out and the chip's name in, the selected one
-// semibold on a filled capsule with no ring (app/globals.css). All of it is transform and
+// semibold on a filled capsule with no ring (app/strip.css). All of it is transform and
 // opacity, so the compositor runs it with the scroll. Shrunk and in use (a pointer, a touch, focus or a wheel on
 // it, or the toggle folding it), the chips are laid out for real (`data-chips`), as they were drawn, so the row scrolls and snaps chip by chip. The cards are memoised: the band's state changes around them
 // without drawing them again.
@@ -117,7 +117,7 @@ function anchor(el: HTMLElement, r: Row) {
   if (ax !== r.ax) shift(el, r, ax);
 }
 
-// Each chip's width is its name's start and width (app/globals.css `.strip-name`), as wide as the tile laid out as
+// Each chip's width is its name's start and width (app/strip.css `.strip-name`), as wide as the tile laid out as
 // a chip; each card's distance to its chip (`--chip-x`) follows.
 function measure(el: HTMLElement | null, r: Row) {
   const area = el && scrollArea(el);

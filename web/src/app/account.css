@@ -1,0 +1,15 @@
+/* A saved favourite (account/favourites.tsx sets aria-pressed): the same lucide heart, filled, as the pressed
+   icon of block ToggleButtonShowcase (ToggleButtonShowcase.tsx:30). One rule, so server-rendered buttons need no client state. */
+[data-fav][aria-pressed="true"] svg {
+  fill: currentColor;
+}
+
+/* The top bar's account slots (account/account-button.tsx): both are in the server HTML, and `data-account`,
+   set by the head script from the last session and kept by the session, shows one before the first paint. */
+[data-account-slot] {
+  display: contents;
+}
+:root[data-account="in"] [data-account-slot="out"],
+:root:not([data-account="in"]) [data-account-slot="in"] {
+  display: none;
+}

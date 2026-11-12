@@ -6,7 +6,7 @@
 // The avatar strip is the band's lower part: the band sticks a strip's shrink higher (`--strip-d`) with the toolbar
 // pinned inside it, so once the toolbar reaches the top bar the strip goes on under it for that far while its
 // cards morph into a row of chips the height of the toolbar's controls (avatar-strip.tsx), then stays, laid over
-// the results that scroll beneath. The morph is scroll-driven CSS (app/globals.css `strip-*`, transform and
+// the results that scroll beneath. The morph is scroll-driven CSS (app/strip.css `strip-*`, transform and
 // opacity only); nothing in the flow changes, so nothing below moves. The band tells the strip where the scroll
 // has it, so shrunk and in use it lays its chips out for real.
 // The toggle in the toolbar's end cluster (strip-toggle.tsx, handed the strip's state here) opens the shrunk strip
@@ -54,7 +54,7 @@ import { StripToggleContext, type StripToggleState } from "./strip-toggle";
 
 // the top bar's height, which the AppShell keeps on its root for its own sticky parts
 const TOP = "var(--_app-shell-header-height, 0px)";
-// The band reaches up `--strip-d` (app/globals.css) past the top bar, under it: only its toolbar and its strip
+// The band reaches up `--strip-d` (app/strip.css) past the top bar, under it: only its toolbar and its strip
 // paint and take the pointer, each where it shows.
 const HEAD: CSSProperties = {
   position: "sticky",
@@ -81,9 +81,9 @@ const STRIP: CSSProperties = { position: "relative", isolation: "isolate" };
 const STRIP_DY = `calc(${CARD_REM - CHIP_REM}rem + var(--spacing-2) + var(--text-supporting-leading) * var(--text-supporting-size))`;
 // How far the strip goes under the toolbar: its top padding, its label line and the label's gap, then a card's
 // top to its chip's less the 8 px a chip keeps from the toolbar, as many as the strip keeps below it. Registered
-// as a length (app/globals.css), so it reads back in px.
+// as a length (app/strip.css), so it reads back in px.
 const STRIP_D = `calc(var(--spacing-4) + var(--text-body-leading) * var(--text-body-size) + var(--spacing-3) + ${STRIP_DY} - var(--spacing-2))`;
-// the chip's scale of the card (app/globals.css `strip-thumb`)
+// the chip's scale of the card (app/strip.css `strip-thumb`)
 const STRIP_SCALE = CHIP_REM / CARD_REM;
 // Folded in place, the strip keeps its shrink to itself and reaches that far up under the toolbar, as the scroll
 // takes it, so the flow keeps only its chip row.
@@ -183,7 +183,7 @@ export function FilterBand({
           : 0;
       if (!driven) head.style.setProperty("--strip-p", String(p));
       // the shrink runs from the first measure on (`data-morph`); where the scroll has it (`data-shrink`) hides the
-      // Carousel's buttons and, shrunk, draws the strip as the morph ends (app/globals.css); a hand turn is
+      // Carousel's buttons and, shrunk, draws the strip as the morph ends (app/strip.css); a hand turn is
       // part-way until it ends, as the scroll would be
       const state = turning.current
         ? "part"
@@ -448,7 +448,7 @@ export function FilterBand({
   );
 }
 
-/** what the scroll morphs or fades in the strip (app/globals.css), each run by a hand turn */
+/** what the scroll morphs or fades in the strip (app/strip.css), each run by a hand turn */
 const PARTS =
   ".strip-thumb, .strip-face, .strip-card, .strip-caption, .strip-name, .strip-label, .strip-surface";
 const partsOf = (s: HTMLElement) => [...s.querySelectorAll<HTMLElement>(PARTS)];

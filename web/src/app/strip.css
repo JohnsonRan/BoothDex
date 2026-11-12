@@ -1,0 +1,299 @@
+/* The avatar strip shrinking as the page scrolls it under the filter toolbar (catalog/band.tsx) into a row of chips
+   (catalog/avatar-strip.tsx): each card's square moves to its chip's place (`--chip-dx`: its own `--chip-x` and the
+   row's `--chip-ax`, measured by the strip; `--strip-dy` from the band) and shrinks to the chip's size about its
+   corner (`--strip-scale`). Each part shows only where it overlaps nothing: the caption is gone by a quarter, before
+   the shrinking card reaches its line; the square turns round late (the face in over 70-80 %, the card's square
+   corners and its ring out behind it over 75-85 %), when the card is already about half its size; the chip's
+   name (and the selected chip's capsule) fades in from 90 %, once its avatar
+   has moved clear of where it stands. The label goes by half-way, the surface the shrunk strip lays over the results fades in with its divider, and the Carousel's
+   prev/next buttons, which sit on the top layer above the band, go as the shrink starts (`data-shrink`, not an
+   animation: `visibility` would keep the main thread drawing every frame). Only transform and opacity move,
+   scroll-driven over the shrink's range (`--strip-y0` from the band, `--strip-d`), so the compositor runs it with
+   the scroll; without scroll timelines (Firefox) the same keyframes stand paused at the band's `--strip-p`. It runs
+   once the band knows where the shrink starts (`data-morph`, set as it hydrates, or from the server for a start
+   past page 1); until then the strip stands whole. Where the scroll has the strip (`data-shrink`: none, part, all)
+   is read by the Carousel's buttons, and shrunk all the way it draws the strip as the morph ends, under the morph
+   while one runs (each keyframes rule states its start, so that look never enters the morph): it changes only at
+   the shrink's ends, so it restyles the parts there, never as the scroll goes.
+   Shrunk and in use, the strip lays its chips out for real (`data-chips`): each tile as wide as its chip, the card drawn as at the shrink's end with no move left. Under
+   reduced motion nothing runs: `data-shrink` shows the strip whole or shrunk. Folded in place by the toolbar's
+   toggle (`data-strip-tucked`, band.tsx) the scroll morphs nothing and `data-shrink` shows it shrunk as well. Opened
+   by hand, the strip is drawn at full size. */
+@property --strip-d {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+@keyframes strip-thumb {
+  from {
+    translate: none;
+    scale: none;
+  }
+  to {
+    translate: calc(var(--chip-dx) - var(--_face-in))
+      calc(var(--strip-dy) - var(--_face-in));
+    scale: var(--strip-scale);
+  }
+}
+@keyframes strip-out {
+  from {
+    opacity: 1;
+  }
+  50%,
+  to {
+    opacity: 0;
+  }
+}
+@keyframes strip-caption {
+  from {
+    opacity: 1;
+  }
+  25%,
+  to {
+    opacity: 0;
+  }
+}
+@keyframes strip-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes strip-face {
+  from,
+  70% {
+    opacity: 0;
+  }
+  80%,
+  to {
+    opacity: 1;
+  }
+}
+@keyframes strip-behind {
+  from,
+  75% {
+    opacity: 1;
+  }
+  85%,
+  to {
+    opacity: 0;
+  }
+}
+@keyframes strip-name {
+  from,
+  90% {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.strip-tile {
+  position: relative;
+  inline-size: var(--strip-card);
+  --chip-dx: calc(var(--chip-x, 0px) + var(--chip-ax, 0px));
+}
+.strip-thumb {
+  inline-size: var(--strip-card);
+  transform-origin: 0 0;
+  /* the face's inset at the chip's size: the thumb moves back by it, so the face, not the card's corner, lands on
+     the chip's place, flush with the capsule and inside the Carousel's clip (it stood 0.6-1 px low and right) */
+  --_face-in: calc(var(--spacing-0-5) * var(--strip-scale));
+}
+/* the chip's face: the card's image clipped round, with no ring: a selected chip is its capsule and semibold name,
+   as Astryx marks a selected Token or item (a fill, no ring), so its avatar is as large as the others. It stands
+   inside the ring only, not the card's wider padding (silhouette.tsx THUMB_PADDING), so the shrunk face keeps the
+   chip's size; it overlaps the image's edge by a step only while the two cross-fade, at half size. */
+.strip-face {
+  position: absolute;
+  inset: var(--spacing-0-5);
+  opacity: 0;
+  pointer-events: none;
+}
+.strip-face[data-glyph] {
+  background-color: var(--color-background-muted);
+}
+.strip-face .strip-glyph {
+  scale: var(--strip-glyph);
+}
+/* the chip's name, beside where the card shrinks to (table-filter's person cell: gap 2, centred) */
+.strip-name {
+  position: absolute;
+  inset-inline-start: calc(var(--strip-chip) + var(--spacing-2));
+  inset-block-end: 0;
+  block-size: var(--strip-chip);
+  inline-size: max-content;
+  max-inline-size: var(--strip-name);
+  padding-inline-end: var(--spacing-2);
+  translate: var(--chip-dx) 0;
+  opacity: 0;
+  pointer-events: none;
+  isolation: isolate;
+}
+/* the selected chip, avatar and name, on a capsule in a Token's fill (core Token.tsx:226 `--color-neutral`, a translucent
+   tint that stays visible on the page in light and dark; Token's round end, Token.tsx:194 `--radius-full`), its name
+   semibold as a selected TopNav item's (TopNavItem.tsx:66-68). Static under the name, it fades in with it. */
+.strip-tile[data-selected] .strip-name::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline: calc(-1 * (var(--strip-chip) + var(--spacing-2))) 0;
+  z-index: -1;
+  border-radius: var(--radius-full);
+  background-color: var(--color-neutral);
+}
+/* the chips laid out: a tile as wide as its avatar and its name (the caption, hidden, keeps the tile's height and
+   gives the name's width), the card drawn as at the shrink's end */
+[data-chips] .strip-tile {
+  inline-size: max-content;
+  max-inline-size: calc(
+    var(--strip-chip) +
+    var(--spacing-2) +
+    var(--strip-name)
+  );
+  --chip-dx: 0px;
+}
+[data-chips] .strip-thumb {
+  margin-inline-end: calc(var(--strip-chip) - var(--strip-card));
+}
+[data-chips] .strip-caption {
+  margin-inline: calc(var(--strip-chip) + var(--spacing-2)) var(--spacing-2);
+}
+[data-morph] .strip-thumb {
+  animation-name: strip-thumb;
+}
+[data-morph] .strip-face {
+  animation-name: strip-face;
+}
+[data-morph] .strip-card {
+  animation-name: strip-behind;
+}
+[data-morph] .strip-label {
+  animation-name: strip-out;
+}
+[data-morph] .strip-caption {
+  animation-name: strip-caption;
+}
+[data-morph] .strip-name {
+  animation-name: strip-name;
+}
+[data-chips] .strip-thumb {
+  translate: calc(var(--chip-dx) - var(--_face-in))
+    calc(var(--strip-dy) - var(--_face-in));
+  scale: var(--strip-scale);
+}
+[data-chips] :is(.strip-card, .strip-caption) {
+  opacity: 0;
+}
+/* the selected chip's hidden caption as wide as its semibold name */
+[data-chips] .strip-tile[data-selected] .strip-caption {
+  font-weight: var(--font-weight-semibold);
+}
+[data-chips] :is(.strip-face, .strip-name) {
+  opacity: 1;
+}
+.strip-surface {
+  position: absolute;
+  inset: var(--strip-d) 0 0;
+  z-index: -1;
+  pointer-events: auto;
+  background-color: var(--color-background-surface);
+  border-block-end: 1px solid var(--color-border);
+  /* the strip at the top of the page, also before its timeline runs */
+  opacity: 0;
+}
+[data-morph] .strip-surface {
+  animation-name: strip-in;
+}
+/* shrunk, the chips have no edge fade (core Carousel.tsx:188-205): it faded the first chip's avatar where it rests
+   at the row's start, so it looked cut; the row's own edge clips a chip only while it scrolls sideways */
+[data-shrink="all"]:not([data-strip-open])
+  [data-strip]
+  .astryx-carousel-scroller {
+  mask-image: none;
+}
+[data-shrink="part"] [data-strip] [popover],
+[data-shrink="all"]:not([data-strip-open]) [data-strip] [popover] {
+  visibility: hidden;
+}
+.strip-row {
+  pointer-events: auto;
+}
+:is(
+  .strip-thumb,
+  .strip-face,
+  .strip-card,
+  .strip-label,
+  .strip-caption,
+  .strip-name,
+  .strip-surface
+) {
+  animation-duration: auto;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  animation-timeline: scroll(root);
+  animation-range: var(--strip-y0, 0px)
+    calc(var(--strip-y0, 0px) + var(--strip-d));
+}
+@supports not (animation-timeline: scroll()) {
+  :is(
+    .strip-thumb,
+    .strip-face,
+    .strip-card,
+    .strip-label,
+    .strip-caption,
+    .strip-name,
+    .strip-surface
+  ) {
+    animation-duration: 1s;
+    animation-play-state: paused;
+    animation-delay: calc(var(--strip-p, 0) * -1s);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-morph]
+    :is(
+      .strip-thumb,
+      .strip-face,
+      .strip-card,
+      .strip-label,
+      .strip-caption,
+      .strip-name,
+      .strip-surface
+    ) {
+    animation: none;
+  }
+}
+:is([data-strip-open], [data-strip-tucked])
+  :is(
+    .strip-thumb,
+    .strip-face,
+    .strip-card,
+    .strip-label,
+    .strip-caption,
+    .strip-name,
+    .strip-surface
+  ) {
+  animation: none;
+}
+[data-strip-open] .strip-surface {
+  inset: 0;
+  opacity: 1;
+}
+[data-shrink="all"]:not([data-strip-open]) .strip-thumb {
+  translate: calc(var(--chip-dx) - var(--_face-in))
+    calc(var(--strip-dy) - var(--_face-in));
+  scale: var(--strip-scale);
+}
+[data-shrink="all"]:not([data-strip-open])
+  :is(.strip-card, .strip-caption, .strip-label) {
+  opacity: 0;
+}
+[data-shrink="all"]:not([data-strip-open]) :is(.strip-face, .strip-name) {
+  opacity: 1;
+}
+[data-shrink="all"]:not([data-strip-open]) .strip-surface {
+  opacity: 1;
+}

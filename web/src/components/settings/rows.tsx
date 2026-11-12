@@ -2,7 +2,7 @@
 // The settings dialog's card of rows, copied from template settings-dialog (page.tsx:587-688, SettingsCard and
 // SettingsRow): a muted Card of divided rows, each with an icon, a label, an optional description and a control
 // in one column, every row of a panel stacking at the same width. The template's StyleX rules for that (row.*,
-// page.tsx:259-292) are the `settings-*` classes in globals.css: this app does not compile StyleX.
+// page.tsx:259-292) are the `settings-*` classes in settings.css: this app does not compile StyleX.
 
 import { Card } from "@astryxdesign/core/Card";
 import { Divider } from "@astryxdesign/core/Divider";

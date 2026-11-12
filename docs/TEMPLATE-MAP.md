@@ -192,7 +192,7 @@ Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@ast
   card is about half its size, and the chip's name (the selected chip's capsule with it) fades in from 90 %, once its
   avatar has moved clear of it. A filter change made with the strip shrunk keeps it shrunk: the window goes to where
   the new results start under the band, not to the page's top (owner: 「收起的时候切换会自动展开？」). The shrink is a scroll-driven CSS
-  animation of transform and opacity only (app/globals.css `strip-*`; paused at a progress set from the scroll where
+  animation of transform and opacity only (app/strip.css `strip-*`; paused at a progress set from the scroll where
   scroll timelines are missing; under reduced motion none runs and the strip is whole or shrunk), so the compositor
   runs it with the scroll, the flow never changes and nothing below moves. Shrunk and in use (a pointer, a touch,
   focus or a wheel on it) the chips are laid out for real (`data-chips`: each tile as wide as its chip, drawn as the
@@ -231,9 +231,9 @@ Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@ast
 - Astryx class and DOM hooks outside the `.d.ts` files, to re-check on an Astryx update:
   - `.astryx-app-shell` and `.astryx-app-shell-header` (`lib/deep-start.ts`): the deep start sets the shell's
     header height variable on the shell before it hydrates (above).
-  - `.astryx-skeleton` (`silhouette.tsx` `silhouetteMask`, `app/globals.css` image skeletons): the boxes' mask is
+  - `.astryx-skeleton` (`silhouette.tsx` `silhouetteMask`, `app/catalog.css` image skeletons): the boxes' mask is
     measured from a silhouette's Skeletons, and a painted image's Skeleton is dropped.
-  - The Carousel's top-layer `[popover]` (its prev/next buttons) under `[data-strip]` (`app/globals.css`
+  - The Carousel's top-layer `[popover]` (its prev/next buttons) under `[data-strip]` (`app/strip.css`
     `strip-*`): faded and hidden as the strip shrinks.
   - The Carousel's scroll area `:scope > [role="group"]` (`avatar-strip.tsx`): the vertical wheel scrolls it by
     the same `scrollBy` the Carousel's Shift + wheel uses.
@@ -250,11 +250,11 @@ Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@ast
   first screen): whole rows at 5 too would take 60 tiles, 19 KB of HTML over the size budget.
 - Image skeletons: each image is a `SkeletonImage` (`catalog/silhouette.tsx`), an `img` over a `Skeleton` in one
   grid cell, server markup with no handler; the image is positioned so it paints above the animated Skeleton.
-  Once the image is decoded, one document listener in the head marks it `data-painted` and `globals.css` drops
+  Once the image is decoded, one document listener in the head marks it `data-painted` and `catalog.css` drops
   the Skeleton under it: each running Skeleton under a painted image was a compositor layer, about 300 on a
   screen of results, and layerizing them took most of every scrolled frame. A new `src` is a new `img` (keyed).
 - Top bar account: both variants are server markup in `[data-account-slot]` wrappers (`display: contents`), and
-  `globals.css` shows one by `<html data-account>`, set before the first paint from `lib/session-hint.ts`.
+  `account.css` shows one by `<html data-account>`, set before the first paint from `lib/session-hint.ts`.
 - Avatar cards and the item gallery's thumbnails: `padding={0.5}` (the selection ring's width) and an image
   radius of `--radius-container` minus that padding, instead of product-detail's padding 0, so no band of card
   shows between ring and image.
@@ -427,7 +427,7 @@ Checked and kept as the template:
 
 ## Deviations in the filter sidebar and viewed marks
 
-- Viewed veil (`app/globals.css` `.viewed-cover`): Overlay's scrims are `dark` (`--color-overlay`) or `light`
+- Viewed veil (`app/catalog.css` `.viewed-cover`): Overlay's scrims are `dark` (`--color-overlay`) or `light`
   (white at 60 % in every mode); neither follows the mode, and the light one fogged covers white on a dark page. The
   viewed mark passes `scrim={false}` and the veil is the page surface (`--color-background-surface`) at 60 %.
 - Filter sidebar (`catalog/filter-rail.tsx`): the `LayoutPanel` has no divider, and beside it the band's toolbar
@@ -459,7 +459,7 @@ a raw colour. Each one is converted when its file is next changed and a prop cov
   strip's custom properties (`band.tsx`, `avatar-strip.tsx`), rotations.
 
 Raw elements kept: the tile's shop icon (above), `SkeletonImage`'s wrapper (server markup that needs no script), the
-account slots `globals.css` shows by `data-account`, and the item dialog's waiting subtitle.
+account slots `account.css` shows by `data-account`, and the item dialog's waiting subtitle.
 
 ## Remaining Tailwind or shadcn files
 
