@@ -763,4 +763,26 @@ mod tests {
         let failure: super::ApiError = std::io::Error::other("the cause").into();
         assert_eq!(answer(failure).await, (StatusCode::INTERNAL_SERVER_ERROR, json!({ "ok": false, "error": "internal error" })));
     }
+
+    /// The feed, the palette and item records queue for the search's permits and answer 429 when none comes.
+    #[tokio::test]
+    async fn the_feed_the_palette_and_item_records_wait_for_a_search_permit() {
+        use axum::extract::{RawQuery, State};
+        use axum::http::{StatusCode, header};
+        use axum::response::IntoResponse;
+
+        let state = test_state();
+        // a closed semaphore refuses at once; a full one refuses the same way after two seconds
+        state.search_permits.close();
+        let ip = super::limit::ClientIp("203.0.113.70".parse().unwrap());
+        let answers = [
+            super::rss_feed(State(state.clone()), ip, RawQuery(None)).await.into_response(),
+            super::palette(State(state.clone()), ip, RawQuery(Some("q=dress".into()))).await.into_response(),
+            super::items_by_id(State(state.clone()), ip, RawQuery(Some("ids=1".into()))).await.into_response(),
+        ];
+        for r in answers {
+            assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+            assert_eq!(r.headers()[header::RETRY_AFTER], "2");
+        }
+    }
 }
