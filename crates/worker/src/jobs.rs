@@ -64,6 +64,11 @@ pub async fn bump_catalog(pool: &PgPool) -> Result<()> {
 
 use boothdex_core::booth::{mark_delisted, store_item};
 
+/// Listing pages show at most 4 images, so a listing gallery never replaces a full one taken from the item page.
+const LISTING_IMAGES_UPSERT: &str = "insert into booth_images (item_id, images, complete)
+             select id, array(select jsonb_array_elements_text(imgs::jsonb)), false from unnest($1::bigint[], $2::text[]) as t(id, imgs)
+             on conflict (item_id) do update set images = excluded.images, fetched_at = now() where not booth_images.complete";
+
 /// Newest-first listing walk: stores image links for every item seen, ingests unknown items, stops once caught up.
 /// Bootstrapping an empty catalogue: `{"max_pages": 5000, "full": true}`; resume an interrupted one with `start_page`.
 pub async fn incremental(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
@@ -79,15 +84,11 @@ pub async fn incremental(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         seen += rows.len() as i64;
         let ids: Vec<i64> = rows.iter().map(|r| r.0).collect();
         let imgs: Vec<String> = rows.iter().map(|r| serde_json::to_string(&r.1).unwrap()).collect();
-        sqlx::query(
-            "insert into booth_images (item_id, images, complete)
-             select id, array(select jsonb_array_elements_text(imgs::jsonb)), false from unnest($1::bigint[], $2::text[]) as t(id, imgs)
-             on conflict (item_id) do update set images = excluded.images, fetched_at = now() where not booth_images.complete",
-        )
-        .bind(&ids)
-        .bind(&imgs)
-        .execute(ctx.pool)
-        .await?;
+        sqlx::query(LISTING_IMAGES_UPSERT)
+            .bind(&ids)
+            .bind(&imgs)
+            .execute(ctx.pool)
+            .await?;
         revived += sqlx::query("update items set status = 'ok' where id = any($1) and status = 'delisted'").bind(&ids).execute(ctx.pool).await?.rows_affected();
         let unknown: Vec<i64> = sqlx::query_scalar("select id from unnest($1::bigint[]) as t(id) where not exists (select 1 from items i where i.id = t.id)")
             .bind(&ids)
@@ -200,15 +201,11 @@ pub async fn sweep(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         let images = ctx.booth.images(&html);
         let img_ids: Vec<i64> = images.iter().map(|r| r.0).collect();
         let imgs: Vec<String> = images.iter().map(|r| serde_json::to_string(&r.1).unwrap()).collect();
-        sqlx::query(
-            "insert into booth_images (item_id, images, complete)
-             select id, array(select jsonb_array_elements_text(imgs::jsonb)), false from unnest($1::bigint[], $2::text[]) as t(id, imgs)
-             on conflict (item_id) do update set images = excluded.images, fetched_at = now() where not booth_images.complete",
-        )
-        .bind(&img_ids)
-        .bind(&imgs)
-        .execute(ctx.pool)
-        .await?;
+        sqlx::query(LISTING_IMAGES_UPSERT)
+            .bind(&img_ids)
+            .bind(&imgs)
+            .execute(ctx.pool)
+            .await?;
         if !ctx.progress(page as i64, Some(last as i64), &format!("page {page}/{last}: {seen} seen"), false).await? {
             ctx.log("cancelled during listing walk; skipping delisting check").await?;
             return Ok(format!("cancelled at page {page}, {seen} seen"));
@@ -603,10 +600,6 @@ pub async fn run(ctx: &mut Ctx<'_>, kind: &str, params: &Value) -> Result<String
 mod tests {
     use super::*;
     use boothdex_core::embed::{DIMS, HalfVector};
-
-    const LISTING_IMAGES_UPSERT: &str = "insert into booth_images (item_id, images, complete)
-             select id, array(select jsonb_array_elements_text(imgs::jsonb)), false from unnest($1::bigint[], $2::text[]) as t(id, imgs)
-             on conflict (item_id) do update set images = excluded.images, fetched_at = now() where not booth_images.complete";
 
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
