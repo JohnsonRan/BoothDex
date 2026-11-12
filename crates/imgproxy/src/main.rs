@@ -17,7 +17,6 @@ use std::io::Cursor;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 #[cfg(feature = "libavif")]
@@ -31,7 +30,7 @@ use foyer::{BlockEngineConfig, DeviceBuilder, FsDeviceBuilder, HybridCache, Hybr
 use image::{DynamicImage, ImageFormat, ImageReader, Limits};
 use tokio::sync::Semaphore;
 
-use upstream::{fetch_upstream, icon_upstream_url, upstream_url};
+use upstream::{fetch_upstream, icon_upstream_url, upstream_client, upstream_url};
 
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 /// Upstream 404s are cached (as an empty value) — Booth image paths are content-addressed and never come back
@@ -296,7 +295,6 @@ fn main() -> Result<()> {
 }
 
 async fn serve() -> Result<()> {
-    rustls::crypto::ring::default_provider().install_default().ok();
     let dir = std::env::var("CACHE_DIR").unwrap_or_else(|_| "imgcache".into());
     std::fs::create_dir_all(&dir)?;
     let (mem_mb, disk_mb) = (env_num("CACHE_MEM_MB", 256), env_num("CACHE_DISK_MB", 10_240));
@@ -316,7 +314,7 @@ async fn serve() -> Result<()> {
         mem_mb,
         disk_mb,
         cache,
-        client: reqwest::Client::builder().timeout(Duration::from_secs(20)).build()?,
+        client: upstream_client()?,
         transcode: Semaphore::new(transcodes),
         archive: std::env::var("ARCHIVE_IMAGES").ok().map(PathBuf::from),
     });
