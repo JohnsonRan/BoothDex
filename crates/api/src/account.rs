@@ -477,6 +477,9 @@ async fn change_password(
     if !valid_password(&b.new) {
         return Ok(err(StatusCode::BAD_REQUEST, "Your password must be at least 10 characters."));
     }
+    if b.new == b.current {
+        return Ok(err(StatusCode::BAD_REQUEST, "Your new password must be different from your current password."));
+    }
     if let Err(r) = check_own_password(&s, ip, u.id, b.current, "Current password is incorrect.").await? {
         return Ok(r);
     }
@@ -1300,6 +1303,28 @@ mod tests {
         }
         assert_eq!(status(change([198, 51, 100, 200]).await), StatusCode::TOO_MANY_REQUESTS);
         assert!(state.throttle.blocked("a"));
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn a_new_password_must_differ_from_the_current_one(pool: PgPool) {
+        signed_in(&pool).await;
+        let old_hash = hash_password("0123456789".into()).await.ok().unwrap();
+        sqlx::query("update users set password_hash = $1").bind(&old_hash).execute(&pool).await.unwrap();
+        let state = test_state(pool.clone());
+        let change = |new: &str| {
+            change_password(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 7].into()), headers(), Json(ChangePassword {
+                current: "0123456789".into(),
+                new: new.into(),
+            }))
+        };
+        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let hash = || sqlx::query_scalar::<_, String>("select password_hash from users").fetch_one(&pool);
+
+        assert_eq!(status(change("0123456789").await), StatusCode::BAD_REQUEST);
+        assert_eq!(hash().await.unwrap(), old_hash);
+        assert_eq!(status(change("9876543210").await), StatusCode::OK);
+        assert_ne!(hash().await.unwrap(), old_hash);
     }
 
     #[sqlx::test(migrations = "../core/migrations")]

@@ -165,6 +165,7 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
     const v = values[field];
     if (!v) return "account.required";
     if (field === "next" && v.length < 10) return "account.passwordShort";
+    if (field === "next" && v === values.current) return "profile.same";
     if (field === "again" && v !== values.next) return "profile.mismatch";
   };
 
