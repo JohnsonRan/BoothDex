@@ -1,0 +1,21 @@
+name: requirements
+
+# Not part of test.yml: images.yml calls that file, and a Due date that passes here must not stop the images.
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  requirements:
+    name: requirements
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 scripts/check-requirements.py
+      # the self-test takes under a second, so it runs every time instead of only when scripts/ changes
+      - run: python3 scripts/test_check_requirements.py
