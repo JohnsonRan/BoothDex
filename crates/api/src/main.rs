@@ -12,6 +12,7 @@ mod admin;
 mod api_types;
 mod catalog;
 mod db;
+mod error;
 mod gallery;
 mod limit;
 mod params;
@@ -37,6 +38,7 @@ use tower_http::compression::Predicate as _;
 use serde_json::{Value, json};
 use sqlx::PgPool;
 
+use error::ApiError;
 use params::Params;
 use search::{EMBED_CACHE_CAP, EmbedWatch};
 use snapshot::{Lookup, Snapshot, build_snapshot, catalog_version, reloader};
@@ -136,21 +138,6 @@ impl AppState {
     }
 }
 
-struct ApiError(anyhow::Error);
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        eprintln!("error: {:#}", self.0);
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error": "internal error" }))).into_response()
-    }
-}
-
-impl<E: Into<anyhow::Error>> From<E> for ApiError {
-    fn from(e: E) -> Self {
-        Self(e.into())
-    }
-}
-
 async fn lookup_rate_limit(
     State(s): State<Arc<AppState>>,
     limit::ClientIp(ip): limit::ClientIp,
@@ -177,13 +164,8 @@ async fn account_write_rate_limit(
 }
 
 async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
-    if let Err(r) = s.limits.rss.check(ip) {
-        return Ok(r.into_response());
-    }
-    let _permit = match s.acquire_search().await {
-        Ok(p) => p,
-        Err(r) => return Ok(r.into_response()),
-    };
+    s.limits.rss.check(ip)?;
+    let _permit = s.acquire_search().await?;
     let user_q = q.unwrap_or_default();
     // first occurrence wins in Params, so the prefix pins ordering and size
     let p = Params::parse(&format!("sort=newest&dir=desc&page=1&pageSize=50&{user_q}"));
@@ -196,19 +178,14 @@ async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cl
 
 /// Ctrl+K: one query across items, avatars, authors, tags and categories.
 async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
-    if let Err(r) = s.limits.palette.check(ip) {
-        return Ok(r.into_response());
-    }
+    s.limits.palette.check(ip)?;
     let raw = q.unwrap_or_default();
     let p = Params::parse(&raw);
     let text = p.get("q").unwrap_or_default();
     if text.trim().is_empty() {
         return Ok(Json(json!({ "items": [], "avatars": [], "authors": [], "tags": [], "categories": [] })).into_response());
     }
-    let _permit = match s.acquire_search().await {
-        Ok(p) => p,
-        Err(r) => return Ok(r.into_response()),
-    };
+    let _permit = s.acquire_search().await?;
     let small = Params::parse(&format!("limit=5&{raw}"));
     let needle = text.to_lowercase();
     let snap = s.snap();
@@ -254,16 +231,11 @@ async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cli
 async fn items_by_id(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
     let ids = item_ids(q.as_deref().unwrap_or(""));
     let limit = if ids.len() == 1 { &s.limits.item } else { &s.limits.items };
-    if let Err(r) = limit.check(ip) {
-        return Ok(r.into_response());
-    }
+    limit.check(ip)?;
     if ids.is_empty() {
         return Ok(Json(json!({ "items": [] })).into_response());
     }
-    let _permit = match s.acquire_search().await {
-        Ok(p) => p,
-        Err(r) => return Ok(r.into_response()),
-    };
+    let _permit = s.acquire_search().await?;
     let items = db::load_items(&s.pool, &ids, false).await?;
     // an id the catalogue lacks may come in later, so an answer missing one is not kept
     let whole = items.len() == ids.len();
