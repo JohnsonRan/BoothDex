@@ -45,7 +45,7 @@ export type LegalView = LegalDoc & {
 };
 
 /** The day the texts last changed in substance; update it with them. */
-export const LEGAL_UPDATED = "2026-11-11";
+export const LEGAL_UPDATED = "2026-11-13";
 
 export const SOURCE_URL = "https://github.com/JohnsonRan/BoothDex";
 

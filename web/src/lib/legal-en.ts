@@ -23,6 +23,7 @@ const texts: LegalTexts = {
           {
             list: [
               "Your IP address and browser details, which come with every request. They're used to deliver pages and to limit abusive traffic; the rate limits are kept in memory only.",
+              "Each sign-in attempt, successful or not, and each failed check of your current password: the IP address and, if the account exists, its username, written to the server log to detect password guessing and misuse.",
               "What you search for. When semantic search is on, the search text is sent to an AI provider to work out its meaning, with nothing that identifies you.",
             ],
           },
@@ -128,7 +129,7 @@ const texts: LegalTexts = {
               "Signed-in devices: until you sign out or the session ends after 30 days. Ended sessions are deleted within an hour.",
               "Recently viewed items: the latest 500.",
               "Search text cached for semantic search: deleted after 90 days without use. It isn't linked to anyone.",
-              "Server logs: overwritten once they reach a small size limit.",
+              "Server logs, including sign-in attempts: overwritten once they reach a small size limit.",
             ],
           },
         ],
