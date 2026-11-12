@@ -17,7 +17,9 @@ use std::sync::Arc;
 #[cfg(test)]
 use std::time::Duration;
 
+use axum::extract::State;
 use axum::http::{HeaderMap, header};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::Router;
 #[cfg(test)]
@@ -39,7 +41,7 @@ use sign_in::registration;
 use views::{add_views, clear_views, list_views};
 
 use crate::error::Refusal;
-use crate::{ApiError, AppState};
+use crate::{ApiError, AppState, limit};
 
 pub struct User {
     pub id: i64,
@@ -89,6 +91,19 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/account/views", get(list_views).post(add_views).delete(clear_views))
         .route("/api/account/searches", get(list_searches).post(add_search))
         .route("/api/account/searches/{id}", axum::routing::patch(rename_search).delete(remove_search))
+}
+
+/// Account changes are database writes; reading the account is not limited.
+pub(crate) async fn account_write_rate_limit(
+    State(s): State<Arc<AppState>>,
+    limit::ClientIp(ip): limit::ClientIp,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if req.method() != axum::http::Method::GET && let Err(r) = s.limits.account.check(ip) {
+        return r.into_response();
+    }
+    next.run(req).await
 }
 
 /// An API over `pool` with an empty catalogue, for handler tests.

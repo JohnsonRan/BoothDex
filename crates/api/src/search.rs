@@ -10,6 +10,7 @@ use axum::response::{IntoResponse, Response};
 
 use crate::error::Refusal;
 use crate::params::Params;
+use crate::search_request::{SearchRequest, View};
 use crate::{ApiError, AppState, account, catalog, db, limit};
 
 pub(crate) const EMBED_CACHE_CAP: u64 = 2000;
@@ -132,7 +133,8 @@ pub(crate) async fn search(
     let mut trace = Trace::default();
     trace.start();
     let p = Params::parse(q.as_deref().unwrap_or(""));
-    let favourites = if p.get("v").as_deref() == Some("favourites") {
+    let req = SearchRequest::from(&p);
+    let favourites = if matches!(req.view, View::Favourites) {
         let u = account::current_user(&s.pool, &headers).await?.ok_or(Refusal::SignInRequired)?;
         let f = s.snap().catalog.docs_for(&account::favourite_ids(&s, u.id).await?);
         trace.step("favourites");
@@ -144,11 +146,11 @@ pub(crate) async fn search(
     // weren't, so the result set can't change between pages if the provider answers late
     // model names in the query become a requirement for meaning-based matches and are left out of the
     // embedding, so "shinano short hair" adds short hair that fits Shinano, not other Shinano items
-    let q = p.get("q").unwrap_or_default();
-    let (meaning, named) = s.snap().avatars.split_names(&q);
+    let q = req.q.as_deref().unwrap_or_default();
+    let (meaning, named) = s.snap().avatars.split_names(q);
     let models: Vec<String> = named.iter().map(|(slug, _)| slug.clone()).collect();
     trace.step("prepare");
-    let embed_plan = match p.get("q").filter(|q| !q.trim().is_empty()) {
+    let embed_plan = match req.q {
         Some(_) if p.get("sem").as_deref() == Some("0") => EmbedPlan::Skipped,
         Some(_) if meaning.is_empty() => EmbedPlan::Skipped,
         Some(_) => semantic_vector(s.clone(), ip, &meaning, &mut trace).await,
@@ -179,7 +181,7 @@ pub(crate) async fn search(
     let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
         .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models, rest: &meaning });
     let search_start = Instant::now();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, catalog_now, favourites.as_ref(), semantic, true))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&req, catalog_now, favourites.as_ref(), semantic, true))?;
     let search_ms = search_start.elapsed().as_secs_f64() * 1e3;
     trace.step("search");
     let items = db::load_items(&s.pool, &r.ids, p.get("fields").as_deref() == Some("card")).await?;

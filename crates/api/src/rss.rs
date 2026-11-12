@@ -1,6 +1,29 @@
 //! Saved-search feeds: `/api/rss?<any search query string>` returns the newest matching items as RSS 2.0.
 //! Stateless on purpose: the subscription *is* the URL, so it works without an account.
 
+use std::sync::Arc;
+
+use axum::extract::{RawQuery, State};
+use axum::response::{IntoResponse, Response};
+
+use crate::params::Params;
+use crate::search_request::{SearchRequest, Sort};
+use crate::{ApiError, AppState, db, limit};
+
+pub(crate) async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
+    s.limits.rss.check(ip)?;
+    let _permit = s.acquire_search().await?;
+    let user_q = q.unwrap_or_default();
+    // the feed pins ordering and size, whatever the saved search sorts by
+    let mut req = SearchRequest::from(&Params::parse(&user_q));
+    (req.sort, req.asc, req.page, req.page_size) = (Sort::Newest, false, 1, 50);
+    let now = chrono::Utc::now().timestamp();
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&req, now, None, None, false))?;
+    let items = db::load_items(&s.pool, &r.ids, false).await?;
+    let link = format!("{}/?{user_q}", s.site_url);
+    Ok(([(axum::http::header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")], render(&link, &user_q, &items)).into_response())
+}
+
 fn esc(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
