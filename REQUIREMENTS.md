@@ -50,7 +50,7 @@ meanwhile.
 | --- | --- | --- | --- |
 | Type scale (role: size / line height) | the Astryx type tokens; no other font size or line height | a setting of the design system, not measured | design system, review |
 | Spacing scale (section, card, inside card, label to field) | the Astryx spacing tokens; no other gap or padding | a setting of the design system, not measured | design system, review |
-| Page frame width; readable column width | | | review |
+| Page frame width; readable column width | one per kind of page: the catalogue spans the viewport, inset 24 px on a phone and 28 px on a desktop; the admin console, a 1440 px frame beside its side navigation (`web/src/components/admin/page-frame.tsx`); privacy and terms, a 960 px reading column (`web/src/components/legal/legal-screen.tsx`); a form, the settings template's two columns of at least 320 px (`web/src/components/admin/settings-page.tsx`) | at 390, 1440 and 1920 px every admin page puts its h1 at x = 16, 278 and 388 in the same 1440 px frame; privacy and terms at 24, 268 and 508 in the 960 px column; the catalogue at 24, 28 and 28; no page scrolls sideways (2026-11-12, `next dev` with a scratch database on the development host, measured with Playwright, load not recorded) | review |
 | Supported widths (phone, laptop, wide) | 390 px phone, 1440 px desktop | a setting, not measured; the widths `web/tools/loading-layout.cjs` checks | screenshots, `web/tools/loading-layout.cjs` (lab) |
 | Rust tests, not counting the build | 3 min | 109 tests in 4 s (2026-11-11, development host, load not recorded) | review |
 | `bun test` in `web/` | 15 s | 103 tests in 3 s (2026-11-11, development host, load not recorded) | review |
@@ -108,12 +108,12 @@ tagged rule marked as not applying needs the owner's approval, quoted in the com
 | AGENTS.md: Change risk | | `REVIEW.md`, "Scope" | |
 | AGENTS.md: Workflow | | `REVIEW.md`, "Pass bar" | |
 | AGENTS.md: When unsure | | `REVIEW.md`, "Scope" | |
-| AGENTS.md: Waiting | | | |
-| AGENTS.md: Reporting | | | |
+| AGENTS.md: Waiting | | `REVIEW.md`, "The writer's report", Waiting | |
+| AGENTS.md: Reporting | | `REVIEW.md`, "The writer's report", Reporting | |
 | AGENTS.md: Code quality | `cargo clippy --workspace --all-targets -- -D warnings`; in `web/`: `bunx biome check` | `REVIEW.md`, "Pass bar" | |
 | AGENTS.md: Impact and edge cases | | `REVIEW.md`, "Checking against the rules", Newly reachable defects | |
 | AGENTS.md: Secrets | | `REVIEW.md`, "Checking against the rules", Sensitive data | |
-| AGENTS.md: Performance baseline | | | |
+| AGENTS.md: Performance baseline | | `REVIEW.md`, "Checking against the rules", Performance | |
 | AGENTS.md: Tests (if present) | | `REVIEW.md`, "CI, docs and commits", CI | |
 | AGENTS.md: Merging | | `REVIEW.md`, "Report", verdict rule | |
 | AGENTS.md: Model usage | | `REVIEW.md`, "Before you start" | |
@@ -153,13 +153,6 @@ Backend endpoints with no frontend caller:
 | `/api/authors`, `/api/booth-tags` | other clients of the VRCatalogue-compatible API | public API, listed in the README, "API" |
 | imgproxy `/stats` | the API's admin overview (`crates/api/src/admin.rs`) | operator counters for the admin console; `web/next.config.ts` does not forward it, so only the API reaches it (owner, 2026-11-12) |
 
-Backend endpoints with no frontend caller and no reason yet; the owner decides between adding UI, removing the
-endpoint and recording a reason above:
-
-| Endpoint | State |
-| --- | --- |
-| `/api/account/profile`, `/api/account/password` | no caller in `web/src` (2026-11-12) |
-
 Intentional designs that look like defects:
 
 | What | Why | Owner ruling (date, quote) |
@@ -182,10 +175,6 @@ body.
 
 | Row | Current state | Plan | Due |
 | --- | --- | --- | --- |
-| Numbers: Page frame width; readable column width | widths are set per component; no shared value | measure the frames and set one width per kind of page | 2026-12-31 |
-| Enforcement: AGENTS.md: Waiting | the owner reads the agent's report; no `REVIEW.md` section covers it | the owner decides how it is checked | 2026-12-31 |
-| Enforcement: AGENTS.md: Reporting | the owner reads the agent's report; no `REVIEW.md` section covers it | the owner decides how it is checked | 2026-12-31 |
-| Enforcement: AGENTS.md: Performance baseline | `scripts/bench/run.sh` measures; nothing compares a change with the baseline | the owner decides between a review item and a gate | 2026-12-31 |
 
 ## Deferred options
 
@@ -194,8 +183,9 @@ after a release.
 
 | Option | Source | Why it waits |
 | --- | --- | --- |
-| Move install and the shortest use in the three READMEs above "Capabilities", which runs for about 95 lines first | `AGENTS.md`, "Writing", README; review of 3045384 (2026-11-12) | rewriting the project page in three languages is a copy decision |
 | Re-sign the 15 unsigned commits from ed15fcf to a007c85 (2026-10-31 to 2026-11-05) | `AGENTS.md`, "Commits and pull requests"; review of 3045384 (2026-11-12) | it rewrites published history |
+| Release-only checks (a reproducible build, migrations on a copy of production data, a deploy rehearsal) and a planted violation for each gate command in the release tier | `.github/AGENTS.md`, "Tiers, jobs and gates" | the owner plans no release soon (2026-11-12) |
+| Split `scripts/check-requirements.py` (314 lines) and `scripts/test_check_requirements.py` (346 lines), both above the p90 file size (274 lines) | `REVIEW.md`, "Pass bar"; review of 3045384 | the owner ruled on 2026-11-12 that they may diverge from the kit's copies; each works as one file, so the split waits for the next change to either |
 
 ## Open questions
 
@@ -204,8 +194,6 @@ to the file it decides.
 
 | Question | Source | Raised |
 | --- | --- | --- |
-| The release tier has no release-only checks (a reproducible build, migrations on a copy of production data, a deploy rehearsal) and does not re-run a planted violation for each gate command. Add them, or record why the project does without? | `.github/AGENTS.md`, "Tiers, jobs and gates" | 2026-11-12 |
-| `scripts/check-requirements.py` (314 lines) and `scripts/test_check_requirements.py` (346 lines) are above the p90 file size (274 lines) with no reason given. Do they stay identical to the rules kit's copies, which would be that reason? | `REVIEW.md`, "Pass bar"; review of 3045384 | 2026-11-12 |
 
 ## Example (illustrative values; measure your own)
 

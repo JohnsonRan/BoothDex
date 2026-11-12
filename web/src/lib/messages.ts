@@ -24,6 +24,7 @@ export const API_ERRORS: ApiErrors<MessageKey> = {
     "Registration is closed.": "error.registrationClosed",
     "Saved search limit reached.": "saved.limit",
     "Password is incorrect.": "error.password",
+    "Current password is incorrect.": "error.password",
     "Admins can't delete their account.": "delete.admin",
   },
   statuses: {

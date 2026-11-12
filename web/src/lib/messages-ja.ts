@@ -265,6 +265,18 @@ export const ja: Dict = {
   "settings.aboutDesc":
     "プライバシー、利用規約、ソースコード、問題の報告です。",
   "settings.account": "アカウント",
+  "settings.profile": "プロフィール",
+  "settings.profileDesc": "表示名とログイン パスワードです。",
+  "profile.nameTitle": "表示名を変更",
+  "profile.nameLong": "50 文字以内にしてください",
+  "profile.nameSaved": "表示名を変更しました",
+  "profile.passwordTitle": "パスワードを変更",
+  "profile.passwordDesc": "変更すると、ほかの端末はログアウトされます。",
+  "profile.current": "現在のパスワード",
+  "profile.new": "新しいパスワード(10 文字以上)",
+  "profile.again": "新しいパスワード(確認)",
+  "profile.mismatch": "パスワードが一致しません",
+  "profile.passwordSaved": "パスワードを変更し、ほかの端末をログアウトしました",
   "settings.devices": "ログイン中の端末",
   "settings.devicesDesc":
     "このアカウントにログインしているブラウザーと端末です。",

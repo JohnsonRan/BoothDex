@@ -131,6 +131,9 @@ rule. This section only says how to verify the rules a diff cannot show.
   every log of that run, the database's included.
 - **Migrations.** Apply on a database that holds rows, apply again, and compare the number with
   main.
+- **Performance.** When the diff changes code that `scripts/bench/run.sh` or `bun run check:size`
+  (in `web/`) measures, the pull request carries both runs, before and after, from the same host
+  with its load. A result worse than the baseline is a finding unless the owner accepted it.
 
 Review-only checks that no development rule covers:
 
@@ -163,6 +166,18 @@ Review-only checks that no development rule covers:
   - Signed.
   - No AI attribution, no work diary, no routine test report.
   - No `fixup!` or `squash!` subjects left.
+
+## The writer's report
+
+Check the pull request description, or the writer's report when there is no pull request, against
+the root `AGENTS.md`, "Reporting" and "Waiting":
+
+- **Reporting.** Rerun at least one command the report names and compare the result. A test or
+  check claimed without its command and result is a finding, and so is an unverified part that is
+  not labelled.
+- **Waiting.** A job that ran across several agents or wake-ups has its STATE file current to its
+  last milestone. A step stuck past the wait timeout in `REQUIREMENTS.md` is recorded with its
+  state, not dropped or retried without a word.
 
 ## Report
 

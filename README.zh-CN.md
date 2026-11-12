@@ -10,7 +10,7 @@
 
 [English](README.md) / 简体中文 / [日本語](README.ja.md)
 
-[功能](#功能) / [快速开始](#快速开始) / [架构](#架构) / [开发](#开发)
+[快速开始](#快速开始) / [功能](#功能) / [架构](#架构) / [开发](#开发)
 
 </div>
 
@@ -21,6 +21,33 @@ BoothDex 收录 [BOOTH](https://booth.pm) 上出售的 VRChat 商品，支持按
 pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者所有，每件商品均直接链接回其 BOOTH 页面。
 
 ![首页（分类：头发）：筛选栏、模型本体轮播与商品网格](docs/screenshots/zh-CN/home.webp)
+
+## 快速开始
+
+完整配置、反向代理示例及备份方案请参阅[部署指南](docs/DEPLOY.md)。生产环境通过 Docker 或 Podman Compose 运行
+PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端，仅对外暴露单一端口（`WEB_LISTEN`，默认 `3100`）供反向代理接入；建议使用 **6 GB 及以上内存**的 Linux 服务器（推荐 8 GB，或 4 GB 配合 Swap）。
+
+```mermaid
+flowchart LR
+  env["1. 下载 compose.yaml 与 .env<br/>（填写密码与 SITE_URL）"] --> data{"2. 准备初始数据"}
+
+  data -- "使用数据包（约 5 分钟）" --> bundle["解压 images.tar<br/>pg_restore 导入 catalogue.dump"]
+  data -- "空库抓取（约 2–3 天）" --> crawl["自动写入分类与约 380 个模型<br/>运行首次全量 incremental 抓取"]
+
+  bundle --> up["3. docker compose up -d"]
+  crawl --> up
+  up --> admin["4. 注册账号并写入 ADMIN_USERNAMES<br/>在 /admin 配置可选 AI 服务"]
+```
+
+新建数据库会自动初始化分类树、智能标签和约 380 个模型本体。若想跳过耗时数天的首次全量抓取（参见[无数据包首次启动](docs/DEPLOY.md#starting-without-a-data-bundle)），可直接恢复[已发布的数据包](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04)（2026-11-04 快照，含约 21.7 万件商品及下架存档图片，约 2.1 GB）：
+
+```sh
+mkdir -p /srv/boothdex && cd /srv/boothdex
+curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
+curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
+$EDITOR .env    # 配置 POSTGRES_PASSWORD、SITE_URL、WEB_LISTEN、CONTACT_EMAIL，使用数据包时还需设置 ARCHIVE_IMAGES_DIR
+docker compose pull && docker compose up -d
+```
 
 ## 功能
 
@@ -44,6 +71,7 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 - 在结果上方的模型轮播中选择模型本体，即可列出适配该模型的商品；“模型本体”视图列出模型本身，并可按性别筛选。
 - 商品在对话框中打开，包含完整 BOOTH 图集、变体、标题翻译与原图下载。
 - 收藏夹、最近已看（在结果中标记“已看”）、记住常用模型，以及保存的搜索：可重命名，也可通过 RSS 订阅。
+- 在设置中修改显示名称和密码；修改密码后，其他设备会退出登录。
 
 <details>
 <summary>商品详情在结果上方打开</summary>
@@ -101,33 +129,6 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 </details>
 
 不提供独立商品详情页、历史价格曲线、第三方社交登录及找回密码邮件（由管理员重置密码）。商品简介和变体名保留原文，仅翻译标题以服务跨语言检索。
-
-## 快速开始
-
-完整配置、反向代理示例及备份方案请参阅[部署指南](docs/DEPLOY.md)。生产环境通过 Docker 或 Podman Compose 运行
-PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端，仅对外暴露单一端口（`WEB_LISTEN`，默认 `3100`）供反向代理接入；建议使用 **6 GB 及以上内存**的 Linux 服务器（推荐 8 GB，或 4 GB 配合 Swap）。
-
-```mermaid
-flowchart LR
-  env["1. 下载 compose.yaml 与 .env<br/>（填写密码与 SITE_URL）"] --> data{"2. 准备初始数据"}
-
-  data -- "使用数据包（约 5 分钟）" --> bundle["解压 images.tar<br/>pg_restore 导入 catalogue.dump"]
-  data -- "空库抓取（约 2–3 天）" --> crawl["自动写入分类与约 380 个模型<br/>运行首次全量 incremental 抓取"]
-
-  bundle --> up["3. docker compose up -d"]
-  crawl --> up
-  up --> admin["4. 注册账号并写入 ADMIN_USERNAMES<br/>在 /admin 配置可选 AI 服务"]
-```
-
-新建数据库会自动初始化分类树、智能标签和约 380 个模型本体。若想跳过耗时数天的首次全量抓取（参见[无数据包首次启动](docs/DEPLOY.md#starting-without-a-data-bundle)），可直接恢复[已发布的数据包](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04)（2026-11-04 快照，含约 21.7 万件商品及下架存档图片，约 2.1 GB）：
-
-```sh
-mkdir -p /srv/boothdex && cd /srv/boothdex
-curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
-curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
-$EDITOR .env    # 配置 POSTGRES_PASSWORD、SITE_URL、WEB_LISTEN、CONTACT_EMAIL，使用数据包时还需设置 ARCHIVE_IMAGES_DIR
-docker compose pull && docker compose up -d
-```
 
 ## 架构
 

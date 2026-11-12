@@ -11,6 +11,7 @@ import {
   FileText,
   Hash,
   History,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   MessageSquare,
@@ -39,6 +40,7 @@ registerIcons({
   "site:style": <SwatchBook {...glyph} />,
   "site:system": <Monitor {...glyph} />,
   "site:devices": <MonitorSmartphone {...glyph} />,
+  "site:password": <KeyRound {...glyph} />,
   "site:itemText": <Type {...glyph} />,
   // the filters' place (settings/panels.tsx)
   "site:filterRow": <PanelTop {...glyph} />,

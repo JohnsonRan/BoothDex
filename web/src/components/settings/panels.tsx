@@ -38,10 +38,17 @@ import {
   LOCALES,
 } from "@/lib/settings-core";
 import { DataPanel } from "./delete-account";
+import { ProfilePanel } from "./profile";
 import { CONTROL_WIDTH, SettingsCard, SettingsRow } from "./rows";
 import { StyleChoiceCards, ThemeChoiceCards } from "./theme-choice";
 
-export type PanelId = "appearance" | "language" | "devices" | "data" | "about";
+export type PanelId =
+  | "appearance"
+  | "language"
+  | "profile"
+  | "devices"
+  | "data"
+  | "about";
 
 type PanelGroup = {
   label: MessageKey;
@@ -78,6 +85,12 @@ export const PANEL_GROUPS: PanelGroup[] = [
     label: "settings.account",
     signedIn: true,
     panels: [
+      {
+        id: "profile",
+        label: "settings.profile",
+        description: "settings.profileDesc",
+        icon: "site:account",
+      },
       {
         id: "devices",
         label: "settings.devices",
@@ -410,6 +423,8 @@ export function SettingsPanelBody({ panel }: { panel: PanelId }) {
       return <AppearancePanel />;
     case "language":
       return <LanguagePanel />;
+    case "profile":
+      return <ProfilePanel />;
     case "devices":
       return <DevicesPanel />;
     case "data":

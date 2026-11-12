@@ -10,7 +10,7 @@
 
 [English](README.md) / [简体中文](README.zh-CN.md) / 日本語
 
-[主な機能](#主な機能) / [はじめに](#はじめに) / [アーキテクチャ](#アーキテクチャ) / [開発](#開発)
+[はじめに](#はじめに) / [主な機能](#主な機能) / [アーキテクチャ](#アーキテクチャ) / [開発](#開発)
 
 </div>
 
@@ -19,6 +19,32 @@
 BoothDex は、[BOOTH](https://booth.pm) で販売されている VRChat 向け商品をインデックス化し、対応アバター、カテゴリ、タグ、機能、価格などの条件で高速に絞り込める検索エンジンです。2026-11-01 に閉鎖された VRCatalogue の後継を目指して開発が始まり、互換性のある検索構文を備えています。本プロジェクトは独立したオープンソースプロジェクトであり、pixiv、BOOTH、および VRCatalogue とは一切関係ありません。商品データおよび画像の権利は各制作者に帰属し、すべての商品は BOOTH の販売ページへ直接リンクしています。
 
 ![ホーム画面（カテゴリ：髪型）: フィルター行、アバター本体のカルーセル、商品グリッド](docs/screenshots/ja/home.webp)
+
+## はじめに
+
+詳細な構築手順、リバースプロキシの設定例、バックアップ運用については [デプロイガイド](docs/DEPLOY.md) (英語) を参照してください。Docker または Podman Compose を使用して PostgreSQL 17 (`pgvector`)、3 つの Rust サービス、Next.js サイトを起動し、TLS リバースプロキシ向けに単一ポート (`WEB_LISTEN`、既定値 `3100`) のみを公開します。**6 GB 以上のメモリ**を備えた Linux サーバーが必要です (8 GB 推奨、スワップ併用時は 4 GB から動作可能)。
+
+```mermaid
+flowchart LR
+  env["1. compose.yaml と .env を配置<br/>(パスワード・SITE_URL を設定)"] --> data{"2. 初期データの準備"}
+
+  data -- "データバンドル (約 5 分)" --> bundle["images.tar を展開<br/>pg_restore で catalogue.dump を復元"]
+  data -- "空の DB から取得 (約 2～3 日)" --> crawl["カテゴリと約 380 体のアバターを自動投入<br/>初回フルクロールを実行"]
+
+  bundle --> up["3. docker compose up -d"]
+  crawl --> up
+  up --> admin["4. アカウント登録 → ADMIN_USERNAMES 設定<br/>/admin で AI プロバイダーを設定 (任意)"]
+```
+
+新規データベースには、起動時のマイグレーションによってカテゴリツリー、スマートタグ、および約 380 体のアバター本体が自動的に登録されます。数日かかる初回フルクロール ([データバンドルを使わない起動手順](docs/DEPLOY.md#starting-without-a-data-bundle)) を省略したい場合は、[公開済みデータバンドル](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04) (2026-11-04 時点のスナップショット、約 21.7 万件の商品と販売終了商品のアーカイブ画像を収録、約 2.1 GB) を復元してください。
+
+```sh
+mkdir -p /srv/boothdex && cd /srv/boothdex
+curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
+curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
+$EDITOR .env    # POSTGRES_PASSWORD、SITE_URL、WEB_LISTEN、CONTACT_EMAIL を設定 (バンドル利用時は ARCHIVE_IMAGES_DIR も指定)
+docker compose pull && docker compose up -d
+```
 
 ## 主な機能
 
@@ -42,6 +68,7 @@ BoothDex は、[BOOTH](https://booth.pm) で販売されている VRChat 向け�
 - 検索結果の上にあるカルーセルでアバター本体を選ぶと、そのアバターに対応する商品を一覧できます。「アバター本体」ビューではアバター本体そのものを一覧し、性別で絞り込めます。
 - 商品はダイアログで開き、BOOTH の全画像ギャラリー、バリエーション、タイトルの翻訳、画像ダウンロードを備えています。
 - お気に入り、最近見た商品 (検索結果に「閲覧済み」と表示)、よく使うアバターの記憶、および保存した検索に対応しています。保存した検索は名前を変更でき、RSS で購読することもできます。
+- 表示名とパスワードは設定で変更できます。パスワードを変更すると、ほかの端末はログアウトされます。
 
 <details>
 <summary>商品の詳細は検索結果の上に開きます</summary>
@@ -99,32 +126,6 @@ BoothDex は、[BOOTH](https://booth.pm) で販売されている VRChat 向け�
 </details>
 
 商品ごとの単独ページ、価格推移グラフ、ソーシャルログイン、およびパスワード再設定メールは意図的に設けていません (パスワードは管理者がリセットします)。商品説明文やバリエーション名は翻訳せず、言語横断検索に必要なタイトルのみを翻訳します。
-
-## はじめに
-
-詳細な構築手順、リバースプロキシの設定例、バックアップ運用については [デプロイガイド](docs/DEPLOY.md) (英語) を参照してください。Docker または Podman Compose を使用して PostgreSQL 17 (`pgvector`)、3 つの Rust サービス、Next.js サイトを起動し、TLS リバースプロキシ向けに単一ポート (`WEB_LISTEN`、既定値 `3100`) のみを公開します。**6 GB 以上のメモリ**を備えた Linux サーバーが必要です (8 GB 推奨、スワップ併用時は 4 GB から動作可能)。
-
-```mermaid
-flowchart LR
-  env["1. compose.yaml と .env を配置<br/>(パスワード・SITE_URL を設定)"] --> data{"2. 初期データの準備"}
-
-  data -- "データバンドル (約 5 分)" --> bundle["images.tar を展開<br/>pg_restore で catalogue.dump を復元"]
-  data -- "空の DB から取得 (約 2～3 日)" --> crawl["カテゴリと約 380 体のアバターを自動投入<br/>初回フルクロールを実行"]
-
-  bundle --> up["3. docker compose up -d"]
-  crawl --> up
-  up --> admin["4. アカウント登録 → ADMIN_USERNAMES 設定<br/>/admin で AI プロバイダーを設定 (任意)"]
-```
-
-新規データベースには、起動時のマイグレーションによってカテゴリツリー、スマートタグ、および約 380 体のアバター本体が自動的に登録されます。数日かかる初回フルクロール ([データバンドルを使わない起動手順](docs/DEPLOY.md#starting-without-a-data-bundle)) を省略したい場合は、[公開済みデータバンドル](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04) (2026-11-04 時点のスナップショット、約 21.7 万件の商品と販売終了商品のアーカイブ画像を収録、約 2.1 GB) を復元してください。
-
-```sh
-mkdir -p /srv/boothdex && cd /srv/boothdex
-curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
-curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
-$EDITOR .env    # POSTGRES_PASSWORD、SITE_URL、WEB_LISTEN、CONTACT_EMAIL を設定 (バンドル利用時は ARCHIVE_IMAGES_DIR も指定)
-docker compose pull && docker compose up -d
-```
 
 ## アーキテクチャ
 
