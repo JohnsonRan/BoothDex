@@ -1331,33 +1331,33 @@ mod tests {
         signed_in(&pool).await;
         let state = test_state(pool.clone());
         let ip = crate::limit::ClientIp([203, 0, 113, 20].into());
-        let refused = |status: StatusCode, message: &str| (status, json!({ "ok": false, "error": message }));
+        let refused = |status: StatusCode, code: &str, message: &str| (status, json!({ "ok": false, "code": code, "error": message }));
         let sign_in = |name: &str| login(State(state.clone()), ip, HeaderMap::new(), Json(Login { login: name.into(), password: "0123456789".into(), keep: false }));
 
-        assert_eq!(answer(sign_in("nobody").await).await, refused(StatusCode::UNAUTHORIZED, "Incorrect username or password."));
+        assert_eq!(answer(sign_in("nobody").await).await, refused(StatusCode::UNAUTHORIZED, "bad_credentials", "Incorrect username or password."));
         for _ in 0..MAX_FAILURES {
             state.throttle.fail("locked");
         }
-        assert_eq!(answer(sign_in("locked").await).await, refused(StatusCode::TOO_MANY_REQUESTS, "Too many attempts. Try again later."));
+        assert_eq!(answer(sign_in("locked").await).await, refused(StatusCode::TOO_MANY_REQUESTS, "too_many_attempts", "Too many attempts. Try again later."));
 
         // a sign-up form, from an address of its own: one address has five attempts
         let sign_up = |display_name: &str, username: &str, email: &str, password: &str| {
             let form = Register { display_name: display_name.into(), username: username.into(), email: email.into(), password: password.into(), keep: false };
             register(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 21].into()), HeaderMap::new(), Json(form))
         };
-        let bad = |message: &str| refused(StatusCode::BAD_REQUEST, message);
-        assert_eq!(answer(sign_up(" ", "ann", "ann@example.test", "0123456789").await).await, bad("Display name is required."));
-        assert_eq!(answer(sign_up("Ann", "an", "ann@example.test", "0123456789").await).await, bad("Username must be 3-24 letters, digits or underscores."));
-        assert_eq!(answer(sign_up("Ann", "ann", "ann", "0123456789").await).await, bad("Invalid email."));
-        assert_eq!(answer(sign_up("Ann", "ann", "ann@example.test", "short").await).await, bad("Your password must be at least 10 characters."));
+        let bad = |code: &str, message: &str| refused(StatusCode::BAD_REQUEST, code, message);
+        assert_eq!(answer(sign_up(" ", "ann", "ann@example.test", "0123456789").await).await, bad("display_name_required", "Display name is required."));
+        assert_eq!(answer(sign_up("Ann", "an", "ann@example.test", "0123456789").await).await, bad("bad_username", "Username must be 3-24 letters, digits or underscores."));
+        assert_eq!(answer(sign_up("Ann", "ann", "ann", "0123456789").await).await, bad("bad_email", "Invalid email."));
+        assert_eq!(answer(sign_up("Ann", "ann", "ann@example.test", "short").await).await, bad("password_too_short", "Your password must be at least 10 characters."));
         // account 'a' has this email
         assert_eq!(
             answer(sign_up("Ann", "ann", "a@example.test", "0123456789").await).await,
-            refused(StatusCode::CONFLICT, "Username or email is already taken.")
+            refused(StatusCode::CONFLICT, "name_taken", "Username or email is already taken.")
         );
 
         let delete = delete_account(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 22].into()), headers(), Json(DeleteAccount { password: "x".into() }));
-        assert_eq!(answer(delete.await).await, refused(StatusCode::FORBIDDEN, "Password is incorrect."));
+        assert_eq!(answer(delete.await).await, refused(StatusCode::FORBIDDEN, "wrong_password", "Password is incorrect."));
 
         sqlx::query("insert into saved_searches (user_id, name, query) select u.id, 'n', 'q=' || g from users u, generate_series(1, $1) g")
             .bind(MAX_SAVED_SEARCHES)
@@ -1365,13 +1365,13 @@ mod tests {
             .await
             .unwrap();
         let one_more = add_search(State(state.clone()), headers(), Json(NewSearch { name: "n".into(), query: "q=x".into() }));
-        assert_eq!(answer(one_more.await).await, refused(StatusCode::CONFLICT, "Saved search limit reached."));
+        assert_eq!(answer(one_more.await).await, refused(StatusCode::CONFLICT, "saved_search_limit", "Saved search limit reached."));
 
-        assert_eq!(answer(list_favourites(State(state.clone()), HeaderMap::new()).await).await, refused(StatusCode::UNAUTHORIZED, "Sign in required"));
-        assert_eq!(answer(add_favourite(State(state.clone()), headers(), Path(999)).await).await, refused(StatusCode::NOT_FOUND, "Unknown item."));
+        assert_eq!(answer(list_favourites(State(state.clone()), HeaderMap::new()).await).await, refused(StatusCode::UNAUTHORIZED, "sign_in_required", "Sign in required"));
+        assert_eq!(answer(add_favourite(State(state.clone()), headers(), Path(999)).await).await, refused(StatusCode::NOT_FOUND, "unknown_item", "Unknown item."));
         assert_eq!(
             answer(put_preferences(State(state.clone()), headers(), Json(json!({ "evil": "x" }))).await).await,
-            refused(StatusCode::BAD_REQUEST, "unknown preference")
+            refused(StatusCode::BAD_REQUEST, "bad_preferences", "unknown preference")
         );
     }
 }

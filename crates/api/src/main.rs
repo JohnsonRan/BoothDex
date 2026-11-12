@@ -729,7 +729,7 @@ mod tests {
 
         let ip = super::limit::ClientIp("203.0.113.60".parse().unwrap());
         let favourites = super::search::search(State(test_state()), ip, HeaderMap::new(), RawQuery(Some("v=favourites".into()))).await;
-        assert_eq!(answer(favourites).await, (StatusCode::UNAUTHORIZED, json!({ "ok": false, "error": "Sign in required" })));
+        assert_eq!(answer(favourites).await, (StatusCode::UNAUTHORIZED, json!({ "ok": false, "code": "sign_in_required", "error": "Sign in required" })));
 
         // the cause goes to the log, never to the caller
         let failure: super::ApiError = std::io::Error::other("the cause").into();

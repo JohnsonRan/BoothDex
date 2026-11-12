@@ -522,11 +522,11 @@ mod tests {
     async fn console_refusals_keep_their_status_and_message(pool: sqlx::PgPool) {
         use super::*;
 
-        async fn refusal(r: Result<Response, ApiError>) -> (u16, String) {
+        async fn refusal(r: Result<Response, ApiError>) -> (u16, String, String) {
             let r = r.into_response();
             let status = r.status().as_u16();
             let body: Value = serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap();
-            (status, body["error"].as_str().unwrap().to_owned())
+            (status, body["code"].as_str().unwrap().to_owned(), body["error"].as_str().unwrap().to_owned())
         }
 
         let boss: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash, is_admin) values ('boss', 'boss@example.test', 'Boss', 'x', true) returning id")
@@ -551,19 +551,19 @@ mod tests {
         let visitor = overview(State(state.clone()), HeaderMap::new()).await.into_response();
         assert_eq!(visitor.status().as_u16(), 401);
         let body: Value = serde_json::from_slice(&axum::body::to_bytes(visitor.into_body(), 1 << 20).await.unwrap()).unwrap();
-        assert_eq!(body, json!({ "ok": false, "error": "Sign in required" }));
+        assert_eq!(body, json!({ "ok": false, "code": "sign_in_required", "error": "Sign in required" }));
 
-        assert_eq!(refusal(get_job(State(state.clone()), headers.clone(), Path(0)).await).await, (404, "No such job".into()));
-        assert_eq!(refusal(job("x").await).await, (400, "Unknown kind or invalid params".into()));
+        assert_eq!(refusal(get_job(State(state.clone()), headers.clone(), Path(0)).await).await, (404, "no_such_job".into(), "No such job".into()));
+        assert_eq!(refusal(job("x").await).await, (400, "bad_job".into(), "Unknown kind or invalid params".into()));
         assert!(job("refresh").await.is_ok());
-        assert_eq!(refusal(job("refresh").await).await, (409, "A job of this kind is already queued or running".into()));
-        assert_eq!(refusal(cancel_job(State(state.clone()), headers.clone(), Path(0)).await).await, (409, "Job is not queued or running".into()));
-        assert_eq!(refusal(schedule("nope", None).await).await, (404, "No such schedule".into()));
-        assert_eq!(refusal(schedule("refresh", Some(1)).await).await, (400, "Interval must be 5–10080 minutes; params must be an object".into()));
+        assert_eq!(refusal(job("refresh").await).await, (409, "job_already_active".into(), "A job of this kind is already queued or running".into()));
+        assert_eq!(refusal(cancel_job(State(state.clone()), headers.clone(), Path(0)).await).await, (409, "job_not_active".into(), "Job is not queued or running".into()));
+        assert_eq!(refusal(schedule("nope", None).await).await, (404, "no_such_schedule".into(), "No such schedule".into()));
+        assert_eq!(refusal(schedule("refresh", Some(1)).await).await, (400, "bad_schedule".into(), "Interval must be 5–10080 minutes; params must be an object".into()));
         let ai = AiSettings { base_url: Some("ftp://example.test".into()), model: None, api_key: None, reasoning_effort: None, embed_model: None };
         assert_eq!(
             refusal(put_ai(State(state.clone()), headers.clone(), Json(ai)).await).await,
-            (400, "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars; reasoning effort: none, minimal, low, medium, high or xhigh".into())
+            (400, "bad_ai_settings".into(), "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars; reasoning effort: none, minimal, low, medium, high or xhigh".into())
         );
     }
 }

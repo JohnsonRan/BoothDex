@@ -4,7 +4,7 @@
 
 use ts_rs::{Config, TS};
 
-use crate::{db, search};
+use crate::{db, error, search};
 
 const OUT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../web/src/lib/api-types.ts");
 
@@ -29,6 +29,7 @@ fn generate() -> String {
         search::RecognizedKind::decl(&cfg),
         search::TraceStep::decl(&cfg),
         search::Timing::decl(&cfg),
+        error::Refusal::decl(&cfg),
     ];
     let mut out = String::from(
         "// Generated from the Rust response types (crates/api/src/api_types.rs). Do not edit:\n\
