@@ -18,7 +18,7 @@ fn valid_username(u: &str) -> bool {
 }
 
 fn valid_email(e: &str) -> bool {
-    e.len() <= 254 && e.split_once('@').is_some_and(|(a, d)| !a.is_empty() && d.contains('.') && !e.contains(char::is_whitespace))
+    e.len() <= 254 && e.split_once('@').is_some_and(|(a, d)| !a.is_empty() && d.contains('.') && e.bytes().all(|b| b.is_ascii_graphic()))
 }
 
 fn valid_login(l: &str) -> bool {
@@ -164,6 +164,10 @@ mod tests {
     fn validators() {
         assert!(valid_username("abc_123") && !valid_username("ab") && !valid_username("has space") && !valid_username(&"a".repeat(25)));
         assert!(valid_email("a@b.co") && !valid_email("nope") && !valid_email("a @b.co") && !valid_email("@b.co"));
+        assert!(valid_email("a.b+c@example.test"));
+        for e in ["ärzte@example.test", "ann@bücher.example", "ΑΣ@x.io", "a\0b@x.io", "a\x7fb@x.io"] {
+            assert!(!valid_email(e), "{e:?}");
+        }
         assert!(valid_login("user@example.com") && valid_login(&"a".repeat(254)) && !valid_login(&"a".repeat(255)));
         assert!(valid_password("0123456789") && !valid_password("short"));
     }
@@ -197,6 +201,20 @@ mod tests {
         assert!(!registration_open(&pool).await.unwrap());
         assert_eq!(status(sign_up("bob").await), StatusCode::FORBIDDEN);
         assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from users").fetch_one(&pool).await.unwrap(), 1);
+    }
+
+    /// An account made before registration refused non-ASCII emails still signs in by its email.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn a_non_ascii_email_from_before_the_ascii_rule_still_signs_in(pool: PgPool) {
+        sqlx::query("insert into users (username, email, display_name, password_hash) values ('zoe', 'zoë@example.test', 'Zoë', $1)")
+            .bind(hash_password("0123456789".into()).await.ok().unwrap())
+            .execute(&pool)
+            .await
+            .unwrap();
+        let form = Login { login: "ZOË@example.test".into(), password: "0123456789".into(), keep: false };
+        let r = login(State(test_state(pool)), crate::limit::ClientIp([198, 51, 100, 1].into()), HeaderMap::new(), Json(form)).await;
+        assert_eq!(answer(r).await, (StatusCode::OK, json!({ "ok": true })));
     }
 
     /// Failures by the username and by the email share one budget per account, and a locked account answers like a

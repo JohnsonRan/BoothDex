@@ -185,6 +185,7 @@ export const zh = {
   "account.required": "请填写此项",
   "account.usernameRule": "用户名需为 3–24 位字母、数字或下划线",
   "account.emailInvalid": "邮箱格式不正确",
+  "account.emailAscii": "邮箱只能包含英文字母、数字和半角符号",
   "account.passwordShort": "密码至少 10 位",
   "saved.desc":
     "保存当前的搜索词、筛选和排序，之后一键打开，也可以用 RSS 订阅符合条件的新商品。",

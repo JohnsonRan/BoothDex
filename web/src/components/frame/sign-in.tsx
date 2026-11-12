@@ -40,6 +40,8 @@ function problem(mode: Mode, field: Field, v: string): MessageKey | undefined {
   if (mode === "login") return undefined;
   if (field === "username" && !/^[A-Za-z0-9_]{3,24}$/.test(v))
     return "account.usernameRule";
+  // the server's valid_email: printable ASCII only, so space, control characters and non-ASCII are refused
+  if (field === "email" && /[^!-~]/.test(v)) return "account.emailAscii";
   if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))
     return "account.emailInvalid";
   if (field === "password" && v.length < 10) return "account.passwordShort";
