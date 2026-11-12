@@ -377,9 +377,11 @@ async fn serve() -> Result<()> {
         archive: std::env::var("ARCHIVE_IMAGES").ok().map(PathBuf::from),
     });
     let app = Router::new()
+        // public: the images, which the site forwards from /img
         .route("/b/{size}/{uuid}/i/{item}/{file}", get(booth))
         .route("/u/{size}/{user}/{file}", get(icon))
         .route("/v/{name}", get(archived))
+        // internal: the API's admin overview reads it; the site does not forward it
         .route("/stats", get(stats))
         .with_state(state.clone());
     let bind = std::env::var("BIND").unwrap_or_else(|_| "127.0.0.1:3001".into());
