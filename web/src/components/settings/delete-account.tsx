@@ -1,18 +1,10 @@
 "use client";
 // Settings > Your data: the template settings-dialog's "Delete my account" row (page.tsx:1953-1958, a destructive
-// sm Button) opening the Astryx block Dialog — Form (DialogFormDialog: DialogHeader with a subtitle, the field in
-// LayoutContent, Cancel and the action in LayoutFooter). The API asks for the password (crates/api/src/account.rs
-// delete_account) and deletes the account with its sessions, favourites, viewed items and saved searches; the
-// session then reads as signed out, as after Sign out.
+// sm Button) opening a FormDialog. The API asks for the password (crates/api/src/account.rs delete_account) and
+// deletes the account with its sessions, favourites, viewed items and saved searches; the session then reads as
+// signed out, as after Sign out.
 
 import { Button } from "@astryxdesign/core/Button";
-import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
-import {
-  HStack,
-  Layout,
-  LayoutContent,
-  LayoutFooter,
-} from "@astryxdesign/core/Layout";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useState } from "react";
 import { useAccount } from "@/components/account/session";
@@ -20,6 +12,7 @@ import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
 import { API_ERRORS } from "@/lib/messages";
+import { FormDialog } from "./form-dialog";
 import { SettingsCard, SettingsRow } from "./rows";
 
 export function DataPanel() {
@@ -79,61 +72,27 @@ function DeleteDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Dialog isOpen onOpenChange={onClose} purpose="form" width={480}>
-      {/* a form, so Enter submits and password managers fill the current password */}
-      <form
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        {/* contentWidth="none": inside the settings dialog the Layout would take that dialog's --layout-content-width
-            and indent its header 16 px past the field on a phone */}
-        <Layout
-          contentWidth="none"
-          header={
-            <DialogHeader
-              title={t("delete.title")}
-              subtitle={t("delete.confirm")}
-              onOpenChange={onClose}
-            />
-          }
-          content={
-            <LayoutContent>
-              <TextInput
-                label={t("account.password")}
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={setPassword}
-                status={
-                  missing
-                    ? { type: "error", message: t("account.required") }
-                    : undefined
-                }
-              />
-            </LayoutContent>
-          }
-          footer={
-            <LayoutFooter>
-              <HStack gap={2} hAlign="end">
-                <Button
-                  label={t("common.cancel")}
-                  variant="secondary"
-                  onClick={onClose}
-                />
-                <Button
-                  type="submit"
-                  label={t("delete.title")}
-                  variant="destructive"
-                  isLoading={busy}
-                />
-              </HStack>
-            </LayoutFooter>
-          }
-        />
-      </form>
-    </Dialog>
+    <FormDialog
+      title={t("delete.title")}
+      subtitle={t("delete.confirm")}
+      action={t("delete.title")}
+      isDestructive
+      isBusy={busy}
+      onClose={onClose}
+      onSubmit={submit}
+    >
+      <TextInput
+        label={t("account.password")}
+        type="password"
+        autoComplete="current-password"
+        value={password}
+        onChange={setPassword}
+        status={
+          missing
+            ? { type: "error", message: t("account.required") }
+            : undefined
+        }
+      />
+    </FormDialog>
   );
 }
