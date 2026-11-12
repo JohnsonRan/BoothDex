@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
-/** The link preview picture, drawn by app/og.png/route.tsx. */
+/** The link preview picture, drawn by app/og.png/route.tsx; next.config.ts sets the hash. */
 export const SHARE_IMAGE = {
-  url: "/og.png",
+  url: `/og.png?${process.env.SHARE_IMAGE_HASH}`,
   width: 1200,
   height: 630,
   type: "image/png",
