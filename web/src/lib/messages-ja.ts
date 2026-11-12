@@ -191,6 +191,8 @@ export const ja: Dict = {
   "account.required": "入力してください",
   "account.usernameRule": "3〜24 文字の英数字またはアンダースコア",
   "account.emailInvalid": "メールアドレスの形式が正しくありません",
+  "account.emailAscii":
+    "メールアドレスには半角英数字と半角記号のみ使用できます",
   "account.passwordShort": "10 文字以上にしてください",
   "saved.desc":
     "今の検索語・絞り込み・並び順を保存します。ワンクリックで開き直せるほか、条件に合う新着商品を RSS で購読できます。",
