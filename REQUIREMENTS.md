@@ -1,28 +1,12 @@
 # REQUIREMENTS.md: numbers, gates and exceptions
 
-Commands, numbers, gates and exceptions for this repository, and its deferred options and open questions. The rules themselves are in `AGENTS.md`,
-`.github/AGENTS.md`, `web/AGENTS.md` and `crates/AGENTS.md` and are not repeated here. When another
-file in this repository disagrees with this one on a command, a number, a gate or an exception, this
-file wins.
+Commands, numbers, gates and exceptions for this repository, and its deferred options and open
+questions. The rules are in the `AGENTS.md` files and are not repeated here. When another file in
+this repository disagrees with this one on a command, a number, a gate or an exception, this file
+wins.
 
-`scripts/check-requirements.py` checks this file in the merge gate. It reads files and runs
-nothing. Write a pipe inside a cell as `\|`. Write a command in backticks; the check confirms that
-a script named in it exists.
-
-## Rule files
-
-Every `AGENTS.md` in this repository, by path. The check reads rule groups only from the files
-marked `yes`, and fails on an `AGENTS.md` it finds that is not listed. It searches every directory
-except `.git`, `node_modules`, `vendor`, `third_party` and hidden directories other than
-`.github`. Mark a file `no`, with the reason in Note, when its rules are not this project's (a
-vendored package, a generated tree).
-
-| File | Checked | Note |
-| --- | --- | --- |
-| AGENTS.md | yes | |
-| .github/AGENTS.md | yes | |
-| web/AGENTS.md | yes | |
-| crates/AGENTS.md | yes | |
+`scripts/check-requirements.py` checks this file in the merge gate; its docstring lists what it
+checks. Write a command in backticks, and a pipe inside a cell as `\|`.
 
 ## Commands
 
@@ -60,9 +44,6 @@ meanwhile.
 | Home page first load, gzip -9: JS | 410,000 B | 396,067 B (2026-11-12, local `next start`, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Home page first load, gzip -9: CSS | 45,750 B | 45,503 B (2026-11-12, local `next start`, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Source file size, p90 of this repository (pass bar) | 274 lines | 274 lines: nearest-rank p90 of the 272 tracked `.rs`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.css`, `.sql`, `.sh` and `.py` files outside `web/templates` (2026-11-12, `wc -l`) | review |
-| Wait timeout before a stuck step is recorded and left | 30 min | a setting, not measured | agent |
-| Context handoff limit (share of the model's window) | 60% | a setting, not measured | orchestrator |
-| Status check interval while several jobs run | 10 min | a setting, not measured | orchestrator |
 | Commit subject length | 72 characters | a setting, not measured | review (no commit hook) |
 
 A test suite that runs past its limit is made faster before tests are added. The budgets for the
@@ -91,59 +72,22 @@ same data (in the development database, not with this script) took 7.3 ms per it
 
 ## Enforcement
 
-One row per rule group of every file checked under "Rule files": each `###` heading, named
-`path: heading`, and each rule tagged `[rule: <id>]`, named `path#id`. The check reports a group
-with no row, and a row whose group no longer exists, so renaming a heading means renaming its row.
+The checks that turn red on a violation, by the rule they guard. Every rule tagged `[rule: <id>]` in
+an `AGENTS.md` has a row named `path#id`, with a gate command, a review criterion (the `REVIEW.md`
+section that checks it) or both. A rule without a row is checked in review against `REVIEW.md`.
 
-Fill one or both of:
+| Rule | Gate command | Review criterion |
+| --- | --- | --- |
+| AGENTS.md: Code quality | `cargo clippy --workspace --all-targets -- -D warnings`; in `web/`: `bunx biome check` | |
+| .github/AGENTS.md: Tiers, jobs and gates | `python3 scripts/check-requirements.py` | |
+| web/AGENTS.md: i18n (if present) | in `web/`: `bunx tsc --noEmit` (every locale holds exactly the keys of `web/src/lib/messages-zh.ts`) | |
+| crates/AGENTS.md: Compatibility | `cargo test --workspace -- --include-ignored` (applies every migration to an empty database); `scripts/test-restore.sh` with `WORKER_BIN` (`.github/workflows/migrations.yml`: applies a pull request's migrations to the public data bundle) | |
+| crates/AGENTS.md#authz | `cargo test --workspace -- --include-ignored` (`crates/api/src/admin/authz.rs`: every admin route answers 401 signed out and 403 to a member) | `REVIEW.md`, "Checking against the rules", Authorization |
+| crates/AGENTS.md#sensitive-values | | `REVIEW.md`, "Checking against the rules", Sensitive data |
+| crates/AGENTS.md: Verification | `cargo test --workspace -- --include-ignored` (against PostgreSQL in CI) | |
 
-- Gate command: the command, in backticks, that turns red on a violation, run by a tier in
-  "Commands";
-- Review criterion: the `REVIEW.md` section that checks it, with the file name in backticks.
-
-Or fill only "Does not apply because" with what the project lacks (no admin panel, no i18n). A
-tagged rule marked as not applying needs the owner's approval, quoted in the commit body.
-
-| Rule group | Gate command | Review criterion | Does not apply because |
-| --- | --- | --- | --- |
-| AGENTS.md: Change risk | | `REVIEW.md`, "Scope" | |
-| AGENTS.md: Workflow | | `REVIEW.md`, "Pass bar" | |
-| AGENTS.md: When unsure | | `REVIEW.md`, "Scope" | |
-| AGENTS.md: Waiting | | `REVIEW.md`, "The writer's report", Waiting | |
-| AGENTS.md: Reporting | | `REVIEW.md`, "The writer's report", Reporting | |
-| AGENTS.md: Code quality | `cargo clippy --workspace --all-targets -- -D warnings`; in `web/`: `bunx biome check` | `REVIEW.md`, "Pass bar" | |
-| AGENTS.md: Impact and edge cases | | `REVIEW.md`, "Checking against the rules", Newly reachable defects | |
-| AGENTS.md: Secrets | | `REVIEW.md`, "Checking against the rules", Sensitive data | |
-| AGENTS.md: Performance baseline | | `REVIEW.md`, "Checking against the rules", Performance | |
-| AGENTS.md: Tests (if present) | | `REVIEW.md`, "CI, docs and commits", CI | |
-| AGENTS.md: Merging | | `REVIEW.md`, "Report", verdict rule | |
-| AGENTS.md: Model usage | | `REVIEW.md`, "Before you start" | |
-| AGENTS.md: Documentation | | `REVIEW.md`, "CI, docs and commits", Docs | |
-| AGENTS.md: Writing (docs, comments, reports, PR and issue text) | | `REVIEW.md`, "CI, docs and commits" | |
-| AGENTS.md: Commits and pull requests | | `REVIEW.md`, "CI, docs and commits", Commits | |
-| AGENTS.md: Frontend–backend mapping (when both exist) | | `REVIEW.md`, "Checking against the rules"; "Exceptions" below | |
-| .github/AGENTS.md: Tiers, jobs and gates | `python3 scripts/check-requirements.py` | `REVIEW.md`, "CI, docs and commits", CI | |
-| web/AGENTS.md: Components and modularity | | `REVIEW.md`, "Checking against the rules" | |
-| web/AGENTS.md: Consistency | | `REVIEW.md`, "Checking against the rules"; lab check `web/tools/motion.cjs` | |
-| web/AGENTS.md: Layout, type and loading | | `REVIEW.md`, "Checking against the rules", Layout, type and loading; lab check `web/tools/loading-layout.cjs` | |
-| web/AGENTS.md: i18n (if present) | in `web/`: `bunx tsc --noEmit` (every locale holds exactly the keys of `web/src/lib/messages-zh.ts`) | `REVIEW.md`, "Checking against the rules", Copy and i18n | |
-| web/AGENTS.md: Usability | | `REVIEW.md`, "Checking against the rules" | |
-| web/AGENTS.md: Accessibility | | `REVIEW.md`, "Checking against the rules", Accessibility | |
-| web/AGENTS.md: Performance | | `REVIEW.md`, "Checking against the rules"; lab check `bun run check:size` in `web/` | |
-| crates/AGENTS.md: APIs and modularity | | `REVIEW.md`, "Checking against the rules" | |
-| crates/AGENTS.md: Compatibility | `cargo test --workspace -- --include-ignored` (applies every migration to an empty database); `scripts/test-restore.sh` with `WORKER_BIN` (`.github/workflows/migrations.yml`: applies a pull request's migrations to the public data bundle) | `REVIEW.md`, "Checking against the rules", Migrations | |
-| crates/AGENTS.md: Logging | | `REVIEW.md`, "Checking against the rules" | |
-| crates/AGENTS.md: Security (if present) | | `REVIEW.md`, "Checking against the rules", Authorization and Sensitive data | |
-| crates/AGENTS.md#authz | `cargo test --workspace -- --include-ignored` (`crates/api/src/admin/authz.rs`: every admin route answers 401 signed out and 403 to a member) | `REVIEW.md`, "Checking against the rules", Authorization | |
-| crates/AGENTS.md#sensitive-values | | `REVIEW.md`, "Checking against the rules", Sensitive data | |
-| crates/AGENTS.md: Money and state (if present) | | `REVIEW.md`, "Checking against the rules", Money and state (retried worker jobs and requests) | |
-| crates/AGENTS.md#money-idempotent | | | BoothDex moves no money; item prices are catalogue data |
-| crates/AGENTS.md#ledger | | | BoothDex keeps no ledger |
-| crates/AGENTS.md: Background work (if present) | | `REVIEW.md`, "Checking against the rules" | |
-| crates/AGENTS.md: Operations (if present) | | `REVIEW.md`, "Checking against the rules"; restore rehearsal `scripts/test-restore.sh` | |
-| crates/AGENTS.md: Admin panel (if present) | | `REVIEW.md`, "Checking against the rules" | |
-| crates/AGENTS.md: Performance | | `REVIEW.md`, "Checking against the rules"; benchmark `scripts/bench/run.sh` | |
-| crates/AGENTS.md: Verification | `cargo test --workspace -- --include-ignored` (against PostgreSQL in CI) | `REVIEW.md`, "Checking against the rules" | |
+Lab checks, run by hand and not part of a gate: `web/tools/motion.cjs`, `web/tools/loading-layout.cjs`
+and `bun run check:size` in `web/`; `scripts/bench/run.sh`.
 
 ## Exceptions
 
@@ -186,7 +130,6 @@ after a release.
 
 | Option | Source | Why it waits |
 | --- | --- | --- |
-| Split `scripts/check-requirements.py` (314 lines) and `scripts/test_check_requirements.py` (346 lines), both above the p90 file size (274 lines) | `REVIEW.md`, "Pass bar"; review of 3045384 | the owner ruled on 2026-11-12 that they may diverge from the kit's copies; each works as one file, so the split waits for the next change to either |
 
 ## Open questions
 
@@ -195,21 +138,3 @@ to the file it decides.
 
 | Question | Source | Raised |
 | --- | --- | --- |
-
-## Example (illustrative values; measure your own)
-
-| Tier | Command | Runs (where, when) | Wall-time limit | Baseline (date, host, load) |
-| --- | --- | --- | --- | --- |
-| Pre-commit | `scripts/check-all.sh --fast` | locally, every commit | 5 s | 3.8 s (2026-11-12, build host, load 0.4) |
-| Merge gate | `scripts/check-all.sh --strict` | CI, every merge | 15 min | 11 min (2026-11-12, build host, load 1.2) |
-
-| Rule group | Gate command | Review criterion | Does not apply because |
-| --- | --- | --- | --- |
-| web/AGENTS.md: i18n (if present) | `scripts/check-i18n.sh` | | |
-| server/AGENTS.md#authz | `scripts/check-authz.sh` | `REVIEW.md`, "Checking against the rules", Authorization | |
-| server/AGENTS.md: Admin panel (if present) | | | the project has no admin panel |
-| AGENTS.md: Writing (docs, comments, reports, PR and issue text) | | `REVIEW.md`, "CI, docs and commits" | |
-
-| Row | Current state | Plan | Due |
-| --- | --- | --- | --- |
-| Numbers: Slowest test package | not measured | measure after the race suite lands | 2027-01-31 |

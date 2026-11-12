@@ -23,7 +23,7 @@ workflow, CI, writing, commits) applies as well; numbers are in `REQUIREMENTS.md
 - One log format, with levels used for their real meaning: debug, info, warn, error.
 - Do not log expected cases as errors.
 - Do not swallow errors silently.
-- No secrets in logs (root `AGENTS.md`, "Secrets").
+- No secrets in logs (root `AGENTS.md`, hard limits).
 
 ### Security (if present)
 
@@ -51,15 +51,10 @@ workflow, CI, writing, commits) applies as well; numbers are in `REQUIREMENTS.md
     recovery's own step.
 - **Account enumeration.** Unknown and known accounts get the same answers and do the same work.
 
-### Money and state (if present)
+### Retries and concurrency
 
-- Every operation that moves money is idempotent and safe under concurrent requests and
-  out-of-order callbacks. [rule: money-idempotent]
-- Any other operation that a client, an upstream or a job may retry (a callback, a webhook, a
-  queued job) is idempotent; the rest is safe under concurrent requests.
-- The ledger balances to every balance it feeds, and a replay can rebuild and check it.
-  [rule: ledger]
-- An account or record cannot be closed while money is still in motion for it.
+- An operation that a client, an upstream or a job may retry (a callback, a webhook, a queued job)
+  is idempotent; the rest is safe under concurrent requests.
 
 ### Background work (if present)
 

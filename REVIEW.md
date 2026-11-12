@@ -121,10 +121,8 @@ rule. This section only says how to verify the rules a diff cannot show.
   - A shot of an error boundary or an empty state does not count.
 - **Copy and i18n.** Run the project's i18n check. Read every changed string in every locale.
 - **Accessibility.** Tab through the changed flow. Measure contrast with a tool.
-- **Money and state.**
-  - Reproduce against a real database, with repeated and concurrent requests and out-of-order
-    callbacks.
-  - A mock-only test never proves a money path.
+- **Retries and concurrency.** Reproduce against a real database, with repeated and concurrent
+  requests. A mock-only test never proves a retried path.
 - **Authorization.** Call each changed endpoint as the wrong role and from the wrong surface.
   Check that every route without an authorization check is marked public.
 - **Sensitive data.** Write a planted card number through each changed free-text path, then search
@@ -154,13 +152,13 @@ Review-only checks that no development rule covers:
   - No new giant all-in-one job, and no one-job-per-trivial-check sprawl.
   - A new check is shown to fail on a planted violation, and fails when it scans nothing.
   - Every gate command in `REQUIREMENTS.md`, "Enforcement", is run by a tier in "Commands" (name
-    where) and fails on a planted violation. The requirements check only shows that its files
+    where) and fails on a planted violation. The requirements check only shows that its scripts
     exist.
 - **Docs.**
   - Behaviour changes update the README, architecture and runbook text in the same change.
   - Every command, path and number in the docs matches the code.
   - A Due date in `REQUIREMENTS.md`, "Not yet enforced", moved later carries the owner's approval,
-    quoted in the commit body. So does a tagged rule (`path#id`) marked as not applying.
+    quoted in the commit body. So does a removed tagged rule (`path#id`).
 - **Commits.**
   - One logical change each; an imperative subject; a body that says why.
   - Signed.
@@ -170,14 +168,9 @@ Review-only checks that no development rule covers:
 ## The writer's report
 
 Check the pull request description, or the writer's report when there is no pull request, against
-the root `AGENTS.md`, "Reporting" and "Waiting":
-
-- **Reporting.** Rerun at least one command the report names and compare the result. A test or
-  check claimed without its command and result is a finding, and so is an unverified part that is
-  not labelled.
-- **Waiting.** A job that ran across several agents or wake-ups has its STATE file current to its
-  last milestone. A step stuck past the wait timeout in `REQUIREMENTS.md` is recorded with its
-  state, not dropped or retried without a word.
+the root `AGENTS.md`, "Reporting". Rerun at least one command the report names and compare the
+result. A test or check claimed without its command and result is a finding, and so is an
+unverified part that is not labelled.
 
 ## Report
 
@@ -200,8 +193,8 @@ From other reviewers: which findings came from them
 - Verdict rule:
   - BLOCK when there is any Blocker;
   - FIX FIRST when there is any High or Medium, or any pass-bar item;
-  - PASS when only Lows remain; each Low is fixed or put on the deferred-options list by the low
-    rule in the root `AGENTS.md`.
+  - PASS when only Lows remain; each Low is fixed or put under "Deferred options" in
+    `REQUIREMENTS.md` by the low-severity rule in the root `AGENTS.md`, "Workflow".
 - Order findings by severity first. Within one severity, order them by structure:
   1. structural regression (harder to read, more coupled, more stateful);
   2. complexity that could be deleted outright;
