@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
 # Restores a data bundle's catalogue.dump into a throwaway Postgres container the way DEPLOY.md says, applies a
 # worker's migrations to it (as a deployment does at startup), and prints row counts. CI runs it on the public bundle
-# (.github/workflows/migrations.yml) with a worker built from the branch.
+# (.github/workflows/migrations.yml) with a worker built from the branch; scripts/test-restore-selftest.sh tests it.
 #   [PODMAN=docker] [WORKER_IMAGE=ghcr.io/johnsonran/boothdex-worker:latest] scripts/test-restore.sh <bundle-dir>
 #   [PODMAN=docker] WORKER_BIN=target/debug/worker scripts/test-restore.sh <bundle-dir>
 # Exit 1: a migration failed. Exit 2: the check could not run, or found no migration to apply.
 set -euo pipefail
-bundle="${1:?usage: scripts/test-restore.sh <bundle-dir>}"
+cannot() { echo "test-restore: $*" >&2; exit 2; }
+[ $# -eq 1 ] || cannot "usage: scripts/test-restore.sh <bundle-dir>"
+bundle="$1"
 podman="${PODMAN:-podman}"
 export MSYS_NO_PATHCONV=1
 name=catalogue-restore-test
 port="${RESTORE_PORT:-55432}"
-cannot() { echo "test-restore: $*" >&2; exit 2; }
+image="${WORKER_IMAGE:-ghcr.io/johnsonran/boothdex-worker:latest}"
 
 [ -s "$bundle/catalogue.dump" ] || cannot "no catalogue.dump in $bundle"
+if [ -n "${WORKER_BIN:-}" ]; then
+  [ -x "$WORKER_BIN" ] || cannot "WORKER_BIN is not an executable: $WORKER_BIN"
+else
+  "$podman" pull -q "$image" >/dev/null || cannot "could not pull $image"
+fi
 "$podman" rm -f "$name" >/dev/null 2>&1 || true
 # the container holds the bundle's data, which can be a production backup: remove it however the script ends
 trap '"$podman" rm -f "$name" >/dev/null 2>&1 || true' EXIT
@@ -35,19 +42,28 @@ echo "[$(date +%T)] restoring"
   cannot "pg_restore failed"
 items=$(psql -c 'select count(*) from items') || cannot "the dump has no items table"
 [ "$items" -gt 0 ] || cannot "the dump restored no items"
-before=$(psql -c 'select coalesce(max(version), 0) from _sqlx_migrations')
+before=$(psql -c 'select coalesce(max(version), 0) from _sqlx_migrations') || cannot "the dump has no _sqlx_migrations"
 
 echo "[$(date +%T)] restored $items items at migration $before, migrating"
-if [ -n "${WORKER_BIN:-}" ]; then
-  DATABASE_URL="postgres://catalogue:x@127.0.0.1:$port/catalogue" "$WORKER_BIN" migrate || exit 1
-else
-  image="${WORKER_IMAGE:-ghcr.io/johnsonran/boothdex-worker:latest}"
-  "$podman" pull -q "$image" >/dev/null || cannot "could not pull $image"
-  "$podman" run --rm --network "container:$name" -e DATABASE_URL=postgres://catalogue:x@localhost:5432/catalogue \
-    "$image" worker migrate || exit 1
+migrate() {
+  if [ -n "${WORKER_BIN:-}" ]; then
+    DATABASE_URL="postgres://catalogue:x@127.0.0.1:$port/catalogue" "$WORKER_BIN" migrate
+  else
+    "$podman" run --rm --network "container:$name" -e DATABASE_URL=postgres://catalogue:x@localhost:5432/catalogue \
+      "$image" worker migrate
+  fi
+}
+if ! log=$(migrate 2>&1); then
+  echo "$log" >&2
+  # sqlx names the migration that failed or no longer matches what was applied; any other failure is the check's own
+  grep -qE 'while executing migration [0-9]+:|migration [0-9]+ (was previously applied|is partially applied)' \
+    <<<"$log" && exit 1
+  cannot "the worker failed before it applied a migration"
 fi
+[ -z "$log" ] || echo "$log"
 
-applied=$(psql -c "select string_agg(version::text, ' ' order by version) from _sqlx_migrations where version > $before")
+applied=$(psql -c "select string_agg(version::text, ' ' order by version) from _sqlx_migrations where version > $before") ||
+  cannot "could not read _sqlx_migrations"
 [ -n "$applied" ] || cannot "no migration newer than $before to apply"
 echo "[$(date +%T)] applied migrations: $applied"
 psql -c "
@@ -57,5 +73,5 @@ psql -c "
   select 'users', count(*) from users union all
   select 'job_schedules', count(*) from job_schedules union all
   select 'worker_status', count(*) from worker_status union all
-  select 'catalog_meta', count(*) from catalog_meta"
+  select 'catalog_meta', count(*) from catalog_meta" || cannot "could not count rows"
 echo "[$(date +%T)] ok"
