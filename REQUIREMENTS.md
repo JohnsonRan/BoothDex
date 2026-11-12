@@ -33,6 +33,7 @@ as the baseline; then the limit, as the baseline plus a margin (start at 20%).
 | Tier | Command | Runs (where, when) | Wall-time limit | Baseline (date, host, load) |
 | --- | --- | --- | --- | --- |
 | Merge gate | `cargo test --workspace -- --include-ignored` with `DATABASE_URL` set as in the README, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test -p imgproxy --features libavif`; in `web/`: `bun test`, `bunx next typegen`, `bunx tsc --noEmit`, `bunx biome check`; `python3 scripts/check-requirements.py` | CI: `.github/workflows/requirements.yml` and `.github/workflows/test.yml` on every pull request, both required to merge into master; on a push to master, requirements.yml always and test.yml through `.github/workflows/images.yml` | 3.5 min | 174 s, 188 s, 154 s, slowest job `rust` (2026-11-11, GitHub-hosted ubuntu-latest, load not recorded) |
+| Merge gate, when a migration changes | `cargo build -p worker`; with `PODMAN=docker WORKER_BIN=target/debug/worker` set: `scripts/test-restore-selftest.sh`, then the public data bundle's `catalogue.dump` checked against its `SHA256SUMS` and `scripts/test-restore.sh bundle` | CI: `.github/workflows/migrations.yml` on a pull request that changes `crates/core/migrations`, `scripts/test-restore.sh` or the workflow; not required to merge, because a path-filtered required check stays pending on every other pull request | 9 min | 435 s, 340 s, 368 s, of which the self-test 13 s and restoring the bundle about 5 min (2026-11-12, GitHub-hosted ubuntu-latest, load not recorded) |
 | Release | `docker buildx bake -f deploy/docker-bake.hcl` and `docker build -f deploy/web.Dockerfile .`, after the merge gate | CI: `.github/workflows/images.yml` on every `v*` tag and on a push to master that changes a path in its `paths` filter; pushes the images to ghcr.io | 7 min | 280 s, 394 s, 344 s, merge gate included (2026-11-11, GitHub-hosted ubuntu-24.04, load not recorded) |
 
 `python3 scripts/test_check_requirements.py` runs with the requirements check. Point `DATABASE_URL`
@@ -130,7 +131,7 @@ tagged rule marked as not applying needs the owner's approval, quoted in the com
 | web/AGENTS.md: Accessibility | | `REVIEW.md`, "Checking against the rules", Accessibility | |
 | web/AGENTS.md: Performance | | `REVIEW.md`, "Checking against the rules"; lab check `bun run check:size` in `web/` | |
 | crates/AGENTS.md: APIs and modularity | | `REVIEW.md`, "Checking against the rules" | |
-| crates/AGENTS.md: Compatibility | `cargo test --workspace -- --include-ignored` (applies every migration to an empty database) | `REVIEW.md`, "Checking against the rules", Migrations | |
+| crates/AGENTS.md: Compatibility | `cargo test --workspace -- --include-ignored` (applies every migration to an empty database); `scripts/test-restore.sh` with `WORKER_BIN` (`.github/workflows/migrations.yml`: applies a pull request's migrations to the public data bundle) | `REVIEW.md`, "Checking against the rules", Migrations | |
 | crates/AGENTS.md: Logging | | `REVIEW.md`, "Checking against the rules" | |
 | crates/AGENTS.md: Security (if present) | | `REVIEW.md`, "Checking against the rules", Authorization and Sensitive data | |
 | crates/AGENTS.md#authz | `cargo test --workspace -- --include-ignored` (`crates/api/src/admin/authz.rs`: every admin route answers 401 signed out and 403 to a member) | `REVIEW.md`, "Checking against the rules", Authorization | |
@@ -160,6 +161,8 @@ Intentional designs that look like defects:
 | `favourite_toggle` in the database benchmark is slow | Every client clicks the same popular items, so the `count_favourite` trigger's updates of their `item_stats` rows wait for each other. Spread over many items, a favourite costs the same as without the trigger. | 2026-11-11, commit 2507250: "a worst case that was accepted on purpose" |
 | "Commands" has no Pre-commit and no Scheduled run on main tier | The merge gate covers this project; a hook or a scheduled run would be CI nobody needs. | 2026-11-12: "Drop both rows" |
 | `test.yml` and `images.yml` name actions by version tag, not by SHA (`.github/AGENTS.md`, "Tiers, jobs and gates") | The owner chose tags after weighing both sides: a pin keeps a moved tag from changing the code that pushes the images; a tag gets the action's fixes without a bot. | 2026-11-12, on a commit that pinned every action by SHA: withdraw it |
+| No release-only checks (a reproducible build, migrations on a copy of production data, a deploy rehearsal) and no release-tier self-test of each gate command (`.github/AGENTS.md`, "Tiers, jobs and gates") | BoothDex publishes no versioned release: every push to master builds the `latest` images, and the owner deploys them by hand. The one check with a real risk behind it, migrations on existing rows, runs on pull requests against the public data bundle instead of a production copy (`.github/workflows/migrations.yml`), and `docs/DEPLOY.md`, "Operations", says how to go back when an update fails to start. | 2026-11-12: "none of them"; on checking migrations, "A+C": the CI job on the data bundle and the rollback note |
+| The 15 commits from ed15fcf to a007c85 (2026-10-31 to 2026-11-05) are unsigned (`AGENTS.md`, "Commits and pull requests") | Signing them now would rewrite published history. | 2026-11-12: "don't rewrite published history; leave them" |
 
 ## Not yet enforced
 
@@ -183,8 +186,6 @@ after a release.
 
 | Option | Source | Why it waits |
 | --- | --- | --- |
-| Re-sign the 15 unsigned commits from ed15fcf to a007c85 (2026-10-31 to 2026-11-05) | `AGENTS.md`, "Commits and pull requests"; review of 3045384 (2026-11-12) | it rewrites published history |
-| Release-only checks (a reproducible build, migrations on a copy of production data, a deploy rehearsal) and a planted violation for each gate command in the release tier | `.github/AGENTS.md`, "Tiers, jobs and gates" | the owner plans no release soon (2026-11-12) |
 | Split `scripts/check-requirements.py` (314 lines) and `scripts/test_check_requirements.py` (346 lines), both above the p90 file size (274 lines) | `REVIEW.md`, "Pass bar"; review of 3045384 | the owner ruled on 2026-11-12 that they may diverge from the kit's copies; each works as one file, so the split waits for the next change to either |
 
 ## Open questions

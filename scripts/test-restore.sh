@@ -1,30 +1,77 @@
 #!/usr/bin/env bash
-# Restores the data bundle into a throwaway Postgres container the way DEPLOY.md says, runs the migrations of the
-# published worker image on it (as a deployment would at startup), and checks row counts.
-#   [WORKER_IMAGE=ghcr.io/johnsonran/boothdex-worker:latest] scripts/test-restore.sh <bundle-dir>
+# Restores a data bundle's catalogue.dump into a throwaway Postgres container the way DEPLOY.md says, applies a
+# worker's migrations to it (as a deployment does at startup), and prints row counts. CI runs it on the public bundle
+# (.github/workflows/migrations.yml) with a worker built from the branch; scripts/test-restore-selftest.sh tests it.
+#   [PODMAN=docker] [WORKER_IMAGE=ghcr.io/johnsonran/boothdex-worker:latest] scripts/test-restore.sh <bundle-dir>
+#   [PODMAN=docker] WORKER_BIN=target/debug/worker scripts/test-restore.sh <bundle-dir>
+# Exit 1: a migration failed. Exit 2: the check could not run, or found no migration to apply.
 set -euo pipefail
-bundle="${1:?usage: scripts/test-restore.sh <bundle-dir>}"
+cannot() { echo "test-restore: $*" >&2; exit 2; }
+[ $# -eq 1 ] || cannot "usage: scripts/test-restore.sh <bundle-dir>"
+bundle="$1"
 podman="${PODMAN:-podman}"
 export MSYS_NO_PATHCONV=1
 name=catalogue-restore-test
+port="${RESTORE_PORT:-55432}"
+image="${WORKER_IMAGE:-ghcr.io/johnsonran/boothdex-worker:latest}"
+
+[ -s "$bundle/catalogue.dump" ] || cannot "no catalogue.dump in $bundle"
+if [ -n "${WORKER_BIN:-}" ]; then
+  [ -x "$WORKER_BIN" ] || cannot "WORKER_BIN is not an executable: $WORKER_BIN"
+else
+  "$podman" pull -q "$image" >/dev/null || cannot "could not pull $image"
+fi
 "$podman" rm -f "$name" >/dev/null 2>&1 || true
-"$podman" run -d --name "$name" -e POSTGRES_DB=catalogue -e POSTGRES_USER=catalogue -e POSTGRES_PASSWORD=x \
-  docker.io/pgvector/pgvector:pg17 >/dev/null
-for _ in $(seq 1 60); do "$podman" exec "$name" pg_isready -U catalogue -d catalogue >/dev/null 2>&1 && break; sleep 1; done
-sleep 2
+# the container holds the bundle's data, which can be a production backup: remove it however the script ends
+trap '"$podman" rm -f "$name" >/dev/null 2>&1 || true' EXIT
+publish=()
+[ -n "${WORKER_BIN:-}" ] && publish=(-p "127.0.0.1:$port:5432")
+"$podman" run -d --name "$name" "${publish[@]}" -e POSTGRES_DB=catalogue -e POSTGRES_USER=catalogue \
+  -e POSTGRES_PASSWORD=x docker.io/pgvector/pgvector:pg17 >/dev/null || cannot "could not start Postgres"
+psql() { "$podman" exec -i "$name" psql -U catalogue -d catalogue -tA "$@"; }
+# TCP, not the socket: the image's first-start setup runs a server on the socket only, then restarts it
+ready=
+for _ in $(seq 1 60); do
+  "$podman" exec "$name" pg_isready -h 127.0.0.1 -U catalogue -d catalogue >/dev/null 2>&1 && { ready=1; break; }
+  sleep 1
+done
+[ -n "$ready" ] || cannot "Postgres did not start"
+
 echo "[$(date +%T)] restoring"
-"$podman" exec -i "$name" pg_restore -U catalogue -d catalogue --no-owner --role=catalogue < "$bundle/catalogue.dump"
-echo "[$(date +%T)] restored, migrating"
-"$podman" run --rm --pull=always --network "container:$name" -e DATABASE_URL=postgres://catalogue:x@localhost:5432/catalogue \
-  "${WORKER_IMAGE:-ghcr.io/johnsonran/boothdex-worker:latest}" worker migrate
-"$podman" exec "$name" psql -U catalogue -d catalogue -tAc "
+"$podman" exec -i "$name" pg_restore -U catalogue -d catalogue --no-owner --role=catalogue < "$bundle/catalogue.dump" ||
+  cannot "pg_restore failed"
+items=$(psql -c 'select count(*) from items') || cannot "the dump has no items table"
+[ "$items" -gt 0 ] || cannot "the dump restored no items"
+before=$(psql -c 'select coalesce(max(version), 0) from _sqlx_migrations') || cannot "the dump has no _sqlx_migrations"
+
+echo "[$(date +%T)] restored $items items at migration $before, migrating"
+migrate() {
+  if [ -n "${WORKER_BIN:-}" ]; then
+    DATABASE_URL="postgres://catalogue:x@127.0.0.1:$port/catalogue" "$WORKER_BIN" migrate
+  else
+    "$podman" run --rm --network "container:$name" -e DATABASE_URL=postgres://catalogue:x@localhost:5432/catalogue \
+      "$image" worker migrate
+  fi
+}
+if ! log=$(migrate 2>&1); then
+  echo "$log" >&2
+  # sqlx names the migration that failed or no longer matches what was applied; any other failure is the check's own
+  grep -qE 'while executing migration [0-9]+:|migration [0-9]+ (was previously applied|is partially applied)' \
+    <<<"$log" && exit 1
+  cannot "the worker failed before it applied a migration"
+fi
+[ -z "$log" ] || echo "$log"
+
+applied=$(psql -c "select string_agg(version::text, ' ' order by version) from _sqlx_migrations where version > $before") ||
+  cannot "could not read _sqlx_migrations"
+[ -n "$applied" ] || cannot "no migration newer than $before to apply"
+echo "[$(date +%T)] applied migrations: $applied"
+psql -c "
   select 'items', count(*) from items union all
   select 'booth_images', count(*) from booth_images union all
   select 'avatars', count(*) from avatars union all
   select 'users', count(*) from users union all
   select 'job_schedules', count(*) from job_schedules union all
   select 'worker_status', count(*) from worker_status union all
-  select 'catalog_meta', count(*) from catalog_meta"
-"$podman" exec "$name" psql -U catalogue -d catalogue -tAc "select 'migration', version, description, success from _sqlx_migrations order by 1"
-"$podman" rm -f "$name" >/dev/null
+  select 'catalog_meta', count(*) from catalog_meta" || cannot "could not count rows"
 echo "[$(date +%T)] ok"
