@@ -1,4 +1,4 @@
--- Trimming an account to its newest 500 views (account.rs trim_views), at the cap: nothing to delete.
+-- Trimming an account to its newest 500 views (account/views.rs trim_views), at the cap: nothing to delete.
 \set uid random(1, 2000)
 delete from item_views where user_id = :uid and viewed_at <
 (select viewed_at from item_views where user_id = :uid order by viewed_at desc offset 499 limit 1);

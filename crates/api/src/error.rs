@@ -33,7 +33,7 @@ pub(crate) enum Refusal {
     WrongCurrentPassword,
     WrongPassword,
     AdminCannotDelete,
-    /// answered with the reason `account::validate_preferences` gives
+    /// answered with the reason `account::profile::validate_preferences` gives
     BadPreferences,
     UnknownItem,
     BadSavedSearch,

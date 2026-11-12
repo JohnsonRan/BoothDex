@@ -1,7 +1,7 @@
 // A session's device as people name it ("Chrome · Windows"), from the user agent the API stored at sign-in.
 // Order matters: Edge and Opera also say Chrome, Chrome also says Safari, Android also says Linux.
 
-/** A live session (crates/api/src/account.rs sessions_json); `current` is the one asking. */
+/** A live session (crates/api/src/account/session.rs sessions_json); `current` is the one asking. */
 export type AccountSession = {
   id: number;
   created_at: string;

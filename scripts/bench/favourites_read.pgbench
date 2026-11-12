@@ -1,3 +1,3 @@
--- Reading an account's favourites (account.rs favourite_ids) when they are not cached.
+-- Reading an account's favourites (account/favourites.rs favourite_ids) when they are not cached.
 \set uid random(1, 20000)
 select item_id from favourites where user_id = :uid order by created_at desc;
