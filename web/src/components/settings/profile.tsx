@@ -58,8 +58,11 @@ export function ProfilePanel() {
   );
 }
 
-/** Sends a change; on failure shows the API's reason, or `error.failed`. True when it was saved. */
-function useSave() {
+/**
+ * Sends a change; on failure shows the API's reason, or `error.failed`, in a toast, unless `onField` shows it on a
+ * field and returns true. True when it was saved.
+ */
+function useSave(onField?: (key: MessageKey) => boolean) {
   const { t } = useUi();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -69,11 +72,9 @@ function useSave() {
       await api(path, { method, json });
       return true;
     } catch (e) {
-      toast({
-        type: "error",
-        body: t(errorKey(e, API_ERRORS, "error.failed")),
-        uniqueID: "profile",
-      });
+      const key = errorKey(e, API_ERRORS, "error.failed");
+      if (!onField?.(key))
+        toast({ type: "error", body: t(key), uniqueID: "profile" });
       return false;
     } finally {
       setBusy(false);
@@ -154,16 +155,23 @@ const PASSWORD_FIELDS: {
 function PasswordDialog({ onClose }: { onClose: () => void }) {
   const { t } = useUi();
   const toast = useToast();
-  const { busy, save } = useSave();
   const [values, setValues] = useState<Record<PasswordField, string>>({
     current: "",
     next: "",
     again: "",
   });
+  // the current password the API refused; its error shows on that field until the field changes
+  const [refused, setRefused] = useState<string>();
+  const { busy, save } = useSave((key) => {
+    if (key !== "error.password") return false;
+    setRefused(values.current);
+    return true;
+  });
   const [checked, setChecked] = useState(false);
   const problem = (field: PasswordField): MessageKey | undefined => {
     const v = values[field];
     if (!v) return "account.required";
+    if (field === "current" && v === refused) return "error.password";
     if (field === "next" && v.length < 10) return "account.passwordShort";
     if (field === "next" && v === values.current) return "profile.same";
     if (field === "again" && v !== values.next) return "profile.mismatch";
