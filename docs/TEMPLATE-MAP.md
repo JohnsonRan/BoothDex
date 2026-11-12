@@ -443,12 +443,12 @@ Checked and kept as the template:
 `web/AGENTS.md` asks for component props, then token-backed utilities, and no `style` objects or raw `<div>`/`<span>`.
 This site compiles neither StyleX nor Tailwind, so `xstyle` and utility classes are not available. Where Astryx has a
 prop, the prop is used. Where it has none, a `style` object stays, holding tokens or values computed at run time, never
-a raw colour. Each one is converted when its file is next changed and a prop covers it (owner). 72 remain:
+a raw colour. Each one is converted when its file is next changed and a prop covers it (owner). 73 remain:
 
 - Positioning: the sticky filter band, item columns and settings tabs; the refresh bar and the boxes' probe
   (`absolute`).
-- Showing and hiding without moving anything: `visibility` on silhouettes and the folded filter readout, `display:
-  contents` wrappers, the item dialog's subtitle while it waits.
+- Showing and hiding without moving anything: `visibility` on silhouettes, the folded filter readout and the rail's
+  count sizer, `display: contents` wrappers, the item dialog's subtitle while it waits.
 - Flex and grid escapes: `flexShrink`, `flex` and `minWidth: 0` outside a `StackItem`, `gridArea`, a title's
   `min-block-size: 2lh`.
 - Scrolling: the saved views row, the gallery's thumbnails and the variations list (`overflow`, no scroll bar,

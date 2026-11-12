@@ -51,7 +51,8 @@ const RAIL: CSSProperties = {
   blockSize: `calc(100dvh - ${TOP})`,
 };
 
-type Choice = { value: string; label: string; count?: number };
+// `count`: the search's count for the choice, null until it answers; a choice it does not count leaves it out
+type Choice = { value: string; label: string; count?: number | null };
 
 // every section, open from the start
 const SECTIONS = [
@@ -71,17 +72,12 @@ export function FilterRail({
   facets: Promise<Facets>;
   names: ClauseNames;
 }) {
-  const { t, ui } = useUi();
+  const { t } = useUi();
   const { filters: f, apply } = useFilterUrl();
   const answered = useFacets(facets);
   const isNarrow = useMediaQuery(NO_RAIL_QUERY);
   if (isNarrow) return null;
   const avatars = f.view === "avatars";
-  // a choice the search counts shows its count once it answers; the others have none
-  const count = (v: number | undefined) =>
-    v === undefined
-      ? undefined
-      : t("title.count", { n: v.toLocaleString(LOCALES[ui]) });
   const any = t("filter.timeAny");
 
   // one of many, its first choice the field unset
@@ -105,7 +101,7 @@ export function FilterRail({
             key={c.value}
             value={c.value}
             label={c.label}
-            endContent={<Count text={count(c.count)} />}
+            endContent={c.count !== undefined && <Count n={c.count} />}
           />
         ))}
       </RadioList>
@@ -171,7 +167,7 @@ export function FilterRail({
                   ...names.categories.map(([value, label]) => ({
                     value,
                     label,
-                    count: answered ? (answered.smart[value] ?? 0) : undefined,
+                    count: answered ? (answered.smart[value] ?? 0) : null,
                   })),
                 ],
                 (sc) => apply({ sc }),
@@ -230,11 +226,7 @@ export function FilterRail({
                   value={x}
                   label={FEATURES[x]}
                   endContent={
-                    <Count
-                      text={count(
-                        answered ? (answered.features[x] ?? 0) : undefined,
-                      )}
-                    />
+                    <Count n={answered ? (answered.features[x] ?? 0) : null} />
                   }
                 />
               ))}
@@ -301,13 +293,37 @@ function Section({
   );
 }
 
-/** A choice's result count, once the search answers. */
-const Count = ({ text }: { text?: string }) =>
-  text ? (
-    <Text type="supporting" color="secondary" hasTabularNumbers>
-      {text}
-    </Text>
-  ) : null;
+// the widest count a choice shows: five digits, the largest being about 55,000 (lilToon, 2026-11); a count of six
+// digits widens the slot when it arrives. Six reserved now would wrap Chinese names that fit beside their counts.
+const WIDEST = 99_999;
+const SIZER: CSSProperties = {
+  visibility: "hidden",
+  blockSize: 0,
+  overflow: "hidden",
+};
+
+/**
+ * A choice's result count, once the search answers (`n` null until then). From the first paint its slot is as
+ * wide as the widest count, held by an unseen flat copy, so the label beside it keeps its line breaks when the
+ * count arrives or a refresh clears it: in English, a category's name grew a line and moved every section below.
+ */
+function Count({ n }: { n: number | null }) {
+  const { t, ui } = useUi();
+  const text = (v: number) =>
+    t("title.count", { n: v.toLocaleString(LOCALES[ui]) });
+  return (
+    <VStack hAlign="end">
+      <Text type="supporting" hasTabularNumbers style={SIZER}>
+        {text(WIDEST)}
+      </Text>
+      {n !== null && (
+        <Text type="supporting" color="secondary" hasTabularNumbers>
+          {text(n)}
+        </Text>
+      )}
+    </VStack>
+  );
+}
 
 /** The price: any, free or a preset band as radios, then a range of its own typed in, applied on Enter. */
 function PriceSection() {
