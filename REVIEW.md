@@ -152,13 +152,13 @@ Review-only checks that no development rule covers:
   - No new giant all-in-one job, and no one-job-per-trivial-check sprawl.
   - A new check is shown to fail on a planted violation, and fails when it scans nothing.
   - Every gate command in `REQUIREMENTS.md`, "Enforcement", is run by a tier in "Commands" (name
-    where) and fails on a planted violation. The requirements check only shows that its files
+    where) and fails on a planted violation. The requirements check only shows that its scripts
     exist.
 - **Docs.**
   - Behaviour changes update the README, architecture and runbook text in the same change.
   - Every command, path and number in the docs matches the code.
   - A Due date in `REQUIREMENTS.md`, "Not yet enforced", moved later carries the owner's approval,
-    quoted in the commit body. So does a tagged rule (`path#id`) marked as not applying.
+    quoted in the commit body. So does a removed tagged rule (`path#id`).
 - **Commits.**
   - One logical change each; an imperative subject; a body that says why.
   - Signed.

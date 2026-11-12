@@ -54,20 +54,15 @@ A rule a tool can check belongs in a gate (lint, test, hook); prose is for rules
 ## Scope
 
 - Apply these rules to the project as it is. Not every project or change involves every item.
-- Skip sections the project does not have (frontend, backend, i18n, theming, admin panel), and mark
-  their headings under "Does not apply because" in `REQUIREMENTS.md`, "Enforcement".
+- Skip sections the project does not have (frontend, backend, i18n, theming, admin panel).
 - Do not add features, abstractions or tests only to satisfy this checklist.
 - An item marked "(if present)" applies only when that feature already exists.
 - These files hold rules only. The project's numbers, gates and exceptions (test time limits, sizes,
   widths, breakpoints, coverage) live in its own `REQUIREMENTS.md`, which wins on any number.
-- Every `###` heading in every rule file checked under `REQUIREMENTS.md`, "Rule files", is a rule
-  group with one row in "Enforcement": a gate where a tool can measure it, a review criterion
-  where only judgment can, both, or the reason it does not apply. The requirements check fails on
-  a group without a row. Do not invent metrics for judgment rules. Use `###` only for rule groups;
-  explanations go in a section's opening text.
-- A rule that needs its own gate, apart from its heading, carries a tag `[rule: <id>]` and gets
-  its own row, named `path#id`. Tag only a rule whose failure loses money, an account, a secret
-  or data.
+- A rule that needs its own gate, apart from the review of its section, carries a tag
+  `[rule: <id>]`; the requirements check fails until it has a row named `path#id` in
+  `REQUIREMENTS.md`, "Enforcement". Tag only a rule whose failure loses an account, a secret or
+  data, and do not invent metrics for judgment rules.
 
 ---
 
