@@ -604,6 +604,38 @@ mod tests {
     use super::*;
     use boothdex_core::embed::{DIMS, HalfVector};
 
+    const LISTING_IMAGES_UPSERT: &str = "insert into booth_images (item_id, images, complete)
+             select id, array(select jsonb_array_elements_text(imgs::jsonb)), false from unnest($1::bigint[], $2::text[]) as t(id, imgs)
+             on conflict (item_id) do update set images = excluded.images, fetched_at = now() where not booth_images.complete";
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn listing_images_preserve_complete_galleries(pool: PgPool) {
+        // 1 a full gallery from the item page; 2 an older listing gallery; 3 and 4 not stored yet, and not in items
+        sqlx::query("insert into booth_images (item_id, images, complete, fetched_at) values
+                     (1, '{f1,f2,f3,f4,f5}', true, '2000-01-01'), (2, '{old}', false, '2000-01-01')")
+            .execute(&pool).await.unwrap();
+        let galleries: [(i64, &[&str]); 4] = [(1, &["l1"]), (2, &["n1", "n2"]), (3, &["c", "a", "b"]), (4, &[])];
+        let ids: Vec<i64> = galleries.iter().map(|g| g.0).collect();
+        let imgs: Vec<String> = galleries.iter().map(|g| serde_json::to_string(&g.1).unwrap()).collect();
+        let expected = [
+            (1, vec!["f1", "f2", "f3", "f4", "f5"], true, false),
+            (2, vec!["n1", "n2"], false, true),
+            (3, vec!["c", "a", "b"], false, true),
+            (4, vec![], false, true),
+        ];
+        for _ in 0..2 {
+            sqlx::query(LISTING_IMAGES_UPSERT).bind(&ids).bind(&imgs).execute(&pool).await.unwrap();
+            let stored: Vec<(i64, Vec<String>, bool, bool)> =
+                sqlx::query_as("select item_id, images, complete, fetched_at > '2000-01-01' from booth_images order by item_id")
+                    .fetch_all(&pool).await.unwrap();
+            assert_eq!(stored, expected.iter().map(|(id, images, complete, fresh)| (*id, images.iter().map(|s| s.to_string()).collect(), *complete, *fresh)).collect::<Vec<_>>());
+        }
+        let empty = sqlx::query(LISTING_IMAGES_UPSERT).bind(Vec::<i64>::new()).bind(Vec::<String>::new())
+            .execute(&pool).await.unwrap().rows_affected();
+        assert_eq!(empty, 0);
+    }
+
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
     async fn binary_embedding_batch_skips_changed_items(pool: PgPool) {
