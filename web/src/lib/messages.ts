@@ -17,17 +17,16 @@ export type Dict = Record<MessageKey, string>;
 
 /** The API errors the site explains (lib/api.ts errorKey); any other failure shows the action's own message. */
 export const API_ERRORS: ApiErrors<MessageKey> = {
-  messages: {
-    "Incorrect username or password.": "error.credentials",
-    "Username or email is already taken.": "error.taken",
-    "This account is disabled.": "error.disabled",
-    "Registration is closed.": "error.registrationClosed",
-    "Saved search limit reached.": "saved.limit",
-    "Password is incorrect.": "error.password",
-    "Current password is incorrect.": "error.password",
-    "Your new password must be different from your current password.":
-      "profile.same",
-    "Admins can't delete their account.": "delete.admin",
+  codes: {
+    bad_credentials: "error.credentials",
+    name_taken: "error.taken",
+    account_disabled: "error.disabled",
+    registration_closed: "error.registrationClosed",
+    saved_search_limit: "saved.limit",
+    wrong_password: "error.password",
+    wrong_current_password: "error.password",
+    password_unchanged: "profile.same",
+    admin_cannot_delete: "delete.admin",
   },
   statuses: {
     401: "error.signIn",

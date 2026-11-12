@@ -34,12 +34,12 @@ export function useAdminT(): AdminT {
 
 /** The API errors the console explains (lib/api.ts errorKey); any other failure says only that it failed. */
 const ADMIN_ERRORS: ApiErrors<AdminKey> = {
-  messages: {
-    "A job of this kind is already queued or running": "error.jobBusy",
-    "Job is not queued or running": "error.jobIdle",
-    "Set the base URL and API key first": "error.aiUnset",
-    "No such user": "error.noUser",
-    "Admins can't be disabled.": "error.adminDisable",
+  codes: {
+    job_already_active: "error.jobBusy",
+    job_not_active: "error.jobIdle",
+    ai_not_configured: "error.aiUnset",
+    no_such_user: "error.noUser",
+    admin_cannot_be_disabled: "error.adminDisable",
   },
   statuses: {
     401: "gate.signInTitle",

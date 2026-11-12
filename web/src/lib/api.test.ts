@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ApiError, type ApiErrors, errorKey, fetchAccount } from "./api";
+import { ApiError, type ApiErrors, api, errorKey, fetchAccount } from "./api";
 
 test("fetchAccount shares startup requests, allows fresh bypass and starts anew once settled", async () => {
   const originalFetch = globalThis.fetch;
@@ -125,17 +125,50 @@ test("superseded request settling does not clear newer pending fresh request", a
   }
 });
 
-test("a failed call's message key: a known API error, else its status, else the fallback", () => {
+test("a failed call's message key: the refusal's code, else its status, else the fallback", () => {
   const known: ApiErrors<string> = {
-    messages: { "Saved search limit reached.": "saved.limit" },
+    codes: { saved_search_limit: "saved.limit" },
     statuses: { 401: "error.signIn" },
   };
   const key = (e: unknown) => errorKey(e, known, "error.failed");
-  expect(key(new ApiError(409, "Saved search limit reached."))).toBe(
+  expect(key(new ApiError(409, "reworded", "saved_search_limit"))).toBe(
     "saved.limit",
   );
-  expect(key(new ApiError(401, "Sign in required"))).toBe("error.signIn");
-  expect(key(new ApiError(409, "Something else"))).toBe("error.failed");
-  expect(key(new ApiError(500, "constructor"))).toBe("error.failed");
+  // an API that names no code yet, and a refusal this catalogue does not word
+  expect(key(new ApiError(409, "Saved search limit reached."))).toBe(
+    "error.failed",
+  );
+  expect(key(new ApiError(401, "Sign in required", "sign_in_required"))).toBe(
+    "error.signIn",
+  );
+  // a code is never looked up on the prototype
+  expect(key(new ApiError(500, "x", "constructor" as never))).toBe(
+    "error.failed",
+  );
   expect(key(new TypeError("Failed to fetch"))).toBe("error.failed");
+});
+
+test("a refused call throws the API's status, code and message", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    Response.json(
+      {
+        ok: false,
+        code: "name_taken",
+        error: "Username or email is already taken.",
+      },
+      { status: 409 },
+    )) as unknown as typeof fetch;
+  try {
+    const e: unknown = await api("/api/account/register").catch((e) => e);
+    expect(e).toBeInstanceOf(ApiError);
+    const { status, code, message } = e as ApiError;
+    expect([status, code, message]).toEqual([
+      409,
+      "name_taken",
+      "Username or email is already taken.",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
