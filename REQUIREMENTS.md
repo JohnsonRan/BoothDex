@@ -133,7 +133,7 @@ tagged rule marked as not applying needs the owner's approval, quoted in the com
 | crates/AGENTS.md: Compatibility | `cargo test --workspace -- --include-ignored` (applies every migration to an empty database) | `REVIEW.md`, "Checking against the rules", Migrations | |
 | crates/AGENTS.md: Logging | | `REVIEW.md`, "Checking against the rules" | |
 | crates/AGENTS.md: Security (if present) | | `REVIEW.md`, "Checking against the rules", Authorization and Sensitive data | |
-| crates/AGENTS.md#authz | | `REVIEW.md`, "Checking against the rules", Authorization | |
+| crates/AGENTS.md#authz | `cargo test --workspace -- --include-ignored` (`crates/api/src/admin/authz.rs`: every admin route answers 401 signed out and 403 to a member) | `REVIEW.md`, "Checking against the rules", Authorization | |
 | crates/AGENTS.md#sensitive-values | | `REVIEW.md`, "Checking against the rules", Sensitive data | |
 | crates/AGENTS.md: Money and state (if present) | | `REVIEW.md`, "Checking against the rules", Money and state (retried worker jobs and requests) | |
 | crates/AGENTS.md#money-idempotent | | | BoothDex moves no money; item prices are catalogue data |

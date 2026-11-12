@@ -91,6 +91,8 @@ macro_rules! admin {
     };
 }
 
+#[cfg(test)]
+mod authz;
 mod trends;
 mod users;
 
