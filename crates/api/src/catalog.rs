@@ -329,7 +329,7 @@ impl Catalog {
         cs.iter().filter(|(g, _)| Some(*g) != skip).fold(self.all.clone(), |acc, (_, b)| acc & b)
     }
 
-    /// `semantic`: item ids nearest to the query by meaning (see main.rs); they join the text hits and, when
+    /// `semantic`: item ids nearest to the query by meaning (see search.rs); they join the text hits and, when
     /// sorting by relevance, the two rankings are merged. Autocomplete and RSS skip facet counts.
     pub fn search(&self, r: &SearchRequest, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>, count_facets: bool) -> Result<SearchResult> {
         let mut text = r.q.as_deref().map(|q| self.text.search(q)).transpose()?;
@@ -440,7 +440,7 @@ impl Catalog {
 pub struct Semantic<'a> {
     /// nearest first
     pub ids: &'a [i64],
-    /// smart categories the query names as a whole (see main.rs `category_phrases`)
+    /// smart categories the query names as a whole (see snapshot.rs `category_phrases`)
     pub categories: &'a [String],
     /// model slugs named in the query
     pub models: &'a [String],

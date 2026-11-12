@@ -44,7 +44,7 @@ const ICONS = {
 /** Avatar's box in an `sm` token, the size of the token's own glyphs */
 const AVATAR_TOKEN = 16;
 
-/** 1 search row + /api/palette's 5 avatars, 8 items, 5 shops and 5 tags (crates/api/src/main.rs `palette`) */
+/** 1 search row + /api/palette's 5 avatars, 8 items, 5 shops and 5 tags (crates/api/src/palette.rs `palette`) */
 const MAX_ROWS = 24;
 /** the quick search's debounce, which /api/palette's rate limit is set for (crates/api/src/limit.rs) */
 const DEBOUNCE_MS = 120;
