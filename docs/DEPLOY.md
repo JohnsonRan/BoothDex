@@ -221,7 +221,12 @@ boothdex.example.com {
 
 An update applies its new database migrations when `api` and `worker` start, each migration in its own transaction. CI applies a pull request's migrations to the public data bundle (`.github/workflows/migrations.yml`). The bundle holds no rows of the account tables (`users`, `sessions`, `favourites`, `item_stats` and others), so migrations of those tables are tested on an empty database only.
 
-If `api` or `worker` stops at startup after an update, `docker compose logs api worker` names the migration that failed. A failed migration changes nothing, so the images that ran before still start: set `BOOTHDEX_TAG=sha-<first 7 characters of the commit the update printed>` in `.env` and run `docker compose up -d`. Set `BOOTHDEX_TAG=latest` again once a fixed version is published. An older image refuses a database that holds a migration it does not know. So when the update applied one migration before another failed, or started and then misbehaved, restore the latest backup ("Restore database" above; changes since that backup are lost) or wait for a fixed version.
+If `api` or `worker` stops at startup after an update, `docker compose logs api worker` names the migration that failed. To go back to the images that ran before, or when the new version starts and then misbehaves:
+
+1. Set `BOOTHDEX_TAG=sha-<first 7 characters of the commit the update printed>` in `.env` and run `docker compose up -d`. A failed migration changes nothing, so the older images start.
+2. If `docker compose logs api` then shows `migration <n> was previously applied but is missing`, the update applied a migration, and an older image refuses a database that holds one it does not know. Restore the latest backup and start the older images: `docker compose stop api worker && docker compose exec -T postgres pg_restore -U catalogue -d catalogue --clean --if-exists --no-owner --role=catalogue < backup.dump && docker compose up -d`. Changes since that backup are lost.
+
+Set `BOOTHDEX_TAG=latest` again once a fixed version is published. Waiting for that version, instead of going back, is the other choice.
 
 Automatic cleanup: the `worker` deletes expired login sessions and job history (including job errors and logs) older than 90 days every hour; container logs are capped by `x-logging` in `compose.yaml` (Docker keeps 3 × 10 MB per service, Podman truncates each log at 10 MB); `query_embeddings` is pruned by the `embed` job (see above). No manual `VACUUM` is needed (autovacuum handles it).
 
