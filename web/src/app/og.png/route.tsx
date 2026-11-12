@@ -151,6 +151,13 @@ export function GET() {
         { name: "Figtree", data: medium, weight: 500 },
         { name: "Figtree", data: bold, weight: 700 },
       ],
+      // the home page links this picture under a hash of its source (next.config.ts), so caches may keep it for a
+      // year; next dev keeps ImageResponse's no-store
+      ...(process.env.NODE_ENV === "production" && {
+        headers: {
+          "cache-control": "public, immutable, no-transform, max-age=31536000",
+        },
+      }),
     },
   );
 }
