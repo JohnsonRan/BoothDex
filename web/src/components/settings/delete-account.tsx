@@ -88,7 +88,10 @@ function DeleteDialog({ onClose }: { onClose: () => void }) {
           submit();
         }}
       >
+        {/* contentWidth="none": inside the settings dialog the Layout would take that dialog's --layout-content-width
+            and indent its header 16 px past the field on a phone */}
         <Layout
+          contentWidth="none"
           header={
             <DialogHeader
               title={t("delete.title")}
