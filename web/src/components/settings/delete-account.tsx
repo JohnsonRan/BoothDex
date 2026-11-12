@@ -11,7 +11,7 @@ import { useAccount } from "@/components/account/session";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
-import { API_ERRORS } from "@/lib/messages";
+import { API_ERRORS, type MessageKey } from "@/lib/messages";
 import { FormDialog } from "./form-dialog";
 import { SettingsCard, SettingsRow } from "./rows";
 
@@ -47,23 +47,27 @@ function DeleteDialog({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const { signOut } = useAccount();
   const [password, setPassword] = useState("");
+  // the password the API refused; its error shows on the field until the field changes, as in Profile
+  const [refused, setRefused] = useState<string>();
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
-  const missing = checked && !password;
+  const problem: MessageKey | undefined = !password
+    ? "account.required"
+    : password === refused
+      ? "error.password"
+      : undefined;
 
   const submit = async () => {
     setChecked(true);
-    if (!password) return;
+    if (problem) return;
     setBusy(true);
     try {
       await api("/api/account", { method: "DELETE", json: { password } });
     } catch (e) {
       setBusy(false);
-      return toast({
-        type: "error",
-        body: t(errorKey(e, API_ERRORS, "error.failed")),
-        uniqueID: "delete",
-      });
+      const key = errorKey(e, API_ERRORS, "error.failed");
+      if (key === "error.password") return setRefused(password);
+      return toast({ type: "error", body: t(key), uniqueID: "delete" });
     }
     toast({ body: t("delete.done"), uniqueID: "delete" });
     onClose();
@@ -88,8 +92,8 @@ function DeleteDialog({ onClose }: { onClose: () => void }) {
         value={password}
         onChange={setPassword}
         status={
-          missing
-            ? { type: "error", message: t("account.required") }
+          checked && problem
+            ? { type: "error", message: t(problem) }
             : undefined
         }
       />
