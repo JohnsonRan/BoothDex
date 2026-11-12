@@ -1,0 +1,39 @@
+name: migrations
+
+# Applies the branch's migrations to the public data bundle, the catalogue rows a deployment already holds; the merge
+# gate applies them only to an empty database. The bundle holds no rows of the account tables (users, sessions,
+# favourites, item_stats; see scripts/make-bundle.sh), so migrations of those are not tested on data here.
+# Not a required check: it runs only when a migration changes, and a skipped required check stays pending.
+on:
+  pull_request:
+    paths:
+      - "crates/core/migrations/**"
+      - "scripts/test-restore.sh"
+      - ".github/workflows/migrations.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrations:
+    name: migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # the newest published data bundle (a GitHub release of this repository)
+      BUNDLE: data-2026-11-04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo build -p worker
+      - run: |
+          gh release download "$BUNDLE" --pattern catalogue.dump --pattern SHA256SUMS --dir bundle
+          cd bundle && sha256sum --check --ignore-missing SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: scripts/test-restore.sh bundle
+        env:
+          PODMAN: docker
+          WORKER_BIN: target/debug/worker
