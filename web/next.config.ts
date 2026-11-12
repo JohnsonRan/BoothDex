@@ -8,8 +8,8 @@ import type { NextConfig } from "next";
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:3000";
 const IMG_ORIGIN = process.env.IMG_ORIGIN ?? "http://127.0.0.1:3001";
 
-// /og.png is cached for a year, so SHARE_IMAGE in lib/seo.ts links it with a hash of the files that draw and
-// size it; a changed picture gets a new URL.
+// Social platforms cache a share image by its URL, so SHARE_IMAGE in lib/seo.ts links /og.png with a hash of the
+// files that draw and size it; a changed picture gets a new URL.
 const SHARE_IMAGE_HASH = createHash("sha256")
   .update(readFileSync("src/app/og.png/route.tsx"))
   .update(readFileSync("src/lib/seo.ts"))
