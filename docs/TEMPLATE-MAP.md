@@ -150,7 +150,7 @@ structural or token-backed:
 
 ## Deviations in checkpoint 1 (frame and home)
 
-Templates copied as is to `web/templates/` (not compiled); each adapted file names its template.
+Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@astryxdesign/cli 0.7.8); each adapted file names its template.
 
 - Frame: no centre navigation (BoothDex has no sections; the template's mega menus are dropped). `contentPadding`
   is not set and the template's 1100 px content cap is not used: the home page is the full-width library layout,
@@ -289,7 +289,7 @@ Sizes: `sm` in the top bar, tiles and menus (as shell-top-nav), `lg` for the str
 
 ## Filter area (checkpoint 1, track A)
 
-The header is the Filterable Table template's (`web/templates/pages/table-filter/page.tsx`): its default filter row,
+The header is the Filterable Table template's (`node_modules/@astryxdesign/cli/assets/templates/pages/table-filter/page.tsx`): its default filter row,
 not its PowerSearch mode. A set clause is its own chip, the row folds into "+N" instead of wrapping, and phones get
 the folded set in a BottomSheet. The site search leads the row; there is no separate search field, tab row or
 command palette. The search is a `Tokenizer` with block TypeaheadSearchField's search icon and suggestions

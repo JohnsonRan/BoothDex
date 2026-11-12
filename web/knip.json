@@ -15,6 +15,5 @@
     "@fontsource/manufacturing-consent",
     "@fontsource/poppins",
     "@fontsource/sarina"
-  ],
-  "ignore": ["templates/**"]
+  ]
 }
