@@ -12,18 +12,19 @@ const [
   delay = "2500",
 ] = process.argv.slice(2);
 const ENTRANCE = ["page-enter", "row-enter"];
-// clicks the filter row's first preset toggle button, the view switch (the filter row is the readout's parent;
-// the list's hidden measuring copies are skipped)
-const clickPreset = (p) =>
-  p.evaluate(() =>
-    [
-      ...document
-        .querySelector("[data-readout]")
-        .parentElement.querySelectorAll("button[aria-pressed]"),
-    ]
-      .find((b) => b.checkVisibility())
-      .click(),
-  );
+// A filter change as a visitor makes it: the toolbar's sort menu, switched between Trending and Newest. Opening the
+// menu is separate from picking the item, so a timed refresh starts at the pick. A sort is a search with no `q`
+// (the lab guard refuses one with `q`, which would embed it through the AI provider).
+const openSort = async (p) => {
+  const button = p.getByRole("button", { name: /^(Trending|Newest)$/ });
+  const next =
+    (await button.textContent()).trim() === "Trending" ? "Newest" : "Trending";
+  await button.click();
+  const item = p.getByRole("menuitemradio", { name: next });
+  await item.waitFor();
+  return () => item.click();
+};
+const changeSort = async (p) => (await openSort(p))();
 
 (async () => {
   const browser = await launch();
@@ -59,33 +60,41 @@ const clickPreset = (p) =>
     });
     await p.waitForTimeout(800);
   };
-  // switches the view (the filter row's first preset) and reports the indicator's intervals (ms after the click)
-  // and fades
+  // changes the sort and reports the indicator's intervals (ms after the pick) and fades
   const timedRefresh = async (p) => {
-    const at = await p.evaluate(() => {
+    const pick = await openSort(p);
+    await p.evaluate(() => {
       window.__refresh = [];
       window.__anims = window.__anims.filter((a) => a.id !== "swap-in");
-      return performance.now();
     });
     const before = p.url();
     // the frame in which the URL changes: the new results commit with it
     await p.evaluate(() => {
       const from = location.href;
       window.__navAt = 0;
+      // Playwright waits for the menu item to stop moving before it clicks, so the pick is timed in the page
+      addEventListener(
+        "click",
+        () => {
+          window.__clickAt = performance.now();
+        },
+        { capture: true, once: true },
+      );
       const look = () => {
         if (location.href !== from) window.__navAt = performance.now();
         else requestAnimationFrame(look);
       };
       requestAnimationFrame(look);
     });
-    await clickPreset(p);
+    await pick();
     await p.waitForURL((u) => u.toString() !== before, { timeout: 20000 });
     await p.waitForSelector('[data-refresh="idle"]', {
       state: "attached",
       timeout: 20000,
     });
     await p.waitForTimeout(600);
-    return p.evaluate((t0) => {
+    return p.evaluate(() => {
+      const t0 = window.__clickAt;
       const shown = [];
       for (const [t, v] of window.__refresh)
         if (v === "shown") shown.push([Math.round(t - t0), null]);
@@ -96,7 +105,7 @@ const clickPreset = (p) =>
         shown,
         fades: window.__anims.filter((a) => a.id === "swap-in").length,
       };
-    }, at);
+    });
   };
   await lab(proxy, { delay: 0, fail: 0, cache: 0 });
   await fetch(url);
@@ -104,6 +113,8 @@ const clickPreset = (p) =>
   for (const reduced of [false, true]) {
     const ctx = await browser.newContext({
       viewport: { width: 1440, height: 900 },
+      // the check names buttons and messages by their English text
+      locale: "en-US",
       reducedMotion: reduced ? "reduce" : "no-preference",
     });
     const p = await ctx.newPage();
@@ -152,11 +163,11 @@ const clickPreset = (p) =>
     await p.waitForTimeout(1200);
 
     if (!reduced) {
-      // a quick refresh: the search for the other view is asked once, then answered from the proxy's memory
+      // a quick refresh: the search for the other sort is asked once, then answered from the proxy's memory
       await lab(proxy, { delay: 0, cache: 1 });
-      await timedRefresh(p); // to the avatar view
-      await timedRefresh(p); // back to items (filters replace the URL, so not Back)
-      const quick = await timedRefresh(p); // to the avatar view again, answered from memory
+      await timedRefresh(p); // to Newest
+      await timedRefresh(p); // back to Trending (filters replace the URL, so not Back)
+      const quick = await timedRefresh(p); // to Newest again, answered from memory
       await lab(proxy, { cache: 0 });
       // under 150 ms nothing may show; a slower answer may show the indicator, but only from 150 ms and only
       // while it is still awaited (never first drawn as the results arrive)
@@ -180,8 +191,7 @@ const clickPreset = (p) =>
     }
 
     await lab(proxy, { delay: 1200 });
-    // the view preset (the filter row's first toggle button: they carry aria-pressed)
-    await clickPreset(p);
+    await changeSort(p);
     await refreshed(p);
     check(
       (await entrances(p)).length === first.length,
@@ -217,7 +227,7 @@ const clickPreset = (p) =>
     if (!reduced) {
       // a failed refresh keeps the results and offers a retry
       await lab(proxy, { delay: 0, fail: 1 });
-      await clickPreset(p);
+      await changeSort(p);
       const banner = p.getByText("Couldn't load items");
       await banner.waitFor({ timeout: 10000 }).catch(() => {});
       const kept = await p.locator(".astryx-grid img").count();
