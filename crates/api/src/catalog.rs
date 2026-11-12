@@ -8,7 +8,7 @@ use roaring::RoaringBitmap;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
-use crate::params::Params;
+use crate::search_request::{Adult, Range, SearchRequest, Sort, Support, View};
 use crate::text::{TextDoc, TextIndex};
 
 pub const FEATURES: &[&str] = &["quest", "vrcfury", "ma", "liltoon", "poiyomi"];
@@ -252,84 +252,73 @@ impl Catalog {
         ids.iter().filter_map(|id| self.doc_of.get(id)).copied().collect()
     }
 
-    fn constraints(&self, p: &Params, now: i64, text: Option<&RoaringBitmap>, favourites: Option<&RoaringBitmap>) -> Vec<(Group, RoaringBitmap)> {
+    fn constraints(&self, r: &SearchRequest, now: i64, text: Option<&RoaringBitmap>, favourites: Option<&RoaringBitmap>) -> Vec<(Group, RoaringBitmap)> {
         let mut out = Vec::new();
-        let avatars_view = p.get("v").as_deref() == Some("avatars");
         out.push((
             Group::View,
-            if let Some(f) = favourites.filter(|_| p.get("v").as_deref() == Some("favourites")) {
-                f.clone() // favourites span both items and avatar bodies
-            } else if avatars_view {
-                &match p.get("asup").as_deref() {
-                    Some("all") => self.avatar_items.clone(),
-                    Some("unsupported") => &self.avatar_items - &self.supported,
-                    _ => &self.avatar_items & &self.supported,
-                } - &self.relisted
-            } else {
-                &(&self.all - &self.avatar_items) - &self.relisted
+            match (r.view, favourites) {
+                (View::Favourites, Some(f)) => f.clone(), // favourites span both items and avatar bodies
+                (View::Avatars(support), _) => &match support {
+                    Support::All => self.avatar_items.clone(),
+                    Support::Unsupported => &self.avatar_items - &self.supported,
+                    Support::Supported => &self.avatar_items & &self.supported,
+                } - &self.relisted,
+                _ => &(&self.all - &self.avatar_items) - &self.relisted,
             },
         ));
-        let gender = p.get("gender").filter(|g| g == "female" || g == "male");
-        if avatars_view && let Some(g) = gender {
-            out.push((Group::Gender, self.gender.any(&[g])));
+        if let (View::Avatars(_), Some(g)) = (r.view, &r.gender) {
+            out.push((Group::Gender, self.gender.any(std::slice::from_ref(g))));
         }
-        match p.get("adult").as_deref() {
-            Some("include") => {}
-            Some("adult_only") => out.push((Group::Adult, self.adult_only.clone())),
-            Some("suggestive") => out.push((Group::Adult, self.suggestive.clone())),
-            _ => out.push((Group::Adult, &self.all - &self.adult_only)), // "safe" keeps Suggestive, as VRCatalogue did
+        match r.adult {
+            Adult::Include => {}
+            Adult::Only => out.push((Group::Adult, self.adult_only.clone())),
+            Adult::Suggestive => out.push((Group::Adult, self.suggestive.clone())),
+            Adult::Safe => out.push((Group::Adult, &self.all - &self.adult_only)), // "safe" keeps Suggestive, as VRCatalogue did
         }
         if let Some(t) = text {
             out.push((Group::Text, t.clone()));
         }
-        let mut list = |g, ix: &Index, key: &str| {
-            if !p.list(key).is_empty() {
-                out.push((g, ix.any(p.list(key))));
+        let mut list = |g, ix: &Index, keys: &[String]| {
+            if !keys.is_empty() {
+                out.push((g, ix.any(keys)));
             }
         };
-        list(Group::Avatars, &self.avatars, "avatars");
-        list(Group::Authors, &self.authors, "authors");
-        list(Group::Tags, &self.smart_tags, "tags");
-        list(Group::BoothTags, &self.booth_tags, "btags");
-        list(Group::BoothCat, &self.booth_cats, "bc");
-        let cats = if p.get("scp").as_deref() == Some("1") { &self.cats_primary } else { &self.cats };
-        list(Group::SmartCat, cats, "sc");
+        list(Group::Avatars, &self.avatars, &r.avatars);
+        list(Group::Authors, &self.authors, &r.authors);
+        list(Group::Tags, &self.smart_tags, &r.tags);
+        list(Group::BoothTags, &self.booth_tags, &r.btags);
+        list(Group::BoothCat, &self.booth_cats, &r.bc);
+        let cats = if r.scp { &self.cats_primary } else { &self.cats };
+        list(Group::SmartCat, cats, &r.sc);
         // exclusions narrow the same group as their include list
-        let exclude = |ix: &Index, key: &str| (!p.list(key).is_empty()).then(|| &self.all - &ix.any(p.list(key)));
-        if let Some(b) = exclude(&self.smart_tags, "extags") {
+        let exclude = |ix: &Index, keys: &[String]| (!keys.is_empty()).then(|| &self.all - &ix.any(keys));
+        if let Some(b) = exclude(&self.smart_tags, &r.extags) {
             out.push((Group::Tags, b));
         }
-        if let Some(b) = exclude(&self.booth_tags, "exbtags") {
+        if let Some(b) = exclude(&self.booth_tags, &r.exbtags) {
             out.push((Group::BoothTags, b));
         }
-        let feats: Vec<&String> = p.list("if").iter().filter(|f| FEATURES.contains(&f.as_str())).collect();
-        if !feats.is_empty() {
+        if !r.features.is_empty() {
             // features AND together
-            out.push((Group::Features, feats.iter().fold(self.all.clone(), |acc, f| acc & self.features.any(std::slice::from_ref(*f)))));
+            out.push((Group::Features, r.features.iter().fold(self.all.clone(), |acc, f| acc & self.features.any(std::slice::from_ref(f)))));
         }
 
-        let pmin = p.num::<i32>("pmin").unwrap_or(0).max(0);
-        let pmax = p.num::<i32>("pmax").unwrap_or(0);
-        if p.get("free").as_deref() == Some("1") {
+        if r.free {
             out.push((Group::Price, self.scan(|i| self.price[i] == Some(0))));
-        } else if pmin > 0 || (pmax > 0 && pmax < PRICE_CAP) {
-            let hi = if pmax > 0 && pmax < PRICE_CAP { pmax } else { i32::MAX };
-            out.push((Group::Price, self.scan(|i| self.price[i].is_some_and(|v| v >= pmin && v <= hi))));
+        } else if r.pmin > 0 || (r.pmax > 0 && r.pmax < PRICE_CAP) {
+            let hi = if r.pmax > 0 && r.pmax < PRICE_CAP { r.pmax } else { i32::MAX };
+            out.push((Group::Price, self.scan(|i| self.price[i].is_some_and(|v| v >= r.pmin && v <= hi))));
         }
 
         let day = 86_400;
-        let range = match p.get("range").as_deref() {
-            Some("7d") => Some((now - 7 * day, i64::MAX)),
-            Some("30d") => Some((now - 30 * day, i64::MAX)),
-            Some("90d") => Some((now - 90 * day, i64::MAX)),
-            Some("1y") => Some((now - 365 * day, i64::MAX)),
-            Some("custom") => {
-                let ts = |k: &str| p.get(k).and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok()).map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp());
+        let range = r.range.map(|range| match range {
+            Range::Days(n) => (now - n * day, i64::MAX),
+            Range::Custom { from, to } => {
+                let ts = |d: Option<chrono::NaiveDate>| d.map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp());
                 // `to` is inclusive of the whole day
-                Some((ts("from").unwrap_or(i64::MIN), ts("to").map_or(i64::MAX, |t| t + day - 1)))
+                (ts(from).unwrap_or(i64::MIN), ts(to).map_or(i64::MAX, |t| t + day - 1))
             }
-            _ => None,
-        };
+        });
         if let Some((lo, hi)) = range {
             out.push((Group::Range, self.scan(|i| self.published[i] >= lo && self.published[i] <= hi)));
         }
@@ -342,9 +331,8 @@ impl Catalog {
 
     /// `semantic`: item ids nearest to the query by meaning (see main.rs); they join the text hits and, when
     /// sorting by relevance, the two rankings are merged. Autocomplete and RSS skip facet counts.
-    pub fn search(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>, count_facets: bool) -> Result<SearchResult> {
-        let q = p.get("q").filter(|q| !q.trim().is_empty());
-        let mut text = q.as_deref().map(|q| self.text.search(q)).transpose()?;
+    pub fn search(&self, r: &SearchRequest, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>, count_facets: bool) -> Result<SearchResult> {
+        let mut text = r.q.as_deref().map(|q| self.text.search(q)).transpose()?;
         if let (Some((hits, scores)), Some(sem)) = (text.as_mut(), semantic) {
             // models named in the query: a meaning-based match must fit one of them
             let fits = (!sem.models.is_empty()).then(|| self.avatars.any(sem.models));
@@ -372,7 +360,7 @@ impl Catalog {
             hits.extend(docs);
             *hits |= cat;
         }
-        let cs = self.constraints(p, now, text.as_ref().map(|(b, _)| b), favourites);
+        let cs = self.constraints(r, now, text.as_ref().map(|(b, _)| b), favourites);
         let hits = self.intersect(&cs, None);
 
         // disjunctive facets: each group's counts ignore that group's own selection
@@ -381,19 +369,19 @@ impl Catalog {
             let base = self.intersect(&cs, Some(Group::BoothCat));
             facets.booth = self.booth_cats.0.iter().map(|(k, b)| (k.clone(), base.intersection_len(b))).filter(|(_, n)| *n > 0).collect();
             let base = self.intersect(&cs, Some(Group::SmartCat));
-            let cats = if p.get("scp").as_deref() == Some("1") { &self.cats_primary } else { &self.cats };
+            let cats = if r.scp { &self.cats_primary } else { &self.cats };
             facets.smart = cats.0.iter().map(|(k, b)| (k.clone(), base.intersection_len(b))).filter(|(_, n)| *n > 0).collect();
             let base = self.intersect(&cs, Some(Group::Features));
             facets.features = FEATURES.iter().map(|f| (f.to_string(), base.intersection_len(self.features.0.get(*f).unwrap_or(&RoaringBitmap::new())))).collect();
         }
 
-        let asc = p.get("dir").as_deref() == Some("asc");
-        let (sort, scores) = match (p.get("sort").as_deref(), &text) {
-            (Some("relevant") | None, Some((_, s))) => ("relevant", Some(s)),
-            (Some("newest"), _) => ("newest", None),
-            (Some("price"), _) => ("price", None),
-            (Some("likes"), _) => ("likes", None),
-            (Some("title"), _) => ("title", None),
+        let asc = r.asc;
+        let (sort, scores) = match (r.sort, &text) {
+            (Sort::Relevant, Some((_, s))) => ("relevant", Some(s)),
+            (Sort::Newest, _) => ("newest", None),
+            (Sort::Price, _) => ("price", None),
+            (Sort::Likes, _) => ("likes", None),
+            (Sort::Title, _) => ("title", None),
             _ => ("trending", None),
         };
         // every key sorts descending unless dir=asc (title defaults to A–Z)
@@ -416,10 +404,10 @@ impl Catalog {
             o.then(a.cmp(b))
         };
 
-        let page_size = p.num::<usize>("pageSize").unwrap_or(20).clamp(1, 100);
+        let page_size = r.page_size;
         let count = hits.len();
         let total_pages = (count as usize).div_ceil(page_size).max(1);
-        let page = p.num::<usize>("page").unwrap_or(1).clamp(1, total_pages);
+        let page = r.page.clamp(1, total_pages);
         let start = (page - 1) * page_size;
         let end = (page * page_size).min(count as usize);
         let mut docs: Vec<u32> = hits.iter().collect();
@@ -485,6 +473,7 @@ fn fuse(text: &FxHashMap<u32, f32>, semantic: &[u32], category: &RoaringBitmap) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::params::Params;
 
     fn doc(id: i64) -> DocInput {
         DocInput {
@@ -511,7 +500,7 @@ mod tests {
     }
 
     fn ids(c: &Catalog, q: &str) -> Vec<i64> {
-        let mut v = c.search_plain(&Params::parse(&format!("{q}&pageSize=100")), 0, None).unwrap().ids;
+        let mut v = c.search_plain(&format!("{q}&pageSize=100"), 0, None).unwrap().ids;
         v.sort();
         v
     }
@@ -568,13 +557,13 @@ mod tests {
             "q=hair&sort=likes", "q=hair&sort=price&dir=asc", "q=hair&sort=title",
             "q=hair&adult=include&if=ma", "q=hair&free=1", "q=hair&sc=clothing", "q=hair&v=favourites",
         ] {
-            let p = Params::parse(query);
+            let p = request(query);
             for sem in [None, Some(semantic)] {
                 assert_eq!(cached.search(&p, 0, Some(&favourites), sem, true).unwrap(), rebuilt.search(&p, 0, Some(&favourites), sem, true).unwrap(), "query {query:?}");
             }
         }
         // Reusing disk files must not mutate an old snapshot still serving requests.
-        assert_ne!(original.search_plain(&Params::parse("free=1"), 0, None).unwrap().count, cached.search_plain(&Params::parse("free=1"), 0, None).unwrap().count);
+        assert_ne!(original.search_plain("free=1", 0, None).unwrap().count, cached.search_plain("free=1", 0, None).unwrap().count);
         drop((original, cached, rebuilt));
         let _ = std::fs::remove_dir_all(root);
     }
@@ -590,7 +579,7 @@ mod tests {
             let c = Catalog::build(vec![d], 0, Some(&root)).unwrap();
             let current = std::fs::read_dir(&root).unwrap().map(|e| e.unwrap().path()).find(|p| p.join("READY").exists()).unwrap();
             assert_ne!(last.as_ref(), Some(&current));
-            assert_eq!(c.search_plain(&Params::parse(&format!("q={title}")), 0, None).unwrap().ids, [id]);
+            assert_eq!(c.search_plain(&format!("q={title}"), 0, None).unwrap().ids, [id]);
             last = Some(current);
         }
         let _ = std::fs::remove_dir_all(root);
@@ -610,7 +599,7 @@ mod tests {
         let models = vec!["shinano".to_owned()];
         let run = |q: &str, rest: &str| {
             let sem = Semantic { ids: &[], categories: &[], models: &models, rest };
-            let mut v = c.search(&Params::parse(&format!("q={q}&sort=relevant")), 0, None, Some(sem), true).unwrap().ids;
+            let mut v = c.search(&request(&format!("q={q}&sort=relevant")), 0, None, Some(sem), true).unwrap().ids;
             let first = v[0];
             v.sort();
             (first, v)
@@ -621,9 +610,13 @@ mod tests {
         assert_eq!(run("shinano%20short%20hair", "short hair"), (2, vec![1, 2]));
     }
 
+    fn request(query: &str) -> SearchRequest {
+        SearchRequest::from(&Params::parse(query))
+    }
+
     impl Catalog {
-        fn search_plain(&self, p: &Params, now: i64, favourites: Option<&RoaringBitmap>) -> Result<SearchResult> {
-            self.search(p, now, favourites, None, true)
+        fn search_plain(&self, query: &str, now: i64, favourites: Option<&RoaringBitmap>) -> Result<SearchResult> {
+            self.search(&request(query), now, favourites, None, true)
         }
     }
 
@@ -653,7 +646,7 @@ mod tests {
         assert_eq!(ids(&c, "q=item"), [2]);
         assert!(ids(&c, "v=avatars").is_empty());
         let favs = c.docs_for(&[1, 3]);
-        let mut f = c.search_plain(&Params::parse("v=favourites&pageSize=10"), 0, Some(&favs)).unwrap().ids;
+        let mut f = c.search_plain("v=favourites&pageSize=10", 0, Some(&favs)).unwrap().ids;
         f.sort();
         assert_eq!(f, [1, 3]);
         assert_eq!(c.docs_for(&[1]).len(), 1); // still known, so its page and gallery load
@@ -683,7 +676,7 @@ mod tests {
     #[test]
     fn facets_ignore_own_group() {
         let c = catalog();
-        let r = c.search_plain(&Params::parse("if=liltoon"), 0, None).unwrap();
+        let r = c.search_plain("if=liltoon", 0, None).unwrap();
         assert_eq!(r.count, 1);
         assert_eq!(r.facets.features["ma"], 2); // feature counts ignore the feature filter
         assert_eq!(r.facets.smart["clothing"], 1); // other groups respect it
@@ -700,7 +693,7 @@ mod tests {
             "", "q=item", "q=item&pageSize=2&page=2", "q=missing", "if=liltoon", "sc=clothing&scp=1",
             "adult=include&sort=price&dir=asc", "v=avatars", "v=favourites", "free=1", "avatars=manuka",
         ] {
-            let p = Params::parse(query);
+            let p = request(query);
             for sem in [None, Some(semantic)] {
                 let mut full = c.search(&p, 0, Some(&favourites), sem, true).unwrap();
                 let light = c.search(&p, 0, Some(&favourites), sem, false).unwrap();
@@ -714,10 +707,10 @@ mod tests {
     #[test]
     fn sort_and_paging() {
         let c = catalog();
-        let r = c.search_plain(&Params::parse("adult=include&sort=price&dir=asc&pageSize=2&page=1"), 0, None).unwrap();
+        let r = c.search_plain("adult=include&sort=price&dir=asc&pageSize=2&page=1", 0, None).unwrap();
         assert_eq!(r.ids, [2, 1]); // free first, then id order for ties
         assert_eq!(r.total_pages, 3);
-        let r = c.search_plain(&Params::parse("adult=include&page=99"), 0, None).unwrap();
+        let r = c.search_plain("adult=include&page=99", 0, None).unwrap();
         assert_eq!(r.page, 1);
     }
 
@@ -737,11 +730,11 @@ mod tests {
                 for dir in ["asc", "desc"] {
                     let base = format!("{query}&sort={sort}&dir={dir}");
                     // Fewer than 100 hits: page 1 sorts the entire set without either partition.
-                    let full = c.search(&Params::parse(&format!("{base}&pageSize=100")), 0, None, None, false).unwrap();
+                    let full = c.search(&request(&format!("{base}&pageSize=100")), 0, None, None, false).unwrap();
                     for size in [1, 7, 20, 100] {
                         let pages = full.ids.len().div_ceil(size).max(1);
                         for page in [0, 1, 2, 5, pages, pages + 1, usize::MAX] {
-                            let params = Params::parse(&format!("{base}&pageSize={size}&page={page}"));
+                            let params = request(&format!("{base}&pageSize={size}&page={page}"));
                             let r = c.search(&params, 0, None, None, false).unwrap();
                             let page = page.clamp(1, pages);
                             let expected: Vec<_> = full.ids.iter().skip((page - 1) * size).take(size).copied().collect();
@@ -758,7 +751,7 @@ mod tests {
     fn favourites_view_spans_all_kinds() {
         let c = catalog();
         let favs = c.docs_for(&[1, 6, 999]);
-        let r = c.search_plain(&Params::parse("v=favourites&adult=include"), 0, Some(&favs)).unwrap();
+        let r = c.search_plain("v=favourites&adult=include", 0, Some(&favs)).unwrap();
         let mut ids = r.ids;
         ids.sort();
         assert_eq!(ids, [1, 6]);

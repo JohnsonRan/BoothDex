@@ -7,9 +7,41 @@ use crate::search::search;
 #[sqlx::test(migrations = "../core/migrations")]
 #[ignore = "requires PostgreSQL with pgvector"]
 async fn semantic_search_uses_vectors_with_and_without_a_named_model(pool: PgPool) {
+    multi_thread(check_semantic_search(pool)).await;
+}
+
+/// The handlers' `block_in_place` needs a multi-threaded runtime; `sqlx::test` gives a current-thread one.
+async fn multi_thread(check: impl Future<Output = ()> + Send + 'static) {
     tokio::task::spawn_blocking(move || {
-        tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap().block_on(check_semantic_search(pool));
+        tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap().block_on(check);
     }).await.unwrap();
+}
+
+fn app(pool: PgPool, catalog: Catalog, avatars: Lookup) -> Arc<AppState> {
+    crate::install_tls();
+    Arc::new(
+        AppState::new(
+            pool,
+            Snapshot {
+                catalog,
+                category_phrases: Default::default(),
+                avatars,
+                authors: Lookup::new(Vec::new()),
+                tags: Lookup::new(Vec::new()),
+                booth_tags: Lookup::new(Vec::new()),
+                categories: json!({ "categories": [] }),
+                version: 1,
+                loaded_at: chrono::Utc::now(),
+                build_secs: 0.0,
+            },
+            Default::default(),
+            "http://127.0.0.1:3000".into(),
+            None,
+            String::new(),
+            Some(std::time::Duration::from_secs(2)),
+        )
+        .unwrap(),
+    )
 }
 
 async fn check_semantic_search(pool: PgPool) {
@@ -36,30 +68,7 @@ async fn check_semantic_search(pool: PgPool) {
         .bind(boothdex_core::embed::HalfVector::from_f32_slice(&vector)).execute(&pool).await.unwrap();
 
     let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
-    crate::install_tls();
-    let state = Arc::new(
-        AppState::new(
-            pool,
-            Snapshot {
-                catalog,
-                category_phrases: Default::default(),
-                avatars: Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 2)]),
-                authors: Lookup::new(Vec::new()),
-                tags: Lookup::new(Vec::new()),
-                booth_tags: Lookup::new(Vec::new()),
-                categories: json!({ "categories": [] }),
-                version: 1,
-                loaded_at: chrono::Utc::now(),
-                build_secs: 0.0,
-            },
-            Default::default(),
-            "http://127.0.0.1:3000".into(),
-            None,
-            String::new(),
-            Some(std::time::Duration::from_secs(2)),
-        )
-        .unwrap(),
-    );
+    let state = app(pool, catalog, Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 2)]));
     let shinano = json!([{ "kind": "model", "slug": "shinano", "words": ["Shinano"] }]);
     for (query, expected, semantic, recognized) in [
         ("q=silky%20strands", vec![1, 3], "used", json!([])),
@@ -76,6 +85,36 @@ async fn check_semantic_search(pool: PgPool) {
         assert_eq!(ids, expected, "query {query}");
         assert_eq!(body["count"], expected.len());
     }
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn the_feed_pins_its_order_and_the_palette_searches_the_text_as_typed(pool: PgPool) {
+    multi_thread(check_feed_and_palette(pool)).await;
+}
+
+async fn check_feed_and_palette(pool: PgPool) {
+    use axum::body::to_bytes;
+
+    sqlx::raw_sql("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, published_at, price_jpy) values
+                   (1, 'Rock&Roll Hoodie', 'creator', 'https://example.test', false, 'ok', now(), now() - interval '2 days', 300),
+                   (2, 'Rock Band Tee', 'creator', 'https://example.test', false, 'ok', now(), now() - interval '1 day', 100),
+                   (3, 'Plain Socks', 'creator', 'https://example.test', false, 'ok', now(), now() - interval '3 days', 200);")
+        .execute(&pool).await.unwrap();
+    let state = app(pool.clone(), Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap(), Lookup::new(Vec::new()));
+    let ip = limit::ClientIp("203.0.113.30".parse().unwrap());
+    let body = |r: Response| async { to_bytes(r.into_body(), 1024 * 1024).await.unwrap() };
+
+    // a saved search's own order and page size do not change the feed: newest first, all of them
+    let feed = rss_feed(State(state.clone()), ip, RawQuery(Some("sort=price&dir=asc&pageSize=1&page=2".into()))).await.unwrap_or_else(IntoResponse::into_response);
+    let xml = String::from_utf8(body(feed).await.to_vec()).unwrap();
+    let titles: Vec<&str> = xml.split("<item><title>").skip(1).map(|t| t.split('<').next().unwrap()).collect();
+    assert_eq!(titles, ["Rock Band Tee", "Rock&amp;Roll Hoodie", "Plain Socks"]);
+
+    // an `&` in the text stays part of it: both words must match, so the other "Rock" item is left out
+    let found = palette(State(state), ip, RawQuery(Some("q=Rock%26Roll".into()))).await.unwrap_or_else(IntoResponse::into_response);
+    let json: Value = serde_json::from_slice(&body(found).await).unwrap();
+    assert_eq!(json["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>(), [1]);
 }
 
 #[sqlx::test(migrations = "../core/migrations")]

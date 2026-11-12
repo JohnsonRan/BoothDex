@@ -18,6 +18,7 @@ mod limit;
 mod params;
 mod rss;
 mod search;
+mod search_request;
 mod snapshot;
 mod text;
 
@@ -32,7 +33,6 @@ use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use boothdex_core::urlencode;
 use axum::{Json, Router};
 use tower_http::compression::Predicate as _;
 use serde_json::{Value, json};
@@ -41,6 +41,7 @@ use sqlx::PgPool;
 use error::ApiError;
 use params::Params;
 use search::{EMBED_CACHE_CAP, EmbedWatch};
+use search_request::{SearchRequest, Sort};
 use snapshot::{Lookup, Snapshot, build_snapshot, catalog_version, reloader};
 
 
@@ -167,10 +168,11 @@ async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cl
     s.limits.rss.check(ip)?;
     let _permit = s.acquire_search().await?;
     let user_q = q.unwrap_or_default();
-    // first occurrence wins in Params, so the prefix pins ordering and size
-    let p = Params::parse(&format!("sort=newest&dir=desc&page=1&pageSize=50&{user_q}"));
+    // the feed pins ordering and size, whatever the saved search sorts by
+    let mut req = SearchRequest::from(&Params::parse(&user_q));
+    (req.sort, req.asc, req.page, req.page_size) = (Sort::Newest, false, 1, 50);
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&p, now, None, None, false))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&req, now, None, None, false))?;
     let items = db::load_items(&s.pool, &r.ids, false).await?;
     let link = format!("{}/?{user_q}", s.site_url);
     Ok(([(axum::http::header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")], rss::render(&link, &user_q, &items)).into_response())
@@ -180,11 +182,10 @@ async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cl
 async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
     s.limits.palette.check(ip)?;
     let raw = q.unwrap_or_default();
-    let p = Params::parse(&raw);
-    let text = p.get("q").unwrap_or_default();
-    if text.trim().is_empty() {
+    let user = SearchRequest::from(&Params::parse(&raw));
+    let Some(text) = user.q else {
         return Ok(Json(json!({ "items": [], "avatars": [], "authors": [], "tags": [], "categories": [] })).into_response());
-    }
+    };
     let _permit = s.acquire_search().await?;
     let small = Params::parse(&format!("limit=5&{raw}"));
     let needle = text.to_lowercase();
@@ -199,10 +200,9 @@ async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::Cli
         .map(|c| json!({ "slug": c["slug"], "en": c["en"], "ja": c["ja"], "ko": c["ko"], "zh": c["zh"] }))
         .collect();
     // items honour the caller's adult setting (default safe) like the main search
-    let adult = p.get("adult").unwrap_or_else(|| "safe".into());
-    let item_params = Params::parse(&format!("q={}&adult={}&sort=relevant&pageSize=8", urlencode(&text), urlencode(&adult)));
+    let items_req = SearchRequest { q: Some(text), adult: user.adult, sort: Sort::Relevant, page_size: 8, ..SearchRequest::from(&Params::default()) };
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&item_params, now, None, None, false))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&items_req, now, None, None, false))?;
     let items: Vec<Value> = db::load_items(&s.pool, &r.ids, true)
         .await?
         .into_iter()
@@ -399,13 +399,6 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn url_encoding_preserves_query_values() {
-        let value = "衣装 x+y&z=1/#?%";
-        let encoded = super::urlencode(value);
-        assert_eq!(super::Params::parse(&format!("q={encoded}")).get("q").as_deref(), Some(value));
-    }
-
     #[test]
     fn item_ids_accept_any_separator_encoding() {
         assert_eq!(super::item_ids("ids=1,2+3%2C4%2B5%206&x=7"), [1, 2, 3, 4, 5, 6]);
