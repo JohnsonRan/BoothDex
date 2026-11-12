@@ -10,9 +10,13 @@ use serde_json::json;
 
 use crate::limit::RateLimited;
 
-/// Every refusal the API answers with. The site words some of them by their English message
-/// (web/src/lib/messages.ts, web/src/components/admin/messages.ts), so a message here is not reworded alone.
-#[derive(Clone, Copy)]
+/// Every refusal the API answers with. Its name in snake_case is the `code` of the error body, which the site
+/// words in the visitor's language (web/src/lib/messages.ts, web/src/components/admin/messages.ts): the generated
+/// `Refusal` type of web/src/lib/api-types.ts fails the site's type check when a code it names is not listed here.
+/// The message is for other clients and for a browser still running a script that matched on it.
+#[derive(Clone, Copy, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Refusal {
     SignInRequired,
     AdminsOnly,
@@ -104,7 +108,7 @@ pub(crate) enum ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         match self {
-            Self::Refused(refusal, message) => (refusal.parts().0, Json(json!({ "ok": false, "error": message }))).into_response(),
+            Self::Refused(refusal, message) => (refusal.parts().0, Json(json!({ "ok": false, "code": refusal, "error": message }))).into_response(),
             Self::Limited(limited) => limited.into_response(),
             Self::Internal(cause) => {
                 eprintln!("error: {cause:#}");

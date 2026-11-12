@@ -1,20 +1,24 @@
 // Same-origin calls to the Rust API (proxied by next.config rewrites).
 
+import type { Refusal } from "./api-types";
+
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** why the API refused; none for a rate limit, a failure inside the API or an answer that is not the API's */
+    public code?: Refusal,
   ) {
     super(message);
   }
 }
 
 /**
- * The API errors a catalogue explains in its own words. The API identifies an error only by its English
- * message, so `messages` matches that exactly; `statuses` covers the rest by HTTP status.
+ * The API errors a catalogue explains in its own words: `codes` by the refusal the API names (crates/api/src/error.rs),
+ * `statuses` for the rest by HTTP status.
  */
 export type ApiErrors<K extends string> = {
-  messages: Readonly<Record<string, K>>;
+  codes: Readonly<Partial<Record<Refusal, K>>>;
   statuses: Readonly<Partial<Record<number, K>>>;
 };
 
@@ -26,8 +30,8 @@ export function errorKey<K extends string>(
 ): K {
   if (!(e instanceof ApiError)) return fallback;
   return (
-    (Object.hasOwn(known.messages, e.message)
-      ? known.messages[e.message]
+    (e.code && Object.hasOwn(known.codes, e.code)
+      ? known.codes[e.code]
       : known.statuses[e.status]) ?? fallback
   );
 }
@@ -56,7 +60,8 @@ export async function api<T>(
   const body = res.headers.get("content-type")?.includes("json")
     ? await res.json()
     : null;
-  if (!res.ok) throw new ApiError(res.status, body?.error ?? res.statusText);
+  if (!res.ok)
+    throw new ApiError(res.status, body?.error ?? res.statusText, body?.code);
   return body as T;
 }
 
