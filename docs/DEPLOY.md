@@ -219,6 +219,8 @@ boothdex.example.com {
 | Backup archived images | Copy `/srv/boothdex/images` once (changes only if you archive newly delisted items) |
 | Restore database | `docker compose stop api worker && docker compose exec -T postgres pg_restore -U catalogue -d catalogue --clean --if-exists --no-owner --role=catalogue < backup.dump && docker compose start api worker` |
 
+Before an update that adds a file under `crates/core/migrations`, rehearse its migrations on a copy of production data. CI applies migrations only to an empty database, so this is the only check against the rows production holds. Copy a recent backup to `<dir>/catalogue.dump`, then run `PODMAN=docker WORKER_IMAGE=ghcr.io/johnsonran/boothdex-worker:sha-<commit> scripts/test-restore.sh <dir>` on a machine with Docker; leave out `PODMAN=docker` where Podman runs instead. The script needs no other file from the repository. It restores the dump into a throwaway container, runs the image's migrations and prints row counts. A failed migration stops the script and leaves the container `catalogue-restore-test`, which holds the backup's data: remove it with `docker rm -f catalogue-restore-test`.
+
 Automatic cleanup: the `worker` deletes expired login sessions and job history (including job errors and logs) older than 90 days every hour; container logs are capped by `x-logging` in `compose.yaml` (Docker keeps 3 × 10 MB per service, Podman truncates each log at 10 MB); `query_embeddings` is pruned by the `embed` job (see above). No manual `VACUUM` is needed (autovacuum handles it).
 
 Safe to lose (rebuilt automatically): `imgcache` (re-fetched from BOOTH on demand) and `textindex` (rebuilt by `api` at startup in ~10 s).
