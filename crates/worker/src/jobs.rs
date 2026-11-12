@@ -64,6 +64,11 @@ pub async fn bump_catalog(pool: &PgPool) -> Result<()> {
 
 use boothdex_core::booth::{mark_delisted, store_item};
 
+/// Listing pages show at most 4 images, so a listing gallery never replaces a full one taken from the item page.
+const LISTING_IMAGES_UPSERT: &str = "insert into booth_images (item_id, images, complete)
+             select id, array(select jsonb_array_elements_text(imgs::jsonb)), false from unnest($1::bigint[], $2::text[]) as t(id, imgs)
+             on conflict (item_id) do update set images = excluded.images, fetched_at = now() where not booth_images.complete";
+
 /// Newest-first listing walk: stores image links for every item seen, ingests unknown items, stops once caught up.
 /// Bootstrapping an empty catalogue: `{"max_pages": 5000, "full": true}`; resume an interrupted one with `start_page`.
 pub async fn incremental(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
@@ -79,15 +84,11 @@ pub async fn incremental(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         seen += rows.len() as i64;
         let ids: Vec<i64> = rows.iter().map(|r| r.0).collect();
         let imgs: Vec<String> = rows.iter().map(|r| serde_json::to_string(&r.1).unwrap()).collect();
-        sqlx::query(
-            "insert into booth_images (item_id, images, complete)
-             select id, array(select jsonb_array_elements_text(imgs::jsonb)), false from unnest($1::bigint[], $2::text[]) as t(id, imgs)
-             on conflict (item_id) do update set images = excluded.images, fetched_at = now() where not booth_images.complete",
-        )
-        .bind(&ids)
-        .bind(&imgs)
-        .execute(ctx.pool)
-        .await?;
+        sqlx::query(LISTING_IMAGES_UPSERT)
+            .bind(&ids)
+            .bind(&imgs)
+            .execute(ctx.pool)
+            .await?;
         revived += sqlx::query("update items set status = 'ok' where id = any($1) and status = 'delisted'").bind(&ids).execute(ctx.pool).await?.rows_affected();
         let unknown: Vec<i64> = sqlx::query_scalar("select id from unnest($1::bigint[]) as t(id) where not exists (select 1 from items i where i.id = t.id)")
             .bind(&ids)
@@ -200,15 +201,11 @@ pub async fn sweep(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         let images = ctx.booth.images(&html);
         let img_ids: Vec<i64> = images.iter().map(|r| r.0).collect();
         let imgs: Vec<String> = images.iter().map(|r| serde_json::to_string(&r.1).unwrap()).collect();
-        sqlx::query(
-            "insert into booth_images (item_id, images, complete)
-             select id, array(select jsonb_array_elements_text(imgs::jsonb)), false from unnest($1::bigint[], $2::text[]) as t(id, imgs)
-             on conflict (item_id) do update set images = excluded.images, fetched_at = now() where not booth_images.complete",
-        )
-        .bind(&img_ids)
-        .bind(&imgs)
-        .execute(ctx.pool)
-        .await?;
+        sqlx::query(LISTING_IMAGES_UPSERT)
+            .bind(&img_ids)
+            .bind(&imgs)
+            .execute(ctx.pool)
+            .await?;
         if !ctx.progress(page as i64, Some(last as i64), &format!("page {page}/{last}: {seen} seen"), false).await? {
             ctx.log("cancelled during listing walk; skipping delisting check").await?;
             return Ok(format!("cancelled at page {page}, {seen} seen"));
@@ -455,12 +452,33 @@ async fn write_enrichment(pool: &PgPool, id: i64, title: &str, bio: &str, e: &cr
     Ok(true)
 }
 
+/// Hash of the text an item's embedding is made from, over unqualified `items` columns: the embed job takes it when it
+/// reads an item and writes the vector only while it still matches. A macro, so the queries stay static strings.
+macro_rules! embedding_fingerprint {
+    () => {
+        "md5(concat_ws(E'\\x1f', title, bio, translations->'en'->>'title', array_to_string(booth_tags, E'\\x1e')))"
+    };
+}
+
 /// (id, title, booth_tags, translations.en.title, bio, input_fingerprint)
 type EmbedRow = (i64, String, Vec<String>, Option<String>, String, String);
 
-const EMBEDDING_UPDATE: &str = "update items i set embedding = v.e
+const EMBED_ROWS_SELECT: &str = concat!(
+    "select id, title, booth_tags, translations->'en'->>'title', bio,
+                    ",
+    embedding_fingerprint!(),
+    "
+             from items
+             where status = 'ok' and embedding is null and id < $1 order by id desc limit $2"
+);
+
+const EMBEDDING_UPDATE: &str = concat!(
+    "update items i set embedding = v.e
     from unnest($1::bigint[], $2::halfvec[], $3::text[]) as v(id, e, fp)
-    where i.id = v.id and md5(concat_ws(E'\\x1f', i.title, i.bio, i.translations->'en'->>'title', array_to_string(i.booth_tags, E'\\x1e'))) = v.fp";
+    where i.id = v.id and ",
+    embedding_fingerprint!(),
+    " = v.fp"
+);
 
 /// Embeddings for semantic search: every listed item without one (new, edited, or after a model change).
 /// Runs until done; requests go out `batch` items at a time, `concurrency` at once.
@@ -495,16 +513,11 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let (mut done, mut sent, mut below) = (0i64, 0i64, i64::MAX);
     loop {
         // keyset paging: an item the provider can't embed is not fetched again in this run
-        let rows: Vec<EmbedRow> = sqlx::query_as(
-            "select id, title, booth_tags, translations->'en'->>'title', bio,
-                    md5(concat_ws(E'\\x1f', title, bio, translations->'en'->>'title', array_to_string(booth_tags, E'\\x1e')))
-             from items
-             where status = 'ok' and embedding is null and id < $1 order by id desc limit $2",
-        )
-        .bind(below)
-        .bind(((batch * concurrency) as i64).min(limit - sent))
-        .fetch_all(ctx.pool)
-        .await?;
+        let rows: Vec<EmbedRow> = sqlx::query_as(EMBED_ROWS_SELECT)
+            .bind(below)
+            .bind(((batch * concurrency) as i64).min(limit - sent))
+            .fetch_all(ctx.pool)
+            .await?;
         let Some(last) = rows.last() else { break };
         below = last.0;
         sent += rows.len() as i64;
@@ -606,22 +619,61 @@ mod tests {
 
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
-    async fn binary_embedding_batch_skips_changed_items(pool: PgPool) {
-        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
-                     select id, 'original', 'creator', 'https://example.test', false, 'ok', now() from generate_series(1, 3) as id")
+    async fn listing_images_preserve_complete_galleries(pool: PgPool) {
+        // 1 a full gallery from the item page; 2 an older listing gallery; 3 and 4 not stored yet, and not in items
+        sqlx::query("insert into booth_images (item_id, images, complete, fetched_at) values
+                     (1, '{f1,f2,f3,f4,f5}', true, '2000-01-01'), (2, '{old}', false, '2000-01-01')")
             .execute(&pool).await.unwrap();
-        let rows: Vec<(i64, String)> = sqlx::query_as(
-            "select id, md5(concat_ws(E'\\x1f', title, bio, translations->'en'->>'title', array_to_string(booth_tags, E'\\x1e'))) from items order by id",
-        ).fetch_all(&pool).await.unwrap();
-        let (ids, fingerprints): (Vec<_>, Vec<_>) = rows.into_iter().unzip();
-        sqlx::query("update items set title = 'edited during embedding' where id = 3").execute(&pool).await.unwrap();
+        let galleries: [(i64, &[&str]); 4] = [(1, &["l1"]), (2, &["n1", "n2"]), (3, &["c", "a", "b"]), (4, &[])];
+        let ids: Vec<i64> = galleries.iter().map(|g| g.0).collect();
+        let imgs: Vec<String> = galleries.iter().map(|g| serde_json::to_string(&g.1).unwrap()).collect();
+        let expected = [
+            (1, vec!["f1", "f2", "f3", "f4", "f5"], true, false),
+            (2, vec!["n1", "n2"], false, true),
+            (3, vec!["c", "a", "b"], false, true),
+            (4, vec![], false, true),
+        ];
+        for _ in 0..2 {
+            sqlx::query(LISTING_IMAGES_UPSERT).bind(&ids).bind(&imgs).execute(&pool).await.unwrap();
+            let stored: Vec<(i64, Vec<String>, bool, bool)> =
+                sqlx::query_as("select item_id, images, complete, fetched_at > '2000-01-01' from booth_images order by item_id")
+                    .fetch_all(&pool).await.unwrap();
+            assert_eq!(stored, expected.iter().map(|(id, images, complete, fresh)| (*id, images.iter().map(|s| s.to_string()).collect(), *complete, *fresh)).collect::<Vec<_>>());
+        }
+        let empty = sqlx::query(LISTING_IMAGES_UPSERT).bind(Vec::<i64>::new()).bind(Vec::<String>::new())
+            .execute(&pool).await.unwrap().rows_affected();
+        assert_eq!(empty, 0);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn binary_embedding_batch_skips_changed_items(pool: PgPool) {
+        sqlx::query("insert into items (id, title, bio, author_name, author_uri, is_adult, status, scraped_at, price_jpy, booth_tags, translations)
+                     select id, 'ab', 'c', 'creator', 'https://example.test', false, 'ok', now(), 500, '{t1,t2}',
+                            case when id = 8 then '{}' else '{\"en\": {\"title\": \"English\"}, \"ko\": {\"title\": \"Korean\"}}' end::jsonb
+                     from generate_series(1, 8) as id")
+            .execute(&pool).await.unwrap();
+        let rows: Vec<EmbedRow> = sqlx::query_as(EMBED_ROWS_SELECT).bind(i64::MAX).bind(8i64).fetch_all(&pool).await.unwrap();
+        let (ids, fingerprints): (Vec<_>, Vec<_>) = rows.into_iter().map(|r| (r.0, r.5)).unzip();
+        // 1 unchanged; 2 to 5 one input each; 6 only fields outside the text; 7 the title/bio boundary moves; 8 a missing English title becomes ''
+        for edit in [
+            "update items set title = 'edited during embedding' where id = 2",
+            "update items set bio = 'edited during embedding' where id = 3",
+            "update items set translations = jsonb_set(translations, '{en,title}', '\"Edited\"') where id = 4",
+            "update items set booth_tags = '{t1,t3}' where id = 5",
+            "update items set price_jpy = 600, translations = jsonb_set(translations, '{ko,title}', '\"Edited\"') where id = 6",
+            "update items set title = 'a', bio = 'bc' where id = 7",
+            "update items set translations = '{\"en\": {\"title\": \"\"}}' where id = 8",
+        ] {
+            sqlx::query(edit).execute(&pool).await.unwrap();
+        }
         let values = vec![0.125; DIMS];
         let vectors = vec![HalfVector::from_f32_slice(&values); ids.len()];
         let written = sqlx::query(EMBEDDING_UPDATE).bind(&ids).bind(&vectors).bind(&fingerprints)
             .execute(&pool).await.unwrap().rows_affected();
         assert_eq!(written, 2);
         let stored: Vec<(i64, bool)> = sqlx::query_as("select id, embedding is not null from items order by id").fetch_all(&pool).await.unwrap();
-        assert_eq!(stored, [(1, true), (2, true), (3, false)]);
+        assert_eq!(stored, [(1, true), (2, false), (3, false), (4, false), (5, false), (6, true), (7, false), (8, false)]);
         let same: bool = sqlx::query_scalar("select bool_and(halfvec_send(embedding) = halfvec_send($1::halfvec)) from items where embedding is not null")
             .bind(&vectors[0]).fetch_one(&pool).await.unwrap();
         assert!(same);
