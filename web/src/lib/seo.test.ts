@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { getSiteUrl, homeMetadata } from "./seo";
+import { getSiteUrl, homeMetadata, SHARE_IMAGE } from "./seo";
 
 const originalSiteUrl = process.env.SITE_URL;
 afterEach(() => {
@@ -52,6 +52,7 @@ test("homepage metadata omits canonical and openGraph url when SITE_URL is missi
     expect(metadata.metadataBase).toBeUndefined();
     expect(metadata.alternates).toBeUndefined();
     expect(metadata.openGraph?.url).toBeUndefined();
+    expect(metadata.openGraph?.images).toBeUndefined();
     expect(metadata.openGraph?.siteName).toBe("BoothDex");
   } finally {
     env.NODE_ENV = origEnv;
@@ -94,6 +95,7 @@ test("homepage canonical and share metadata use the runtime origin", () => {
   expect(metadata.alternates?.canonical).toBe("https://first.example/");
   expect(metadata.openGraph).toMatchObject({
     url: "https://first.example/",
+    images: [SHARE_IMAGE],
     siteName: "BoothDex",
     title: metadata.title,
     description: metadata.description,
