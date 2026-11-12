@@ -452,12 +452,33 @@ async fn write_enrichment(pool: &PgPool, id: i64, title: &str, bio: &str, e: &cr
     Ok(true)
 }
 
+/// Hash of the text an item's embedding is made from, over unqualified `items` columns: the embed job takes it when it
+/// reads an item and writes the vector only while it still matches. A macro, so the queries stay static strings.
+macro_rules! embedding_fingerprint {
+    () => {
+        "md5(concat_ws(E'\\x1f', title, bio, translations->'en'->>'title', array_to_string(booth_tags, E'\\x1e')))"
+    };
+}
+
 /// (id, title, booth_tags, translations.en.title, bio, input_fingerprint)
 type EmbedRow = (i64, String, Vec<String>, Option<String>, String, String);
 
-const EMBEDDING_UPDATE: &str = "update items i set embedding = v.e
+const EMBED_ROWS_SELECT: &str = concat!(
+    "select id, title, booth_tags, translations->'en'->>'title', bio,
+                    ",
+    embedding_fingerprint!(),
+    "
+             from items
+             where status = 'ok' and embedding is null and id < $1 order by id desc limit $2"
+);
+
+const EMBEDDING_UPDATE: &str = concat!(
+    "update items i set embedding = v.e
     from unnest($1::bigint[], $2::halfvec[], $3::text[]) as v(id, e, fp)
-    where i.id = v.id and md5(concat_ws(E'\\x1f', i.title, i.bio, i.translations->'en'->>'title', array_to_string(i.booth_tags, E'\\x1e'))) = v.fp";
+    where i.id = v.id and ",
+    embedding_fingerprint!(),
+    " = v.fp"
+);
 
 /// Embeddings for semantic search: every listed item without one (new, edited, or after a model change).
 /// Runs until done; requests go out `batch` items at a time, `concurrency` at once.
@@ -492,16 +513,11 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let (mut done, mut sent, mut below) = (0i64, 0i64, i64::MAX);
     loop {
         // keyset paging: an item the provider can't embed is not fetched again in this run
-        let rows: Vec<EmbedRow> = sqlx::query_as(
-            "select id, title, booth_tags, translations->'en'->>'title', bio,
-                    md5(concat_ws(E'\\x1f', title, bio, translations->'en'->>'title', array_to_string(booth_tags, E'\\x1e')))
-             from items
-             where status = 'ok' and embedding is null and id < $1 order by id desc limit $2",
-        )
-        .bind(below)
-        .bind(((batch * concurrency) as i64).min(limit - sent))
-        .fetch_all(ctx.pool)
-        .await?;
+        let rows: Vec<EmbedRow> = sqlx::query_as(EMBED_ROWS_SELECT)
+            .bind(below)
+            .bind(((batch * concurrency) as i64).min(limit - sent))
+            .fetch_all(ctx.pool)
+            .await?;
         let Some(last) = rows.last() else { break };
         below = last.0;
         sent += rows.len() as i64;
@@ -637,10 +653,8 @@ mod tests {
                             case when id = 8 then '{}' else '{\"en\": {\"title\": \"English\"}, \"ko\": {\"title\": \"Korean\"}}' end::jsonb
                      from generate_series(1, 8) as id")
             .execute(&pool).await.unwrap();
-        let rows: Vec<(i64, String)> = sqlx::query_as(
-            "select id, md5(concat_ws(E'\\x1f', title, bio, translations->'en'->>'title', array_to_string(booth_tags, E'\\x1e'))) from items order by id",
-        ).fetch_all(&pool).await.unwrap();
-        let (ids, fingerprints): (Vec<_>, Vec<_>) = rows.into_iter().unzip();
+        let rows: Vec<EmbedRow> = sqlx::query_as(EMBED_ROWS_SELECT).bind(i64::MAX).bind(8i64).fetch_all(&pool).await.unwrap();
+        let (ids, fingerprints): (Vec<_>, Vec<_>) = rows.into_iter().map(|r| (r.0, r.5)).unzip();
         // 1 unchanged; 2 to 5 one input each; 6 only fields outside the text; 7 the title/bio boundary moves; 8 a missing English title becomes ''
         for edit in [
             "update items set title = 'edited during embedding' where id = 2",
