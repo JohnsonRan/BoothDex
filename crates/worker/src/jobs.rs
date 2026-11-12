@@ -639,21 +639,34 @@ mod tests {
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
     async fn binary_embedding_batch_skips_changed_items(pool: PgPool) {
-        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
-                     select id, 'original', 'creator', 'https://example.test', false, 'ok', now() from generate_series(1, 3) as id")
+        sqlx::query("insert into items (id, title, bio, author_name, author_uri, is_adult, status, scraped_at, price_jpy, booth_tags, translations)
+                     select id, 'ab', 'c', 'creator', 'https://example.test', false, 'ok', now(), 500, '{t1,t2}',
+                            case when id = 8 then '{}' else '{\"en\": {\"title\": \"English\"}, \"ko\": {\"title\": \"Korean\"}}' end::jsonb
+                     from generate_series(1, 8) as id")
             .execute(&pool).await.unwrap();
         let rows: Vec<(i64, String)> = sqlx::query_as(
             "select id, md5(concat_ws(E'\\x1f', title, bio, translations->'en'->>'title', array_to_string(booth_tags, E'\\x1e'))) from items order by id",
         ).fetch_all(&pool).await.unwrap();
         let (ids, fingerprints): (Vec<_>, Vec<_>) = rows.into_iter().unzip();
-        sqlx::query("update items set title = 'edited during embedding' where id = 3").execute(&pool).await.unwrap();
+        // 1 unchanged; 2 to 5 one input each; 6 only fields outside the text; 7 the title/bio boundary moves; 8 a missing English title becomes ''
+        for edit in [
+            "update items set title = 'edited during embedding' where id = 2",
+            "update items set bio = 'edited during embedding' where id = 3",
+            "update items set translations = jsonb_set(translations, '{en,title}', '\"Edited\"') where id = 4",
+            "update items set booth_tags = '{t1,t3}' where id = 5",
+            "update items set price_jpy = 600, translations = jsonb_set(translations, '{ko,title}', '\"Edited\"') where id = 6",
+            "update items set title = 'a', bio = 'bc' where id = 7",
+            "update items set translations = '{\"en\": {\"title\": \"\"}}' where id = 8",
+        ] {
+            sqlx::query(edit).execute(&pool).await.unwrap();
+        }
         let values = vec![0.125; DIMS];
         let vectors = vec![HalfVector::from_f32_slice(&values); ids.len()];
         let written = sqlx::query(EMBEDDING_UPDATE).bind(&ids).bind(&vectors).bind(&fingerprints)
             .execute(&pool).await.unwrap().rows_affected();
         assert_eq!(written, 2);
         let stored: Vec<(i64, bool)> = sqlx::query_as("select id, embedding is not null from items order by id").fetch_all(&pool).await.unwrap();
-        assert_eq!(stored, [(1, true), (2, true), (3, false)]);
+        assert_eq!(stored, [(1, true), (2, false), (3, false), (4, false), (5, false), (6, true), (7, false), (8, false)]);
         let same: bool = sqlx::query_scalar("select bool_and(halfvec_send(embedding) = halfvec_send($1::halfvec)) from items where embedding is not null")
             .bind(&vectors[0]).fetch_one(&pool).await.unwrap();
         assert!(same);
