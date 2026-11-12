@@ -1,5 +1,11 @@
 //! Run with a disposable pgvector database: DATABASE_URL=... cargo test -p api -- --ignored.
 
+use std::collections::HashMap;
+
+use axum::extract::RawQuery;
+use axum::response::{IntoResponse, Response};
+use serde_json::Value;
+
 use super::*;
 use crate::catalog::Catalog;
 use crate::search::search;
@@ -194,4 +200,46 @@ async fn load_docs_translated_titles(pool: PgPool) {
     assert_eq!(*by_id.get(&2).unwrap(), vec!["Title EN 2", "Title ZH 2"]);
     assert!(by_id.get(&3).unwrap().is_empty());
     assert!(by_id.get(&4).unwrap().is_empty());
+}
+
+#[test]
+fn nearest_binds_only_parameters_used_by_each_query() {
+    use sqlx::{Arguments, Execute};
+
+    for models in [vec![], vec!["shinano".to_owned()]] {
+        let mut query = super::search::nearest_query(&[0.5; boothdex_core::embed::DIMS], &models);
+        assert_eq!(query.take_arguments().unwrap().unwrap().len(), if models.is_empty() { 1 } else { 2 });
+        assert_eq!(query.sql().as_str().contains("$2"), !models.is_empty());
+    }
+}
+
+#[test]
+fn queries_are_normalized_for_the_cache() {
+    assert_eq!(super::search::normalize_query("  Gothic   Dress "), "gothic dress");
+}
+
+#[test]
+fn semantic_cutoff_follows_the_best_match_and_drops_weak_ones() {
+    // values seen during calibration: a relevant query, and gibberish whose best neighbour is still 0.707
+    assert!((super::search::semantic_cutoff(0.787, false) - 0.727).abs() < 1e-9);
+    assert!(0.707 < super::search::semantic_cutoff(0.707, false));
+    assert!(0.707 < super::search::semantic_cutoff(0.707, true));
+    assert!((super::search::semantic_cutoff(0.830, true) - 0.730).abs() < 1e-9);
+}
+
+#[test]
+fn queries_naming_a_category_find_it() {
+    let cats = serde_json::json!([
+        {"slug": "hair", "en": "Hair", "ja": "髪型", "children": [
+            {"slug": "hair--short", "en": "Short", "ja": "ショート"}, {"slug": "hair--other", "en": "Other"}]},
+        {"slug": "clothing", "en": "Clothing", "children": [{"slug": "clothing--other", "en": "Other"}]}
+    ]);
+    let m = super::snapshot::category_phrases(&cats);
+    for q in ["shorthair", "hairshort", "short", "ショート"] {
+        assert_eq!(m.get(q).map(String::as_str), Some("hair--short"), "{q}");
+    }
+    assert_eq!(m.get("hair").map(String::as_str), Some("hair"));
+    // a child name two parents share only counts together with its parent
+    assert_eq!(m.get("other"), None);
+    assert_eq!(m.get("otherclothing").map(String::as_str), Some("clothing--other"));
 }
