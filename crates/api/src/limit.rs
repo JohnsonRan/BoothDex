@@ -54,7 +54,7 @@ fn is_cloudflare(ip: IpAddr) -> bool {
     }
 }
 
-fn is_internal(ip: IpAddr) -> bool {
+pub(crate) fn is_internal(ip: IpAddr) -> bool {
     match ip.to_canonical() {
         IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified(),
         IpAddr::V6(v6) => {

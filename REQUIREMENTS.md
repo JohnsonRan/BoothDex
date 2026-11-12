@@ -154,4 +154,3 @@ to the file it decides.
 
 | Question | Source | Raised |
 | --- | --- | --- |
-| Should a session store the client IP the limiter uses? `start_session` (`crates/api/src/account/session.rs`) stores the raw `cf-connecting-ip` header: empty behind Caddy or nginx without Cloudflare, and set by the caller when Cloudflare is not in front; the privacy policy says the IP of each signed-in device is stored. | the plan that counts failed sign-ins per account | 2026-11-13 |
