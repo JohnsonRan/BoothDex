@@ -110,6 +110,13 @@ test("framePages turns a box near view to silhouettes: below the page in view, o
     never,
   );
   expect(far[0].near).toBe(false);
+  // a box that is the page in view (a deep start, a jump) turns to silhouettes moving down too
+  const inView = framePages(
+    [{ n: 1, tiles: [], block: 900 }],
+    frame({ tops: [0], bottoms: [900], inView: 0 }),
+    never,
+  );
+  expect(inView[0].near).toBe(true);
 });
 
 test("pageToRead picks the page in view, else the nearest unread near page", () => {
@@ -131,6 +138,7 @@ test("pageToRead picks the page in view, else the nearest unread near page", () 
 test("restoreStep ends at the place, reads on while short of it, and stops when nothing is left", () => {
   const whole: Page<T> = { n: 3, tiles: [tile(1)] };
   expect(restoreStep(0.5, whole, 9)).toBe("done");
+  expect(restoreStep(1.5, whole, 9)).toBe("read");
   expect(restoreStep(40, whole, 9)).toBe("read");
   expect(restoreStep(40, { ...whole, n: 9 }, 9)).toBe("done");
   expect(restoreStep(undefined, whole, 9)).toBe("done");
