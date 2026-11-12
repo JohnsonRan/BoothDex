@@ -12,8 +12,8 @@ import {
   CountSilhouette,
   ResultsSilhouette,
 } from "@/components/catalog/loading";
-import { FailedResults } from "@/components/catalog/result-states";
-import { ResultsGrid } from "@/components/catalog/results-grid";
+import { FailedResults } from "@/components/catalog/results/result-states";
+import { ResultsGrid } from "@/components/catalog/results/results-grid";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { ItemResponse } from "@/lib/api-types";

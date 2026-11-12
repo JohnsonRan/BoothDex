@@ -1,6 +1,6 @@
 /* Documented deviation (docs/TEMPLATE-MAP.md): the table-filter template's StyleX rules that need a container query
    or a pseudo-class (@astryxdesign/cli assets/templates/pages/table-filter/page.tsx), written as plain classes because this app does not
-   compile StyleX. The rest of the row's rules are token-backed inline styles (components/catalog/filter-style.ts). */
+   compile StyleX. The rest of the row's rules are token-backed inline styles (components/catalog/filter/filter-style.ts). */
 
 /* toolbarContainer (:1382-1385): the header is the toolbar's container, so the row responds to the width it has. */
 .filter-toolbar {
@@ -56,7 +56,7 @@
   align-items: flex-end;
 }
 
-/* The page cue (catalog/result-pages.tsx PageInView) joins the count on the side away from where the count is set,
+/* The page cue (catalog/results/result-pages.tsx PageInView) joins the count on the side away from where the count is set,
    so the count never moves when it appears in the sticky band: before it while the count sits at the end, after it
    on a phone, where the readout starts its own line. */
 .readout-line {
@@ -101,7 +101,7 @@
   }
 }
 
-/* The clause list as the server renders it, before OverflowList has measured anything (catalog/filter-bar.tsx):
+/* The clause list as the server renders it, before OverflowList has measured anything (catalog/filter/filter-bar.tsx):
    every clause at its own width, never squeezed, on one line; the ones that do not fit wrap onto a second line
    the list clips. The empty first item, a line tall, lets even the first clause wrap away when it does not fit (a
    flex line keeps at least one item), and its negative margin cancels its gap. While unfolded the list also keeps back the
@@ -154,7 +154,7 @@
   padding-inline-end: 3rem;
 }
 
-/* The filters' rail (catalog/filter-rail.tsx) earns its width above 1024 px (filter-style.ts NO_RAIL_QUERY):
+/* The filters' rail (catalog/filter/filter-rail.tsx) earns its width above 1024 px (filter-style.ts NO_RAIL_QUERY):
    narrower, the row keeps them, and the server's rail is hidden there before the page knows. */
 @media (max-width: 1024px) {
   .filter-rail {
@@ -162,12 +162,12 @@
   }
 }
 /* Beside the rail the toolbar draws no edge of its own over the avatar strip, the shrunk strip's being the band's
-   (catalog/band.tsx `--band-edge`). Without a strip it keeps its edge. */
+   (catalog/band/band.tsx `--band-edge`). Without a strip it keeps its edge. */
 @media (min-width: 1025px) {
   [data-filters="side"]:has([data-strip]) {
     --band-edge: none;
   }
-  /* the rail holds the clauses: the row keeps its search and readout, its slot empty (catalog/filter-bar.tsx) */
+  /* the rail holds the clauses: the row keeps its search and readout, its slot empty (catalog/filter/filter-bar.tsx) */
   [data-filters="side"] .filter-slot > * {
     display: none;
   }
@@ -195,8 +195,8 @@
 .filter-search:focus-within {
   width: 15rem;
 }
-/* A query's words are tokens (catalog/search-suggest.tsx): the field grows with them (--search-width, their width
-   as catalog/search-box.tsx reckons it, so the plain field before them is as wide already), up to 20rem, past
+/* A query's words are tokens (catalog/search/search-suggest.tsx): the field grows with them (--search-width, their width
+   as catalog/search/search-box.tsx reckons it, so the plain field before them is as wide already), up to 20rem, past
    which the last words fold into "+N more"; editing, it keeps 6rem more for the words typed, up to 28rem. The
    tokens keep the row's one line, scrolling sideways instead of wrapping (the Tokenizer wraps them), as tall as
    the row's other controls (its padding around a token is 4 px more). */
@@ -229,7 +229,7 @@
   }
 }
 
-/* The search suggestions (catalog/search-suggest.tsx). The Typeahead's list takes the field's width and 300 px of
+/* The search suggestions (catalog/search/search-suggest.tsx). The Typeahead's list takes the field's width and 300 px of
    height; its rows carry pictures, titles and prices, so it gets the old quick search's card instead: 36rem wide
    (within the viewport, the whole width on a phone) and up to 60% of the viewport tall. Not a token's tooltip,
    also a popover in the field, which keeps its own size. */

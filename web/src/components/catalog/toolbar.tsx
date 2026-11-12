@@ -15,26 +15,29 @@ import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import dynamic from "next/dynamic";
 import { type ReactNode, useEffect, useState } from "react";
 import { useAccount } from "@/components/account/session";
-import { useUi } from "@/components/providers";
-import { FILTER_RESET, type Filters, parseFilters } from "@/lib/catalog";
-import { lateMenuButton } from "@/lib/late-menu";
-import { preloadOn, preloadWhenIdle } from "@/lib/lazy";
-import type { Translate } from "@/lib/settings-core";
-import { type ClauseNames, sortLabel } from "./clause-text";
-import { FilterBar } from "./filter-bar";
+import { StripToggle } from "@/components/catalog/band/strip-toggle";
+import {
+  type ClauseNames,
+  sortLabel,
+} from "@/components/catalog/filter/clause-text";
+import { FilterBar } from "@/components/catalog/filter/filter-bar";
 import {
   COMPACT_SURFACE_QUERY,
   CONTROL_SIZE,
   type Facets,
-} from "./filter-style";
-import { useFilterUrl } from "./filter-url";
+} from "@/components/catalog/filter/filter-style";
+import { useFilterUrl } from "@/components/catalog/filter/filter-url";
 import {
   isSavable,
   type Saved,
   savedQuery,
   useSavedSearches,
-} from "./saved-searches";
-import { StripToggle } from "./strip-toggle";
+} from "@/components/catalog/saved/saved-searches";
+import { useUi } from "@/components/providers";
+import { FILTER_RESET, type Filters, parseFilters } from "@/lib/catalog";
+import { lateMenuButton } from "@/lib/late-menu";
+import { preloadOn, preloadWhenIdle } from "@/lib/lazy";
+import type { Translate } from "@/lib/settings-core";
 
 /** The sort's button, as DropdownMenu draws it: the current sort and a chevron (sort-menu.tsx). */
 export const sortButton = (filters: Filters, t: Translate) =>
@@ -53,12 +56,15 @@ function SortButton() {
 
 // the sort menu's code loads after the page, as the top bar's menus (frame/header-controls.tsx); its button keeps
 // a press for it
-const SortMenu = dynamic(() => import("./sort-menu").then((m) => m.SortMenu), {
-  ssr: false,
-  loading: () => <SortButton />,
-});
-const loadBar = () => import("./saved-views");
-const loadForms = () => import("./saved-view-forms");
+const SortMenu = dynamic(
+  () => import("@/components/catalog/filter/sort-menu").then((m) => m.SortMenu),
+  {
+    ssr: false,
+    loading: () => <SortButton />,
+  },
+);
+const loadBar = () => import("@/components/catalog/saved/saved-views");
+const loadForms = () => import("@/components/catalog/saved/saved-view-forms");
 const SavedViewsBar = dynamic(() => loadBar().then((m) => m.SavedViewsBar), {
   ssr: false,
 });

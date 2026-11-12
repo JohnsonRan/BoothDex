@@ -1,4 +1,4 @@
-// The results' decisions one frame after scrolling (components/catalog/result-pages.tsx), outside React and the
+// The results' decisions one frame after scrolling (components/catalog/results/result-pages.tsx), outside React and the
 // DOM: which grid child the reader sees, what each page draws for where it stands, which page to read next, and
 // whether a return has reached its place. The caller measures; these only decide.
 

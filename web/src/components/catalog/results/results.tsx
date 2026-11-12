@@ -6,18 +6,18 @@
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { ClearAll } from "@/components/catalog/filter/filter-bar";
+import { KeepResults, Swap } from "@/components/catalog/refresh";
+import { SearchTrace } from "@/components/catalog/search/search-trace";
 import { type Filters, filtersToQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
 import { drawnWith, pageQuery } from "@/lib/result-pages";
 import type { SearchOutcome } from "@/lib/server-data";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
-import { ClearAll } from "./filter-bar";
 import { FIRST_TILES, tileOf } from "./item-tile";
 import { PageInView } from "./page-in-view";
-import { KeepResults, Swap } from "./refresh";
 import { ResultPages } from "./result-pages";
 import { EmptyResults, SemanticNote } from "./result-states";
-import { SearchTrace } from "./search-trace";
 
 export async function ResultCount({
   outcome,

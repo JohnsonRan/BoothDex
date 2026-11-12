@@ -9,8 +9,8 @@
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { createContext, useContext } from "react";
+import { CONTROL_SIZE } from "@/components/catalog/filter/filter-style";
 import { useUi } from "@/components/providers";
-import { CONTROL_SIZE } from "./filter-style";
 
 export type StripToggleState = {
   /** shown at full size: the toggle folds it */

@@ -20,11 +20,11 @@ import {
   useState,
 } from "react";
 import { useAccount } from "@/components/account/session";
+import { useRefresh } from "@/components/catalog/filter/filter-url";
+import { FailedResults } from "@/components/catalog/results/result-states";
 import { useUi } from "@/components/providers";
 import { useApiRecovery } from "@/lib/client-data";
 import { cancelOnReducedMotion, swapIn } from "@/lib/motion";
-import { useRefresh } from "./filter-url";
-import { FailedResults } from "./result-states";
 
 // shown only after a refresh fails, so its code loads then
 const Banner = dynamic(

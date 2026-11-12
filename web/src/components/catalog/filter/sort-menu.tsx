@@ -7,12 +7,12 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "@astryxdesign/core/DropdownMenu";
+import { sortButton } from "@/components/catalog/toolbar";
 import { useUi } from "@/components/providers";
 import type { Filters } from "@/lib/catalog";
 import { useLateMenu } from "@/lib/late-menu";
 import { MENU_MAX_HEIGHT } from "@/lib/menu-height";
 import { SORTS, sortKey, sortLabel } from "./clause-text";
-import { sortButton } from "./toolbar";
 
 export function SortMenu({
   filters,

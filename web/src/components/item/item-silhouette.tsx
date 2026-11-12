@@ -12,7 +12,7 @@ import { Grid } from "@astryxdesign/core/Grid";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import type { Tile } from "@/components/catalog/item-tile";
+import type { Tile } from "@/components/catalog/results/item-tile";
 import { TextSilhouette } from "@/components/catalog/silhouette";
 import { useUi } from "@/components/providers";
 import { DIALOG_MAX_HEIGHT } from "@/lib/dialog-height";

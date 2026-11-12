@@ -15,6 +15,7 @@ import { Popover } from "@astryxdesign/core/Popover";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { type ReactNode, useEffect, useLayoutEffect, useState } from "react";
+import { SearchBox } from "@/components/catalog/search/search-box";
 import { useUi } from "@/components/providers";
 import { activeFilterCount, FILTER_RESET } from "@/lib/catalog";
 import { Lazy, lazySurface, preloadWhenIdle } from "@/lib/lazy";
@@ -31,7 +32,6 @@ import {
   useFacets,
 } from "./filter-style";
 import { useFilterUrl } from "./filter-url";
-import { SearchBox } from "./search-box";
 
 // The sheet's code loads after the page on compact surfaces (lib/lazy), not with it.
 const BottomSheet = lazySurface(() =>

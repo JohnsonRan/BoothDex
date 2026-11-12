@@ -20,7 +20,7 @@ export type Theme = (typeof THEMES)[number];
 /** Pure black: in dark mode the page's backgrounds turn black (globals.css). */
 const BLACK = ["off", "on"] as const;
 type Black = (typeof BLACK)[number];
-/** Where the filters sit on a wide screen: a rail left of the results (catalog/filter-rail.tsx, the default), or
+/** Where the filters sit on a wide screen: a rail left of the results (catalog/filter/filter-rail.tsx, the default), or
  *  the toolbar's row. A compact surface always has the row. The row was "top" while it was the default, so a
  *  stored "top" was mostly never chosen: it reads as the rail now (owner). */
 const FILTER_PLACES = ["side", "row"] as const;

@@ -6,8 +6,8 @@
 
 import { Grid } from "@astryxdesign/core/Grid";
 import { VStack } from "@astryxdesign/core/Stack";
+import { FIRST_TILES, GRID } from "@/components/catalog/results/item-tile";
 import { PLACEHOLDER } from "@/lib/motion";
-import { FIRST_TILES, GRID } from "./item-tile";
 import { TextSilhouette, TileSilhouette } from "./silhouette";
 
 /** The result count beside the title. */

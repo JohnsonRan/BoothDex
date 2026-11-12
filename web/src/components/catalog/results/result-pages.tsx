@@ -32,6 +32,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { RefreshFailed } from "@/components/catalog/refresh";
+import {
+  silhouetteMask,
+  TileSilhouette,
+} from "@/components/catalog/silhouette";
 import { useUi } from "@/components/providers";
 import { type Filters, searchQuery } from "@/lib/catalog";
 import { ROWS } from "@/lib/motion";
@@ -39,8 +44,6 @@ import { type Dir, withFailed } from "@/lib/result-pages";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { FIRST_TILES, GRID, type Tile } from "./item-tile";
 import { PageTiles } from "./page-tiles";
-import { RefreshFailed } from "./refresh";
-import { silhouetteMask, TileSilhouette } from "./silhouette";
 import { type Page, usePageReads, useResultRefs } from "./use-page-reads";
 import { useResultFrame } from "./use-result-frame";
 import { useResultPlace } from "./use-result-place";

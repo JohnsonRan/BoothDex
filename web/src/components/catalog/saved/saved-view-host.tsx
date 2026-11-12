@@ -9,8 +9,8 @@ import { Section } from "@astryxdesign/core/Section";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import type { ReactNode } from "react";
+import { SHEET_TOP_INSET } from "@/components/catalog/filter/filter-style";
 import { useUi } from "@/components/providers";
-import { SHEET_TOP_INSET } from "./filter-style";
 
 /**
  * The template's form host (:2122-2191): a Dialog with a pointer, a tall sheet on a compact surface. Both are

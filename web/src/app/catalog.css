@@ -1,4 +1,4 @@
-/* A viewed cover's veil (catalog/viewed-overlay.tsx): the cover fades toward the page behind it, white in light
+/* A viewed cover's veil (catalog/results/viewed-overlay.tsx): the cover fades toward the page behind it, white in light
    mode and dark in dark mode (pure black included), where Overlay's light scrim is white in every mode. */
 .viewed-cover > .astryx-overlay-scrim {
   background-color: color-mix(
@@ -15,7 +15,7 @@
   display: none;
 }
 
-/* A box standing in for tiles not drawn (catalog/result-pages.tsx): their silhouettes, painted through one mask
+/* A box standing in for tiles not drawn (catalog/results/result-pages.tsx): their silhouettes, painted through one mask
    measured from a TileSilhouette (silhouette.tsx silhouetteMask) in the Skeleton's resting look, static: its
    colour at its 0.25 opacity (core src/Skeleton/Skeleton.tsx:81, :91). */
 .page-box {

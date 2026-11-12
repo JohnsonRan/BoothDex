@@ -41,6 +41,16 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  type Facets,
+  useFacets,
+} from "@/components/catalog/filter/filter-style";
+import { useFilterUrl } from "@/components/catalog/filter/filter-url";
+import {
+  SkeletonImage,
+  THUMB_PADDING,
+  THUMB_RADIUS,
+} from "@/components/catalog/silhouette";
 import { useUi } from "@/components/providers";
 import {
   type Avatar,
@@ -49,9 +59,6 @@ import {
   selectAvatar,
   selectedAvatars,
 } from "@/lib/catalog";
-import { type Facets, useFacets } from "./filter-style";
-import { useFilterUrl } from "./filter-url";
-import { SkeletonImage, THUMB_PADDING, THUMB_RADIUS } from "./silhouette";
 
 // a card's square at full size and a chip's round avatar (Avatar's 32 px size), in rem at a 16 px root; Booth's
 // avatar thumbnails are square. The band's shrink (band.tsx `--strip-d`, `--strip-scale`) is reckoned from these.

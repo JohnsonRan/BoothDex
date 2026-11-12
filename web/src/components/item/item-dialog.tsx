@@ -16,7 +16,7 @@ import { Link } from "@astryxdesign/core/Link";
 import { VStack } from "@astryxdesign/core/Stack";
 import { use, useEffect, useRef, useState } from "react";
 import { useAccount } from "@/components/account/session";
-import { useFilterUrl } from "@/components/catalog/filter-url";
+import { useFilterUrl } from "@/components/catalog/filter/filter-url";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { ItemResponse } from "@/lib/api-types";

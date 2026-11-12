@@ -11,7 +11,7 @@ import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import type { Metadata } from "next";
-import { FilterUrlProvider } from "@/components/catalog/filter-url";
+import { FilterUrlProvider } from "@/components/catalog/filter/filter-url";
 import { SiteFrame } from "@/components/frame/site-frame";
 import { Providers } from "@/components/providers";
 import { DEFAULT_FILTERS } from "@/lib/catalog";
