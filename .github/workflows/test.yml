@@ -1,15 +1,9 @@
 name: test
 
 # Pushes to master run these checks from images.yml, which builds the images only after they pass.
+# No paths filter on pull requests: master requires rust and web, and a skipped workflow leaves them pending.
 on:
   pull_request:
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "crates/**"
-      - "web/**"
-      - ".github/workflows/test.yml"
-      - "!**/*.md"
   workflow_call:
   workflow_dispatch:
 

@@ -1,6 +1,6 @@
 # REQUIREMENTS.md: numbers, gates and exceptions
 
-Commands, numbers, gates and exceptions for this repository. The rules themselves are in `AGENTS.md`,
+Commands, numbers, gates and exceptions for this repository, and its deferred options and open questions. The rules themselves are in `AGENTS.md`,
 `.github/AGENTS.md`, `web/AGENTS.md` and `crates/AGENTS.md` and are not repeated here. When another
 file in this repository disagrees with this one on a command, a number, a gate or an exception, this
 file wins.
@@ -32,8 +32,8 @@ as the baseline; then the limit, as the baseline plus a margin (start at 20%).
 
 | Tier | Command | Runs (where, when) | Wall-time limit | Baseline (date, host, load) |
 | --- | --- | --- | --- | --- |
-| Merge gate | `cargo test --workspace -- --include-ignored` with `DATABASE_URL` set as in the README, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test -p imgproxy --features libavif`; in `web/`: `bun test`, `bunx next typegen`, `bunx tsc --noEmit`, `bunx biome check`; `python3 scripts/check-requirements.py` | CI, every pull request and every push to master (`.github/workflows/test.yml`, `.github/workflows/requirements.yml`) | 3.5 min | 174 s, 188 s, 154 s, slowest job `rust` (2026-11-11, GitHub-hosted ubuntu-latest, load not recorded) |
-| Release | `docker buildx bake -f deploy/docker-bake.hcl` and `docker build -f deploy/web.Dockerfile .`, after the merge gate | CI, every push to master and every `v*` tag (`.github/workflows/images.yml`); pushes the images to ghcr.io | 7 min | 280 s, 394 s, 344 s, merge gate included (2026-11-11, GitHub-hosted ubuntu-24.04, load not recorded) |
+| Merge gate | `cargo test --workspace -- --include-ignored` with `DATABASE_URL` set as in the README, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test -p imgproxy --features libavif`; in `web/`: `bun test`, `bunx next typegen`, `bunx tsc --noEmit`, `bunx biome check`; `python3 scripts/check-requirements.py` | CI: `.github/workflows/requirements.yml` and `.github/workflows/test.yml` on every pull request, both required to merge into master; on a push to master, requirements.yml always and test.yml through `.github/workflows/images.yml` | 3.5 min | 174 s, 188 s, 154 s, slowest job `rust` (2026-11-11, GitHub-hosted ubuntu-latest, load not recorded) |
+| Release | `docker buildx bake -f deploy/docker-bake.hcl` and `docker build -f deploy/web.Dockerfile .`, after the merge gate | CI: `.github/workflows/images.yml` on every `v*` tag and on a push to master that changes a path in its `paths` filter; pushes the images to ghcr.io | 7 min | 280 s, 394 s, 344 s, merge gate included (2026-11-11, GitHub-hosted ubuntu-24.04, load not recorded) |
 
 `python3 scripts/test_check_requirements.py` runs with the requirements check. Point `DATABASE_URL`
 at `127.0.0.1`, not `localhost`: on Windows `localhost` tries IPv6 first, and every new connection to
@@ -133,7 +133,7 @@ tagged rule marked as not applying needs the owner's approval, quoted in the com
 | crates/AGENTS.md: Compatibility | `cargo test --workspace -- --include-ignored` (applies every migration to an empty database) | `REVIEW.md`, "Checking against the rules", Migrations | |
 | crates/AGENTS.md: Logging | | `REVIEW.md`, "Checking against the rules" | |
 | crates/AGENTS.md: Security (if present) | | `REVIEW.md`, "Checking against the rules", Authorization and Sensitive data | |
-| crates/AGENTS.md#authz | | `REVIEW.md`, "Checking against the rules", Authorization | |
+| crates/AGENTS.md#authz | `cargo test --workspace -- --include-ignored` (`crates/api/src/admin/authz.rs`: every admin route answers 401 signed out and 403 to a member) | `REVIEW.md`, "Checking against the rules", Authorization | |
 | crates/AGENTS.md#sensitive-values | | `REVIEW.md`, "Checking against the rules", Sensitive data | |
 | crates/AGENTS.md: Money and state (if present) | | `REVIEW.md`, "Checking against the rules", Money and state (retried worker jobs and requests) | |
 | crates/AGENTS.md#money-idempotent | | | BoothDex moves no money; item prices are catalogue data |
@@ -151,6 +151,7 @@ Backend endpoints with no frontend caller:
 | Endpoint | Caller | Reason |
 | --- | --- | --- |
 | `/api/authors`, `/api/booth-tags` | other clients of the VRCatalogue-compatible API | public API, listed in the README, "API" |
+| imgproxy `/stats` | the API's admin overview (`crates/api/src/admin.rs`) | operator counters for the admin console; `web/next.config.ts` does not forward it, so only the API reaches it (owner, 2026-11-12) |
 
 Backend endpoints with no frontend caller and no reason yet; the owner decides between adding UI, removing the
 endpoint and recording a reason above:
@@ -158,7 +159,6 @@ endpoint and recording a reason above:
 | Endpoint | State |
 | --- | --- |
 | `/api/account/profile`, `/api/account/password` | no caller in `web/src` (2026-11-12) |
-| imgproxy `/stats` | no caller in `web/src` (2026-11-12) |
 
 Intentional designs that look like defects:
 
@@ -166,6 +166,7 @@ Intentional designs that look like defects:
 | --- | --- | --- |
 | `favourite_toggle` in the database benchmark is slow | Every client clicks the same popular items, so the `count_favourite` trigger's updates of their `item_stats` rows wait for each other. Spread over many items, a favourite costs the same as without the trigger. | 2026-11-11, commit 2507250: "a worst case that was accepted on purpose" |
 | "Commands" has no Pre-commit and no Scheduled run on main tier | The merge gate covers this project; a hook or a scheduled run would be CI nobody needs. | 2026-11-12: "Drop both rows" |
+| `test.yml` and `images.yml` name actions by version tag, not by SHA (`.github/AGENTS.md`, "Tiers, jobs and gates") | The owner chose tags after weighing both sides: a pin keeps a moved tag from changing the code that pushes the images; a tag gets the action's fixes without a bot. | 2026-11-12, on a commit that pinned every action by SHA: withdraw it |
 
 ## Not yet enforced
 
@@ -185,6 +186,26 @@ body.
 | Enforcement: AGENTS.md: Waiting | the owner reads the agent's report; no `REVIEW.md` section covers it | the owner decides how it is checked | 2026-12-31 |
 | Enforcement: AGENTS.md: Reporting | the owner reads the agent's report; no `REVIEW.md` section covers it | the owner decides how it is checked | 2026-12-31 |
 | Enforcement: AGENTS.md: Performance baseline | `scripts/bench/run.sh` measures; nothing compares a change with the baseline | the owner decides between a review item and a gate | 2026-12-31 |
+
+## Deferred options
+
+Options and findings set aside, with their source and the reason they wait. The owner decides from this list
+after a release.
+
+| Option | Source | Why it waits |
+| --- | --- | --- |
+| Move install and the shortest use in the three READMEs above "Capabilities", which runs for about 95 lines first | `AGENTS.md`, "Writing", README; review of 3045384 (2026-11-12) | rewriting the project page in three languages is a copy decision |
+| Re-sign the 15 unsigned commits from ed15fcf to a007c85 (2026-10-31 to 2026-11-05) | `AGENTS.md`, "Commits and pull requests"; review of 3045384 (2026-11-12) | it rewrites published history |
+
+## Open questions
+
+Questions no rule settles, for the owner. They are asked together at a stopping point; a ruling moves the item
+to the file it decides.
+
+| Question | Source | Raised |
+| --- | --- | --- |
+| The release tier has no release-only checks (a reproducible build, migrations on a copy of production data, a deploy rehearsal) and does not re-run a planted violation for each gate command. Add them, or record why the project does without? | `.github/AGENTS.md`, "Tiers, jobs and gates" | 2026-11-12 |
+| `scripts/check-requirements.py` (314 lines) and `scripts/test_check_requirements.py` (346 lines) are above the p90 file size (274 lines) with no reason given. Do they stay identical to the rules kit's copies, which would be that reason? | `REVIEW.md`, "Pass bar"; review of 3045384 | 2026-11-12 |
 
 ## Example (illustrative values; measure your own)
 

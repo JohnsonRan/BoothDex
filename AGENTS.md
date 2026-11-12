@@ -46,7 +46,7 @@ settle a conflict, write it into the open-questions list and ask the owner.
 | `web/AGENTS.md` | agents changing frontend files (loaded for files under `web/`) | layout, type, loading, i18n, accessibility |
 | `crates/AGENTS.md` | agents changing backend files (loaded for files under `crates/`) | security, money, data, operations |
 | `REVIEW.md` | reviewers; a review brief names it | how to review and report |
-| `REQUIREMENTS.md` | everyone | numbers, gates, exceptions |
+| `REQUIREMENTS.md` | everyone | numbers, gates, exceptions, deferred options, open questions |
 
 Each rule is written in one file only.
 A rule a tool can check belongs in a gate (lint, test, hook); prose is for rules that need judgment.
