@@ -264,6 +264,7 @@ export const zh = {
   "profile.new": "新密码(至少 10 位)",
   "profile.again": "再次输入新密码",
   "profile.mismatch": "两次输入的密码不一致",
+  "profile.same": "新密码不能与当前密码相同",
   "profile.passwordSaved": "已修改密码，其他设备已退出登录",
   "settings.devices": "登录设备",
   "settings.devicesDesc": "当前登录此账号的浏览器和设备。",

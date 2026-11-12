@@ -272,6 +272,7 @@ export const ko: Dict = {
   "profile.new": "새 비밀번호(10자 이상)",
   "profile.again": "새 비밀번호 확인",
   "profile.mismatch": "비밀번호가 일치하지 않습니다",
+  "profile.same": "현재 비밀번호와 다른 비밀번호를 입력하세요",
   "profile.passwordSaved":
     "비밀번호를 변경했습니다. 다른 기기에서는 로그아웃했습니다",
   "settings.devices": "로그인한 기기",

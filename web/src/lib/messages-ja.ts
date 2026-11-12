@@ -276,6 +276,7 @@ export const ja: Dict = {
   "profile.new": "新しいパスワード(10 文字以上)",
   "profile.again": "新しいパスワード(確認)",
   "profile.mismatch": "パスワードが一致しません",
+  "profile.same": "現在のパスワードとは異なるパスワードにしてください",
   "profile.passwordSaved": "パスワードを変更し、ほかの端末をログアウトしました",
   "settings.devices": "ログイン中の端末",
   "settings.devicesDesc":

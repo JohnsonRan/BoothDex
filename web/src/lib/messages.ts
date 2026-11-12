@@ -25,6 +25,8 @@ export const API_ERRORS: ApiErrors<MessageKey> = {
     "Saved search limit reached.": "saved.limit",
     "Password is incorrect.": "error.password",
     "Current password is incorrect.": "error.password",
+    "Your new password must be different from your current password.":
+      "profile.same",
     "Admins can't delete their account.": "delete.admin",
   },
   statuses: {

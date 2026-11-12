@@ -274,6 +274,7 @@ export const en: Dict = {
   "profile.new": "New password (at least 10 characters)",
   "profile.again": "Confirm new password",
   "profile.mismatch": "Passwords don't match",
+  "profile.same": "Use a password different from your current one",
   "profile.passwordSaved":
     "Password changed. Your other devices are signed out",
   "settings.devices": "Devices",
