@@ -3,7 +3,7 @@
 // A daily trend in a card, the overview's one chart component, with the tiles' padding (16 px, metric-card.tsx)
 // so the cards of a band share one inset. The card's title row (an h3 with an optional
 // control at its end, as the Astryx template dashboard puts "View more" beside its card title,
-// templates/pages/dashboard/page.tsx:766-768), then the legend when there are several series, then the plot:
+// @astryxdesign/cli assets/templates/pages/dashboard/page.tsx:766-768), then the legend when there are several series, then the plot:
 // 14 rem high, 12 rem on a phone. recharts loads on first use (trend-plot.tsx), so it stays out of every other
 // admin page; until then, and while the data is pending, a Skeleton of the plot's size sits under the real
 // legend, so nothing moves when the plot arrives.

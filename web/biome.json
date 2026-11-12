@@ -14,8 +14,7 @@
       "!dist",
       "!build",
       "!src/lib/api-types.ts",
-      "!src/astryx-themes.ts",
-      "!templates"
+      "!src/astryx-themes.ts"
     ]
   },
   "formatter": {

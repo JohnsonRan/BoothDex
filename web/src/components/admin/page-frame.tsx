@@ -1,6 +1,6 @@
 "use client";
 // The frame of every admin page, from the header of the Astryx page template detail-page
-// (templates/pages/detail-page/page.tsx:169-262): a LayoutHeader with a divider and the template's padding,
+// (@astryxdesign/cli assets/templates/pages/detail-page/page.tsx:169-262): a LayoutHeader with a divider and the template's padding,
 // the h1 with a short status beside it, and on pages with sub-pages the large full-bleed TabList as the
 // header's last row, sitting on the divider (no bottom padding). The content keeps the same padding, so it
 // starts on the header's left edge. Until the admin probe succeeds, the console's gate (checking, sign in, not

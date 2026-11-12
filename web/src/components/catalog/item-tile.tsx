@@ -1,4 +1,4 @@
-// One result tile, adapted from the Product Gallery template's ProductCard (templates/pages/product-gallery):
+// One result tile, adapted from the Product Gallery template's ProductCard (@astryxdesign/cli assets/templates/pages/product-gallery):
 // square media, then title, a secondary line (the shop, with its icon) and the price in large bold; the price
 // row ends with the favourite button, and NEW and feature tags follow as Badges (Badge Category Tags block). Not over the cover: Overlay is a client component,
 // and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration; only a viewed tile mounts one (viewed-mark.tsx).

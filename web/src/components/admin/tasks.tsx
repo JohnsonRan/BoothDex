@@ -1,8 +1,8 @@
 "use client";
 // Crawler tasks: one row per job kind in the Astryx template incident-console's list
-// (templates/pages/incident-console/page.tsx:347: List, compact, with dividers). Live jobs come from the
+// (@astryxdesign/cli assets/templates/pages/incident-console/page.tsx:347: List, compact, with dividers). Live jobs come from the
 // overview stream, schedules and history from the jobs poll. Stopping a job asks first (AlertDialog, the
-// block templates/blocks/components/AlertDialog/AlertDialogAsyncAction.tsx).
+// block @astryxdesign/cli assets/templates/blocks/components/AlertDialog/AlertDialogAsyncAction.tsx).
 
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { List } from "@astryxdesign/core/List";

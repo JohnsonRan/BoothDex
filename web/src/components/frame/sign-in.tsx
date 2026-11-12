@@ -1,9 +1,9 @@
 "use client";
-// Sign in and create an account, adapted from the Astryx page template login-card (templates/pages/login-card):
+// Sign in and create an account, adapted from the Astryx page template login-card (@astryxdesign/cli assets/templates/pages/login-card):
 // its heading and description (page.tsx:104-107), large fields, a full-width primary button; inside a Dialog the
 // centring frame and the card are dropped, and BoothDex has no third-party providers, so neither the divider nor
 // the provider buttons are used. The heading and description are the Dialog's DialogHeader, as the dialog block
-// DialogWithSubtitle (templates/blocks/DialogWithSubtitle.tsx:21-27) has them, with its close button: a form
+// DialogWithSubtitle (@astryxdesign/cli assets/templates/blocks/DialogWithSubtitle.tsx:21-27) has them, with its close button: a form
 // dialog is not dismissed from its scrim, so on a touch screen that button is the way out. Tabs switch between the two forms. Requests and fields are master's
 // (account-menu.tsx): sign-in keeps the session (`keep: true`); errors from the server arrive as a toast.
 // The admin gate opens it sign-in only, under its own heading (`gate`); so does a closed registration, which the

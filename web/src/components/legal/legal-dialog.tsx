@@ -1,7 +1,7 @@
 "use client";
 // The privacy policy and the terms in a dialog over whatever opened them (Settings > About, the register form's
 // consent line), so nothing is left behind: Astryx block Dialog — Scrolling content
-// (templates/blocks/components/Dialog/DialogScrollingContent.tsx) without its footer, as the texts ask for no
+// (@astryxdesign/cli assets/templates/blocks/components/Dialog/DialogScrollingContent.tsx) without its footer, as the texts ask for no
 // answer; the "Last updated" line is the header's subtitle (block DialogWithSubtitle). The body is the page's
 // (legal-body.tsx), its data fetched from the server (legal-action.ts) once per text and language. The links keep their
 // href, so a modified click still opens /privacy or /terms in a new tab; the terms' link to the privacy policy

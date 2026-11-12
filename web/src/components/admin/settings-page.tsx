@@ -1,5 +1,5 @@
 "use client";
-// Settings, from the Astryx page template settings (templates/pages/settings/page.tsx): one scrolling form of
+// Settings, from the Astryx page template settings (@astryxdesign/cli assets/templates/pages/settings/page.tsx): one scrolling form of
 // sections, each a two-column Grid (:120-150) with the heading and supporting text on the left and the fields
 // with their own Save on the right, a Divider between sections. The template's 40 px gap parts the columns; when
 // a phone stacks them, the fields follow the description at the fields' own 16 px gap. With two sections the template's side list and

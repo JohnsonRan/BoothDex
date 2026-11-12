@@ -1,5 +1,5 @@
 "use client";
-// The admin frame, from the Astryx page template shell-side-nav (templates/pages/shell-side-nav/page.tsx:164-201):
+// The admin frame, from the Astryx page template shell-side-nav (@astryxdesign/cli assets/templates/pages/shell-side-nav/page.tsx:164-201):
 // AppShell with a collapsible, resizable SideNav, its heading on top, the menu sections, and an account section
 // in the footer. The template's conversation list becomes two titled groups (Operate, System); the footer holds
 // the way back to the site and the site's own language and colour-mode controls. On phones AppShell turns the

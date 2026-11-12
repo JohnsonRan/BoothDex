@@ -1,6 +1,6 @@
 "use client";
 // One crawler job kind as a row of the Astryx template incident-console's list
-// (templates/pages/incident-console/page.tsx:347-380): name and status Token on the first line, then the kind's
+// (@astryxdesign/cli assets/templates/pages/incident-console/page.tsx:347-380): name and status Token on the first line, then the kind's
 // description and its progress or next run; the controls sit in the row's end slot, centred on the row, as the
 // template puts its Token and Timestamp there. Every row ends the same way, so the buttons line up: the schedule
 // Switch and interval Selector where the kind has a schedule, one small secondary button (Run, or Stop while a

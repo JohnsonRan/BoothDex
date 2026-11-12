@@ -1,5 +1,5 @@
 "use client";
-// The item dialog: page template product-detail (templates/pages/product-detail/page.tsx) inside an Astryx
+// The item dialog: page template product-detail (@astryxdesign/cli assets/templates/pages/product-detail/page.tsx) inside an Astryx
 // Dialog, as blocks DialogFullscreenDialog and DialogAdaptivePresentation compose one: a Layout with a
 // DialogHeader, a LayoutContent and a LayoutFooter. A wide standard dialog from lg up, the fullscreen variant
 // below it (master: full screen on phones), where the footer carries price, favourite and Buy on Booth.
