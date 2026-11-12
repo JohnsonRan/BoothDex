@@ -1,3 +1,4 @@
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
@@ -8,6 +9,7 @@ use serde_json::{Value, json};
 use sqlx::PgPool;
 
 use super::{cookie_token, require_user, token_hash};
+use crate::limit::is_internal;
 use crate::{ApiError, AppState};
 
 const COOKIE: &str = "session";
@@ -25,11 +27,13 @@ const INSERT_SESSION: &str = "with s as (insert into sessions (token_hash, user_
 /// Creates a session row and returns the Set-Cookie value.
 /// If `verified_hash` is Some, the session is only inserted if the user's current password hash matches it and the
 /// account isn't disabled, preventing an in-flight login from creating a session after a concurrent reset or disable.
+/// `ip` is the limiter's client IP; an internal one (web's container or a LAN address) is stored as NULL.
 pub(super) async fn start_session(
     pool: &PgPool,
     user_id: i64,
     keep: bool,
     headers: &HeaderMap,
+    ip: IpAddr,
     verified_hash: Option<&str>,
 ) -> Result<Option<String>, ApiError> {
     let mut raw = [0u8; 32];
@@ -37,7 +41,7 @@ pub(super) async fn start_session(
     let token: String = raw.iter().map(|b| format!("{b:02x}")).collect();
     let ttl = if keep { chrono::Duration::days(KEEP_DAYS) } else { chrono::Duration::hours(SHORT_HOURS) };
     let ua = headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).map(|s| s.chars().take(300).collect::<String>());
-    let ip = headers.get("cf-connecting-ip").and_then(|v| v.to_str().ok()).map(str::to_owned);
+    let ip = Some(ip).filter(|ip| !is_internal(*ip)).map(|ip| ip.to_string());
 
     match verified_hash {
         Some(expected_hash) => {
@@ -163,5 +167,41 @@ mod tests {
         remove_session(State(state.clone()), a.clone(), Path(ids[1])).await.ok().unwrap();
         let left: Vec<i64> = sqlx::query_scalar("select id from sessions order by id").fetch_all(&pool).await.unwrap();
         assert_eq!(left, [ids[0], ids[2]]);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn a_session_stores_the_client_ip_not_a_forged_header(pool: PgPool) {
+        use crate::account::{Login, Register, hash_password, login, register};
+        use crate::limit::{ClientIp, client_ip};
+
+        sqlx::query("insert into users (username, email, display_name, password_hash) values ('ann', 'ann@example.test', 'Ann', $1)")
+            .bind(hash_password("0123456789".into()).await.ok().unwrap())
+            .execute(&pool)
+            .await
+            .unwrap();
+        let state = test_state(pool.clone());
+        let request = |pairs: &[(&'static str, &str)], peer: [u8; 4]| {
+            let mut h = HeaderMap::new();
+            for (name, value) in pairs {
+                h.insert(*name, value.parse().unwrap());
+            }
+            (ClientIp(client_ip(&h, Some(peer.into()))), h)
+        };
+        let sign_in = |(ip, h): (ClientIp, HeaderMap)| {
+            login(State(state.clone()), ip, h, Json(Login { login: "ann".into(), password: "0123456789".into(), keep: false }))
+        };
+        let ok = |r: Result<Response, ApiError>| assert_eq!(r.into_response().status(), axum::http::StatusCode::OK);
+
+        // behind Caddy or nginx: the proxy appended the visitor's address last; the header is forged
+        ok(sign_in(request(&[("x-forwarded-for", "198.51.100.7, 203.0.113.42"), ("cf-connecting-ip", "8.8.8.8")], [172, 18, 0, 5])).await);
+        let (ip, h) = request(&[("x-forwarded-for", "2001:DB8::1"), ("cf-connecting-ip", "8.8.8.8")], [10, 89, 0, 5]);
+        let form = Register { display_name: "Bob".into(), username: "bob".into(), email: "bob@example.test".into(), password: "0123456789".into(), keep: false };
+        ok(register(State(state.clone()), ip, h, Json(form)).await);
+        // a LAN visitor: client_ip answers web's container address, which is not stored
+        ok(sign_in(request(&[("x-forwarded-for", "192.168.1.20")], [172, 18, 0, 5])).await);
+
+        let ips: Vec<Option<String>> = sqlx::query_scalar("select ip from sessions order by id").fetch_all(&pool).await.unwrap();
+        assert_eq!(ips, [Some("203.0.113.42".into()), Some("2001:db8::1".into()), None]);
     }
 }

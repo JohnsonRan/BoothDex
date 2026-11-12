@@ -88,7 +88,7 @@ pub(crate) async fn register(
         Err(e) if is_unique_violation(&e) => return Err(Refusal::NameTaken.into()),
         Err(e) => return Err(e.into()),
     };
-    let cookie = start_session(&s.pool, id, b.keep, &headers, None).await?.expect("session insert on register");
+    let cookie = start_session(&s.pool, id, b.keep, &headers, ip, None).await?.expect("session insert on register");
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({ "ok": true }))).into_response())
 }
 
@@ -136,7 +136,7 @@ pub(crate) async fn login(
         log_attempt("sign-in refused (disabled)", account, ip);
         return Err(Refusal::AccountDisabled.into());
     }
-    let cookie = match start_session(&s.pool, id, b.keep, &headers, Some(&hash)).await? {
+    let cookie = match start_session(&s.pool, id, b.keep, &headers, ip, Some(&hash)).await? {
         Some(c) => c,
         None => {
             let locked_now = s.throttle.fail(&key);

@@ -15,8 +15,48 @@ function chrome() {
   return `${dir}/${build}/${sub}/chrome`;
 }
 
-const launch = () =>
-  chromium.launch({ executablePath: chrome(), args: ["--no-sandbox"] });
+/** Requests the guard refused: a page under test reaches only the lab's own origin (counted for the final report). */
+const refused = [];
+
+/**
+ * Lets a request through only when it goes to a loopback host and cannot write or spend anything: no other host
+ * (a check never sends test traffic to a real upstream), no item gallery (it counts a view and may read Booth), no
+ * search with `q=` (it embeds the query through the AI provider).
+ */
+const allowed = (raw) => {
+  const u = new URL(raw);
+  if (u.protocol === "data:" || u.protocol === "blob:") return true;
+  if (!["127.0.0.1", "localhost"].includes(u.hostname)) return false;
+  if (/^\/api\/items\/\d+\/gallery$/.test(u.pathname)) return false;
+  return !(u.pathname === "/api/search" && u.searchParams.has("q"));
+};
+
+process.on("exit", () =>
+  console.log(
+    `refused requests: ${refused.length}${refused.length ? ` ${[...new Set(refused.map((u) => new URL(u).origin + new URL(u).pathname))].slice(0, 5).join(" ")}` : ""}`,
+  ),
+);
+
+const launch = async () => {
+  const browser = await chromium.launch({
+    executablePath: chrome(),
+    args: ["--no-sandbox"],
+  });
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (options) => {
+    const context = await newContext(options);
+    await context.route("**/*", (route) => {
+      const url = route.request().url();
+      if (allowed(url)) return route.continue();
+      refused.push(url);
+      return route.abort("blockedbyclient");
+    });
+    return context;
+  };
+  browser.newPage = async (options) =>
+    (await browser.newContext(options)).newPage();
+  return browser;
+};
 
 /** Sets the proxy's search delay (ms) and failure switch. */
 async function lab(proxy, settings) {
@@ -174,4 +214,12 @@ async function scrollToPage(p, n) {
   }
 }
 
-module.exports = { launch, lab, RECORDER, GEOMETRY, compare, scrollToPage };
+module.exports = {
+  launch,
+  refused,
+  lab,
+  RECORDER,
+  GEOMETRY,
+  compare,
+  scrollToPage,
+};
