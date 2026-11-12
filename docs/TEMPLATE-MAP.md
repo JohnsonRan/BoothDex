@@ -459,7 +459,7 @@ a raw colour. Each one is converted when its file is next changed and a prop cov
   strip's custom properties (`band.tsx`, `avatar-strip.tsx`), rotations.
 
 Raw elements kept: the tile's shop icon (above), `SkeletonImage`'s wrapper (server markup that needs no script), the
-account slots `globals.css` shows by `data-account`, and the item dialog's waiting subtitle.
+account slots `account.css` shows by `data-account`, and the item dialog's waiting subtitle.
 
 ## Remaining Tailwind or shadcn files
 
