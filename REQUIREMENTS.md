@@ -194,6 +194,7 @@ to the file it decides.
 
 | Question | Source | Raised |
 | --- | --- | --- |
+| How should a migration be checked before production: (A) a CI job, run only when `crates/core/migrations` changes, that restores the public data bundle and applies the migrations, plus a rollback note in `docs/DEPLOY.md`; (B) the manual rehearsal on a production backup now in `docs/DEPLOY.md`; or (C) the rollback note only? The bundle holds no rows of `users`, `sessions`, `favourites` or `item_stats`, so (A) would not have tested 0024 or 0025. | owner, 2026-11-12: "can't it run in GitHub CI?" | 2026-11-12 |
 
 ## Example (illustrative values; measure your own)
 
