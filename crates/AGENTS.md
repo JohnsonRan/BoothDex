@@ -23,7 +23,7 @@ workflow, CI, writing, commits) applies as well; numbers are in `REQUIREMENTS.md
 - One log format, with levels used for their real meaning: debug, info, warn, error.
 - Do not log expected cases as errors.
 - Do not swallow errors silently.
-- No secrets in logs (root `AGENTS.md`, "Secrets").
+- No secrets in logs (root `AGENTS.md`, hard limits).
 
 ### Security (if present)
 

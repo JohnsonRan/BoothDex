@@ -193,8 +193,8 @@ From other reviewers: which findings came from them
 - Verdict rule:
   - BLOCK when there is any Blocker;
   - FIX FIRST when there is any High or Medium, or any pass-bar item;
-  - PASS when only Lows remain; each Low is fixed or put on the deferred-options list by the low
-    rule in the root `AGENTS.md`.
+  - PASS when only Lows remain; each Low is fixed or put under "Deferred options" in
+    `REQUIREMENTS.md` by the low-severity rule in the root `AGENTS.md`, "Workflow".
 - Order findings by severity first. Within one severity, order them by structure:
   1. structural regression (harder to read, more coupled, more stateful);
   2. complexity that could be deleted outright;
