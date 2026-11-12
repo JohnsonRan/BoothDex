@@ -183,7 +183,6 @@ after a release.
 
 | Option | Source | Why it waits |
 | --- | --- | --- |
-| Move install and the shortest use in the three READMEs above "Capabilities", which runs for about 95 lines first | `AGENTS.md`, "Writing", README; review of 3045384 (2026-11-12) | rewriting the project page in three languages is a copy decision |
 | Re-sign the 15 unsigned commits from ed15fcf to a007c85 (2026-10-31 to 2026-11-05) | `AGENTS.md`, "Commits and pull requests"; review of 3045384 (2026-11-12) | it rewrites published history |
 | Release-only checks (a reproducible build, migrations on a copy of production data, a deploy rehearsal) and a planted violation for each gate command in the release tier | `.github/AGENTS.md`, "Tiers, jobs and gates" | the owner plans no release soon (2026-11-12) |
 | Split `scripts/check-requirements.py` (314 lines) and `scripts/test_check_requirements.py` (346 lines), both above the p90 file size (274 lines) | `REVIEW.md`, "Pass bar"; review of 3045384 | the owner ruled on 2026-11-12 that they may diverge from the kit's copies; each works as one file, so the split waits for the next change to either |

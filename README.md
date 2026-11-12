@@ -10,7 +10,7 @@
 
 English / [简体中文](README.zh-CN.md) / [日本語](README.ja.md)
 
-[Capabilities](#capabilities) / [Getting started](#getting-started) / [Architecture](#architecture) / [Development](#development)
+[Getting started](#getting-started) / [Capabilities](#capabilities) / [Architecture](#architecture) / [Development](#development)
 
 </div>
 
@@ -23,6 +23,38 @@ they fit, category, tags, features, price and more. It started as a successor to
 VRCatalogue. Item data and images belong to their creators; every item links back to its BOOTH page.
 
 ![The home page filtered to the hair category: the filter row above a carousel of avatar bodies and the item grid](docs/screenshots/en/home.webp)
+
+## Getting started
+
+See the [deployment guide](docs/DEPLOY.md) for full setup, reverse-proxy examples and backup commands. The stack
+runs PostgreSQL 17 (`pgvector`), three Rust services and the Next.js site with Docker or Podman Compose, exposes
+a single port (`WEB_LISTEN`, default `3100`) for your TLS reverse proxy, and needs a Linux server with **6 GB+
+RAM** (8 GB recommended, or 4 GB with swap).
+
+```mermaid
+flowchart LR
+  env["1. compose.yaml + .env<br/>(POSTGRES_PASSWORD, SITE_URL)"] --> data{"2. Initial data"}
+
+  data -- "Data bundle (~5 min)" --> bundle["Extract images.tar<br/>pg_restore < catalogue.dump"]
+  data -- "Fresh DB (~2–3 days)" --> crawl["Auto-seeded taxonomy & ~380 avatars<br/>worker once incremental (full)"]
+
+  bundle --> up["3. docker compose up -d"]
+  crawl --> up
+  up --> admin["4. Register account → ADMIN_USERNAMES<br/>Configure optional AI in /admin"]
+```
+
+A fresh database already includes the category tree, smart tags and ~380 avatar bodies. To skip the initial
+multi-day BOOTH crawl ([Starting without a data bundle](docs/DEPLOY.md#starting-without-a-data-bundle)), restore
+the [published data bundle](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04) (a 2026-11-04
+snapshot with ~217k items and archived delisted images; ~2.1 GB):
+
+```sh
+mkdir -p /srv/boothdex && cd /srv/boothdex
+curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
+curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
+$EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, CONTACT_EMAIL, and (with a bundle) ARCHIVE_IMAGES_DIR
+docker compose pull && docker compose up -d
+```
 
 ## Capabilities
 
@@ -119,38 +151,6 @@ VRCatalogue. Item data and images belong to their creators; every item links bac
 Standalone item pages, price history, social logins and password-reset emails are intentionally omitted
 (administrators reset passwords). Item descriptions and variation names are kept in the original language; only
 titles are translated for cross-language search.
-
-## Getting started
-
-See the [deployment guide](docs/DEPLOY.md) for full setup, reverse-proxy examples and backup commands. The stack
-runs PostgreSQL 17 (`pgvector`), three Rust services and the Next.js site with Docker or Podman Compose, exposes
-a single port (`WEB_LISTEN`, default `3100`) for your TLS reverse proxy, and needs a Linux server with **6 GB+
-RAM** (8 GB recommended, or 4 GB with swap).
-
-```mermaid
-flowchart LR
-  env["1. compose.yaml + .env<br/>(POSTGRES_PASSWORD, SITE_URL)"] --> data{"2. Initial data"}
-
-  data -- "Data bundle (~5 min)" --> bundle["Extract images.tar<br/>pg_restore < catalogue.dump"]
-  data -- "Fresh DB (~2–3 days)" --> crawl["Auto-seeded taxonomy & ~380 avatars<br/>worker once incremental (full)"]
-
-  bundle --> up["3. docker compose up -d"]
-  crawl --> up
-  up --> admin["4. Register account → ADMIN_USERNAMES<br/>Configure optional AI in /admin"]
-```
-
-A fresh database already includes the category tree, smart tags and ~380 avatar bodies. To skip the initial
-multi-day BOOTH crawl ([Starting without a data bundle](docs/DEPLOY.md#starting-without-a-data-bundle)), restore
-the [published data bundle](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04) (a 2026-11-04
-snapshot with ~217k items and archived delisted images; ~2.1 GB):
-
-```sh
-mkdir -p /srv/boothdex && cd /srv/boothdex
-curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
-curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
-$EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, CONTACT_EMAIL, and (with a bundle) ARCHIVE_IMAGES_DIR
-docker compose pull && docker compose up -d
-```
 
 ## Architecture
 
