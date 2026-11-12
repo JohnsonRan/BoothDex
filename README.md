@@ -14,9 +14,6 @@ English / [简体中文](README.zh-CN.md) / [日本語](README.ja.md)
 
 </div>
 
-> **Early-stage software.** The services and Linux containers work end-to-end, but the stack has not yet been run
-> long-term as a public multi-user site. Expect rough edges.
-
 BoothDex indexes the VRChat items sold on [BOOTH](https://booth.pm) and lets you filter them by the avatar body
 they fit, category, tags, features, price and more. It started as a successor to VRCatalogue (which closed on
 2026-11-01) and keeps its search syntax. It is an independent project, not affiliated with pixiv, BOOTH or
