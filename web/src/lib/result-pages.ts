@@ -1,5 +1,6 @@
 // The results' page state outside React (components/catalog/result-pages.tsx): the address of a results page,
-// which page is in view, which pages are far enough to give up their tiles, and where Back or a reload returns to.
+// which page is in view, which pages are far enough to give up their tiles, where Back or a reload returns to, and
+// the list of pages as the grid draws it.
 
 import type { Settings } from "./settings-core";
 
@@ -104,3 +105,104 @@ export const pageBlock = (
   pitch: number,
   gap: number,
 ) => Math.ceil(pageSize / cols) * pitch - gap;
+
+/** A results page as the grid draws it, with tiles of type `T`. */
+export type Page<T> = {
+  n: number;
+  /** none: not read yet, drawn as one box of `block` px (near view: silhouette tiles) */
+  tiles: T[];
+  /** the server's first screen of its page; the rest is still to read */
+  partial?: boolean;
+  /** far from view: a box of each tile's height stands in for it */
+  heights?: number[];
+  /** its tiles come and go a few a frame (PageTiles): the change moves nothing in view */
+  gradual?: boolean;
+  block?: number;
+  near?: boolean;
+  /** reading it failed: a notice to retry stands in its place */
+  failed?: boolean;
+};
+
+/** Which way a read goes: the next page at the end, or a page above the reader. */
+export type Dir = "next" | "prev";
+
+/** The grid children a page draws: its tiles, a page of silhouettes near view, else one box or notice. */
+export const kidsOf = <T>(q: Page<T>, pageSize: number) =>
+  q.tiles.length || (q.near && !q.failed ? pageSize : 1);
+
+/** The index of each page's first grid child. */
+export function pageStarts<T>(pages: Page<T>[], pageSize: number) {
+  let at = 0;
+  return pages.map((q) => {
+    const s = at;
+    at += kidsOf(q, pageSize);
+    return s;
+  });
+}
+
+/** The pages before `n`, at most ABOVE of them, as boxes of `block` px. */
+export function boxesBefore<T>(n: number, block: number): Page<T>[] {
+  const from = Math.max(1, n - ABOVE);
+  return Array.from({ length: n - from }, (_, i) => ({
+    n: from + i,
+    tiles: [],
+    block,
+  }));
+}
+
+/** The rest of partial page `n` read: the tiles not `seen` go after the server's, drawn a few a frame. */
+export const withRest = <T extends { id: number }>(
+  pages: Page<T>[],
+  n: number,
+  fresh: T[],
+  seen: Set<number>,
+): Page<T>[] =>
+  pages.map((q) =>
+    q.n === n && q.partial
+      ? {
+          n: q.n,
+          tiles: [...q.tiles, ...fresh.filter((i) => !seen.has(i.id))],
+          gradual: true,
+        }
+      : q,
+  );
+
+/** The page after `last` read: it goes at the end while `last` is still the last page. */
+export const withNext = <T>(
+  pages: Page<T>[],
+  last: number,
+  fresh: T[],
+): Page<T>[] =>
+  pages.at(-1)?.n === last
+    ? [...pages, { n: last + 1, tiles: fresh, gradual: true }]
+    : pages;
+
+/** Page `n` read into its box, drawn a few a frame when it is below the reader. */
+export const withInto = <T>(
+  pages: Page<T>[],
+  n: number,
+  fresh: T[],
+  dir: Dir,
+): Page<T>[] =>
+  pages.map((q) =>
+    q.n === n && !q.tiles.length
+      ? { n, tiles: fresh, gradual: dir === "next" }
+      : q,
+  );
+
+/** Page `n` with its failure notice shown or taken away. */
+export const withFailed = <T>(pages: Page<T>[], n: number, failed: boolean) =>
+  pages.map((q) => (q.n === n ? { ...q, failed } : q));
+
+/**
+ * The pages at a new width: a page given up for boxes takes `tile` px per tile, a page not read `block` px; the
+ * pages drawn reflow by themselves.
+ */
+export const resized = <T>(pages: Page<T>[], tile: number, block: number) =>
+  pages.map((q) =>
+    q.heights
+      ? { ...q, heights: q.heights.map(() => tile) }
+      : q.tiles.length
+        ? q
+        : { ...q, block },
+  );

@@ -1,16 +1,25 @@
 import { expect, test } from "bun:test";
 import {
+  boxesBefore,
   isFar,
   type Kept,
+  kidsOf,
+  type Page,
   pageAt,
   pageBlock,
   pageQuery,
+  pageStarts,
   readSnapshot,
+  resized,
   restorePlan,
   resultsQuery,
   SNAPSHOT,
   type Snapshot,
+  withFailed,
+  withInto,
+  withNext,
   withPage,
+  withRest,
 } from "./result-pages";
 
 test("pageQuery leaves page 1 bare and keeps sem=0 only on later pages", () => {
@@ -85,4 +94,101 @@ test("pageBlock counts a partial last row as a row and drops the gap after it", 
   expect(pageBlock(100, 6, 400, 24)).toBe(17 * 400 - 24);
   expect(pageBlock(100, 2, 380, 16)).toBe(50 * 380 - 16);
   expect(pageBlock(100, 5, 400, 24)).toBe(20 * 400 - 24);
+});
+
+type T = { id: number };
+const tiles = (...ids: number[]): T[] => ids.map((id) => ({ id }));
+
+test("kidsOf counts the tiles, a page of silhouettes near view, else one box or notice", () => {
+  expect(kidsOf({ n: 1, tiles: tiles(1, 2) }, 100)).toBe(2);
+  expect(kidsOf({ n: 1, tiles: [], near: true }, 100)).toBe(100);
+  expect(kidsOf({ n: 1, tiles: [], near: true, failed: true }, 100)).toBe(1);
+  expect(kidsOf({ n: 1, tiles: [] }, 100)).toBe(1);
+});
+
+test("pageStarts runs each page's children on from the last", () => {
+  const p: Page<T>[] = [
+    { n: 1, tiles: [] },
+    { n: 2, tiles: [], near: true },
+    { n: 3, tiles: tiles(1, 2, 3) },
+    { n: 4, tiles: [] },
+  ];
+  expect(pageStarts(p, 10)).toEqual([0, 1, 11, 14]);
+});
+
+test("boxesBefore puts at most ABOVE pages before n, from page 1", () => {
+  expect(boxesBefore(1, 500)).toEqual([]);
+  expect(boxesBefore(3, 500)).toEqual([
+    { n: 1, tiles: [], block: 500 },
+    { n: 2, tiles: [], block: 500 },
+  ]);
+  const deep = boxesBefore(60, 500);
+  expect(deep.length).toBe(40);
+  expect([deep[0].n, deep[39].n]).toEqual([20, 59]);
+});
+
+test("withRest adds the unseen tiles to the partial page only, drawn gradually", () => {
+  const p: Page<T>[] = [
+    { n: 2, tiles: tiles(1), partial: true },
+    { n: 3, tiles: tiles(9), partial: true },
+  ];
+  const next = withRest(p, 2, tiles(1, 2, 3), new Set([1]));
+  expect(next[0]).toEqual({ n: 2, tiles: tiles(1, 2, 3), gradual: true });
+  expect(next[1]).toBe(p[1]);
+  const whole: Page<T>[] = [{ n: 2, tiles: tiles(1) }];
+  expect(withRest(whole, 2, tiles(2), new Set())[0]).toBe(whole[0]);
+});
+
+test("withNext appends only while the page read after is still the last", () => {
+  const p: Page<T>[] = [{ n: 4, tiles: tiles(1) }];
+  expect(withNext(p, 4, tiles(2))).toEqual([
+    p[0],
+    { n: 5, tiles: tiles(2), gradual: true },
+  ]);
+  expect(withNext(p, 3, tiles(2))).toBe(p);
+});
+
+test("withInto fills only an unread box, gradually when it is below the reader", () => {
+  const p: Page<T>[] = [
+    { n: 1, tiles: [], block: 500, near: true },
+    { n: 2, tiles: tiles(5) },
+  ];
+  expect(withInto(p, 1, tiles(7), "next")[0]).toEqual({
+    n: 1,
+    tiles: tiles(7),
+    gradual: true,
+  });
+  expect(withInto(p, 1, tiles(7), "prev")[0]).toEqual({
+    n: 1,
+    tiles: tiles(7),
+    gradual: false,
+  });
+  expect(withInto(p, 2, tiles(7), "next")[1]).toBe(p[1]);
+});
+
+test("withFailed sets and clears one page's failure", () => {
+  const p: Page<T>[] = [
+    { n: 1, tiles: [] },
+    { n: 2, tiles: [] },
+  ];
+  const failed = withFailed(p, 2, true);
+  expect(failed[1]).toEqual({ n: 2, tiles: [], failed: true });
+  expect(failed[0]).toBe(p[0]);
+  expect(withFailed(failed, 2, false)[1]).toEqual({
+    n: 2,
+    tiles: [],
+    failed: false,
+  });
+});
+
+test("resized gives boxes a tile's or a page's new height and leaves drawn pages", () => {
+  const p: Page<T>[] = [
+    { n: 1, tiles: tiles(1, 2), heights: [300, 310] },
+    { n: 2, tiles: tiles(3) },
+    { n: 3, tiles: [], block: 900 },
+  ];
+  const next = resized(p, 280, 700);
+  expect(next[0].heights).toEqual([280, 280]);
+  expect(next[1]).toBe(p[1]);
+  expect(next[2].block).toBe(700);
 });

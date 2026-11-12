@@ -39,19 +39,34 @@ import type { SearchResponse } from "@/lib/api-types";
 import { type Filters, searchQuery } from "@/lib/catalog";
 import { ROWS } from "@/lib/motion";
 import {
-  ABOVE,
+  anchorAt,
+  firstBelow,
+  framePages,
+  pageToRead,
+  restoreStep,
+} from "@/lib/result-frame";
+import {
+  boxesBefore,
+  type Dir,
   drawnWith,
-  isFar,
   type Kept,
+  kidsOf as kidsOfPage,
   pageAt,
   pageBlock,
+  pageStarts,
+  type Page as ResultPage,
   readSnapshot,
+  resized,
   restorePlan,
   resultsQuery,
   SCREENS,
   SNAPSHOT,
   type Snapshot,
+  withFailed,
+  withInto,
+  withNext,
   withPage,
+  withRest,
 } from "@/lib/result-pages";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { covered } from "./band-edge";
@@ -60,23 +75,7 @@ import { RefreshFailed } from "./refresh";
 import { silhouetteMask, TileSilhouette } from "./silhouette";
 import { Tiles } from "./tiles";
 
-type Page = {
-  n: number;
-  /** none: not read yet, drawn as one box of `block` px (near view: silhouette tiles) */
-  tiles: Tile[];
-  /** the server's first screen of its page; the rest is still to read */
-  partial?: boolean;
-  /** far from view: a box of each tile's height stands in for it */
-  heights?: number[];
-  /** its tiles come and go a few a frame (PageTiles): the change moves nothing in view */
-  gradual?: boolean;
-  block?: number;
-  near?: boolean;
-  /** reading it failed: a notice to retry stands in its place */
-  failed?: boolean;
-};
-
-type Dir = "next" | "prev";
+type Page = ResultPage<Tile>;
 
 /**
  * The pages of the results last left, for a return to them (lib/result-pages restorePlan), with the settings their
@@ -137,21 +136,12 @@ export function PageInView({ page }: { page: number }) {
 }
 
 /** The index of the first of `kids[from, to)` reaching below `edge` (their bottoms ascend in grid order). */
-function firstInView(
+const firstInView = (
   kids: HTMLCollection,
   from: number,
   to: number,
   edge: number,
-) {
-  let lo = from;
-  let hi = to - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (kids[mid].getBoundingClientRect().bottom > edge) hi = mid;
-    else lo = mid + 1;
-  }
-  return lo;
-}
+) => firstBelow(from, to, edge, (i) => kids[i].getBoundingClientRect().bottom);
 
 export function ResultPages({
   page,
@@ -226,17 +216,7 @@ export function ResultPages({
     [filters, pageSize, lexical],
   );
   /** the grid children a page draws */
-  const kidsOf = useCallback(
-    (q: Page) => q.tiles.length || (q.near && !q.failed ? pageSize : 1),
-    [pageSize],
-  );
-  /** pages `from` to `to` as boxes */
-  const boxes = (from: number, to: number): Page[] =>
-    Array.from({ length: to - from + 1 }, (_, i) => ({
-      n: from + i,
-      tiles: [],
-      block: block.current,
-    }));
+  const kidsOf = useCallback((q: Page) => kidsOfPage(q, pageSize), [pageSize]);
 
   /**
    * Runs a change of what is drawn, keeping the first tile in view where it is (the layout effect below); a box
@@ -247,15 +227,13 @@ export function ResultPages({
       const g = grid.current;
       const drawn = now.current.pages.reduce((s, q) => s + kidsOf(q), 0);
       if (g && drawn) {
-        let i = firstInView(g.children, 0, drawn, covered());
-        for (let j = i; j < drawn; j++) {
-          const k = g.children[j] as HTMLElement;
-          if (k.getBoundingClientRect().top > innerHeight) break;
-          if (k.dataset.item) {
-            i = j;
-            break;
-          }
-        }
+        const i = anchorAt(
+          firstInView(g.children, 0, drawn, covered()),
+          drawn,
+          innerHeight,
+          (j) => g.children[j].getBoundingClientRect().top,
+          (j) => !!(g.children[j] as HTMLElement).dataset.item,
+        );
         const el = g.children[i];
         anchor.current = { el, at: el.getBoundingClientRect().top + scrollY };
       }
@@ -305,11 +283,7 @@ export function ResultPages({
         () => {
           restoring.current = null;
           done(() =>
-            inPlace
-              ? setPages((p) =>
-                  p.map((q) => (q.n === n ? { ...q, failed: true } : q)),
-                )
-              : setFailed(true),
+            inPlace ? setPages((p) => withFailed(p, n, true)) : setFailed(true),
           );
         },
       );
@@ -322,50 +296,20 @@ export function ResultPages({
     if (!last) return;
     if (last.partial) {
       const seen = new Set(last.tiles.map((i) => i.id));
-      load(
-        last.n,
-        (p, fresh) =>
-          p.map((q) =>
-            q.n === last.n && q.partial
-              ? {
-                  n: q.n,
-                  tiles: [...q.tiles, ...fresh.filter((i) => !seen.has(i.id))],
-                  gradual: true,
-                }
-              : q,
-          ),
-        "next",
-      );
+      load(last.n, (p, fresh) => withRest(p, last.n, fresh, seen), "next");
     } else if (last.n < total)
-      load(
-        last.n + 1,
-        (p, fresh) =>
-          p.at(-1)?.n === last.n
-            ? [...p, { n: last.n + 1, tiles: fresh, gradual: true }]
-            : p,
-        "next",
-      );
+      load(last.n + 1, (p, fresh) => withNext(p, last.n, fresh), "next");
   }, [load, total]);
 
   /** Reads page `n` into its box. */
   const loadInto = useCallback(
     (n: number, dir: Dir) =>
-      load(
-        n,
-        (p, fresh) =>
-          p.map((q) =>
-            q.n === n && !q.tiles.length
-              ? { n, tiles: fresh, gradual: dir === "next" }
-              : q,
-          ),
-        dir,
-        true,
-      ),
+      load(n, (p, fresh) => withInto(p, n, fresh, dir), dir, true),
     [load],
   );
 
   /** The pages before `n`, at most ABOVE of them, as boxes. */
-  const before = (n: number) => boxes(Math.max(1, n - ABOVE), n - 1);
+  const before = (n: number) => boxesBefore<Tile>(n, block.current);
 
   /** The estimated height of a page from the tiles drawn: its rows at the measured row pitch. */
   const measure = () => {
@@ -396,10 +340,10 @@ export function ResultPages({
     if (el)
       scrollTo(0, el.getBoundingClientRect().top + scrollY - edge - s.top);
     const p = now.current.pages;
-    const last = p[p.length - 1];
-    if (el && Math.abs(el.getBoundingClientRect().top - edge - s.top) < 1)
-      restoring.current = null;
-    else if (last.partial || (el && last.n < total)) loadNext();
+    const offset = el
+      ? el.getBoundingClientRect().top - edge - s.top
+      : undefined;
+    if (restoreStep(offset, p[p.length - 1], total) === "read") loadNext();
     else restoring.current = null;
   }, [loadNext, total]);
 
@@ -538,21 +482,13 @@ export function ResultPages({
     let saved = true;
     // the address these results answer; once a navigation changes it, they no longer write to it
     const own = resultsQuery(location.search);
-    const starts = (p: Page[]) => {
-      let at = 0;
-      return p.map((q) => {
-        const s = at;
-        at += kidsOf(q);
-        return s;
-      });
-    };
     const save = () => {
       const g = grid.current;
       const p = now.current.pages;
       const i = p.findIndex((q) => q.n === shown);
       if (!g || i < 0 || restoring.current) return false;
       if (resultsQuery(location.search) !== own) return true;
-      const from = starts(p)[i];
+      const from = pageStarts(p, pageSize)[i];
       const edge = covered();
       const el = g.children[
         firstInView(g.children, from, from + kidsOf(p[i]), edge)
@@ -593,7 +529,7 @@ export function ResultPages({
           true,
         );
       const kids = g.children;
-      const at = starts(p);
+      const at = pageStarts(p, pageSize);
       const h = innerHeight;
       const tops = at.map((s) => kids[s].getBoundingClientRect().top);
       const lastKid = kids[at[at.length - 1] + kidsOf(p[p.length - 1]) - 1];
@@ -612,34 +548,27 @@ export function ResultPages({
         saved = save();
       }
       const focused = document.activeElement;
-      const next = p.map((q, j) => {
-        const far = isFar(tops[j], bottoms[j], h);
-        if (!q.tiles.length) {
-          // a box above the page in view turns to silhouettes only when the reader moves up: their rows run on
-          // into the page below and reflow it. One starting above the reader (another height above the tile in
-          // view) waits for scrolling to stop.
-          const near = !far && (j >= i || up);
-          if (near === !!q.near || (tops[j] < c && scrolling.current)) return q;
-          return { ...q, near };
-        }
-        if (far === !!q.heights) return q;
-        // tiles back from below the screen come a few a frame; above the reader, all at once, kept in place
-        if (!far) return { ...q, heights: undefined, gradual: tops[j] > h };
-        const own = [...kids].slice(at[j], at[j] + q.tiles.length);
-        if (focused && own.some((k) => k.contains(focused))) return q;
-        return {
-          ...q,
-          heights: own.map((k) => k.getBoundingClientRect().height),
-          gradual: true,
-        };
-      });
+      const next = framePages(
+        p,
+        {
+          tops,
+          bottoms,
+          height: h,
+          edge: c,
+          inView: i,
+          up,
+          scrolling: scrolling.current,
+        },
+        // a far page's tiles measured for its boxes; none while focus is inside it
+        (j) => {
+          const own = [...kids].slice(at[j], at[j] + p[j].tiles.length);
+          if (focused && own.some((k) => k.contains(focused))) return undefined;
+          return own.map((k) => k.getBoundingClientRect().height);
+        },
+      );
       if (next.some((q, j) => q !== p[j]))
         keep(() => setPages((cur) => (cur === p ? next : cur)));
-      // the page in view, else the nearest one, not read yet
-      const unread = p
-        .map((_, j) => j)
-        .filter((j) => !p[j].tiles.length && !p[j].failed && next[j].near);
-      const j = unread.sort((a, b) => Math.abs(a - i) - Math.abs(b - i))[0];
+      const j = pageToRead(p, next, i);
       if (j !== undefined && !restoring.current)
         loadInto(p[j].n, tops[j] < c ? "prev" : "next");
     };
@@ -675,17 +604,7 @@ export function ResultPages({
       measure();
       const tile = g.querySelector("[data-item]");
       const height = tile?.getBoundingClientRect().height ?? 0;
-      keep(() =>
-        setPages((cur) =>
-          cur.map((q) =>
-            q.heights
-              ? { ...q, heights: q.heights.map(() => height) }
-              : q.tiles.length
-                ? q
-                : { ...q, block: block.current },
-          ),
-        ),
-      );
+      keep(() => setPages((cur) => resized(cur, height, block.current)));
     };
     const g = grid.current;
     if (g) setCols(getComputedStyle(g).gridTemplateColumns.split(" ").length);
@@ -725,13 +644,7 @@ export function ResultPages({
                 <RefreshFailed
                   starting={false}
                   onRetry={() =>
-                    keep(() =>
-                      setPages((p) =>
-                        p.map((r) =>
-                          r.n === q.n ? { ...r, failed: false } : r,
-                        ),
-                      ),
-                    )
+                    keep(() => setPages((p) => withFailed(p, q.n, false)))
                   }
                 />
               </GridSpan>
