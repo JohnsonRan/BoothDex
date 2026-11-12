@@ -38,6 +38,18 @@ pub(crate) fn icon_upstream_url(size: &str, user: &str, file: &str) -> Option<St
     Some(format!("https://booth.pximg.net/{prefix}users/{user}/icon_image/{file}"))
 }
 
+/// Upstream URL for one of BOOTH's static images, such as the icon of a shop that has none.
+pub(crate) fn asset_upstream_url(file: &str) -> Option<String> {
+    is_booth_file(file).then(|| format!("https://asset.booth.pm/assets/{file}"))
+}
+
+/// Upstream URL for a pixiv Factory drawing that Booth lists as an item image. Every one seen is a png, and the
+/// extension is compared exactly because `is_booth_file` accepts any case, which the site never sends.
+pub(crate) fn factory_upstream_url(uuid: &str, file: &str) -> Option<String> {
+    let png = file.rsplit_once('.').is_some_and(|(_, ext)| ext == "png");
+    (png && is_uuid(uuid) && is_booth_file(file)).then(|| format!("https://factory.pixiv.net/files/uploads/i/conceptual_drawing/{uuid}/{file}"))
+}
+
 /// A redirect may move along the path of the same https host and port, never to another host, port or scheme: the
 /// hosts are fixed by the URL builders above, and a redirect must not lead past them.
 fn redirect_allowed(from: &Url, to: &Url) -> bool {
@@ -108,6 +120,29 @@ mod tests {
         assert!(icon_upstream_url("48x48", "1x", "a.jpg").is_none());
         assert!(icon_upstream_url("999x999", "1", "a.jpg").is_none());
         assert!(icon_upstream_url("48x48", "1", "../a.jpg").is_none());
+    }
+
+    #[test]
+    fn only_booth_asset_files_pass() {
+        let placeholder = format!("thumbnail_placeholder_f_150x150-{}.png", "0".repeat(64));
+        assert_eq!(asset_upstream_url(&placeholder), Some(format!("https://asset.booth.pm/assets/{placeholder}")));
+        for bad in ["", "../a.png", "a.svg", "a.png?x=@evil.com", "a.b.png", &format!("{}.png", "a".repeat(121))] {
+            assert!(asset_upstream_url(bad).is_none(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn only_factory_drawings_pass() {
+        let uuid = "04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74";
+        assert_eq!(
+            factory_upstream_url(uuid, "canvas_94032c5836.png").as_deref(),
+            Some("https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/canvas_94032c5836.png")
+        );
+        assert!(factory_upstream_url(&uuid.to_uppercase(), "a.png").is_none());
+        assert!(factory_upstream_url("04cee5a2-f70c-49f2-b9b6", "a.png").is_none());
+        for bad in ["", "a.jpg", "a.PNG", "../a.png", "a.svg", "a.png?x=@evil.com"] {
+            assert!(factory_upstream_url(uuid, bad).is_none(), "{bad}");
+        }
     }
 
     #[test]

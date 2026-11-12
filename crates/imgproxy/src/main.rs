@@ -1,12 +1,15 @@
 //! Image proxy meant to sit behind Cloudflare.
 //!   GET /b/{size}/{uuid}/i/{item}/{file}[?format=avif|png|jpeg]  Booth image (booth.pximg.net), re-encoded
 //!   GET /u/{size}/{user}/{file}[?format=…]                     Booth shop icon (users/{user}/icon_image), same
+//!   GET /a/{file}[?format=…]                                   BOOTH static image (asset.booth.pm/assets), same
+//!   GET /f/{uuid}/{file}[?format=…]                            pixiv Factory drawing (factory.pixiv.net), same
 //!   GET /v/{sha1}.webp                                         archived VRCatalogue image (delisted items)
 //! Output defaults to AVIF with full-resolution chroma (4:4:4), from libaom when built with the `libavif`
 //! feature (the container images are) and from rav1e otherwise; the archived files are WebP and served as they
 //! are. Results are cached in foyer (memory + disk); responses are immutable so the CDN keeps them, which is
-//! why the site names the format in its URLs. Only booth.pximg.net is ever fetched, and only Booth-shaped paths
-//! with Booth's own sizes are accepted, so this is not an open proxy.
+//! why the site names the format in its URLs. Only booth.pximg.net, asset.booth.pm and factory.pixiv.net are ever
+//! fetched, over https, and only Booth-shaped paths under fixed directories (with Booth's own sizes for pximg) are
+//! accepted, so this is not an open proxy. A redirect is followed only on the same https host (src/upstream.rs).
 //!
 //! Env: BIND (127.0.0.1:3001), CACHE_DIR (./imgcache), CACHE_DISK_MB (10240), CACHE_MEM_MB (256),
 //!      ARCHIVE_IMAGES (dir of <sha1>.webp files)
@@ -30,7 +33,7 @@ use foyer::{BlockEngineConfig, DeviceBuilder, FsDeviceBuilder, HybridCache, Hybr
 use image::{DynamicImage, ImageFormat, ImageReader, Limits};
 use tokio::sync::Semaphore;
 
-use upstream::{fetch_upstream, icon_upstream_url, upstream_client, upstream_url};
+use upstream::{asset_upstream_url, factory_upstream_url, fetch_upstream, icon_upstream_url, upstream_client, upstream_url};
 
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 /// Upstream 404s are cached (as an empty value) — Booth image paths are content-addressed and never come back
@@ -220,6 +223,26 @@ async fn icon(
     proxy(s, format!("u/{size}/{user}/{file}:{format:?}"), url, &size, format).await
 }
 
+async fn asset(State(s): State<Arc<AppState>>, Path(file): Path<String>, Query(q): Query<FormatQuery>) -> Response {
+    let (Some(url), Some(format)) = (asset_upstream_url(&file), Format::parse(q.format.as_deref())) else {
+        return bad_request();
+    };
+    // a sized variant's quality: the one asset in use, the placeholder icon, is 150 px
+    proxy(s, format!("a/{file}:{format:?}"), url, "asset", format).await
+}
+
+async fn factory(
+    State(s): State<Arc<AppState>>,
+    Path((uuid, file)): Path<(String, String)>,
+    Query(q): Query<FormatQuery>,
+) -> Response {
+    let (Some(url), Some(format)) = (factory_upstream_url(&uuid, &file), Format::parse(q.format.as_deref())) else {
+        return bad_request();
+    };
+    // pixiv Factory has no resize variants: every request gets the drawing at its own size
+    proxy(s, format!("f/{uuid}/{file}:{format:?}"), url, "orig", format).await
+}
+
 async fn proxy(s: Arc<AppState>, key: String, url: String, size: &str, format: Format) -> Response {
     let quality = match format {
         Format::Avif => avif_quality(size),
@@ -322,6 +345,8 @@ async fn serve() -> Result<()> {
         // public: the images, which the site forwards from /img
         .route("/b/{size}/{uuid}/i/{item}/{file}", get(booth))
         .route("/u/{size}/{user}/{file}", get(icon))
+        .route("/a/{file}", get(asset))
+        .route("/f/{uuid}/{file}", get(factory))
         .route("/v/{name}", get(archived))
         // internal: the API's admin overview reads it; the site does not forward it
         .route("/stats", get(stats))
