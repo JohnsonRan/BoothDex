@@ -807,6 +807,7 @@ async fn rename_search(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(
 
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        // public: signing up, in and out, and whether sign-up is open; every later handler reads the session itself
         .route("/api/account/register", post(register))
         .route("/api/account/login", post(login))
         .route("/api/account/logout", post(logout))

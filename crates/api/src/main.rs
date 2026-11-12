@@ -381,6 +381,7 @@ async fn main() -> Result<()> {
     tokio::spawn(reloader(state.clone()));
     tokio::spawn(gallery::flush_views(state.clone()));
 
+    // public: catalogue lookups
     let lookups = Router::new()
         .route("/api/avatars", get(lookup(|s| &s.avatars)))
         .route("/api/authors", get(lookup(|s| &s.authors)))
@@ -390,6 +391,7 @@ async fn main() -> Result<()> {
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), lookup_rate_limit));
 
     let app = Router::new()
+        // public: health, search, the feed, the palette and item records
         .route("/api/health", get(|| async { Json(json!({ "ok": true })) }))
         .route("/api/search", get(search::search))
         .route("/api/rss", get(rss_feed))
