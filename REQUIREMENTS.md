@@ -153,13 +153,6 @@ Backend endpoints with no frontend caller:
 | `/api/authors`, `/api/booth-tags` | other clients of the VRCatalogue-compatible API | public API, listed in the README, "API" |
 | imgproxy `/stats` | the API's admin overview (`crates/api/src/admin.rs`) | operator counters for the admin console; `web/next.config.ts` does not forward it, so only the API reaches it (owner, 2026-11-12) |
 
-Backend endpoints with no frontend caller and no reason yet; the owner decides between adding UI, removing the
-endpoint and recording a reason above:
-
-| Endpoint | State |
-| --- | --- |
-| `/api/account/profile`, `/api/account/password` | no caller in `web/src` (2026-11-12) |
-
 Intentional designs that look like defects:
 
 | What | Why | Owner ruling (date, quote) |

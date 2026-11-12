@@ -53,6 +53,7 @@ VRCatalogue. Item data and images belong to their creators; every item links bac
 - An item opens in a dialog with the full BOOTH gallery, variations, title translations and image download.
 - Favourites, recently viewed items (marked "Viewed" in results), a remembered avatar, and saved searches as
   saved views that you can rename and follow by RSS.
+- Change your display name and password in Settings; a new password signs your other devices out.
 
 <details>
 <summary>An item's details open over the results</summary>
