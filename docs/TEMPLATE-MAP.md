@@ -221,7 +221,7 @@ Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@ast
   neighbours, page `table-filter`'s toolbar actions (page.tsx:4439-4446 save, :4450-4468 saved views; toolbarEnd
   :1398-1400): ghost `sm` `IconButton`, its name ("Collapse avatars" / "Expand avatars") as label and tooltip, the
   chevron of Collapsible's trigger anatomy turned up to fold, `aria-expanded` and `aria-controls` naming the cards.
-- Readout "Page N" (`result-pages.tsx` `PageInView`): from page 2 on the readout reads "Page N · {n} items", N
+- Readout "Page N" (`page-in-view.tsx` `PageInView`): from page 2 on the readout reads "Page N · {n} items", N
   the page in view (the address's). No template has it. `.readout-line` (`app/filter-row.css`) puts it on the
   side away from where the count is set (before it at the row's end, after it on a phone's own line), so the
   count never moves when it appears.

@@ -4,7 +4,7 @@
 // with them and run as it is parsed, while still hidden) watches the document and scrolls at each reveal, in the
 // task that made it and so before it paints, until the first tiles are in. A reveal moves a whole region into
 // place, the main region with it, so only the body sees it. The reader's own scrolling, the results hydrating (they
-// set history.scrollRestoration to manual and keep the place from there, result-pages.tsx), or 10 s ends it: a
+// set history.scrollRestoration to manual and keep the place from there, use-result-place.ts), or 10 s ends it: a
 // stream stalled longer than that is left where it is rather than moved under a reader who may be reading it.
 // A reload, Back or Forward is the results' own restore and is left to it; a page restored from the back-forward
 // cache runs no script, and React never runs a script it renders on a client-side navigation. Anything missing

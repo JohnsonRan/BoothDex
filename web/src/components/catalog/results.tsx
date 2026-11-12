@@ -13,8 +13,9 @@ import type { SearchOutcome } from "@/lib/server-data";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { ClearAll } from "./filter-bar";
 import { FIRST_TILES, tileOf } from "./item-tile";
+import { PageInView } from "./page-in-view";
 import { KeepResults, Swap } from "./refresh";
-import { PageInView, ResultPages } from "./result-pages";
+import { ResultPages } from "./result-pages";
 import { EmptyResults, SemanticNote } from "./result-states";
 import { SearchTrace } from "./search-trace";
 

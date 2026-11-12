@@ -1,0 +1,234 @@
+// The results' reads and the changes they bring (result-pages.tsx): every change keeps the first tile in view
+// where it is, one above the reader waits for scrolling to stop, and a page is read at the end, into its box, or
+// the rest of the server's page. The results' state outside React lives in one object of refs, made once.
+
+import {
+  type Dispatch,
+  type SetStateAction,
+  startTransition,
+  useCallback,
+  useRef,
+  useState,
+} from "react";
+import { useUi } from "@/components/providers";
+import { api } from "@/lib/api";
+import type { SearchResponse } from "@/lib/api-types";
+import { type Filters, searchQuery } from "@/lib/catalog";
+import { anchorAt, firstBelow } from "@/lib/result-frame";
+import {
+  boxesBefore,
+  type Dir,
+  kidsOf as kidsOfPage,
+  pageBlock,
+  type Page as ResultPage,
+  type Snapshot,
+  withFailed,
+  withInto,
+  withNext,
+  withRest,
+} from "@/lib/result-pages";
+import type { Rates, Settings } from "@/lib/settings-core";
+import { covered } from "./band-edge";
+import { type Tile, tileOf } from "./item-tile";
+
+export type Page = ResultPage<Tile>;
+
+/** The index of the first of `kids[from, to)` reaching below `edge` (their bottoms ascend in grid order). */
+export const firstInView = (
+  kids: HTMLCollection,
+  from: number,
+  to: number,
+  edge: number,
+) => firstBelow(from, to, edge, (i) => kids[i].getBoundingClientRect().bottom);
+
+/**
+ * The results' refs, one object for the life of the results, so the hooks that share it (use-result-place.ts,
+ * use-result-frame.ts) depend on nothing that changes.
+ */
+export function useResultRefs(pages: Page[]) {
+  const grid = useRef<HTMLDivElement>(null);
+  const end = useRef<HTMLDivElement>(null);
+  const top = useRef<HTMLDivElement>(null);
+  const nearTop = useRef(false);
+  const busy = useRef(false);
+  const anchor = useRef<{ el: Element; at: number } | null>(null);
+  const scrolling = useRef(false);
+  /** changes above the reader made while scrolling, put in once scrolling stops */
+  const held = useRef(new Map<string, () => void>());
+  const restoring = useRef<Snapshot | null>(null);
+  /** the place last saved to the history entry */
+  const place = useRef<Snapshot | null>(null);
+  const width = useRef(0);
+  /** the estimated height of a whole page not read yet */
+  const block = useRef(0);
+  const tick = useRef(() => {});
+  /** the pages last drawn, for the callbacks and the frame */
+  const now = useRef({ pages });
+  const [refs] = useState(() => ({
+    grid,
+    end,
+    top,
+    nearTop,
+    busy,
+    anchor,
+    scrolling,
+    held,
+    restoring,
+    place,
+    width,
+    block,
+    tick,
+    now,
+  }));
+  return refs;
+}
+
+export type ResultRefs = ReturnType<typeof useResultRefs>;
+
+export function usePageReads(
+  r: ResultRefs,
+  {
+    filters,
+    pageSize,
+    lexical,
+    total,
+    settings,
+    rates,
+    setPages,
+    setLoading,
+    setFailed,
+  }: {
+    filters: Filters;
+    pageSize: number;
+    lexical: boolean;
+    total: number;
+    settings: Settings;
+    rates: Rates;
+    setPages: Dispatch<SetStateAction<Page[]>>;
+    setLoading: Dispatch<SetStateAction<Dir | null>>;
+    setFailed: Dispatch<SetStateAction<boolean>>;
+  },
+) {
+  const { t } = useUi();
+  const path = useCallback(
+    (n: number) =>
+      `/api/search?${searchQuery(filters, n, pageSize)}&fields=card${lexical ? "&sem=0" : ""}`,
+    [filters, pageSize, lexical],
+  );
+  /** the grid children a page draws */
+  const kidsOf = useCallback((q: Page) => kidsOfPage(q, pageSize), [pageSize]);
+
+  /**
+   * Runs a change of what is drawn, keeping the first tile in view where it is (use-result-place.ts); a box or a
+   * silhouette in view above it may be what the change replaces. With none in view, what stays above is kept.
+   */
+  const keep = useCallback(
+    (change: () => void, sync = false) => {
+      const g = r.grid.current;
+      const drawn = r.now.current.pages.reduce((s, q) => s + kidsOf(q), 0);
+      if (g && drawn) {
+        const i = anchorAt(
+          firstInView(g.children, 0, drawn, covered()),
+          drawn,
+          innerHeight,
+          (j) => g.children[j].getBoundingClientRect().top,
+          (j) => !!(g.children[j] as HTMLElement).dataset.item,
+        );
+        const el = g.children[i];
+        r.anchor.current = { el, at: el.getBoundingClientRect().top + scrollY };
+      }
+      if (sync) change();
+      else startTransition(change);
+    },
+    [r, kidsOf],
+  );
+
+  /** Puts a change in now, or once scrolling stops when it is above the reader; one per `key`. */
+  const above = useCallback(
+    (key: string, change: () => void, isAbove: boolean) => {
+      if (isAbove && r.scrolling.current) r.held.current.set(key, change);
+      else change();
+    },
+    [r],
+  );
+
+  // template :1213-1225, the in-flight guard and the loading state, with the page read for real. A page read
+  // into its box (`inPlace`) shows its own failure there; the next page's shows at the end.
+  const load = useCallback(
+    (
+      n: number,
+      place: (p: Page[], fresh: Tile[]) => Page[],
+      dir: Dir,
+      inPlace = false,
+    ) => {
+      if (r.busy.current) return;
+      r.busy.current = true;
+      setLoading(dir);
+      const done = (change: () => void) =>
+        above(
+          `page ${n}`,
+          () => {
+            keep(() => {
+              setLoading(null);
+              change();
+            });
+          },
+          dir === "prev",
+        );
+      api<SearchResponse>(path(n)).then(
+        (res) => {
+          const fresh = res.items.map((i) => tileOf(i, settings, rates, t));
+          done(() => setPages((p) => place(p, fresh)));
+        },
+        () => {
+          r.restoring.current = null;
+          done(() =>
+            inPlace ? setPages((p) => withFailed(p, n, true)) : setFailed(true),
+          );
+        },
+      );
+    },
+    [r, path, keep, above, settings, rates, t, setPages, setLoading, setFailed],
+  );
+
+  const loadNext = useCallback(() => {
+    const last = r.now.current.pages.at(-1);
+    if (!last) return;
+    if (last.partial) {
+      const seen = new Set(last.tiles.map((i) => i.id));
+      load(last.n, (p, fresh) => withRest(p, last.n, fresh, seen), "next");
+    } else if (last.n < total)
+      load(last.n + 1, (p, fresh) => withNext(p, last.n, fresh), "next");
+  }, [r, load, total]);
+
+  /** Reads page `n` into its box. */
+  const loadInto = useCallback(
+    (n: number, dir: Dir) =>
+      load(n, (p, fresh) => withInto(p, n, fresh, dir), dir, true),
+    [load],
+  );
+
+  /** The pages before `n`, at most ABOVE of them, as boxes. */
+  const before = (n: number) => boxesBefore<Tile>(n, r.block.current);
+
+  /** The estimated height of a page from the tiles drawn: its rows at the measured row pitch. */
+  const measure = () => {
+    const g = r.grid.current;
+    const kids = g?.querySelectorAll("[data-item]");
+    if (!g || !kids?.length) return;
+    const style = getComputedStyle(g);
+    const n = style.gridTemplateColumns.split(" ").length;
+    const gap = Number.parseFloat(style.rowGap) || 0;
+    const a = kids[0].getBoundingClientRect();
+    const pitch = kids[n]
+      ? kids[n].getBoundingClientRect().top - a.top
+      : a.height + gap;
+    r.block.current = pageBlock(pageSize, n, pitch, gap);
+    // the height of a box standing for a tile not drawn yet (PageTiles)
+    g.style.setProperty("--_tile-h", `${pitch - gap}px`);
+  };
+
+  return { kidsOf, keep, above, load, loadNext, loadInto, before, measure };
+}
+
+export type PageReads = ReturnType<typeof usePageReads>;
