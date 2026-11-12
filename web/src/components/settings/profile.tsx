@@ -2,7 +2,7 @@
 // Settings > Profile: the display name and the password, each a row whose button opens a FormDialog, as "Delete
 // account" in Your data. GitHub (Settings > Public profile; Password and authentication) and Google (Personal info;
 // Security) keep both in the account's settings and ask for the current password and the new one twice. The API
-// (crates/api/src/account.rs update_profile, change_password) checks the current password under the sign-in
+// (crates/api/src/account/profile.rs update_profile, change_password) checks the current password under the sign-in
 // limits and signs the account out of its other sessions. The username cannot change: ADMIN_USERNAMES names
 // admins by it.
 

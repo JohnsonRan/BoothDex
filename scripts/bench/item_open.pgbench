@@ -1,4 +1,4 @@
--- A signed-in visitor opens an item: POST /api/account/views with one item (account.rs add_views), which trims the
+-- A signed-in visitor opens an item: POST /api/account/views with one item (account/views.rs add_views), which trims the
 -- account one time in 20. The item's view count (gallery.rs) is written in batches every 10 s, not per open.
 \set uid random(1, 2000)
 \set iid random_zipfian(1, 200000, 1.1)

@@ -1,6 +1,6 @@
 "use client";
 // Settings > Your data: the template settings-dialog's "Delete my account" row (page.tsx:1953-1958, a destructive
-// sm Button) opening a FormDialog. The API asks for the password (crates/api/src/account.rs delete_account) and
+// sm Button) opening a FormDialog. The API asks for the password (crates/api/src/account/profile.rs delete_account) and
 // deletes the account with its sessions, favourites, viewed items and saved searches; the session then reads as
 // signed out, as after Sign out.
 

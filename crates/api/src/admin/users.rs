@@ -83,7 +83,7 @@ pub(super) struct Patch {
 pub(super) async fn patch(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<i64>, Json(b): Json<Patch>) -> Result<Response, ApiError> {
     let who = require_admin(&s, &headers).await?;
     let mut tx = s.pool.begin().await?;
-    // the row lock orders this against a sign-in in flight (account.rs start_session)
+    // the row lock orders this against a sign-in in flight (account/session.rs start_session)
     let row: Option<(String, bool)> = sqlx::query_as("select username, is_admin from users where id = $1 for update").bind(id).fetch_optional(&mut *tx).await?;
     let Some((username, is_admin)) = row else { return Err(Refusal::NoSuchUser.into()) };
     if b.disabled && is_admin {

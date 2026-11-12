@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Database cost of the account data paths (viewed items, favourites) and the refresh order, measured with pgbench on a
 # throwaway Postgres with synthetic data (seed.sql). The *.pgbench scripts copy the API's statements; keep them in
-# step with account.rs. Compare with the baseline in REQUIREMENTS.md, or run it on the commit before a change.
+# step with account/favourites.rs and account/views.rs. Compare with the baseline in REQUIREMENTS.md, or run it on the commit before a change.
 #   [CLIENTS=16] [BENCH_SECONDS=15] scripts/bench/run.sh
 set -euo pipefail
 cd "$(dirname "$0")/../.."

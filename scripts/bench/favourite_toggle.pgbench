@@ -1,4 +1,4 @@
--- Adding and removing a favourite (account.rs add_favourite, remove_favourite), each counted in item_stats by the
+-- Adding and removing a favourite (account/favourites.rs add_favourite, remove_favourite), each counted in item_stats by the
 -- count_favourite trigger. Popular items take most clicks, so concurrent clients contend for their rows.
 \set uid random(1, 20000)
 \set iid random_zipfian(1, 200000, 1.1)
