@@ -122,7 +122,7 @@ $EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, CONTACT_EMAIL, an
 | `ADMIN_USERNAMES` | `api` | Comma-separated usernames synced at every `api` start (unlisted accounts lose admin) |
 | `ARCHIVE_IMAGES_DIR` | `imgproxy` | `/srv/boothdex/images` when using a data bundle; leave empty without a bundle (uses an empty volume) |
 | `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | `imgproxy` | Transcoded AVIF cache budget (`10240` MB disk / `256` MB RAM by default) |
-| `BOOTHDEX_TAG` | `api`, `worker`, `imgproxy`, `web` | Image tag on `ghcr.io`: `latest` (default, tracks `master`), `0.1.0`, or `sha-<commit>` |
+| `BOOTHDEX_TAG` | `api`, `worker`, `imgproxy`, `web` | Image tag on `ghcr.io`: `latest` (default, tracks `master`) or `sha-<commit>`, the first 7 characters of the commit an image was built from |
 | `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` / `AI_EMBED_MODEL` | `api`, `worker` | Optional; override and lock the `/admin` AI settings so API keys stay out of PostgreSQL |
 
 Set automatically by `compose.yaml` (not needed in `.env`): `DATABASE_URL`, `PGPASSWORD` (passed separately so `/` `+` `=` in base64 passwords never break URL parsing), `IMGPROXY_URL` and `BIND`.
@@ -211,13 +211,17 @@ boothdex.example.com {
 
 | Task | Command |
 |---|---|
-| Update (prebuilt) | `docker compose pull && docker compose up -d` |
+| Update (prebuilt) | `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' $(docker compose ps -q api); docker compose pull && docker compose up -d` (prints the running version's commit first: keep it for a rollback) |
 | Update (from source) | `git pull && docker compose up -d --build` |
 | Tail logs | `docker compose logs -f api worker` |
 | Restart one service | `docker compose restart worker` |
 | Backup database | `docker compose exec -T postgres pg_dump -U catalogue -Fc catalogue > backup-$(date +%F).dump` (schedule daily, keep off-server) |
 | Backup archived images | Copy `/srv/boothdex/images` once (changes only if you archive newly delisted items) |
 | Restore database | `docker compose stop api worker && docker compose exec -T postgres pg_restore -U catalogue -d catalogue --clean --if-exists --no-owner --role=catalogue < backup.dump && docker compose start api worker` |
+
+An update applies its new database migrations when `api` and `worker` start, each migration in its own transaction. CI applies a pull request's migrations to the public data bundle (`.github/workflows/migrations.yml`). The bundle holds no rows of the account tables (`users`, `sessions`, `favourites`, `item_stats` and others), so migrations of those tables are tested on an empty database only.
+
+If `api` or `worker` stops at startup after an update, `docker compose logs api worker` names the migration that failed. A failed migration changes nothing, so the images that ran before still start: set `BOOTHDEX_TAG=sha-<first 7 characters of the commit the update printed>` in `.env` and run `docker compose up -d`. Set `BOOTHDEX_TAG=latest` again once a fixed version is published. An older image refuses a database that holds a migration it does not know. So when the update applied one migration before another failed, or started and then misbehaved, restore the latest backup ("Restore database" above; changes since that backup are lost) or wait for a fixed version.
 
 Automatic cleanup: the `worker` deletes expired login sessions and job history (including job errors and logs) older than 90 days every hour; container logs are capped by `x-logging` in `compose.yaml` (Docker keeps 3 × 10 MB per service, Podman truncates each log at 10 MB); `query_embeddings` is pruned by the `embed` job (see above). No manual `VACUUM` is needed (autovacuum handles it).
 

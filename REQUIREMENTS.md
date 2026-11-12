@@ -161,6 +161,7 @@ Intentional designs that look like defects:
 | `favourite_toggle` in the database benchmark is slow | Every client clicks the same popular items, so the `count_favourite` trigger's updates of their `item_stats` rows wait for each other. Spread over many items, a favourite costs the same as without the trigger. | 2026-11-11, commit 2507250: "a worst case that was accepted on purpose" |
 | "Commands" has no Pre-commit and no Scheduled run on main tier | The merge gate covers this project; a hook or a scheduled run would be CI nobody needs. | 2026-11-12: "Drop both rows" |
 | `test.yml` and `images.yml` name actions by version tag, not by SHA (`.github/AGENTS.md`, "Tiers, jobs and gates") | The owner chose tags after weighing both sides: a pin keeps a moved tag from changing the code that pushes the images; a tag gets the action's fixes without a bot. | 2026-11-12, on a commit that pinned every action by SHA: withdraw it |
+| No release-only checks (a reproducible build, migrations on a copy of production data, a deploy rehearsal) and no release-tier self-test of each gate command (`.github/AGENTS.md`, "Tiers, jobs and gates") | BoothDex publishes no versioned release: every push to master builds the `latest` images, and the owner deploys them by hand. The one check with a real risk behind it, migrations on existing rows, runs on pull requests against the public data bundle instead of a production copy (`.github/workflows/migrations.yml`), and `docs/DEPLOY.md`, "Operations", says how to go back when an update fails to start. | 2026-11-12: "none of them"; on checking migrations, "A+C": the CI job on the data bundle and the rollback note |
 | The 15 commits from ed15fcf to a007c85 (2026-10-31 to 2026-11-05) are unsigned (`AGENTS.md`, "Commits and pull requests") | Signing them now would rewrite published history. | 2026-11-12: "don't rewrite published history; leave them" |
 
 ## Not yet enforced
@@ -185,7 +186,6 @@ after a release.
 
 | Option | Source | Why it waits |
 | --- | --- | --- |
-| Release-only checks (a reproducible build, migrations on a copy of production data, a deploy rehearsal) and a planted violation for each gate command in the release tier | `.github/AGENTS.md`, "Tiers, jobs and gates" | the owner plans no release soon (2026-11-12) |
 | A self-test of `scripts/test-restore.sh` that plants a failing migration whenever the script changes | `.github/AGENTS.md`, "Tiers, jobs and gates" | a planted run needs a second worker build with the migration compiled in and a second restore of the 1.1 GB bundle; the planted violation was shown red once on PR #11 (2026-11-12), and the script changes rarely |
 | Split `scripts/check-requirements.py` (314 lines) and `scripts/test_check_requirements.py` (346 lines), both above the p90 file size (274 lines) | `REVIEW.md`, "Pass bar"; review of 3045384 | the owner ruled on 2026-11-12 that they may diverge from the kit's copies; each works as one file, so the split waits for the next change to either |
 
