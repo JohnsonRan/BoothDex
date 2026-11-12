@@ -44,9 +44,6 @@ meanwhile.
 | Home page first load, gzip -9: JS | 410,000 B | 396,067 B (2026-11-12, local `next start`, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Home page first load, gzip -9: CSS | 45,750 B | 45,503 B (2026-11-12, local `next start`, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Source file size, p90 of this repository (pass bar) | 274 lines | 274 lines: nearest-rank p90 of the 272 tracked `.rs`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.css`, `.sql`, `.sh` and `.py` files outside `web/templates` (2026-11-12, `wc -l`) | review |
-| Wait timeout before a stuck step is recorded and left | 30 min | a setting, not measured | agent |
-| Context handoff limit (share of the model's window) | 60% | a setting, not measured | orchestrator |
-| Status check interval while several jobs run | 10 min | a setting, not measured | orchestrator |
 | Commit subject length | 72 characters | a setting, not measured | review (no commit hook) |
 
 A test suite that runs past its limit is made faster before tests are added. The budgets for the

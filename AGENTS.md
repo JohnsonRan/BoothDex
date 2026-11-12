@@ -105,22 +105,6 @@ the change needs; it never relaxes a hard limit. When unsure between two classes
 - Check reachability before asking about or coding an edge case. A state that cannot occur gets no
   design.
 
-### Waiting
-
-- Do not sit idle on one long wait (build, test, VM, CI, subagent, owner reply).
-- Wait with one background command or a completion notification, with a long timeout as the
-  fallback. Never poll at short intervals.
-- Do other work in the meantime.
-- With several jobs in flight (workflows, subagents, CI runs), and a tool that can schedule a
-  wake-up, set one at the status check interval in `REQUIREMENTS.md`. At each wake-up, read the
-  status of every job in one pass and write it to the STATE file. Collect what finished, report
-  what failed, and record what is stuck. A completion notification can be lost; the wake-up is
-  what finds it.
-- A wake-up reads status and returns to work; it never waits for a job. Its interval is minutes,
-  not seconds, so it is not polling.
-- If something is still stuck after the timeout (`REQUIREMENTS.md`), record it with its current
-  state and move on.
-
 ### Reporting
 
 - Report what was actually run: the commands, the tests and their results.
@@ -177,30 +161,6 @@ the change needs; it never relaxes a hard limit. When unsure between two classes
 - A change merges once the gate is green and the review its risk class asks for has passed.
 - A visible UI change also waits until the owner has seen screenshots or a preview.
 - A release never merges on these rules alone; it waits for the owner.
-
-### Model usage
-
-The orchestrator applies these; a sub-agent cannot choose its own model.
-
-- Rank models by importance and pick the highest tier the change calls for:
-  - money, login, risk and architecture decisions get the strongest model;
-  - non-core code and UI specs get the next tier;
-  - mechanical, fully specified work, search and log triage get a cheaper tier.
-- Review a High-risk change with a different model family from the writer; for other changes, a
-  fresh agent with none of the writer's context is enough. When only one family is available, the
-  owner reviews High-risk changes.
-- Never trust a cheap model's output directly; verify it first.
-- When a request names a model and effort, write them into the brief and the launch command by
-  full id, never as an alias or a substitute. Within the first minute, read the served model from
-  the run's own record (transcript or event log) and stop a run on the wrong model. Copy the
-  recorded id into the report.
-- Long jobs:
-  - Update the STATE file at every milestone.
-  - Hand the job to a fresh agent, started from the STATE file, when the tool shows context use
-    above the handoff limit in `REQUIREMENTS.md`, or when the agent re-reads files it already
-    read or repeats a step that failed.
-  - Prefer a phase boundary (plan, build, review) as the handoff point.
-  - A job that fits in one context does not hand off.
 
 ### Documentation
 

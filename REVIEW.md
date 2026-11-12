@@ -168,14 +168,9 @@ Review-only checks that no development rule covers:
 ## The writer's report
 
 Check the pull request description, or the writer's report when there is no pull request, against
-the root `AGENTS.md`, "Reporting" and "Waiting":
-
-- **Reporting.** Rerun at least one command the report names and compare the result. A test or
-  check claimed without its command and result is a finding, and so is an unverified part that is
-  not labelled.
-- **Waiting.** A job that ran across several agents or wake-ups has its STATE file current to its
-  last milestone. A step stuck past the wait timeout in `REQUIREMENTS.md` is recorded with its
-  state, not dropped or retried without a word.
+the root `AGENTS.md`, "Reporting". Rerun at least one command the report names and compare the
+result. A test or check claimed without its command and result is a finding, and so is an
+unverified part that is not labelled.
 
 ## Report
 
