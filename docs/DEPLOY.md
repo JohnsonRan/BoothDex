@@ -214,6 +214,8 @@ boothdex.example.com {
 | Update (prebuilt) | `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' $(docker compose ps -q api); docker compose pull && docker compose up -d` (prints the running version's commit first: keep it for a rollback) |
 | Update (from source) | `git pull && docker compose up -d --build` |
 | Tail logs | `docker compose logs -f api worker` |
+| Review sign-in attempts | `docker compose logs api \| grep -e sign-in -e 'password check'` (failures, successes and locks, with the client IP; kept as long as the `api` log, 3 × 10 MB) |
+| Lift a sign-in lockout | in `/admin`, reset the password, or disable then re-enable the account (signs the member out) |
 | Restart one service | `docker compose restart worker` |
 | Backup database | `docker compose exec -T postgres pg_dump -U catalogue -Fc catalogue > backup-$(date +%F).dump` (schedule daily, keep off-server) |
 | Backup archived images | Copy `/srv/boothdex/images` once (changes only if you archive newly delisted items) |
