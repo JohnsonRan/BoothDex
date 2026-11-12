@@ -49,10 +49,22 @@ type Size = "48x48" | "72x72_a2_g5" | "300x300_a2_g5" | "620x620" | "orig";
 
 // The proxy's answers are immutable for a year, so the address names the format: the same paths once answered
 // with WebP, and a cache still holding that copy must not answer for the AVIF.
-const proxied = (u: string, size: Size) =>
-  `${u.replace("https://booth.pximg.net/", `/img/b/${size}/`)}?format=avif`;
+// The browser loads images from our own origin only: a URL no proxy route serves becomes "", the no-image state.
+const proxied = (u: string, size: Size) => {
+  if (u.startsWith(PXIMG))
+    return `/img/b/${size}/${u.slice(PXIMG.length)}?format=avif`;
+  const factory = u.match(FACTORY);
+  // pixiv Factory has no resize variants, so the size does not apply
+  return factory ? `/img/f/${factory[1]}/${factory[2]}?format=avif` : "";
+};
+const PXIMG = "https://booth.pximg.net/";
+const FACTORY =
+  /^https:\/\/factory\.pixiv\.net\/files\/uploads\/i\/conceptual_drawing\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/([\w-]{1,120}\.png)$/;
 
-/** Proxied, AVIF-encoded image URL; delisted items fall back to our archived copies (WebP). */
+/**
+ * Proxied, AVIF-encoded image URL: Booth (booth.pximg.net) and pixiv Factory images; delisted items fall back to
+ * our archived copies (WebP). Any other URL gives "".
+ */
 export function imgUrl(
   it: Pick<ItemResponse, "booth_images" | "media">,
   i = 0,
@@ -67,7 +79,13 @@ const ARCHIVED = /\/booth\/([0-9a-f]{40})\.webp$/;
 // shop icons come already sized: https://booth.pximg.net/c/48x48/users/{user}/icon_image/{file}
 const ICON =
   /^https:\/\/booth\.pximg\.net\/c\/([^/]+)\/users\/(\d+)\/icon_image\/([^/?#]+)$/;
-/** Avatar thumbnails and shop icons: Booth images through our proxy, VRCatalogue CDN links (gone) from our archive. */
+// BOOTH's static images, such as the icon of a shop that has none
+const ASSET =
+  /^https:\/\/asset\.booth\.pm\/assets\/([\w-]{1,120}\.(?:png|jpe?g|gif))$/;
+/**
+ * Avatar thumbnails and shop icons: Booth, BOOTH asset and pixiv Factory images through our proxy, VRCatalogue CDN
+ * links (gone) from our archive. Any other URL gives "".
+ */
 export function imageSrc(
   u: string | null | undefined,
   size: Size = "72x72_a2_g5",
@@ -77,12 +95,11 @@ export function imageSrc(
   if (sha) return `/img/v/${sha}.webp`;
   const icon = u.match(ICON);
   if (icon) return `/img/u/${icon[1]}/${icon[2]}/${icon[3]}?format=avif`;
-  if (
-    u.startsWith("https://booth.pximg.net/") &&
-    !u.startsWith("https://booth.pximg.net/c/")
-  )
-    return proxied(u, size);
-  return u;
+  const asset = u.match(ASSET);
+  if (asset) return `/img/a/${asset[1]}?format=avif`;
+  // a sized Booth path other than a shop icon has no proxy route
+  if (u.startsWith(`${PXIMG}c/`)) return "";
+  return proxied(u, size);
 }
 export const imageCount = (it: Pick<ItemResponse, "booth_images" | "media">) =>
   Math.max(it.booth_images?.length ?? 0, it.media?.length ?? 0);

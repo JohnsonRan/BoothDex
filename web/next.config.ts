@@ -40,7 +40,7 @@ const nextConfig: NextConfig = {
       { source: "/api/:path*", destination: `${API_ORIGIN}/api/:path*` },
       // imgproxy's image routes only: its /stats is for the admin overview, which the API reads directly
       {
-        source: "/img/:kind(b|u|v)/:path*",
+        source: "/img/:kind(a|b|f|u|v)/:path*",
         destination: `${IMG_ORIGIN}/:kind/:path*`,
       },
     ];
