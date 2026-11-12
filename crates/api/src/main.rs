@@ -502,6 +502,7 @@ mod tests {
     async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
         use axum::extract::{FromRequestParts, RawQuery, State};
         use axum::http::{HeaderMap, Request, StatusCode, header};
+        use axum::response::IntoResponse;
 
         let state = test_state();
 
@@ -534,9 +535,9 @@ mod tests {
         // exhausting palette, lookups, rss, items and gallery on a fresh IP never starves /api/search
         let ip = "203.0.113.99";
         for _ in 0..2 {
-            assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.ok().unwrap().status(), StatusCode::OK);
+            assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.into_response().status(), StatusCode::OK);
         }
-        assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
         for _ in 0..2 {
             assert!(state.limits.lookup.check(ip_of(ip).await.0).is_ok());
@@ -544,20 +545,20 @@ mod tests {
         assert!(state.limits.lookup.check(ip_of(ip).await.0).is_err());
 
         for _ in 0..2 {
-            assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::OK);
+            assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::OK);
         }
-        assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
         for _ in 0..2 {
-            assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::OK);
+            assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::OK);
         }
-        assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
         use axum::extract::Path;
         for _ in 0..2 {
-            assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.ok().unwrap().status(), StatusCode::NOT_FOUND);
+            assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.into_response().status(), StatusCode::NOT_FOUND);
         }
-        assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.ok().unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
         // /api/search for that same IP still succeeds with its full burst intact
         for _ in 0..3 {
@@ -613,6 +614,7 @@ mod tests {
     async fn auth_limiter_exhaustion_throttles_both_login_and_register() {
         use axum::extract::{Json, State};
         use axum::http::{HeaderMap, StatusCode};
+        use axum::response::IntoResponse;
 
         let state = test_state();
         let ip = super::limit::ClientIp("203.0.113.50".parse().unwrap());
@@ -649,10 +651,10 @@ mod tests {
         for (name, call) in cases {
             let res = match call {
                 AuthCall::Login(body) => {
-                    super::account::login(State(state.clone()), ip, HeaderMap::new(), Json(body)).await.ok().unwrap()
+                    super::account::login(State(state.clone()), ip, HeaderMap::new(), Json(body)).await.into_response()
                 }
                 AuthCall::Register(body) => {
-                    super::account::register(State(state.clone()), ip, HeaderMap::new(), Json(body)).await.ok().unwrap()
+                    super::account::register(State(state.clone()), ip, HeaderMap::new(), Json(body)).await.into_response()
                 }
             };
             assert_eq!(

@@ -128,7 +128,7 @@ mod tests {
         let state = account::test_state(pool.clone());
         let mut boss = HeaderMap::new();
         boss.insert(header::COOKIE, "session=tok-boss".parse().unwrap());
-        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
         let disable = |id: i64, disabled: bool| patch(State(state.clone()), boss.clone(), Path(id), Json(Patch { disabled }));
 
         assert_eq!(status(disable(ids[0], true).await), StatusCode::CONFLICT);

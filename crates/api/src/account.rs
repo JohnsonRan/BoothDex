@@ -1120,7 +1120,7 @@ mod tests {
             }
             rename_search(State(state.clone()), h, Path(id), Json(SearchName { name: name.into() }))
         };
-        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
         let names = || sqlx::query_scalar::<_, String>("select name from saved_searches order by id").fetch_all(&pool);
 
         assert_eq!(status(rename(None, ids[0], "x").await), StatusCode::UNAUTHORIZED);
@@ -1263,7 +1263,7 @@ mod tests {
         let sign_in = || {
             login(State(state.clone()), crate::limit::ClientIp(ip), HeaderMap::new(), Json(Login { login: "ann".into(), password: "0123456789".into(), keep: false }))
         };
-        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
 
         assert_eq!(status(sign_up("ann").await), StatusCode::OK);
         assert!(sqlx::query_scalar::<_, bool>("select last_sign_in_at is not null from users").fetch_one(&pool).await.unwrap());
@@ -1288,7 +1288,7 @@ mod tests {
                 new: "0123456789".into(),
             }))
         };
-        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
 
         // an IP out of sign-in attempts can't check passwords either
         let busy = [203, 0, 113, 1];
@@ -1318,7 +1318,7 @@ mod tests {
                 new: new.into(),
             }))
         };
-        let status = |r: Result<Response, ApiError>| r.ok().unwrap().status();
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
         let hash = || sqlx::query_scalar::<_, String>("select password_hash from users").fetch_one(&pool);
 
         assert_eq!(status(change("0123456789").await), StatusCode::BAD_REQUEST);
@@ -1334,7 +1334,7 @@ mod tests {
         sqlx::query("update users set is_admin = true").execute(&pool).await.unwrap();
         let state = test_state(pool.clone());
         let ip = crate::limit::ClientIp([203, 0, 113, 9].into());
-        let r = delete_account(State(state), ip, headers(), Json(DeleteAccount { password: "x".into() })).await.ok().unwrap();
+        let r = delete_account(State(state), ip, headers(), Json(DeleteAccount { password: "x".into() })).await.into_response();
         assert_eq!(r.status(), StatusCode::CONFLICT);
         assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from users").fetch_one(&pool).await.unwrap(), 1);
     }
