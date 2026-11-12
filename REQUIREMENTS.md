@@ -130,6 +130,7 @@ after a release.
 
 | Option | Source | Why it waits |
 | --- | --- | --- |
+| Add the Figtree WOFF files and the `next/og` renderer version to the share image hash in `web/next.config.ts`; a dependency upgrade that redraws `/og.png` keeps its URL, and caches may serve the old picture for up to a year | review of PR #15 | Low finding without a secret or production risk; both are pinned (`@fontsource/figtree` 5.3.0, `next` 16.4.5), so only a deliberate upgrade redraws the picture |
 
 ## Open questions
 
