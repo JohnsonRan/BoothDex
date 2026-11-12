@@ -16,7 +16,11 @@ import { useEffect, useState } from "react";
 import { useUi } from "@/components/providers";
 import { type Filters, parseFilters } from "@/lib/catalog";
 import "@/lib/icons-on-demand";
-import { type ClauseNames, sortLabel, summaryTokens } from "./clause-text";
+import {
+  type ClauseNames,
+  sortLabel,
+  summaryTokens,
+} from "@/components/catalog/filter/clause-text";
 import type { Saved, useSavedSearches } from "./saved-searches";
 import { AdaptiveSavedViewForm } from "./saved-view-host";
 

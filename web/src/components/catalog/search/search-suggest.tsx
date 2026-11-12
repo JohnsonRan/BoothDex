@@ -17,12 +17,15 @@ import { Tokenizer } from "@astryxdesign/core/Tokenizer";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { TypeaheadItem } from "@astryxdesign/core/Typeahead";
 import { type RefObject, useEffect, useMemo, useRef } from "react";
+import {
+  CONTROL_SIZE,
+  type SearchMark,
+} from "@/components/catalog/filter/filter-style";
+import { useFilterUrl } from "@/components/catalog/filter/filter-url";
 import { useItemOpener, useRates } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
 import { markTokens, queryWords, selectAvatar } from "@/lib/catalog";
 import { loadHistory, saveHistory } from "@/lib/history";
-import { CONTROL_SIZE, type SearchMark } from "./filter-style";
-import { useFilterUrl } from "./filter-url";
 import { useSearch } from "./search-box";
 import { type Row, searchSource } from "./search-source";
 import "@/lib/icons-on-demand";

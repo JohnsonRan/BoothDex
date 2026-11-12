@@ -68,7 +68,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Filter clauses, sort, saved searches | the toolbar row | page `table-filter` `filterBar` (:3408-3494): one closed trigger per filter that doubles as its chip, folding from the end into "+N" (`FilterOverflow`, :2034-2121: `Popover`; `BottomSheet` on a compact surface), then the readout "{n} items • Clear all". End cluster: sort `DropdownMenu`, save (`IconButton`, `AdaptiveSavedViewForm` :2122), saved-views toggle swapping the row for `savedViewsBar` (:3495), then the avatar strip's toggle in the items view (see deviations) | checkpoint 1 |
 | Avatar strip | home, items view | block `CarouselSnap` (`SelectableCard` per avatar exactly as page `product-detail`'s image thumbnails, lines 117-150: square `AspectRatio` > `SelectableCard variant="transparent" padding={0}` filling it > image filling and covering; name as caption below); the first 14 cards until the strip is touched, focused or scrolled. Its label line as block `CarouselSnap` (:22-27: bold body label above the carousel, gap 3); the cards take the whole row; its toggle is in the toolbar's end cluster (see deviations). Shrunk with the scroll under the filter toolbar: the same strip as a row of chips, each the table-filter person cell (page `table-filter` :2862-2867: `HStack gap={2} vAlign="center"`, an `Avatar` and its name), the avatar the card's own image clipped round (`AspectRatio shape="ellipse"`) at Avatar's 32 px size (`Avatar` `size` scale), the name a supporting `Text` as the caption, the selection ring as wide as the `SelectableCard`'s own (2 px, SelectableCard.tsx:175-178), the selected chip a capsule in the selected row's fill (`Item` :418-420 `--color-accent-muted`, `Token`'s `--radius-full` :194) with its name semibold as a selected `TopNavItem` (:66-68); the "all" card's `site:allAvatars` glyph at 1rem in its chip; the prev/next buttons gone (they sit on the top layer above the band); open state and aria-expanded/aria-controls of block `CollapsibleHookUsage` (:14-42); see deviations | phase 1 |
 | Item detail | `?item=<id>`, tile click | page `product-detail` inside a `Dialog` (blocks `DialogAdaptivePresentation`, `DialogFullscreenDialog`, `DialogWithSubtitle`): gallery (block `CarouselSnap` hero, `SelectableCard` thumbnails, block `LightboxGallery` zoom), info column (SegmentedControl language tabs, display-2 title, rating row as likes, price row, `Badge` marks, `Banner` avatar fit, two lg actions, `CollapsibleGroup` sections with blocks `ListBasicList` and `MetadataListBasicMetadata`, `Token` chips), "More from" `Carousel` strip; full screen with a `LayoutFooter` bar below lg | phase 2 |
-| Endless results | the grid, page by page | page `table-filter` `useInfiniteBatches` (:1160-1237) with `/api/search` pages for its timer, sentinel (:2356-2376, margin two screens), "All N loaded" line (:4517-4538); silhouette tiles while a page loads, inline retry Banner on failure (in a page's own place for a page above); a start past page 1 puts the pages before it above it as boxes of the estimated height (at most 40 at once, more as the reader nears their top), each read when in view; the URL names the page in view (`replaceState`), Back and reload return to the same tile; hidden prev/next links for crawlers (`components/catalog/result-pages.tsx`) | phase 1 |
+| Endless results | the grid, page by page | page `table-filter` `useInfiniteBatches` (:1160-1237) with `/api/search` pages for its timer, sentinel (:2356-2376, margin two screens), "All N loaded" line (:4517-4538); silhouette tiles while a page loads, inline retry Banner on failure (in a page's own place for a page above); a start past page 1 puts the pages before it above it as boxes of the estimated height (at most 40 at once, more as the reader nears their top), each read when in view; the URL names the page in view (`replaceState`), Back and reload return to the same tile; hidden prev/next links for crawlers (`components/catalog/results/result-pages.tsx`) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
 | Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); every image box holds a `Skeleton` under its image until the image paints; refresh: nothing for 150 ms, then the template's indeterminate `ProgressBar` (:4341-4347) as a 2 px square line on the filter band's bottom edge (doona `apps/lite` src/ui.tsx:131-137, at its header's edge; restyled by its theme hooks for this instance only) held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
 | Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms; sign-in only, without the tabs, while registration is closed) | checkpoint 1 |
@@ -293,7 +293,7 @@ The header is the Filterable Table template's (`node_modules/@astryxdesign/cli/a
 not its PowerSearch mode. A set clause is its own chip, the row folds into "+N" instead of wrapping, and phones get
 the folded set in a BottomSheet. The site search leads the row; there is no separate search field, tab row or
 command palette. The search is a `Tokenizer` with block TypeaheadSearchField's search icon and suggestions
-(`catalog/search-suggest.tsx`): recent searches on focus, then `/api/palette`'s groups as `TypeaheadItem` rows with
+(`catalog/search/search-suggest.tsx`): recent searches on focus, then `/api/palette`'s groups as `TypeaheadItem` rows with
 a leading Avatar (the component's own example). Each word of the applied query is its own token, as on Mercari
 (a quoted phrase stays one): its × or Backspace searches the remaining words, Enter adds the typed words, a tag
 suggestion adds its name to them and a recent search replaces them. The words the search read as an avatar or a
@@ -327,14 +327,14 @@ Set clauses read as the template's triggers: a selector "field is value" (`rende
 multi-selector its first value and a count (:3315-3319), the price as the Quote range (`quoteLabel`, :2493-2499,
 with ≥ / ≤ as `OPERATOR_LABELS`). Chinese and Japanese write "is" as a full-width colon, Korean as ": ", the
 form those interfaces use for a field and its value. The saved search's summary uses the same words
-(`catalog/clause-text.ts`).
+(`catalog/filter/clause-text.ts`).
 
 Deviations, all prop values or token-backed inline styles:
 
 - The header `Section` keeps `padding={6}` (24 px) where the template has 16 px, so the title and the grid
   share one left edge (rule 5).
 - The template's StyleX rules (`filterChrome`, `filterSurface`, `filterFill`) are `style`/`controlStyle` objects
-  of the same tokens (`catalog/filter-style.ts`); the ones that need a container query or `:focus-within`
+  of the same tokens (`catalog/filter/filter-style.ts`); the ones that need a container query or `:focus-within`
   (`toolbarContainer`, `toolbarPrimary`, `searchSlot`, `filterRow`, slot and readout sizing) are classes in
   `app/filter-row.css`. The site has no StyleX compiler.
 - The readout is the slot's sibling, pulled back over the reserve, instead of its child: where a phone's toolbar
@@ -412,7 +412,7 @@ Checked and kept as the template:
 ## Deviations after the style audit
 
 - Search field width (`app/filter-row.css`): with a query it grows with its tokens (`--search-width`, reckoned in
-  `catalog/search-box.tsx` so the plain field before the tokens load is as wide) from 7.5rem up to 20rem, past
+  `catalog/search/search-box.tsx` so the plain field before the tokens load is as wide) from 7.5rem up to 20rem, past
   which the last words fold into "+N more"; focused, 6rem more for the typed words, up to 28rem. The tokens stay
   on the row's one line at `--size-element-sm`, scrolling sideways (the Tokenizer wraps them). A marked token
   reserves 1rem for its picture, so the field keeps its width when the search answers; marks apply only to the
@@ -430,7 +430,7 @@ Checked and kept as the template:
 - Viewed veil (`app/catalog.css` `.viewed-cover`): Overlay's scrims are `dark` (`--color-overlay`) or `light`
   (white at 60 % in every mode); neither follows the mode, and the light one fogged covers white on a dark page. The
   viewed mark passes `scrim={false}` and the veil is the page surface (`--color-background-surface`) at 60 %.
-- Filter sidebar (`catalog/filter-rail.tsx`): the `LayoutPanel` has no divider, and beside it the band's toolbar
+- Filter sidebar (`catalog/filter/filter-rail.tsx`): the `LayoutPanel` has no divider, and beside it the band's toolbar
   draws no lower edge over the avatar strip (`--band-edge`, `app/filter-row.css`): the panel's divider met the
   toolbar's and the shrunk strip's edges in a grid of lines (owner). Sticky under the top bar by a `style` object, as the filter band
   (`position: sticky`, the window's height, `align-self: flex-start`); a `CheckboxList`'s items lose their List

@@ -6,14 +6,14 @@
 // Before any record, the card draws what the item's tile showed (keepTiles): the shop, the cover, the title and
 // the price are on screen with the click.
 
-import type { Tile } from "@/components/catalog/item-tile";
+import type { Tile } from "@/components/catalog/results/item-tile";
 import { api } from "@/lib/api";
 import type { ItemResponse } from "@/lib/api-types";
 
 const TILES = 500;
 const tiles = new Map<number, Tile>();
 
-/** Remembers what these tiles show (catalog/tiles.tsx), the last 500. */
+/** Remembers what these tiles show (catalog/results/tiles.tsx), the last 500. */
 export function keepTiles(list: Tile[]): void {
   for (const tile of list) {
     tiles.delete(tile.id);

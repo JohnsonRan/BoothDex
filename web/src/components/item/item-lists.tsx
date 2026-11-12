@@ -10,7 +10,7 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { Token } from "@astryxdesign/core/Token";
 import { useState } from "react";
-import { useFilterUrl } from "@/components/catalog/filter-url";
+import { useFilterUrl } from "@/components/catalog/filter/filter-url";
 import { useUi } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
 import { avatarName, imageSrc } from "@/lib/catalog";

@@ -1,4 +1,4 @@
-// The results' page state outside React (components/catalog/result-pages.tsx): the address of a results page,
+// The results' page state outside React (components/catalog/results/result-pages.tsx): the address of a results page,
 // which page is in view, which pages are far enough to give up their tiles, where Back or a reload returns to, and
 // the list of pages as the grid draws it.
 
@@ -15,7 +15,7 @@ export const ABOVE = 40;
 /** Loaded pages kept for a return to the results this long, before they are read again. */
 const KEPT_MS = 5 * 60_000;
 
-/** The settings a tile's text and price are drawn in (catalog/item-tile.tsx tileOf): tiles drawn in others are read again. */
+/** The settings a tile's text and price are drawn in (catalog/results/item-tile.tsx tileOf): tiles drawn in others are read again. */
 export const drawnWith = (s: Settings) => `${s.ui} ${s.content} ${s.currency}`;
 
 /**

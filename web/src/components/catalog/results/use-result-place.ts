@@ -8,6 +8,7 @@ import {
   useCallback,
   useLayoutEffect,
 } from "react";
+import { covered } from "@/components/catalog/band/band-edge";
 import { restoreStep } from "@/lib/result-frame";
 import {
   type Dir,
@@ -18,7 +19,6 @@ import {
   type Snapshot,
 } from "@/lib/result-pages";
 import type { Settings } from "@/lib/settings-core";
-import { covered } from "./band-edge";
 import type { Page, PageReads, ResultRefs } from "./use-page-reads";
 
 /**

@@ -3,6 +3,7 @@
 // up for boxes, near ones drawn again, and the page in view read. The decisions are lib/result-frame.ts.
 
 import { type Dispatch, type SetStateAction, useEffect } from "react";
+import { covered } from "@/components/catalog/band/band-edge";
 import { framePages, pageToRead } from "@/lib/result-frame";
 import {
   type Dir,
@@ -15,7 +16,6 @@ import {
   type Snapshot,
   withPage,
 } from "@/lib/result-pages";
-import { covered } from "./band-edge";
 import { showInView } from "./page-in-view";
 import {
   firstInView,

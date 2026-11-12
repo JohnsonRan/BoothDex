@@ -4,8 +4,8 @@
 // below the first screen. The search results grow the same way, page by page (result-pages.tsx).
 
 import { useEffect, useRef, useState } from "react";
+import { TileSilhouette } from "@/components/catalog/silhouette";
 import type { Tile } from "./item-tile";
-import { TileSilhouette } from "./silhouette";
 import { Tiles } from "./tiles";
 
 export function LaterTiles({

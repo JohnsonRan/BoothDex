@@ -9,10 +9,10 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import { useRouter } from "next/navigation";
 import { useAccount } from "@/components/account/session";
+import { useFilterUrl } from "@/components/catalog/filter/filter-url";
 import { useUi } from "@/components/providers";
 import { activeFilterCount, FILTER_RESET } from "@/lib/catalog";
 import { useApiRecovery } from "@/lib/client-data";
-import { useFilterUrl } from "./filter-url";
 
 /** No results: with filters set, offer to clear them (the search itself stays). */
 export function EmptyResults() {

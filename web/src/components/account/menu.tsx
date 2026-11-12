@@ -11,7 +11,7 @@ import {
   type DropdownMenuOption,
 } from "@astryxdesign/core/DropdownMenu";
 import { Icon } from "@astryxdesign/core/Icon";
-import { useFilterUrl } from "@/components/catalog/filter-url";
+import { useFilterUrl } from "@/components/catalog/filter/filter-url";
 import { useUi } from "@/components/providers";
 import { type Me, useAccount } from "./session";
 import { AccountTrigger } from "./trigger";

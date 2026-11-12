@@ -50,7 +50,7 @@ registerIcons({
   "site:privacy": <ShieldCheck {...glyph} />,
   "site:terms": <FileText {...glyph} />,
   "site:tag": <Hash {...glyph} />,
-  // a search word read as a category (catalog/search-suggest.tsx)
+  // a search word read as a category (catalog/search/search-suggest.tsx)
   "site:category": <Shapes {...glyph} />,
   "site:edit": <Pencil {...glyph} />,
   "site:feed": <Rss {...glyph} />,

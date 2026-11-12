@@ -140,7 +140,7 @@ export const morphsOf = (parts: HTMLElement[]) => {
 };
 
 /**
- * The avatar strip turned by hand (catalog/band.tsx) along the scroll's path: each part runs its scroll morph's
+ * The avatar strip turned by hand (catalog/band/band.tsx) along the scroll's path: each part runs its scroll morph's
  * keyframes over time (`morphs`, to their end folding, back to their start growing or opening), while `slides` (the
  * strip, and in place the results after it) move down from `from` to `to` px, in step. Each holds its end until
  * cancelled, so the layout can take over in the same frame.

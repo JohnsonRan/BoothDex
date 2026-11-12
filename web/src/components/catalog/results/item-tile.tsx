@@ -14,6 +14,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
+import { SkeletonImage } from "@/components/catalog/silhouette";
 import type { ItemResponse } from "@/lib/api-types";
 import {
   FEATURES,
@@ -32,7 +33,6 @@ import {
   type Settings,
   type Translate,
 } from "@/lib/settings-core";
-import { SkeletonImage } from "./silhouette";
 import { ViewedMark } from "./viewed-mark";
 
 /** What a tile shows, already in the visitor's language and currency (small enough to send to the browser). */

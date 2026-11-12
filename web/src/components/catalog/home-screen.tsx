@@ -13,6 +13,15 @@ import { headers } from "next/headers";
 import { Suspense } from "react";
 import { RecentCount, RecentResults } from "@/components/account/recent-view";
 import { ViewActions } from "@/components/account/view-actions";
+import { FilterBand } from "@/components/catalog/band/band";
+import type { ClauseNames } from "@/components/catalog/filter/clause-text";
+import { FilterRail } from "@/components/catalog/filter/filter-rail-slot";
+import type {
+  Facets,
+  SearchMark,
+} from "@/components/catalog/filter/filter-style";
+import { FilterUrlProvider } from "@/components/catalog/filter/filter-url";
+import { ResultCount, Results } from "@/components/catalog/results/results";
 import { SiteFrame } from "@/components/frame/site-frame";
 import { itemParam } from "@/components/item/item-data";
 import { PreloadHero } from "@/components/item/item-preload";
@@ -43,13 +52,7 @@ import {
 } from "@/lib/server-data";
 import type { Rates, Settings } from "@/lib/settings-core";
 import { Arrival } from "./arrival";
-import { FilterBand } from "./band";
-import type { ClauseNames } from "./clause-text";
-import { FilterRail } from "./filter-rail-slot";
-import type { Facets, SearchMark } from "./filter-style";
-import { FilterUrlProvider } from "./filter-url";
 import { CountSilhouette, ResultsSilhouette } from "./loading";
-import { ResultCount, Results } from "./results";
 import { Toolbar } from "./toolbar";
 
 type Params = Record<string, string | string[] | undefined>;

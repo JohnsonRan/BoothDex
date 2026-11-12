@@ -9,12 +9,15 @@
 import { StackItem } from "@astryxdesign/core/Stack";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
+import {
+  CONTROL_SIZE,
+  type SearchMark,
+} from "@/components/catalog/filter/filter-style";
+import { useFilterUrl } from "@/components/catalog/filter/filter-url";
 import { useUi } from "@/components/providers";
 import { searchWidth } from "@/lib/catalog";
 import { recordQuery } from "@/lib/history";
 import { preloadWhenIdle } from "@/lib/lazy";
-import { CONTROL_SIZE, type SearchMark } from "./filter-style";
-import { useFilterUrl } from "./filter-url";
 
 const loadSuggest = () => import("./search-suggest");
 type Suggest = Awaited<ReturnType<typeof loadSuggest>>["SearchSuggest"];

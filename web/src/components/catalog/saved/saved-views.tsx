@@ -10,7 +10,10 @@ import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { useUi } from "@/components/providers";
 import "@/lib/icons-on-demand";
-import { CONTROL_SIZE, toggleStyle } from "./filter-style";
+import {
+  CONTROL_SIZE,
+  toggleStyle,
+} from "@/components/catalog/filter/filter-style";
 import type { Saved } from "./saved-searches";
 
 // savedViewChip (:1438): in a scrolling nowrap row a chip keeps its width instead of squeezing

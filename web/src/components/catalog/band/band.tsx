@@ -34,6 +34,8 @@ import {
   useState,
 } from "react";
 import { flushSync } from "react-dom";
+import type { Facets } from "@/components/catalog/filter/filter-style";
+import { RefreshProgress } from "@/components/catalog/refresh";
 import type { Avatar } from "@/lib/catalog";
 import {
   cancelOnReducedMotion,
@@ -48,8 +50,6 @@ import {
   type StripMorph,
 } from "./avatar-strip";
 import { attachBand, attachBar } from "./band-edge";
-import type { Facets } from "./filter-style";
-import { RefreshProgress } from "./refresh";
 import { StripToggleContext, type StripToggleState } from "./strip-toggle";
 
 // the top bar's height, which the AppShell keeps on its root for its own sticky parts

@@ -16,7 +16,7 @@ import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { useEffect, useRef, useState } from "react";
-import { useFilterUrl } from "@/components/catalog/filter-url";
+import { useFilterUrl } from "@/components/catalog/filter/filter-url";
 import { SkeletonImage, TextSilhouette } from "@/components/catalog/silhouette";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";

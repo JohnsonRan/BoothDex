@@ -288,7 +288,7 @@ export function selectAvatar(q: string, avatar: string, marks: Recognized[]) {
 }
 
 /**
- * The width in rem the search field's tokens take for `q` (catalog/search-suggest.tsx), so the field grows with
+ * The width in rem the search field's tokens take for `q` (catalog/search/search-suggest.tsx), so the field grows with
  * the query, the plain field before them as wide already. Measured on the field's `sm` tokens: a token is 1.85rem
  * besides its text, 0.25rem apart; a Latin letter about 0.32rem, a kana or kanji 0.75rem. 6rem: the search
  * icon, the clear button and the paddings, and 1rem for a mark's picture (`markTokens`), which arrives with the

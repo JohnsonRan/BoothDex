@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { covered } from "@/components/catalog/band/band-edge";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { SearchResponse } from "@/lib/api-types";
@@ -28,7 +29,6 @@ import {
   withRest,
 } from "@/lib/result-pages";
 import type { Rates, Settings } from "@/lib/settings-core";
-import { covered } from "./band-edge";
 import { type Tile, tileOf } from "./item-tile";
 
 export type Page = ResultPage<Tile>;
