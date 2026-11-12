@@ -140,3 +140,4 @@ to the file it decides.
 
 | Question | Source | Raised |
 | --- | --- | --- |
+| Should a failed sign-in count against the account whichever name was typed? `login` (`crates/api/src/account/sign_in.rs`) keys the lockout by the name as typed, the username or the email, and `check_own_password` (`crates/api/src/account/password.rs`) by the username. So the username and the email each have their own 10 attempts in 15 minutes; the limit of 5 attempts per IP still applies. Read from the code, not reproduced. | the split of `account.rs` into modules, where the writer read both functions | 2026-11-13 |
