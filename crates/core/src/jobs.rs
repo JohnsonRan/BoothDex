@@ -43,6 +43,14 @@ mod tests {
     }
 
     #[test]
+    fn all_lists_every_variant() {
+        // `as_str` is an exhaustive match, so it has one arm per variant; ALL must be as long
+        let source = include_str!("jobs.rs");
+        let arms = source.lines().filter(|l| l.trim_start().starts_with("Self::") && l.contains("=> \"")).count();
+        assert_eq!(JobKind::ALL.len(), arms);
+    }
+
+    #[test]
     fn names_round_trip() {
         for k in JobKind::ALL {
             assert_eq!(JobKind::parse(k.as_str()), Some(k));
