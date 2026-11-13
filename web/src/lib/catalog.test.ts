@@ -141,6 +141,79 @@ test("imageSrc avoids the closed VRCatalogue CDN", () => {
   expect(imageSrc(null)).toBe("");
 });
 
+const PLACEHOLDER = `https://asset.booth.pm/assets/thumbnail_placeholder_f_150x150-${"0".repeat(64)}.png`;
+const FACTORY_UUID = "04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74";
+const FACTORY_DIR =
+  "https://factory.pixiv.net/files/uploads/i/conceptual_drawing";
+const FACTORY_SAMPLE = `${FACTORY_DIR}/${FACTORY_UUID}/canvas_94032c5836.png`;
+const UNSERVED = [
+  "https://example.test/a.png",
+  "http://booth.pximg.net/u/i/1/a.jpg",
+  "https://asset.booth.pm/other/a.png",
+  "https://asset.booth.pm.evil.example/assets/a.png",
+  "https://asset.booth.pm/assets/a.svg",
+  "https://asset.booth.pm/assets/a.png?x=1",
+  "https://evil.example/https://booth.pximg.net/u/i/1/a.jpg",
+];
+const FACTORY_LOOKALIKES = [
+  `https://factory.pixiv.net/files/uploads/i/other/${FACTORY_UUID}/a.png`,
+  `${FACTORY_DIR}/${FACTORY_UUID.toUpperCase()}/a.png`,
+  `${FACTORY_DIR}/not-a-uuid/a.png`,
+  `${FACTORY_DIR}/${FACTORY_UUID}/x/a.png`,
+  `${FACTORY_DIR}/${FACTORY_UUID}/a.jpg`,
+  FACTORY_SAMPLE.replace("https:", "http:"),
+  FACTORY_SAMPLE.replace("factory.pixiv.net", "factory.pixiv.net.evil.example"),
+  `${FACTORY_SAMPLE}?x=1`,
+];
+const one = (u: string) => ({ booth_images: [u], media: [] });
+
+test("Booth's placeholder icon goes through the proxy", () => {
+  expect(imageSrc(PLACEHOLDER)).toBe(
+    `/img/a/thumbnail_placeholder_f_150x150-${"0".repeat(64)}.png?format=avif`,
+  );
+});
+
+test("an image no proxy route serves becomes the no-image state", () => {
+  for (const u of UNSERVED) {
+    expect(imageSrc(u)).toBe("");
+    expect(imgUrl(one(u))).toBe("");
+  }
+  expect(imageSrc("https://booth.pximg.net/c/300x300_a2_g5/u/i/1/a.jpg")).toBe(
+    "",
+  );
+});
+
+test("pixiv Factory drawings go through the proxy, look-alikes do not", () => {
+  const out = `/img/f/${FACTORY_UUID}/canvas_94032c5836.png?format=avif`;
+  expect(imgUrl(one(FACTORY_SAMPLE))).toBe(out);
+  expect(imgUrl(one(FACTORY_SAMPLE), 0, "orig")).toBe(out);
+  expect(imageSrc(FACTORY_SAMPLE)).toBe(out);
+  for (const u of FACTORY_LOOKALIKES) {
+    expect(imageSrc(u)).toBe("");
+    expect(imgUrl(one(u))).toBe("");
+  }
+});
+
+test("every image URL is the no-image state or on our /img path", () => {
+  const archive = `https://cdn.vrcatalogue.com/booth/${"c".repeat(40)}.webp`;
+  const inputs = [
+    PLACEHOLDER,
+    FACTORY_SAMPLE,
+    ...UNSERVED,
+    ...FACTORY_LOOKALIKES,
+    "https://booth.pximg.net/c/300x300_a2_g5/u/i/1/a.jpg",
+    "https://booth.pximg.net/u/i/1/a.jpg",
+    "https://booth.pximg.net/c/48x48/users/1/icon_image/x.jpg",
+    archive,
+  ];
+  const outputs = [
+    imageSrc(null),
+    imgUrl({ booth_images: null, media: [archive] }),
+    ...inputs.flatMap((u) => [imageSrc(u), imgUrl(one(u))]),
+  ];
+  for (const o of outputs) expect(o === "" || o.startsWith("/img/")).toBe(true);
+});
+
 test("clearing filters keeps the view, query, shop, avatar and sort", () => {
   const f = parseFilters(
     "v=avatars&q=hat&authors=Shop&avatars=rusk&sc=hair&if=quest&tags=a&adult=include&free=1&range=7d&gender=male&sort=newest",

@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 use axum::http::StatusCode;
+use reqwest::Url;
+use reqwest::redirect::Policy;
 
 /// Booth's own resize variants; anything else 403s upstream anyway. "orig" = original upload.
 const SIZES: &[&str] = &["48x48", "72x72_a2_g5", "300x300_a2_g5", "620x620", "orig"];
@@ -34,6 +36,33 @@ pub(crate) fn icon_upstream_url(size: &str, user: &str, file: &str) -> Option<St
     }
     let prefix = if size == "orig" { String::new() } else { format!("c/{size}/") };
     Some(format!("https://booth.pximg.net/{prefix}users/{user}/icon_image/{file}"))
+}
+
+/// Upstream URL for one of BOOTH's static images, such as the icon of a shop that has none.
+pub(crate) fn asset_upstream_url(file: &str) -> Option<String> {
+    is_booth_file(file).then(|| format!("https://asset.booth.pm/assets/{file}"))
+}
+
+/// Upstream URL for a pixiv Factory drawing that Booth lists as an item image. Every one seen is a png, and the
+/// extension is compared exactly because `is_booth_file` accepts any case, which the site never sends.
+pub(crate) fn factory_upstream_url(uuid: &str, file: &str) -> Option<String> {
+    let png = file.rsplit_once('.').is_some_and(|(_, ext)| ext == "png");
+    (png && is_uuid(uuid) && is_booth_file(file)).then(|| format!("https://factory.pixiv.net/files/uploads/i/conceptual_drawing/{uuid}/{file}"))
+}
+
+/// A redirect may move along the path of the same https host and port, never to another host, port or scheme: the
+/// hosts are fixed by the URL builders above, and a redirect must not lead past them.
+fn redirect_allowed(from: &Url, to: &Url) -> bool {
+    to.scheme() == "https" && to.host_str() == from.host_str() && to.port_or_known_default() == from.port_or_known_default()
+}
+
+/// The one client for every upstream host: it follows at most 10 redirects, reqwest's default count, and only those
+/// `redirect_allowed` accepts. A refused redirect comes back as the 3xx response, which `fetch_upstream` fails.
+pub(crate) fn upstream_client() -> reqwest::Result<reqwest::Client> {
+    // reqwest is built with `rustls-no-provider`, so building a client panics until a provider is installed
+    rustls::crypto::ring::default_provider().install_default().ok();
+    let policy = Policy::custom(|a| if a.previous().len() <= 10 && redirect_allowed(&a.previous()[0], a.url()) { a.follow() } else { a.stop() });
+    reqwest::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).build()
 }
 
 pub(crate) async fn fetch_upstream(client: &reqwest::Client, url: &str) -> Result<Option<Vec<u8>>> {
@@ -91,5 +120,60 @@ mod tests {
         assert!(icon_upstream_url("48x48", "1x", "a.jpg").is_none());
         assert!(icon_upstream_url("999x999", "1", "a.jpg").is_none());
         assert!(icon_upstream_url("48x48", "1", "../a.jpg").is_none());
+    }
+
+    #[test]
+    fn only_booth_asset_files_pass() {
+        let placeholder = format!("thumbnail_placeholder_f_150x150-{}.png", "0".repeat(64));
+        assert_eq!(asset_upstream_url(&placeholder), Some(format!("https://asset.booth.pm/assets/{placeholder}")));
+        for bad in ["", "../a.png", "a.svg", "a.png?x=@evil.com", "a.b.png", &format!("{}.png", "a".repeat(121))] {
+            assert!(asset_upstream_url(bad).is_none(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn only_factory_drawings_pass() {
+        let uuid = "04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74";
+        assert_eq!(
+            factory_upstream_url(uuid, "canvas_94032c5836.png").as_deref(),
+            Some("https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/canvas_94032c5836.png")
+        );
+        assert!(factory_upstream_url(&uuid.to_uppercase(), "a.png").is_none());
+        assert!(factory_upstream_url("04cee5a2-f70c-49f2-b9b6", "a.png").is_none());
+        for bad in ["", "a.jpg", "a.PNG", "../a.png", "a.svg", "a.png?x=@evil.com"] {
+            assert!(factory_upstream_url(uuid, bad).is_none(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn redirects_stay_on_the_same_https_host() {
+        let url = |s: &str| Url::parse(s).unwrap();
+        for host in ["booth.pximg.net", "asset.booth.pm", "factory.pixiv.net"] {
+            assert!(redirect_allowed(&url(&format!("https://{host}/a")), &url(&format!("https://{host}/b"))));
+            assert!(!redirect_allowed(&url(&format!("https://{host}/a")), &url(&format!("http://{host}/b"))));
+            assert!(!redirect_allowed(&url(&format!("https://{host}/a")), &url(&format!("https://{host}:8443/b"))));
+        }
+        let factory = url("https://factory.pixiv.net/a");
+        assert!(!redirect_allowed(&factory, &url("https://booth.pximg.net/b")));
+        assert!(!redirect_allowed(&factory, &url("https://evil.example/b")));
+        assert!(!redirect_allowed(&factory, &url("https://127.0.0.1/b")));
+    }
+
+    /// Loopback only: proves the client refuses an off-host redirect that reqwest's default policy follows.
+    #[tokio::test]
+    async fn the_client_refuses_an_off_host_redirect() {
+        use axum::http::header::LOCATION;
+        use axum::routing::get;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let app = axum::Router::new()
+            .route("/r", get(move || async move { (StatusCode::FOUND, [(LOCATION, format!("http://localhost:{port}/i"))]) }))
+            .route("/i", get(|| async { "image" }));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let start = format!("http://127.0.0.1:{port}/r");
+        assert!(fetch_upstream(&upstream_client().unwrap(), &start).await.is_err());
+        // the same request with reqwest's default policy, so the refusal above is the policy's doing
+        let default = reqwest::Client::builder().build().unwrap();
+        assert_eq!(fetch_upstream(&default, &start).await.unwrap().as_deref(), Some(&b"image"[..]));
     }
 }

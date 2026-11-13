@@ -106,7 +106,7 @@ docker compose pull && docker compose up -d
 
 - `worker` が 1 時間ごとに BOOTH の新着商品を取得し、毎日全件を巡回して価格更新や販売終了の判定を行い、人気商品も定期的に再確認します。
 - AI エンリッチメント *(オプション、任意の OpenAI 互換 API に対応、推論強度を設定可能)*: 新着商品に対してスマートカテゴリ、年齢制限、対応機能、および 4 言語 (日本語・英語・簡体字中国語・韓国語) のタイトル翻訳を自動付与し、名前照合による対応アバターの紐付けやカテゴリ・タグ名の翻訳も行います。セマンティック検索用の埋め込みベクトルも同じプロバイダーで生成します。
-- 画像プロキシが BOOTH の画像を AVIF に再エンコードしてキャッシュします。販売終了した商品の画像はアーカイブ済みのコピーから配信します。
+- 画像プロキシが BOOTH の画像とショップアイコンを AVIF に再エンコードしてキャッシュします。販売終了した商品の画像はアーカイブ済みのコピーから配信します。
 
 ### 管理画面
 
@@ -146,6 +146,8 @@ flowchart LR
   end
 
   imgproxy --> pximg["booth.pximg.net"]
+  imgproxy --> asset["asset.booth.pm"]
+  imgproxy --> factory["factory.pixiv.net"]
   worker --> booth["booth.pm"]
   worker -. "分類・翻訳・埋め込み" .-> ai["OpenAI 互換 API"]
   api -. "検索クエリ埋め込み" .-> ai
@@ -181,7 +183,7 @@ flowchart TD
 | `crates/core` | 共通型、BOOTH クライアント、および起動時に自動適用される `migrations/` 内の PostgreSQL スキーマ |
 | `crates/api` | 検索 API。絞り込みにはメモリ上の Roaring ビットマップを使用し、Tantivy 全文検索インデックスはディスク (`INDEX_DIR`) に保持して再起動時も再利用します。ページ表示用の商品データは PostgreSQL から取得します |
 | `crates/worker` | 3 レーン構成のジョブランナー: `incremental` (新着取得)、`sweep` (全件巡回)、`details`、`refresh`、`enrich`、`localize`、`embed` (AI)。`worker run` でデーモン起動、`worker once <kind> [params-json]` で単発実行します |
-| `crates/imgproxy` | `/b/{size}/...` で BOOTH 画像を AVIF に変換・キャッシュ配信し、`/v/{sha1}.webp` でアーカイブ画像を配信します |
+| `crates/imgproxy` | `/b/{size}/...` (商品画像)、`/u/{size}/...` (ショップアイコン)、`/a/{file}` (BOOTH の静的画像)、`/f/{uuid}/{file}` (pixiv Factory の画像) を AVIF に変換・キャッシュ配信し、`/v/{sha1}.webp` でアーカイブ画像を配信します |
 | `web` | Next.js フロントエンドおよび `/admin` 管理画面 |
 | `deploy` | Dockerfile、`docker-bake.hcl`、`compose.yaml`、および `.env.example` |
 | `scripts` | データバンドル作成ツール、モック AI サーバー |

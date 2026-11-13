@@ -25,10 +25,14 @@ flowchart LR
   end
 
   imgproxy -- "fetch & transcode" --> pximg["booth.pximg.net"]
+  imgproxy -- "fetch & transcode" --> asset["asset.booth.pm"]
+  imgproxy -- "fetch & transcode" --> factory["factory.pixiv.net"]
   worker -- "crawl" --> booth["booth.pm"]
   worker -. "enrich / embed" .-> ai["OpenAI-compatible API"]
   api -. "query embed" .-> ai
 ```
+
+`imgproxy` fetches only from `booth.pximg.net`, `asset.booth.pm` and `factory.pixiv.net`, over https, and follows no redirect off the host.
 
 `postgres`, `api`, `worker` and `imgproxy` publish no host ports; run maintenance commands through `docker compose exec` (for example `docker compose exec postgres psql -U catalogue catalogue`). `podman compose` works with the same commands.
 
