@@ -20,7 +20,7 @@
    the template is drawn: its filter row has no room for the scale. Control heights are px in Astryx
    (28/32/36), so they are restated in rem to scale with the text they hold. Viewport breakpoints stay px. */
 /* The colour scheme of a Theme's element follows its data-theme alone, as Theme's own styles set it per mode, so a
-   mode or theme switch shows at once from the attributes (components/providers.tsx showLook) and React's render
+   mode switch shows at once from the attributes (components/providers.tsx showLook) and React's render
    of it follows in a transition. Unlayered, so it wins over those styles' layer. */
 [data-astryx-theme][data-theme="light"] {
   color-scheme: light;
@@ -45,8 +45,8 @@ body {
 }
 
 /* Pure black (the setting, components/providers.tsx showLook): in dark mode, pinned or followed, the page's
-   backgrounds turn black and its raised ones (cards, popovers) near-black, in every theme. Only a token's dark
-   half is read there, so each is restated whole. Unlayered, so it wins over the themes' layer. */
+   backgrounds turn black and its raised ones (cards, popovers) near-black. Only a token's dark half is read
+   there, so each is restated whole. Unlayered, so it wins over the theme's layer. */
 html[data-black][data-theme="dark"],
 html[data-black] [data-astryx-theme][data-theme="dark"] {
   --color-background-surface: #000;
@@ -94,7 +94,7 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
 
 /* Popup lists (menus such as currency, a Selector's options such as category) and a dialog's body (the item
    card; its thumbnails and variations set the same inline) scroll without a visible bar: the
-   classic Windows bar, arrows included, took a third of a narrow menu's edge (owner, Matcha). Wheel, touch and
+   classic Windows bar, arrows included, took a third of a narrow menu's edge (owner). Wheel, touch and
    keyboard still scroll them, and the row cut at the bottom edge shows there is more. */
 .astryx-dropdown-menu,
 .astryx-selector-popup [role="listbox"],

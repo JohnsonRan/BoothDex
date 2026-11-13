@@ -10,7 +10,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   createContext,
-  use,
   useContext,
   useEffect,
   useMemo,
@@ -21,15 +20,12 @@ import {
 import { defaultThemeSlug, themes } from "@/astryx-themes";
 import "@/lib/icons";
 import type { Dict, UiLang } from "@/lib/messages";
-import { preferenceSession, savePreferences } from "@/lib/preferences";
+import { savePreferences } from "@/lib/preferences";
 import {
   LOCALES,
   parseSettings,
   SETTINGS_COOKIE,
   type Settings,
-  type Style,
-  shownMode,
-  styleSwitch,
   type Translate,
   translate,
 } from "@/lib/settings-core";
@@ -39,45 +35,25 @@ type Ui = {
   ui: UiLang;
   t: Translate;
   settings: Settings;
-  /** saves a change in the cookie for a year and applies it without a reload; false when the style asked for
-   *  cannot load (the page stays as it is) */
-  update: (patch: Partial<Settings>) => Promise<boolean>;
+  /** saves a change in the cookie for a year and applies it without a reload */
+  update: (patch: Partial<Settings>) => void;
 };
 const UiContext = createContext<Ui | null>(null);
 
 /** master's localStorage key for the settings, before they moved to the cookie */
 const LEGACY_SETTINGS = "settings";
 
-type Look = Pick<Settings, "theme" | "style" | "black">;
+type Look = Pick<Settings, "theme" | "black">;
 
-let onDemand: Promise<typeof import("@/themes") | null> | undefined;
-const importThemes = () => import("@/themes").catch(() => null);
-/** The other themes' code (themes/index.tsx), loaded once a page shows or chooses one; null if it cannot load. */
-const loadThemes = () => (onDemand ??= importThemes());
-
-/** Switches of style: each is shown once its stylesheet, object and fonts are in; a choice made after the themes'
- *  code failed to load tries it again. */
-const switchStyle = styleSwitch(async (style) => {
-  if (style === "neutral") return true;
-  let m = await loadThemes();
-  if (!m) {
-    onDemand = importThemes();
-    m = await onDemand;
-  }
-  return m?.prepareStyle(style) ?? false;
-}, preferenceSession);
-
-/** Puts a colour mode and theme on <html> and the root Theme's element at once, ahead of the render that follows
+/** Puts a colour mode on <html> and the root Theme's element at once, ahead of the render that follows
  *  (globals.css lets these attributes alone set the colour scheme). */
-function showLook({ theme, style, black }: Look) {
+function showLook({ theme, black }: Look) {
   const html = document.documentElement;
   html.toggleAttribute("data-black", black === "on");
   for (const el of [html, html.querySelector("body [data-astryx-theme]")]) {
     if (!el) continue;
-    const mode = shownMode(theme, style);
-    if (mode === "system") el.removeAttribute("data-theme");
-    else el.setAttribute("data-theme", mode);
-    el.setAttribute("data-astryx-theme", style);
+    if (theme === "system") el.removeAttribute("data-theme");
+    else el.setAttribute("data-theme", theme);
   }
   showChrome();
 }
@@ -106,23 +82,16 @@ export function Providers({
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  // the mode and theme apply at once on the client; the rest is rendered on the server
+  // the mode applies at once on the client; the rest is rendered on the server
   const [look, setLook] = useState<Look>({
     theme: fromServer.theme,
-    style: fromServer.style,
     black: fromServer.black,
   });
-  const lazy = look.style === "neutral" ? null : use(loadThemes());
-  const loaded = lazy?.styleTheme(look.style);
-  // a theme that cannot load shows neutral in the visitor's own mode, here and in Settings; the cookie keeps it, so
-  // a later visit tries it again
-  const style: Style = loaded ? look.style : "neutral";
-  const theme = loaded ?? themes[defaultThemeSlug];
   const locale = LOCALES[fromServer.ui];
   // what the cookie holds: a second change made before the first one's render arrives builds on it
   const written = useRef(fromServer);
   const value = useMemo<Ui>(() => {
-    const settings = { ...fromServer, ...look, style };
+    const settings = { ...fromServer, ...look };
     const save = (patch: Partial<Settings>) => {
       const next = { ...written.current, ...patch };
       written.current = next;
@@ -130,13 +99,9 @@ export function Providers({
       document.cookie = `${SETTINGS_COOKIE}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=31536000; samesite=lax`;
       // signed in, the account keeps them too (lib/preferences.ts)
       savePreferences(patch);
-      if (patch.theme || patch.style || patch.black) {
-        const shown = {
-          theme: next.theme,
-          style: next.style,
-          black: next.black,
-        };
-        showLook(next.style === look.style ? { ...shown, style } : shown);
+      if (patch.theme || patch.black) {
+        const shown = { theme: next.theme, black: next.black };
+        showLook(shown);
         // the new look then reaches every Icon and setting in a transition: an urgent update hydrated the page's
         // pending content (site-frame's Activity) in one long task, up to 1 s at 4x CPU
         startTransition(() => setLook(shown));
@@ -149,35 +114,20 @@ export function Providers({
       ui: settings.ui,
       t: translate(messages),
       settings,
-      update: async ({ style: asked, ...patch }) => {
-        if (Object.keys(patch).length) save(patch);
-        if (!asked) return true;
-        // one that cannot load leaves the page as it is
-        const done = await switchStyle(asked, () => {
-          if (asked !== written.current.style) save({ style: asked });
-        });
-        return done !== "failed";
-      },
+      update: save,
     };
-  }, [fromServer, messages, look, style, router]);
+  }, [fromServer, messages, look, router]);
 
-  // a theme that failed to load: <html> and the root Theme's element can still carry it from the head script or
-  // the server render, which hydration does not correct
-  useEffect(() => {
-    if (style !== look.style) showLook({ ...look, style });
-  }, [look, style]);
-
-  // the bar follows the look the page opened in (a pinned mode or theme, from the head script or the server) and
-  // then the system's mode while that is followed
-  const mode = shownMode(look.theme, style);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: style changes the background read
+  // the bar follows the mode the page opened in (a pinned one, from the head script or the server) and then the
+  // system's mode while that is followed
+  const mode = look.theme;
   useEffect(() => {
     showChrome();
     if (mode !== "system") return;
     const dark = matchMedia("(prefers-color-scheme: dark)");
     dark.addEventListener("change", showChrome);
     return () => dark.removeEventListener("change", showChrome);
-  }, [mode, style]);
+  }, [mode]);
 
   // the language the page is rendered in, also when it came from Accept-Language rather than the cookie
   useEffect(() => {
@@ -208,9 +158,7 @@ export function Providers({
   }, [update]);
 
   return (
-    <Theme theme={theme} mode={mode}>
-      {/* the theme shown: one that failed to load shows neutral, which needs none */}
-      {lazy && <lazy.ThemeSheet name={theme.name} />}
+    <Theme theme={themes[defaultThemeSlug]} mode={mode}>
       <InternationalizationProvider
         locale={locale}
         messages={catalogue ? { [locale]: catalogue } : undefined}
