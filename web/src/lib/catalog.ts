@@ -54,8 +54,10 @@ const proxied = (u: string, size: Size) => {
   if (u.startsWith(PXIMG))
     return `/img/b/${size}/${u.slice(PXIMG.length)}?format=avif`;
   const factory = u.match(FACTORY);
-  // pixiv Factory has no resize variants, so the size does not apply
-  return factory ? `/img/f/${factory[1]}/${factory[2]}?format=avif` : "";
+  // pixiv Factory has no resize variants: imgproxy scales the drawing down to the size itself
+  return factory
+    ? `/img/f/${size}/${factory[1]}/${factory[2]}?format=avif`
+    : "";
 };
 const PXIMG = "https://booth.pximg.net/";
 const FACTORY =

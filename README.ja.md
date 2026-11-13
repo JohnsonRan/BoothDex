@@ -183,7 +183,7 @@ flowchart TD
 | `crates/core` | 共通型、BOOTH クライアント、および起動時に自動適用される `migrations/` 内の PostgreSQL スキーマ |
 | `crates/api` | 検索 API。絞り込みにはメモリ上の Roaring ビットマップを使用し、Tantivy 全文検索インデックスはディスク (`INDEX_DIR`) に保持して再起動時も再利用します。ページ表示用の商品データは PostgreSQL から取得します |
 | `crates/worker` | 3 レーン構成のジョブランナー: `incremental` (新着取得)、`sweep` (全件巡回)、`details`、`refresh`、`enrich`、`localize`、`embed` (AI)。`worker run` でデーモン起動、`worker once <kind> [params-json]` で単発実行します |
-| `crates/imgproxy` | `/b/{size}/...` (商品画像)、`/u/{size}/...` (ショップアイコン)、`/a/{file}` (BOOTH の静的画像)、`/f/{uuid}/{file}` (pixiv Factory の画像) を AVIF に変換・キャッシュ配信し、`/v/{sha1}.webp` でアーカイブ画像を配信します |
+| `crates/imgproxy` | `/b/{size}/...` (商品画像)、`/u/{size}/...` (ショップアイコン)、`/a/{file}` (BOOTH の静的画像)、`/f/{size}/{uuid}/{file}` (pixiv Factory の画像。imgproxy がサイズに合わせて縮小) を AVIF に変換・キャッシュ配信し、`/v/{sha1}.webp` でアーカイブ画像を配信します |
 | `web` | Next.js フロントエンドおよび `/admin` 管理画面 |
 | `deploy` | Dockerfile、`docker-bake.hcl`、`compose.yaml`、および `.env.example` |
 | `scripts` | データバンドル作成ツール、モック AI サーバー |
