@@ -1,0 +1,264 @@
+{
+  "cases": [
+    {
+      "name": "booth image",
+      "booth_images": [
+        "https://booth.pximg.net/u/i/1/a.jpg"
+      ],
+      "media": [],
+      "path": "/img/b/300x300_a2_g5/u/i/1/a.jpg?format=avif"
+    },
+    {
+      "name": "booth image wins over archive media",
+      "booth_images": [
+        "https://booth.pximg.net/u/i/1/a.jpg"
+      ],
+      "media": [
+        "https://cdn.vrcatalogue.com/booth/0123456789abcdef0123456789abcdef01234567.webp"
+      ],
+      "path": "/img/b/300x300_a2_g5/u/i/1/a.jpg?format=avif"
+    },
+    {
+      "name": "factory drawing",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/canvas_94032c5836.png"
+      ],
+      "media": [],
+      "path": "/img/f/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/canvas_94032c5836.png?format=avif"
+    },
+    {
+      "name": "archive media",
+      "booth_images": null,
+      "media": [
+        "https://cdn.vrcatalogue.com/booth/0123456789abcdef0123456789abcdef01234567.webp"
+      ],
+      "path": "/img/v/0123456789abcdef0123456789abcdef01234567.webp"
+    },
+    {
+      "name": "empty gallery falls back to archive media",
+      "booth_images": [],
+      "media": [
+        "https://cdn.vrcatalogue.com/booth/0123456789abcdef0123456789abcdef01234567.webp"
+      ],
+      "path": "/img/v/0123456789abcdef0123456789abcdef01234567.webp"
+    },
+    {
+      "name": "empty first gallery entry falls back to archive media",
+      "booth_images": [
+        ""
+      ],
+      "media": [
+        "https://cdn.vrcatalogue.com/booth/0123456789abcdef0123456789abcdef01234567.webp"
+      ],
+      "path": "/img/v/0123456789abcdef0123456789abcdef01234567.webp"
+    },
+    {
+      "name": "empty first gallery entry without media",
+      "booth_images": [
+        ""
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "no image at all",
+      "booth_images": null,
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "foreign host decides even with archive media",
+      "booth_images": [
+        "https://example.test/a.png"
+      ],
+      "media": [
+        "https://cdn.vrcatalogue.com/booth/0123456789abcdef0123456789abcdef01234567.webp"
+      ],
+      "path": null
+    },
+    {
+      "name": "uppercase factory uuid",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04CEE5A2-F70C-49F2-B9B6-4C09A6B9BB74/a.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory extension case",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a.PNG"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory jpg",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a.jpg"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory without extension",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory nested file",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/x/a.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory query string",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a.png?x=1"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory uuid group 1 too short",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/4cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory uuid group 1 too long",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/004cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory uuid group 2 too short",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70-49f2-b9b6-4c09a6b9bb74/a.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory uuid group 3 too long",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f20-b9b6-4c09a6b9bb74/a.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory uuid group 4 too short",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b-4c09a6b9bb74/a.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory uuid group 5 too long",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb740/a.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory uuid groups shifted, 36 characters",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2f-70c-49f2-b9b6-4c09a6b9bb74/a.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory uuid with a non-hex digit",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04ceg5a2-f70c-49f2-b9b6-4c09a6b9bb74/a.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory file name of 1 character",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a.png"
+      ],
+      "media": [],
+      "path": "/img/f/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a.png?format=avif"
+    },
+    {
+      "name": "factory file name of 120 characters",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
+      ],
+      "media": [],
+      "path": "/img/f/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png?format=avif"
+    },
+    {
+      "name": "factory file name of 121 characters",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory empty file name",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "factory file name with a dash and underscore",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a_b-c.png"
+      ],
+      "media": [],
+      "path": "/img/f/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a_b-c.png?format=avif"
+    },
+    {
+      "name": "factory file name with a space",
+      "booth_images": [
+        "https://factory.pixiv.net/files/uploads/i/conceptual_drawing/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/a b.png"
+      ],
+      "media": [],
+      "path": null
+    },
+    {
+      "name": "archive sha too short",
+      "booth_images": null,
+      "media": [
+        "https://cdn.vrcatalogue.com/booth/123456789abcdef0123456789abcdef01234567.webp"
+      ],
+      "path": null
+    },
+    {
+      "name": "archive sha uppercase",
+      "booth_images": null,
+      "media": [
+        "https://cdn.vrcatalogue.com/booth/0123456789ABCDEF0123456789ABCDEF01234567.webp"
+      ],
+      "path": null
+    },
+    {
+      "name": "archive link without the booth directory",
+      "booth_images": null,
+      "media": [
+        "https://cdn.vrcatalogue.com/x.webp"
+      ],
+      "path": null
+    }
+  ]
+}
