@@ -83,19 +83,20 @@ export function visitorHeaders(from: Headers): Record<string, string> {
 /**
  * One page of card-sized results. Sent with the visitor's headers: the favourites view belongs to the session.
  * `noSemantic` keeps later pages of a search that went without meaning-based matches on the same result set.
- * `pageSize` 1 reads little more than the count.
+ * `without`: groups of filter parameter names; a search that finds nothing also counts what it finds without each
+ * (`widerCounts`), in the same request.
  */
 export async function searchItems(
   filters: Filters,
   page: number,
   noSemantic: boolean,
-  pageSize = PAGE_SIZE,
+  without: string[][] = [],
 ): Promise<SearchOutcome> {
   const forwarded = visitorHeaders(await headers());
   const start = performance.now();
   try {
     const result = await getJson<SearchResponse>(
-      `/api/search?${searchQuery(filters, page, pageSize)}&fields=card${noSemantic ? "&sem=0" : ""}`,
+      `/api/search?${searchQuery(filters, page, PAGE_SIZE)}&fields=card${noSemantic ? "&sem=0" : ""}${without.length ? `&without=${without.map((g) => g.join(",")).join("+")}` : ""}`,
       { cache: "no-store", headers: forwarded },
     );
     return { state: "ok", result, ms: performance.now() - start };

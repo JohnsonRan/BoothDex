@@ -3,7 +3,7 @@
 // Quote range "field low – high", `quoteLabel` :2493-2499) and what a saved search's summary lists
 // (`filterTokenLabel`, :1268-1289). One source for both, so a saved search describes itself as the row did.
 
-import { FEATURES, type Filters } from "@/lib/catalog";
+import { FEATURES, type Filters, filtersToQuery } from "@/lib/catalog";
 import type { MessageKey } from "@/lib/messages";
 import type { Translate } from "@/lib/settings-core";
 
@@ -129,20 +129,37 @@ export function clauseTexts(
 /** A search one clause wider than the current one: the clause dropped, its text, and how many items it finds. */
 export type Wider = { key: ClauseKey; label: string; count: number };
 
-/** Every set clause with the filters that drop just that clause. */
-export function withoutEach(f: Filters, names: ClauseNames, t: Translate) {
-  return (
-    Object.entries(clauseTexts(f, names, t)) as [ClauseKey, string][]
-  ).map(([key, label]) => ({
-    key,
-    label,
-    filters: { ...f, ...CLAUSE_CLEAR[key] },
-  }));
+const paramNames = (f: Filters) =>
+  new Set(
+    filtersToQuery(f)
+      .split("&")
+      .map((kv) => kv.split("=")[0]),
+  );
+
+/** Each set clause with the search parameters that clearing it removes: the search's `without=` groups. */
+export function clauseParams(f: Filters): [ClauseKey, string[]][] {
+  const has = paramNames(f);
+  return (Object.keys(CLAUSE_CLEAR) as ClauseKey[]).flatMap((key) => {
+    const left = paramNames({ ...f, ...CLAUSE_CLEAR[key] });
+    const gone = [...has].filter((name) => !left.has(name));
+    return gone.length ? [[key, gone] as [ClauseKey, string[]]] : [];
+  });
 }
 
-/** The wider searches that find something, the most items first; ties keep the row's order. */
-export const widestFirst = (list: Wider[]) =>
-  list.filter((w) => w.count > 0).sort((a, b) => b.count - a.count);
+/** The row's set clauses with what the search finds without each (`counts`: the answer to `clauseParams`' groups,
+ *  in their order), those that find something, the most items first; ties keep the row's order. */
+export function widerSearches(
+  f: Filters,
+  names: ClauseNames,
+  t: Translate,
+  counts: readonly number[],
+): Wider[] {
+  const byKey = new Map(clauseParams(f).map(([key], i) => [key, counts[i]]));
+  return (Object.entries(clauseTexts(f, names, t)) as [ClauseKey, string][])
+    .map(([key, label]) => ({ key, label, count: byKey.get(key) ?? 0 }))
+    .filter((w) => w.count > 0)
+    .sort((a, b) => b.count - a.count);
+}
 
 /** A search's conditions as the summary's tokens: the text query, the pressed presets, then the clauses. */
 export function summaryTokens(

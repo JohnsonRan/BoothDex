@@ -8,9 +8,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import {
   type ClauseNames,
-  type Wider,
-  widestFirst,
-  withoutEach,
+  widerSearches,
 } from "@/components/catalog/filter/clause-text";
 import { ClearAll } from "@/components/catalog/filter/filter-bar";
 import { KeepResults, Swap } from "@/components/catalog/refresh";
@@ -18,13 +16,8 @@ import { SearchTrace } from "@/components/catalog/search/search-trace";
 import { type Filters, filtersToQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
 import { drawnWith, pageQuery } from "@/lib/result-pages";
-import { type SearchOutcome, searchItems } from "@/lib/server-data";
-import {
-  LOCALES,
-  type Rates,
-  type Settings,
-  type Translate,
-} from "@/lib/settings-core";
+import type { SearchOutcome } from "@/lib/server-data";
+import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { FIRST_TILES, tileOf } from "./item-tile";
 import { PageInView } from "./page-in-view";
 import { ResultPages } from "./result-pages";
@@ -71,22 +64,6 @@ export async function ResultCount({
   );
 }
 
-/** For an empty search: what each set clause, dropped alone, would find; read the way the empty search was. */
-async function wider(
-  filters: Filters,
-  names: ClauseNames,
-  t: Translate,
-  lexical: boolean,
-): Promise<Wider[]> {
-  const counted = await Promise.all(
-    withoutEach(filters, names, t).map(async ({ key, label, filters }) => {
-      const o = await searchItems(filters, 1, lexical, 1);
-      return { key, label, count: o.state === "ok" ? o.result.count : 0 };
-    }),
-  );
-  return widestFirst(counted);
-}
-
 export async function Results({
   outcome,
   rates,
@@ -113,7 +90,10 @@ export async function Results({
     return (
       <KeepResults>
         <Swap>
-          <EmptyResults wider={await wider(filters, names, t, lexical)} />
+          <EmptyResults
+            // an API from before `widerCounts` leaves it out
+            wider={widerSearches(filters, names, t, result.widerCounts ?? [])}
+          />
         </Swap>
       </KeepResults>
     );
