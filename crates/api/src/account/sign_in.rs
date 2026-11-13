@@ -22,11 +22,11 @@ fn valid_email(e: &str) -> bool {
 }
 
 fn valid_login(l: &str) -> bool {
-    l.len() <= 254
+    l.len() <= 254 && crate::storable(l)
 }
 
 pub(super) fn valid_display_name(n: &str) -> bool {
-    (1..=50).contains(&n.trim().chars().count())
+    (1..=50).contains(&n.trim().chars().count()) && crate::storable(n)
 }
 
 /// Open unless an admin closed it.

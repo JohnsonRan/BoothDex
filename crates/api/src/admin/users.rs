@@ -37,6 +37,10 @@ pub(super) struct ListQuery {
 pub(super) async fn list(State(s): State<Arc<AppState>>, headers: HeaderMap, Query(p): Query<ListQuery>) -> Result<Response, ApiError> {
     require_admin(&s, &headers).await?;
     let q: String = p.q.trim().to_lowercase().chars().take(100).collect();
+    // no stored name holds a NUL
+    if !crate::storable(&q) {
+        return Ok(Json(json!({ "total": 0, "users": [] })).into_response());
+    }
     let v: Value = sqlx::query_scalar(concat!(
         "with m as (select * from users u
                     where $1 = '' or strpos(lower(u.username), $1) > 0 or strpos(lower(u.email), $1) > 0 or strpos(lower(u.display_name), $1) > 0)
