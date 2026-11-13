@@ -210,8 +210,8 @@ pub(crate) async fn semantic_vector(s: Arc<AppState>, ip: std::net::IpAddr, q: &
     let config = s.ai_config().await;
     trace.step("settings");
     let Ok(c) = config else { return EmbedPlan::Unavailable };
-    let (Some(base), Some(key), Some(model)) = (c.base_url.clone(), c.api_key.clone(), c.embed_model.clone()) else { return EmbedPlan::Off };
-    match query_embedding(s, ip, q, base, key, model, trace).await {
+    let (Some(base_url), Some(api_key), Some(model)) = (c.base_url.clone(), c.api_key.clone(), c.embed_model.clone()) else { return EmbedPlan::Off };
+    match query_embedding(s, ip, q, EmbedProvider { base_url, api_key, model }, trace).await {
         Some(v) => EmbedPlan::Vector(v),
         None => EmbedPlan::Unavailable,
     }
@@ -219,7 +219,8 @@ pub(crate) async fn semantic_vector(s: Arc<AppState>, ip: std::net::IpAddr, q: &
 
 /// The search text the embedding is cached under: case and spacing don't change the meaning.
 pub(crate) fn normalize_query(q: &str) -> String {
-    q.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    // a NUL breaks words like a space: query_embeddings cannot store it
+    q.split(|c: char| c.is_whitespace() || c == '\0').filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ").to_lowercase()
 }
 
 pub(crate) struct ClearInflight {
@@ -233,17 +234,23 @@ impl Drop for ClearInflight {
     }
 }
 
+/// The provider an embedding request goes to. It has no `Debug` impl so the key cannot reach a log.
+pub(crate) struct EmbedProvider {
+    pub(crate) base_url: String,
+    pub(crate) api_key: String,
+    pub(crate) model: String,
+}
+
 /// Embedding of a search text: process memory, then the query_embeddings table, then the provider.
 pub(crate) async fn query_embedding(
     s: Arc<AppState>,
     ip: std::net::IpAddr,
     q: &str,
-    base: String,
-    key: String,
-    model: String,
+    provider: EmbedProvider,
     trace: &mut Trace,
 ) -> Option<Vec<f32>> {
     use boothdex_core::embed;
+    let EmbedProvider { base_url: base, api_key: key, model } = provider;
     let text = normalize_query(q);
     let cache_key = format!("{model}\n{text}");
     if let Some(v) = s.embed_cache.get(&cache_key) {

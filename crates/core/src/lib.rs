@@ -1,6 +1,7 @@
 pub mod booth;
 pub mod booth_client;
 pub mod embed;
+pub mod jobs;
 pub mod settings;
 
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
