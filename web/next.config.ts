@@ -9,12 +9,24 @@ const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:3000";
 const IMG_ORIGIN = process.env.IMG_ORIGIN ?? "http://127.0.0.1:3001";
 
 // Social platforms cache a share image by its URL, so SHARE_IMAGE in lib/seo.ts links /og.png with a hash of the
-// files that draw and size it; a changed picture gets a new URL.
-const SHARE_IMAGE_HASH = createHash("sha256")
-  .update(readFileSync("src/app/og.png/route.tsx"))
-  .update(readFileSync("src/lib/seo.ts"))
-  .digest("hex")
-  .slice(0, 16);
+// files that draw and size it; a changed picture gets a new URL. The fonts are the ones the route reads, and the
+// renderer is next/og's Node build, so a dependency upgrade that redraws the picture also changes the URL.
+const SHARE_IMAGE_INPUTS = [
+  "src/app/og.png/route.tsx",
+  "src/lib/seo.ts",
+  "node_modules/@fontsource/figtree/files/figtree-latin-500-normal.woff",
+  "node_modules/@fontsource/figtree/files/figtree-latin-700-normal.woff",
+  "node_modules/next/dist/compiled/@vercel/og/index.node.js",
+  "node_modules/next/dist/compiled/@vercel/og/resvg.wasm",
+];
+export const shareImageHash = (
+  read: (path: string) => string | Uint8Array = readFileSync,
+) => {
+  const hash = createHash("sha256");
+  for (const path of SHARE_IMAGE_INPUTS) hash.update(read(path));
+  return hash.digest("hex").slice(0, 16);
+};
+const SHARE_IMAGE_HASH = shareImageHash();
 
 const nextConfig: NextConfig = {
   // self-contained server for the container image (deploy/web.Dockerfile)
