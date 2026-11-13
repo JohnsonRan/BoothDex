@@ -15,14 +15,14 @@
     "format": "biome format --write"
   },
   "dependencies": {
-    "@astryxdesign/core": "^0.7.8",
-    "@astryxdesign/theme-butter": "0.7.8",
-    "@astryxdesign/theme-chocolate": "0.7.8",
-    "@astryxdesign/theme-gothic": "0.7.8",
-    "@astryxdesign/theme-matcha": "0.7.8",
-    "@astryxdesign/theme-neutral": "^0.7.8",
-    "@astryxdesign/theme-stone": "0.7.8",
-    "@astryxdesign/theme-y2k": "0.7.8",
+    "@astryxdesign/core": "^0.7.15",
+    "@astryxdesign/theme-butter": "0.7.15",
+    "@astryxdesign/theme-chocolate": "0.7.15",
+    "@astryxdesign/theme-gothic": "0.7.15",
+    "@astryxdesign/theme-matcha": "0.7.15",
+    "@astryxdesign/theme-neutral": "^0.7.15",
+    "@astryxdesign/theme-stone": "0.7.15",
+    "@astryxdesign/theme-y2k": "0.7.15",
     "@fontsource-variable/albert-sans": "5.3.0",
     "@fontsource-variable/dm-sans": "5.3.0",
     "@fontsource-variable/fraunces": "5.3.0",
@@ -43,7 +43,7 @@
     "recharts": "3.10.1"
   },
   "devDependencies": {
-    "@astryxdesign/cli": "0.7.8",
+    "@astryxdesign/cli": "0.7.15",
     "@biomejs/biome": "2.6.7",
     "@types/bun": "^1.4.4",
     "@types/node": "^26.6.6",
