@@ -121,12 +121,6 @@ async fn serve_until(
     }
 }
 
-/// PostgreSQL `text` and `jsonb` cannot hold U+0000: a bound NUL fails the statement, and the caller would get a 500
-/// instead of the refusal its input deserves. Request text checks this before it is bound.
-pub(crate) fn storable(s: &str) -> bool {
-    !s.contains('\0')
-}
-
 /// reqwest is built without a default crypto provider: install ring once, before any client is built.
 fn install_tls() {
     rustls::crypto::ring::default_provider().install_default().ok();

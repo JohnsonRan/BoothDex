@@ -197,9 +197,9 @@ fn valid_params(p: &Value) -> bool {
 
 fn json_storable(v: &Value) -> bool {
     match v {
-        Value::String(s) => crate::storable(s),
+        Value::String(s) => crate::error::storable(s),
         Value::Array(a) => a.iter().all(json_storable),
-        Value::Object(o) => o.iter().all(|(k, v)| crate::storable(k) && json_storable(v)),
+        Value::Object(o) => o.iter().all(|(k, v)| crate::error::storable(k) && json_storable(v)),
         _ => true,
     }
 }
@@ -248,7 +248,7 @@ struct ScheduleUpdate {
 
 async fn update_schedule(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(kind): Path<String>, Json(b): Json<ScheduleUpdate>) -> Result<Response, ApiError> {
     require_admin(&s, &headers).await?;
-    if !crate::storable(&kind) {
+    if !crate::error::storable(&kind) {
         return Err(Refusal::NoSuchSchedule.into());
     }
     if b.interval_minutes.is_some_and(|m| !(5..=10080).contains(&m)) || b.params.as_ref().is_some_and(|p| !p.is_object() || !valid_params(p)) {
@@ -336,7 +336,7 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
     require_admin(&s, &headers).await?;
     let url_ok = b.base_url.as_deref().is_none_or(|u| u.len() <= 300 && (u.starts_with("https://") || u.starts_with("http://")));
     let effort = b.reasoning_effort.as_deref().map(settings::reasoning_effort);
-    let storable = [&b.base_url, &b.model, &b.embed_model, &b.api_key].iter().all(|f| f.as_deref().is_none_or(crate::storable));
+    let storable = [&b.base_url, &b.model, &b.embed_model, &b.api_key].iter().all(|f| f.as_deref().is_none_or(crate::error::storable));
     if !url_ok || !storable || [&b.model, &b.embed_model].iter().any(|m| m.as_deref().is_some_and(|m| m.len() > 100)) || b.api_key.as_deref().is_some_and(|k| k.len() > 500) || effort == Some(None) {
         return Err(Refusal::BadAiSettings.into());
     }

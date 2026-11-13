@@ -38,7 +38,7 @@ pub(super) async fn list(State(s): State<Arc<AppState>>, headers: HeaderMap, Que
     require_admin(&s, &headers).await?;
     let q: String = p.q.trim().to_lowercase().chars().take(100).collect();
     // no stored name holds a NUL
-    if !crate::storable(&q) {
+    if !crate::error::storable(&q) {
         return Ok(Json(json!({ "total": 0, "users": [] })).into_response());
     }
     let v: Value = sqlx::query_scalar(concat!(
