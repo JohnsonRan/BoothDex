@@ -166,7 +166,7 @@ mod tests {
     }
 
     /// The cases in `tests/fixtures/feed-image-paths.json` are shared with `imgUrl` in `web/src/lib/catalog.ts`:
-    /// `web/src/lib/catalog.test.ts` reads the same file, so the two mappings cannot drift apart unnoticed.
+    /// `web/src/lib/catalog.test.ts` reads the same file, so the two mappings must agree on every case listed there; an input the fixture lacks is not compared.
     #[test]
     fn image_path_matches_the_shared_fixture() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!("../tests/fixtures/feed-image-paths.json")).unwrap();
