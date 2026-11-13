@@ -19,6 +19,7 @@ use serde_json::Value;
 use sqlx::PgPool;
 
 use booth::Booth;
+use boothdex_core::jobs::JobKind;
 
 #[cfg(test)]
 async fn retry_test_server(status: axum::http::StatusCode, retry_after: Option<&'static str>) -> (String, Arc<std::sync::atomic::AtomicU64>) {
@@ -130,10 +131,10 @@ async fn execute(pool: &PgPool, booth: &Booth, id: i64, kind: &str, params: &Val
 
 /// Jobs in one lane run one at a time; lanes run side by side. Grouped by the outside service they load.
 fn lane(kind: &str) -> &str {
-    match kind {
-        "incremental" | "details" | "refresh" | "sweep" => "booth",
-        "enrich" | "localize" => "ai",
-        other => other,
+    match JobKind::parse(kind) {
+        Some(JobKind::Incremental | JobKind::Details | JobKind::Refresh | JobKind::Sweep) => "booth",
+        Some(JobKind::Enrich | JobKind::Localize) => "ai",
+        Some(JobKind::Embed) | None => kind,
     }
 }
 
@@ -157,8 +158,9 @@ async fn daemon(pool: PgPool, booth: Arc<Booth>) -> Result<()> {
         .await?;
         // oldest queued job whose lane is free; embed waits until no enrich job is live, because enrichment
         // clears the vectors of the items it touches and they would be embedded twice
-        let busy_kinds: Vec<&str> = ["incremental", "details", "refresh", "sweep", "enrich", "localize", "embed"]
+        let busy_kinds: Vec<&str> = JobKind::ALL
             .into_iter()
+            .map(JobKind::as_str)
             .filter(|k| busy.iter().any(|l| l == lane(k)))
             .collect();
         let claimed: Option<(i64, String, Value)> = sqlx::query_as(
