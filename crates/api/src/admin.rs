@@ -433,6 +433,10 @@ fn random_password() -> anyhow::Result<String> {
 /// returned once, to the admin, who passes it on; it is never stored in plain text.
 async fn reset_password(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<ResetPassword>) -> Result<Response, ApiError> {
     let who = require_admin(&s, &headers).await?;
+    // no stored name holds a NUL
+    if !crate::error::storable(&b.username) {
+        return Err(Refusal::NoSuchUser.into());
+    }
     let password = random_password()?;
     let hash = account::hash_password(password.clone()).await?;
     let mut tx = s.pool.begin().await?;
@@ -511,6 +515,8 @@ mod tests {
         };
         assert_eq!(status(schedule("refresh\0", json!({})).await), StatusCode::NOT_FOUND);
         assert_eq!(status(schedule("refresh", json!({ "a\0": 1 })).await), StatusCode::BAD_REQUEST);
+        let reset = super::reset_password(State(state.clone()), h.clone(), Json(super::ResetPassword { username: "bo\0ss".into() }));
+        assert_eq!(status(reset.await), StatusCode::NOT_FOUND);
         let ai = serde_json::from_value(json!({ "api_key": "sk-secret\0" })).unwrap();
         assert_eq!(status(super::put_ai(State(state.clone()), h.clone(), Json(ai)).await), StatusCode::BAD_REQUEST);
         assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from jobs").fetch_one(&pool).await.unwrap(), 0);
