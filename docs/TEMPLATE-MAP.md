@@ -48,8 +48,8 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 |---|---|
 | Page inset | `Layout padding={6}` on header and content |
 | Rhythm | `VStack gap={6}` between page sections, `gap={4}` within the control block, `gap={2}` between a tile's cover and text, `gap={1}` between text lines |
-| Grid | page `product-gallery` (page.tsx:149) at master's density (owner: 「太大了。為什麼一頁只有4張圖了」): `minWidth` 160 (10rem, `lib/grid.ts`), `gap={4}`: two columns on a 390 px phone (the floor is also at most half the row less one gap), six at 1280-1440 px, nine at 1920 px (115 % root) |
-| Density | `html { font-size: 115% }` in `globals.css`, only above 768 px (the template's compact-surface width, page.tsx:1129), is the one knob (110 / 115 / 125 %): every rem token follows it, a phone stays at 100 % as the template is drawn, and `--size-element-sm/md/lg` are restated as 1.75 / 2 / 2.25rem so controls scale with their text |
+| Grid | page `product-gallery` (page.tsx:149) at master's density (owner: 「太大了。為什麼一頁只有4張圖了」): `minWidth` 160 (10rem, `lib/grid.ts`), `gap={4}`: two columns on a 390 px phone (the floor is also at most half the row less one gap), five at 1280 px, six at 1440 px, eight at 1920 px and eleven at 2560 px, with the root growing past 1440 px |
+| Density | `html { font-size: clamp(100%, …, 115%) }` in `globals.css`: the template's 100 % up to a 1440 px window, growing to 115 % at 2560 px (a 4K screen at 150 % display scaling; owner, 2026-11-13); every rem token follows it, and `--size-element-sm/md/lg` are restated as 1.75 / 2 / 2.25rem so controls scale with their text |
 | Control size | `sm` for the whole toolbar row, as the table-filter template: search, every filter clause, presets, sort, save and saved views |
 | Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="body" color="secondary"` and price `Text type="large" weight="bold"`, as product-gallery's description and price (page.tsx:106-109) |
 | Colour | the neutral theme's tokens, light and dark via `light-dark()`; the one override is pure black (Deviations after the style audit) |
@@ -241,7 +241,7 @@ Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@ast
 
 ## Deviations in the beautification batch
 
-- Density: the root font size (115 %, above 768 px only; phones stay at 100 %) scales the page as the owner's 110-125 % browser zoom did; the Astryx
+- Density: the root font size (100 % up to a 1440 px window, growing to 115 % at 2560 px) keeps the template's density on a laptop and gives a wide screen the owner's 110-125 % browser zoom; the Astryx
   control heights are px in `astryx.css`, so `globals.css` restates them in rem. Viewport breakpoints stay px.
   Grid's `columns={{minWidth}}` takes px only, so `lib/grid.ts` passes the same track list with a rem floor as
   the `style` Grid merges (results grid, item dialog columns, gallery thumbnails).

@@ -69,9 +69,9 @@ export const tileOf = (
 // master's 160 px floor and gap 4, in rem so it follows the root scale, and always two columns on a phone.
 const GAP = 4;
 export const GRID = { gap: GAP, ...remColumns("10rem", "fill", GAP) } as const;
-// Tiles in the server HTML: more than a first screen at every width (18 at 1920 px), and whole rows at 2 to 4 and 6
-// columns (phones to 1440 px at the 115 % root); at 9 columns (1920 px) the third row, below the first screen, ends
-// early.
+// Tiles in the server HTML: at least a first screen up to 1920 px (24 there, 8 columns with the root at 106 %), in whole
+// rows at 2, 4, 6 and 8 columns (5 at 1280 px leave a short last row); wider, the first screen shows more (33 at
+// 2560 px) and the browser draws the rest. Measured 2026-11-13 with the filter rail at its default width.
 export const FIRST_TILES = 24;
 
 // The first screen: two rows at nine columns (1920 px) load at once, the first row at six columns (1280-1440 px)

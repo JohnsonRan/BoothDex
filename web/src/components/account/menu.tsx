@@ -88,8 +88,8 @@ export default function AccountMenu({
     <DropdownMenu
       placement="below"
       alignment="end"
-      // the default 300 px cap scrolled the admin's six rows at the page's 115 % scale; a short menu should show
-      // whole, and the viewport still bounds it (lib/menu-height)
+      // the default 300 px cap scrolled the admin's six rows at the page's root, up to 115 % on a wide window; a short
+      // menu should show whole, and the viewport still bounds it (lib/menu-height)
       menuMaxHeight={MENU_MAX_HEIGHT}
       items={items}
       renderTrigger={(props) => (
