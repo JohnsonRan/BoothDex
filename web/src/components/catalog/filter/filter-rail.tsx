@@ -109,7 +109,23 @@ export function FilterRail({
   );
 }
 
-const noSubscribe = () => () => {};
+// the root font size changes with the window (app/globals.css), so a resize may change how many pixels a rem is
+// read once and again on each resize, not on every render of a drag
+const readRem = () =>
+  Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+let remPx = 0;
+const remPixels = () => {
+  if (!remPx) remPx = readRem();
+  return remPx;
+};
+const onWindowResize = (change: () => void) => {
+  const resized = () => {
+    remPx = readRem();
+    change();
+  };
+  addEventListener("resize", resized);
+  return () => removeEventListener("resize", resized);
+};
 
 /**
  * The rail's resize handle, beside it at the content's edge. It mounts once the page has hydrated: the hook counts in
@@ -126,29 +142,31 @@ function RailHandle({
   saved: RefObject<number>;
   onResize: (rem: number) => void;
 }) {
-  const hydrated = useSyncExternalStore(
-    noSubscribe,
-    () => true,
-    () => false,
-  );
-  return hydrated ? (
-    <RailHandleControl rem={rem} saved={saved} onResize={onResize} />
+  // 0 on the server and while hydrating; a new size of a rem starts the hook again from the width in rem
+  const px = useSyncExternalStore(onWindowResize, remPixels, () => 0);
+  return px ? (
+    <RailHandleControl
+      key={px}
+      px={px}
+      rem={rem}
+      saved={saved}
+      onResize={onResize}
+    />
   ) : null;
 }
 
 function RailHandleControl({
+  px,
   rem,
   saved,
   onResize,
 }: {
+  px: number;
   rem: number;
   saved: RefObject<number>;
   onResize: (rem: number) => void;
 }) {
   const { t } = useUi();
-  const [px] = useState(() =>
-    Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
-  );
   const region = useResizable({
     defaultSize: rem * px,
     minSize: RAIL_REM.min * px,
