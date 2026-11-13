@@ -140,9 +140,8 @@ after a release.
 
 | Option | Source | Why it waits |
 | --- | --- | --- |
+| Extend the `Content-Security-Policy` in `web/next.config.ts` past `img-src`: `script-src` and `style-src`, `object-src 'none'`, `base-uri` and `frame-ancestors` | the change that sent `img-src 'self' data:` | That change covered images only; a `script-src` without `'unsafe-inline'` needs a nonce per request, and Next applies nonces only to dynamically rendered pages, so the statically prerendered parts (`/privacy`, `/terms`, the page shells) would turn dynamic; each directive needs its own sweep of every page |
 | Test that the upstream client's redirect closure counts hops through `follow_redirect` (`crates/imgproxy/src/upstream.rs`): only the off-host test covers the closure, and no test fails if it drops the hop limit | pre-review of #41 | Low, no secret or production risk: redirects stay on the same https host and the 20 s timeout bounds them; a test needs an https loopback server, so a certificate generator and a test-only trust store as new dependencies |
-| Add the Figtree WOFF files and the `next/og` renderer version to the share image hash in `web/next.config.ts`; a dependency upgrade that redraws `/og.png` keeps its URL, and platforms that cache images by URL keep showing the old picture | review of PR #15 | Low finding without a secret or production risk; `/og.png` is revalidated on every use, so only platform caches are affected; both are pinned (`@fontsource/figtree` 5.3.0, `next` 16.4.5), so only a deliberate upgrade redraws the picture |
-| Send a `Content-Security-Policy` with `img-src 'self' data: blob:`, so the browser itself refuses an image from another host | the plan that sends every image through imgproxy | No security header exists yet, and no rule asks for one; it needs its own check of every page, the Lightbox, the download and the Astryx components |
 
 ## Open questions
 

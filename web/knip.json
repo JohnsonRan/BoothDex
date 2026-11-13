@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["src/**/*.test.{ts,tsx}"],
+  "entry": ["src/**/*.test.{ts,tsx}", "next.config.test.ts"],
   "ignoreDependencies": [
     "@astryxdesign/cli",
     "@fontsource-variable/albert-sans",
