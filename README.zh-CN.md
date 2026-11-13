@@ -87,7 +87,7 @@ docker compose pull && docker compose up -d
 <details>
 <summary>在设置中选择颜色模式</summary>
 
-![设置中的外观页：主题模式与纯黑模式](docs/screenshots/zh-CN/settings.webp)
+![设置中的外观页：主题模式、纯黑模式与顶部筛选](docs/screenshots/zh-CN/settings.webp)
 
 </details>
 

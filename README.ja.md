@@ -84,7 +84,7 @@ docker compose pull && docker compose up -d
 <details>
 <summary>設定でカラーモードを選べます</summary>
 
-![設定の外観ページ: テーマのモードと純黒モード](docs/screenshots/ja/settings.webp)
+![設定の外観ページ: テーマのモード、純黒モード、上部で絞り込み](docs/screenshots/ja/settings.webp)
 
 </details>
 

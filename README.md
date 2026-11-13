@@ -102,7 +102,7 @@ docker compose pull && docker compose up -d
 <details>
 <summary>Choose the colour mode in Settings</summary>
 
-![Settings, Appearance: the theme modes and pure black](docs/screenshots/en/settings.webp)
+![Settings, Appearance: the theme modes, pure black and filters at the top](docs/screenshots/en/settings.webp)
 
 </details>
 
