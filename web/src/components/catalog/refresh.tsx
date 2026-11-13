@@ -101,13 +101,15 @@ export function KeepResults({
 }) {
   const [kept, setKept] = useState(children);
   if (!failure && children !== kept) setKept(children);
-  if (!failure) return children;
-  if (!kept) return <FailedResults starting={failure === "starting"} />;
+  if (failure && !kept)
+    return <FailedResults starting={failure === "starting"} />;
+  // the results in the same place with and without the Banner (in the band's column, which spaces the two): moved,
+  // React would mount them anew, dropping the pages read and reading the server's page again, which fails as well
   return (
-    <VStack gap={4}>
-      <RefreshFailed starting={failure === "starting"} />
-      {kept}
-    </VStack>
+    <>
+      {failure && <RefreshFailed starting={failure === "starting"} />}
+      {failure ? kept : children}
+    </>
   );
 }
 
