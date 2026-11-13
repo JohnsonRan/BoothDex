@@ -69,12 +69,13 @@ fn follow_redirect(previous: &[Url], to: &Url) -> bool {
 
 /// The one client for every upstream host: it follows only the redirects `follow_redirect` accepts, and connects only
 /// to the public addresses `PublicOnly` resolves. A refused redirect comes back as the 3xx response, which
-/// `fetch_upstream` fails.
+/// `fetch_upstream` fails. It uses no proxy: a proxy from the environment or the system settings would resolve the
+/// host itself, past `PublicOnly`.
 pub(crate) fn upstream_client() -> reqwest::Result<reqwest::Client> {
     // reqwest is built with `rustls-no-provider`, so building a client panics until a provider is installed
     rustls::crypto::ring::default_provider().install_default().ok();
     let policy = Policy::custom(|a| if follow_redirect(a.previous(), a.url()) { a.follow() } else { a.stop() });
-    reqwest::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).dns_resolver(PublicOnly).build()
+    reqwest::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).dns_resolver(PublicOnly).no_proxy().build()
 }
 
 pub(crate) async fn fetch_upstream(client: &reqwest::Client, url: &str) -> Result<Option<Vec<u8>>> {
@@ -213,5 +214,45 @@ mod tests {
         assert!(format!("{refused:#}").contains("resolves to no public address"), "{refused:#}");
         let default = reqwest::Client::builder().build().unwrap();
         assert_eq!(fetch_upstream(&default, &url).await.unwrap().as_deref(), Some(&b"image"[..]));
+    }
+
+    /// Set only in the child process of `the_client_ignores_proxy_variables`.
+    const PROXY_CHILD: &str = "IMGPROXY_TEST_PROXY_CHILD";
+
+    /// Loopback only: proves a proxy named in the environment cannot carry a request past `PublicOnly`. The
+    /// environment is process-wide, so the request runs in a child copy of this test binary (`proxy_child`) with the
+    /// proxy variables pointing at a listener here, which must see no connection.
+    #[tokio::test]
+    async fn the_client_ignores_proxy_variables() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_url = format!("http://127.0.0.1:{}", proxy.local_addr().unwrap().port());
+        let connected = Arc::new(AtomicBool::new(false));
+        let seen = connected.clone();
+        // a connection is recorded, then dropped, so a proxied request fails at once instead of waiting
+        tokio::spawn(async move {
+            while proxy.accept().await.is_ok() {
+                seen.store(true, Ordering::SeqCst);
+            }
+        });
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+        child.args(["--exact", "upstream::tests::proxy_child"]).env(PROXY_CHILD, "1").env_remove("NO_PROXY").env_remove("no_proxy");
+        for var in ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"] {
+            child.env(var, &proxy_url);
+        }
+        let out = tokio::task::spawn_blocking(move || child.output()).await.unwrap().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+        assert!(!connected.load(Ordering::SeqCst), "the request went to the proxy");
+    }
+
+    /// The child half of `the_client_ignores_proxy_variables`; it passes without doing anything in a normal run.
+    #[tokio::test]
+    async fn proxy_child() {
+        if std::env::var_os(PROXY_CHILD).is_none() {
+            return;
+        }
+        let refused = fetch_upstream(&upstream_client().unwrap(), "http://localhost:9/i").await.unwrap_err();
+        assert!(format!("{refused:#}").contains("resolves to no public address"), "{refused:#}");
     }
 }
