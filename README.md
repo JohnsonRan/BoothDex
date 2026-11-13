@@ -94,22 +94,15 @@ docker compose pull && docker compose up -d
 ### Appearance and languages
 
 - The interface is built on Meta's [Astryx](https://github.com/meta/astryx) design system.
-- Choose light, dark or system mode and one of 7 Astryx styles: Neutral, Stone, Matcha, Y2K, Gothic, Chocolate
-  and Butter. A style loads only when chosen, and the choice follows your account when you are signed in.
+- Choose light, dark or system mode, and pure black for dark mode. The choice follows your account when you are
+  signed in.
 - Chinese, English, Japanese and Korean; item titles in the original language or translated; currency
   conversion; a layout that works on phones.
 
 <details>
-<summary>Choose the colour mode and the style in Settings</summary>
+<summary>Choose the colour mode in Settings</summary>
 
-![Settings, Appearance: the theme modes and the 7 styles](docs/screenshots/en/settings.webp)
-
-</details>
-
-<details>
-<summary>The Matcha style in dark mode</summary>
-
-![The home page in the Matcha style, dark mode](docs/screenshots/matcha.webp)
+![Settings, Appearance: the theme modes and pure black](docs/screenshots/en/settings.webp)
 
 </details>
 
