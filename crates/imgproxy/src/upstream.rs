@@ -56,12 +56,21 @@ fn redirect_allowed(from: &Url, to: &Url) -> bool {
     to.scheme() == "https" && to.host_str() == from.host_str() && to.port_or_known_default() == from.port_or_known_default()
 }
 
-/// The one client for every upstream host: it follows at most 10 redirects, reqwest's default count, and only those
-/// `redirect_allowed` accepts. A refused redirect comes back as the 3xx response, which `fetch_upstream` fails.
+/// Redirects followed for one request, reqwest's default count.
+const MAX_REDIRECTS: usize = 10;
+
+/// Whether to follow a redirect to `to`, given the URLs already requested: the first is the original request, so
+/// `previous` holds one URL more than the redirects followed so far.
+fn follow_redirect(previous: &[Url], to: &Url) -> bool {
+    previous.len() <= MAX_REDIRECTS && redirect_allowed(&previous[0], to)
+}
+
+/// The one client for every upstream host: it follows only the redirects `follow_redirect` accepts. A refused
+/// redirect comes back as the 3xx response, which `fetch_upstream` fails.
 pub(crate) fn upstream_client() -> reqwest::Result<reqwest::Client> {
     // reqwest is built with `rustls-no-provider`, so building a client panics until a provider is installed
     rustls::crypto::ring::default_provider().install_default().ok();
-    let policy = Policy::custom(|a| if a.previous().len() <= 10 && redirect_allowed(&a.previous()[0], a.url()) { a.follow() } else { a.stop() });
+    let policy = Policy::custom(|a| if follow_redirect(a.previous(), a.url()) { a.follow() } else { a.stop() });
     reqwest::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).build()
 }
 
@@ -157,6 +166,16 @@ mod tests {
         assert!(!redirect_allowed(&factory, &url("https://booth.pximg.net/b")));
         assert!(!redirect_allowed(&factory, &url("https://evil.example/b")));
         assert!(!redirect_allowed(&factory, &url("https://127.0.0.1/b")));
+    }
+
+    #[test]
+    fn the_tenth_redirect_is_followed_and_the_eleventh_is_not() {
+        let hop = |n: usize| Url::parse(&format!("https://booth.pximg.net/{n}")).unwrap();
+        let requested = |redirects: usize| (0..=redirects).map(hop).collect::<Vec<_>>();
+        // the 10th redirect: the original request and 9 followed redirects came before it
+        assert!(follow_redirect(&requested(9), &hop(10)));
+        assert!(!follow_redirect(&requested(10), &hop(11)));
+        assert!(!follow_redirect(&requested(0), &Url::parse("https://evil.example/").unwrap()));
     }
 
     /// Loopback only: proves the client refuses an off-host redirect that reqwest's default policy follows.
