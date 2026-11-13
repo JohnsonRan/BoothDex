@@ -260,6 +260,9 @@ Differences from VRCatalogue: feature facet counts respect the selected category
 age; `range` also accepts `7d`, `30d` and `90d`; `fields=card` opts into compact card records (bio, variations,
 booth_tags, linked_avatars and categories emptied, translations keep only titles,
 booth_images/media at most 2; default response unchanged; fetch full records via `/api/items?ids=`).
+`without=` (groups of filter names, `+` between groups and `,` within one, at most 8, such as
+`without=sc+pmin,pmax`) makes a search that finds nothing also return `widerCounts`: what it finds without each
+group, in order.
 
 ## Acknowledgments
 

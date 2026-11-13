@@ -38,7 +38,11 @@ export type SearchResponse = { count: number, page: number, totalPages: number, 
 /**
  * what the search read the query's words as: the site marks those tokens
  */
-recognized: Array<Recognized>, trace: Array<TraceStep>, timing: Timing, };
+recognized: Array<Recognized>, trace: Array<TraceStep>, timing: Timing, 
+/**
+ * for a search that finds nothing, asked with `without=`: what it finds without each group, in order
+ */
+widerCounts: Array<number>, };
 
 export type SemanticStatus = "used" | "off" | "unavailable" | "skipped";
 

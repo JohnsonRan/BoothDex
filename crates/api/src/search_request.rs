@@ -131,6 +131,39 @@ impl From<&Params> for SearchRequest {
     }
 }
 
+/// The filter parameters a `without=` group may name. The text query, the view, the order and the page never
+/// change in a wider search, so its text and meaning-based matches are the original search's.
+const FILTERS: [&str; 19] = [
+    "authors", "avatars", "sc", "scp", "bc", "btags", "exbtags", "tags", "extags", "if", "adult", "free", "pmin", "pmax", "range", "from",
+    "to", "gender", "asup",
+];
+/// One group per clause of the site's filter row (search.rs).
+const MAX_WITHOUT: usize = 8;
+
+/// `without=` from a raw query: groups of parameter names, a `+` (or a space) between groups and a `,` between
+/// names. Read like `item_ids` (items.rs): split after decoding, as the web proxy re-encodes the separators. At
+/// most 8 groups; a name outside `FILTERS` is dropped, and its group stays in place so the answers keep the order.
+pub fn without_groups(query: &str) -> Vec<Vec<&'static str>> {
+    let Some(raw) = query.split('&').find_map(|kv| kv.strip_prefix("without=")) else { return Vec::new() };
+    let raw = percent_encoding::percent_decode_str(raw).decode_utf8_lossy();
+    raw.split(['+', ' '])
+        .take(MAX_WITHOUT)
+        .map(|group| group.split(',').filter_map(|name| FILTERS.iter().find(|f| **f == name).copied()).collect())
+        .collect()
+}
+
+/// The raw query with the parameters in `names` left out.
+pub fn query_without(query: &str, names: &[&str]) -> String {
+    query
+        .split('&')
+        .filter(|kv| {
+            let key = kv.split_once('=').map_or(*kv, |(k, _)| k);
+            !names.contains(&percent_encoding::percent_decode_str(key).decode_utf8_lossy().as_ref())
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,5 +178,16 @@ mod tests {
         assert!(matches!(request("sort=relevant").sort, Sort::Relevant));
         assert!(matches!(request("q=dress&sort=newest").sort, Sort::Newest));
         assert!(matches!(request("q=dress&sort=nonsense").sort, Sort::Trending));
+    }
+
+    #[test]
+    fn without_reads_groups_in_order_and_only_filter_names() {
+        assert_eq!(without_groups("sc=a&without=sc+pmin,pmax+if"), [vec!["sc"], vec!["pmin", "pmax"], vec!["if"]]);
+        // the web proxy re-encodes the separators
+        assert_eq!(without_groups("without=sc%2Bpmin%2Cpmax"), [vec!["sc"], vec!["pmin", "pmax"]]);
+        assert_eq!(without_groups("without=q,sc+page+nonsense"), [vec!["sc"], vec![], vec![]]);
+        assert_eq!(without_groups(&format!("without={}", ["sc"; 12].join("+"))).len(), MAX_WITHOUT);
+        assert!(without_groups("q=sc").is_empty());
+        assert_eq!(query_without("q=a&pmin=5&sc=x&pmax=9", &["pmin", "pmax"]), "q=a&sc=x");
     }
 }

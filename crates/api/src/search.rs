@@ -10,7 +10,7 @@ use axum::response::{IntoResponse, Response};
 
 use crate::error::Refusal;
 use crate::params::Params;
-use crate::search_request::{SearchRequest, View};
+use crate::search_request::{SearchRequest, View, query_without, without_groups};
 use crate::{ApiError, AppState, account, catalog, db, limit};
 
 pub(crate) const EMBED_CACHE_CAP: u64 = 2000;
@@ -36,6 +36,8 @@ pub(crate) struct SearchResponse {
     recognized: Vec<Recognized>,
     trace: Vec<TraceStep>,
     timing: Timing,
+    /// for a search that finds nothing, asked with `without=`: what it finds without each group, in order
+    wider_counts: Vec<u64>,
 }
 
 /// Query words the search took as a model (matching what fits it) or a smart category (matching what is in it):
@@ -132,7 +134,8 @@ pub(crate) async fn search(
     let t0 = Instant::now();
     let mut trace = Trace::default();
     trace.start();
-    let p = Params::parse(q.as_deref().unwrap_or(""));
+    let raw = q.as_deref().unwrap_or("");
+    let p = Params::parse(raw);
     let req = SearchRequest::from(&p);
     let favourites = if matches!(req.view, View::Favourites) {
         let u = account::current_user(&s.pool, &headers).await?.ok_or(Refusal::SignInRequired)?;
@@ -181,7 +184,8 @@ pub(crate) async fn search(
     let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
         .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models, rest: &meaning });
     let search_start = Instant::now();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&req, catalog_now, favourites.as_ref(), semantic, true))?;
+    let (r, wider_counts) =
+        tokio::task::block_in_place(|| search_and_wider(&s.snap().catalog, raw, &req, catalog_now, favourites.as_ref(), semantic))?;
     let search_ms = search_start.elapsed().as_secs_f64() * 1e3;
     trace.step("search");
     let items = db::load_items(&s.pool, &r.ids, p.get("fields").as_deref() == Some("card")).await?;
@@ -201,8 +205,28 @@ pub(crate) async fn search(
         recognized,
         trace: trace.steps,
         timing: Timing { search_ms, total_ms: t0.elapsed().as_secs_f64() * 1e3 },
+        wider_counts,
     })
     .into_response())
+}
+
+/// The search, and for one that finds nothing, what it finds without each `without=` group of `raw`: from this
+/// request's own text and meaning-based matches, so the site learns which one clause to drop at no extra request.
+pub(crate) fn search_and_wider(
+    catalog: &catalog::Catalog,
+    raw: &str,
+    req: &SearchRequest,
+    now: i64,
+    favourites: Option<&roaring::RoaringBitmap>,
+    semantic: Option<catalog::Semantic>,
+) -> anyhow::Result<(catalog::SearchResult, Vec<u64>)> {
+    let r = catalog.search(req, now, favourites, semantic, true)?;
+    if r.count > 0 {
+        return Ok((r, Vec::new()));
+    }
+    let wider: Vec<SearchRequest> = without_groups(raw).iter().map(|g| SearchRequest::from(&Params::parse(&query_without(raw, g)))).collect();
+    let counts = if wider.is_empty() { Vec::new() } else { catalog.counts(req, &wider, now, favourites, semantic)? };
+    Ok((r, counts))
 }
 
 /// Resolves the query embedding (or why there isn't one) before acquiring a search execution permit.
