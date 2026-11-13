@@ -18,7 +18,7 @@ BoothDex 收录 [BOOTH](https://booth.pm) 上出售的 VRChat 商品，支持按
 项目起初作为 VRCatalogue（已于 2026-11-01 关闭）的后继方案开发，保留了兼容的搜索语法。本项目为独立开源项目，与
 pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者所有，每件商品均直接链接回其 BOOTH 页面。
 
-![首页（分类：头发）：筛选栏、模型本体轮播与商品网格](docs/screenshots/zh-CN/home.webp)
+![首页（分类：头发）：左侧筛选栏、模型本体轮播与商品网格](docs/screenshots/zh-CN/home.webp)
 
 ## 快速开始
 
