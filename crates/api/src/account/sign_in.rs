@@ -106,7 +106,12 @@ pub(crate) async fn login(
     headers: HeaderMap,
     Json(b): Json<Login>,
 ) -> Result<Response, ApiError> {
-    s.limits.auth.check(ip)?;
+    if let Err(limited) = s.limits.auth.check(ip) {
+        if s.limits.auth_log.take(ip).is_ok() {
+            eprintln!("warn: sign-in rate limited from {ip}");
+        }
+        return Err(limited.into());
+    }
     if !valid_login(&b.login) {
         return Err(Refusal::BadCredentials.into());
     }
