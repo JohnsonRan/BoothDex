@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Recognized } from "./api-types";
 import {
   activeFilterCount,
@@ -334,4 +336,29 @@ test("the words of a mark make one token, where they stand together", () => {
     ["Mao", undefined],
   ]);
   expect(tokens("", [model])).toEqual([]);
+});
+
+// The feed's `image_path` in crates/api/src/rss.rs reads the same file in its tests, so the two mappings stay equal.
+const SHARED_CASES: {
+  name: string;
+  booth_images: string[] | null;
+  media: string[];
+  path: string | null;
+}[] = JSON.parse(
+  readFileSync(
+    join(
+      import.meta.dir,
+      "../../../crates/api/tests/fixtures/feed-image-paths.json",
+    ),
+    "utf8",
+  ),
+).cases;
+
+test("imgUrl gives the paths of the fixture shared with the RSS feed", () => {
+  expect(SHARED_CASES.length).toBeGreaterThan(20);
+  for (const c of SHARED_CASES)
+    expect({ name: c.name, url: imgUrl(c) }).toEqual({
+      name: c.name,
+      url: c.path ?? "",
+    });
 });
