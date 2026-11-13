@@ -237,7 +237,6 @@ const changeSort = async (p) => (await openSort(p))();
         .first()
         .waitFor({ timeout: 10000 })
         .catch(() => {});
-      await p.waitForTimeout(500);
       const kept = await p.locator(".astryx-grid img").count();
       const banners = await banner.count();
       const same = await p.evaluate(() => window.__grid.isConnected);
