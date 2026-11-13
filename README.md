@@ -64,12 +64,14 @@ docker compose pull && docker compose up -d
 - The search field suggests recent searches, avatars, items, shops and tags as you type. `Ctrl+K` (`Cmd+K` on
   macOS) focuses it.
 - Each search word is its own token, removable on its own; the words read as an avatar or a category join one
-  token, led by the avatar's picture or a category icon.
+  token, led by the avatar's picture or a category icon. An avatar's token shows the avatar's name.
 - Japanese text search uses Lindera (IPADIC). Full-width and half-width forms match each other, and so do hiragana
   and katakana ("しなの" finds シナノ). A Latin query of up to three words that matches no text is tried again over
   titles, tags and author names, allowing one typo in each all-letter word of five or more letters ("shinnano" finds
-  Shinano), and the results page says so. Optional semantic search finds items by meaning across languages ("哥特裙"
-  finds ゴスロリ dresses) and merges both rankings.
+  Shinano), and the results page says so. A word that no title, tag or author name has, one typo from the Latin name
+  of exactly one avatar, is read as that avatar ("shinnano short hair" searches like "shinano short hair").
+  Optional semantic search finds items by meaning across languages ("哥特裙" finds ゴスロリ dresses) and merges both
+  rankings.
 
 <details>
 <summary>Suggestions for "manuka": the avatar body, then matching items</summary>
@@ -263,7 +265,7 @@ booth_images/media at most 2; default response unchanged; fetch full records via
 `without=` (groups of filter names, `+` between groups and `,` within one, at most 8, such as
 `without=sc+pmin,pmax`) makes a search that finds nothing also return `widerCounts`: what it finds without each
 group, in order. `typoTolerant` is true when the query's words matched nothing as typed and the typo retry
-found the results.
+found the results, or when a misspelt word was read as an avatar.
 
 ## Acknowledgments
 

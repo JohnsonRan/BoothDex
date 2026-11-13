@@ -13,7 +13,7 @@ use crate::AppState;
 use crate::catalog::Catalog;
 use crate::db;
 use crate::params::Params;
-use crate::text::{fold, fold_width};
+use crate::text::{TYPO_MIN, fold, fold_width, one_typo};
 
 /// Name lookup for sidebar pickers and the command palette.
 pub(crate) struct Lookup(Vec<(Vec<String>, Value, u64)>);
@@ -23,27 +23,46 @@ impl Lookup {
     /// word (or two) equal to a model's slug or name in any language, at least 3 characters. Each slug comes with
     /// the query words it was read from, as typed (the site marks those tokens); a name repeated in a row is one
     /// entry, with the first one's words.
-    pub(crate) fn split_names<'q>(&self, q: &'q str) -> (String, Vec<(String, Vec<&'q str>)>) {
+    ///
+    /// A word that is not a name, and not a word the catalogue knows (`known`), is also read as the one model whose
+    /// Latin name it misspells by one typo, as the text search allows ("shinnano" -> shinano); the `bool` says so.
+    pub(crate) fn split_names<'q>(&self, q: &'q str, known: impl Fn(&str) -> bool) -> (String, Vec<(String, Vec<&'q str>)>, bool) {
         let words: Vec<&str> = q.split_whitespace().collect();
+        let slug = |e: &(Vec<String>, Value, u64)| e.1["slug"].as_str().map(str::to_owned);
         let slug_of = |w: &str| {
             let w = fold_width(w);
-            (w.chars().count() >= 3).then(|| self.0.iter().find(|(keys, _, _)| keys.contains(&w))).flatten().and_then(|e| e.1["slug"].as_str().map(str::to_owned))
+            (w.chars().count() >= 3).then(|| self.0.iter().find(|(keys, _, _)| keys.contains(&w))).flatten().and_then(slug)
         };
-        let (mut rest, mut slugs, mut i) = (Vec::new(), Vec::new(), 0);
+        let latin = |w: &str| w.len() >= TYPO_MIN && w.bytes().all(|b| b.is_ascii_lowercase());
+        let misspelt = |w: &str| {
+            let w = fold_width(w);
+            if !latin(&w) || known(&w) {
+                return None;
+            }
+            let mut near = self.0.iter().filter(|(keys, _, _)| keys.iter().any(|k| latin(k) && one_typo(k, &w))).filter_map(slug);
+            let first = near.next()?;
+            near.all(|s| s == first).then_some(first)
+        };
+        let (mut rest, mut slugs, mut typo, mut i) = (Vec::new(), Vec::new(), false, 0);
         while i < words.len() {
             if let Some(slug) = words.get(i + 1).and_then(|next| slug_of(&format!("{} {next}", words[i]))) {
                 slugs.push((slug, words[i..i + 2].to_vec()));
                 i += 2;
-            } else if let Some(slug) = slug_of(words[i]) {
+                continue;
+            }
+            if let Some(slug) = slug_of(words[i]) {
                 slugs.push((slug, vec![words[i]]));
-                i += 1;
+            } else if let Some(slug) = misspelt(words[i]) {
+                // a name repeated in a row is kept as its first spelling (below): a dropped misspelling is no typo
+                typo |= slugs.last().is_none_or(|(s, _)| *s != slug);
+                slugs.push((slug, vec![words[i]]));
             } else {
                 rest.push(words[i]);
-                i += 1;
             }
+            i += 1;
         }
         slugs.dedup_by(|b, a| a.0 == b.0);
-        (rest.join(" "), slugs)
+        (rest.join(" "), slugs, typo)
     }
 
     pub(crate) fn new(mut entries: Vec<(Vec<String>, Value, u64)>) -> Self {
@@ -246,7 +265,7 @@ mod name_tests {
         };
         let l = Lookup::new(vec![entry("shinano", &["Shinano", "しなの"]), entry("rusk", &["Rusk Dragon"]), entry("io", &["IO"]), entry("kokoa", &["ここあ"]), entry("lime", &["ＬＩＭＥ Ｄｏｌｌ"])]);
         let split = |q| {
-            let (rest, names) = l.split_names(q);
+            let (rest, names, _) = l.split_names(q, |_| false);
             (rest, names.into_iter().map(|(slug, _)| slug).collect::<Vec<String>>())
         };
         assert_eq!(split("Shinano short hair"), ("short hair".into(), vec!["shinano".into()]));
@@ -266,10 +285,37 @@ mod name_tests {
         assert_eq!(split("shinano Shinano bob"), ("bob".into(), vec!["shinano".into()]));
 
         // each name with the words it was read from, as typed; a repeated one with the first one's
-        let words = |q| l.split_names(q).1;
+        let words = |q| l.split_names(q, |_| false).1;
         assert_eq!(words("Shinano short hair"), vec![("shinano".into(), vec!["Shinano"])]);
         assert_eq!(words("しなの ボブ"), vec![("shinano".into(), vec!["しなの"])]);
         assert_eq!(words("Rusk Dragon wings"), vec![("rusk".into(), vec!["Rusk", "Dragon"])]);
         assert_eq!(words("shinano Shinano bob"), vec![("shinano".into(), vec!["shinano"])]);
+    }
+
+    #[test]
+    fn a_misspelt_model_name_is_read_as_the_model() {
+        let entry = |slug: &str, names: &[&str]| {
+            (names.iter().map(|n| n.to_string()).chain([slug.to_string()]).collect(), json!({ "slug": slug }), 10u64)
+        };
+        let l = Lookup::new(vec![entry("shinano", &["Shinano"]), entry("manuka", &["Manuka"]), entry("karin", &["Karin"]), entry("karen", &["Karen"]), entry("lime", &["Lime"])]);
+        let split = |q, known: &[&str]| {
+            let (rest, names, typo) = l.split_names(q, |w| known.contains(&w));
+            (rest, names, typo)
+        };
+        // a letter added, swapped, changed; the words as typed
+        assert_eq!(split("shinnano short hair", &[]), ("short hair".into(), vec![("shinano".into(), vec!["shinnano"])], true));
+        assert_eq!(split("Mnauka dress", &[]), ("dress".into(), vec![("manuka".into(), vec!["Mnauka"])], true));
+        assert!(split("shinaxo", &[]).2);
+        // a name spelt right is no typo
+        assert!(!split("shinano bob", &[]).2);
+        // a word the catalogue has is that word, not a model one typo away
+        assert_eq!(split("shinnano bob", &["shinnano"]), ("shinnano bob".into(), vec![], false));
+        // two models one typo away: neither; under 5 letters or two typos: not a name
+        assert_eq!(split("karon", &[]), ("karon".into(), vec![], false));
+        assert_eq!(split("lume", &[]), ("lume".into(), vec![], false));
+        assert_eq!(split("shinnanoo", &[]), ("shinnanoo".into(), vec![], false));
+        // a misspelling after the right name is dropped with its repeat, so no typo was read
+        assert_eq!(split("shinano shinnano bob", &[]), ("bob".into(), vec![("shinano".into(), vec!["shinano"])], false));
+        assert!(split("shinnano shinano bob", &[]).2);
     }
 }

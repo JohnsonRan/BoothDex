@@ -39,6 +39,8 @@ pub struct TextIndex {
     gram: Field,
     /// title, tags and author: the word fields a typo-tolerant retry searches
     named: [Field; 3],
+    /// the description: with `named`, every field the word query searches (`knows`)
+    bio: Field,
     /// per segment: tantivy doc id -> catalog doc index
     seg_docs: Vec<Vec<u32>>,
     /// title + tags, compacted (see `compact`), for substring verification
@@ -141,11 +143,24 @@ fn text_field(tokenizer: &str, positions: bool) -> TextOptions {
 const FORMAT: u32 = 4;
 
 /// Words shorter than this must match exactly in a typo-tolerant retry: one edit in "hair" reaches "hare" and "pair".
-const TYPO_MIN: usize = 5;
+pub(crate) const TYPO_MIN: usize = 5;
 
 /// A typo-tolerant retry takes queries of at most this many words: each fuzzy word costs a scan of the term
 /// dictionary and a bitset per field, so a long query that misses on one word would pay for all the others.
 const TYPO_MAX_WORDS: usize = 3;
+
+/// Whether `a` becomes `b` by exactly one typo: a letter added, dropped or changed, or two adjacent letters swapped.
+pub(crate) fn one_typo(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let p = a.iter().zip(b).take_while(|(x, y)| x == y).count();
+    let (a, b) = (&a[p..], &b[p..]);
+    match a.len() as isize - b.len() as isize {
+        0 => !a.is_empty() && (a[1..] == b[1..] || (a.len() >= 2 && a[0] == b[1] && a[1] == b[0] && a[2..] == b[2..])),
+        1 => a[1..] == *b,
+        -1 => *a == b[1..],
+        _ => false,
+    }
+}
 
 /// Hiragana as katakana; every other character unchanged.
 fn kana(c: char) -> char {
@@ -304,7 +319,7 @@ impl TextIndex {
                 }
             }
         }
-        Ok(Self { reader, parser, gram, named: [title, tags, author], seg_docs, haystack })
+        Ok(Self { reader, parser, gram, named: [title, tags, author], bio, seg_docs, haystack })
     }
 
     /// Matching catalog docs with a relevance score (substring-only hits get a small floor score).
@@ -363,6 +378,13 @@ impl TextIndex {
             }
         }
         Ok(TextMatches { typo: retry && !hits.is_empty(), hits, scores })
+    }
+
+    /// Whether some title, tag, author name or description has `word` (folded) as a word.
+    pub fn knows(&self, word: &str) -> bool {
+        let searcher = self.reader.searcher();
+        let word = fold(word);
+        self.named.iter().chain([&self.bio]).any(|&f| searcher.doc_freq(&Term::from_field_text(f, &word)).is_ok_and(|n| n > 0))
     }
 
     /// Matches for a query that found nothing, allowing one typo (a letter added, dropped, changed, or two swapped)
@@ -546,6 +568,11 @@ mod tests {
         let typo = |q: &str| idx.search(q).unwrap().typo;
         assert!(typo("shinnano") && typo("dragn wings"));
         assert!(!typo("shinano") && !typo("dress") && !typo("xyzzyq"));
+        // words of titles, tags and author names, in any case; never a word with a typo
+        assert!(idx.knows("Shinano") && idx.knows("press") && !idx.knows("shinnano"));
+        // and the words of descriptions, which the word query searches too
+        let described = TextIndex::build(vec![TextDoc { title: "Hat".into(), tags: String::new(), author: String::new(), bio: "for Karins".into() }].into_iter(), None, 0).unwrap();
+        assert!(described.knows("karins"));
     }
 
     #[test]

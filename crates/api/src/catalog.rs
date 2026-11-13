@@ -127,6 +127,11 @@ pub struct SearchResult {
 }
 
 impl Catalog {
+    /// Whether some title, tag, author name or description has `word` as a word.
+    pub fn knows_word(&self, word: &str) -> bool {
+        self.text.knows(word)
+    }
+
     pub fn build(docs: Vec<DocInput>, now: i64, text_dir: Option<&std::path::Path>) -> Result<Self> {
         let n = docs.len();
         use std::hash::{DefaultHasher, Hash, Hasher};

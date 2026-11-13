@@ -38,7 +38,8 @@ pub(crate) struct SearchResponse {
     timing: Timing,
     /// for a search that finds nothing, asked with `without=`: what it finds without each group, in order
     wider_counts: Vec<u64>,
-    /// the query's words matched nothing as typed, so its word matches allow one typo per long word
+    /// the query's words matched nothing as typed, so its word matches allow one typo per long word; or a word was
+    /// read as the model whose name it misspells
     typo_tolerant: bool,
 }
 
@@ -152,7 +153,9 @@ pub(crate) async fn search(
     // model names in the query become a requirement for meaning-based matches and are left out of the
     // embedding, so "shinano short hair" adds short hair that fits Shinano, not other Shinano items
     let q = req.q.as_deref().unwrap_or_default();
-    let (meaning, named) = s.snap().avatars.split_names(q);
+    let snap = s.snap();
+    let (meaning, named, name_typo) = snap.avatars.split_names(q, |w| snap.catalog.knows_word(w));
+    drop(snap);
     let models: Vec<String> = named.iter().map(|(slug, _)| slug.clone()).collect();
     trace.step("prepare");
     let embed_plan = match req.q {
@@ -208,7 +211,7 @@ pub(crate) async fn search(
         trace: trace.steps,
         timing: Timing { search_ms, total_ms: t0.elapsed().as_secs_f64() * 1e3 },
         wider_counts,
-        typo_tolerant: r.typo,
+        typo_tolerant: r.typo || name_typo,
     })
     .into_response())
 }
