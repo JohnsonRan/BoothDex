@@ -140,7 +140,13 @@ fn kana(c: char) -> char {
 /// The form search compares text in: NFKC (full-width Latin and half-width kana become the ordinary forms),
 /// lowercase, and hiragana as katakana, so "ＤＲＥＳＳ", "ﾐﾙﾃｨﾅ" and "しなの" find "dress", "ミルティナ" and "シナノ".
 pub(crate) fn fold(s: &str) -> String {
-    s.nfkc().flat_map(char::to_lowercase).map(kana).collect()
+    fold_width(s).chars().map(kana).collect()
+}
+
+/// NFKC and lowercase only, with kana kept as written: model names (`Lookup`), where reading "ココア" as the
+/// model ここあ would turn an ordinary word into a compatibility filter (owner, 2026-11-13).
+pub(crate) fn fold_width(s: &str) -> String {
+    s.nfkc().flat_map(char::to_lowercase).collect()
 }
 
 /// Text handed to Lindera: NFKC only. Kana are folded per token afterwards (`KanaFolder`), because the

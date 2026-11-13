@@ -13,7 +13,7 @@ use crate::AppState;
 use crate::catalog::Catalog;
 use crate::db;
 use crate::params::Params;
-use crate::text::fold;
+use crate::text::{fold, fold_width};
 
 /// Name lookup for sidebar pickers and the command palette.
 pub(crate) struct Lookup(Vec<(Vec<String>, Value, u64)>);
@@ -26,7 +26,7 @@ impl Lookup {
     pub(crate) fn split_names<'q>(&self, q: &'q str) -> (String, Vec<(String, Vec<&'q str>)>) {
         let words: Vec<&str> = q.split_whitespace().collect();
         let slug_of = |w: &str| {
-            let w = fold(w);
+            let w = fold_width(w);
             (w.chars().count() >= 3).then(|| self.0.iter().find(|(keys, _, _)| keys.contains(&w))).flatten().and_then(|e| e.1["slug"].as_str().map(str::to_owned))
         };
         let (mut rest, mut slugs, mut i) = (Vec::new(), Vec::new(), 0);
@@ -49,14 +49,14 @@ impl Lookup {
     pub(crate) fn new(mut entries: Vec<(Vec<String>, Value, u64)>) -> Self {
         entries.retain(|e| e.2 > 0);
         for e in &mut entries {
-            e.0.iter_mut().for_each(|s| *s = fold(s));
+            e.0.iter_mut().for_each(|s| *s = fold_width(s));
         }
         entries.sort_by_key(|e| std::cmp::Reverse(e.2));
         Self(entries)
     }
 
     pub(crate) fn find(&self, p: &Params) -> Value {
-        let q = fold(&p.get("q").unwrap_or_default());
+        let q = fold_width(&p.get("q").unwrap_or_default());
         let offset = p.num("offset").unwrap_or(0);
         let limit = p.num("limit").unwrap_or(20).clamp(1, 100);
         let items: Vec<Value> = self
@@ -244,7 +244,7 @@ mod name_tests {
         let entry = |slug: &str, names: &[&str]| {
             (names.iter().map(|n| n.to_string()).chain([slug.to_string()]).collect(), json!({ "slug": slug }), 10u64)
         };
-        let l = Lookup::new(vec![entry("shinano", &["Shinano", "しなの"]), entry("rusk", &["Rusk Dragon"]), entry("io", &["IO"])]);
+        let l = Lookup::new(vec![entry("shinano", &["Shinano", "しなの"]), entry("rusk", &["Rusk Dragon"]), entry("io", &["IO"]), entry("kokoa", &["ここあ"]), entry("lime", &["ＬＩＭＥ Ｄｏｌｌ"])]);
         let split = |q| {
             let (rest, names) = l.split_names(q);
             (rest, names.into_iter().map(|(slug, _)| slug).collect::<Vec<String>>())
@@ -252,11 +252,12 @@ mod name_tests {
         assert_eq!(split("Shinano short hair"), ("short hair".into(), vec!["shinano".into()]));
         assert_eq!(split("しなの ボブ"), ("ボブ".into(), vec!["shinano".into()]));
         assert_eq!(split("rusk dragon wings"), ("wings".into(), vec!["rusk".into()]));
-        // width and kana do not matter: the name is しなの
-        assert_eq!(split("シナノ ボブ"), ("ボブ".into(), vec!["shinano".into()]));
+        // width and case do not matter; kana are kept as written, so the word ココア is not the model ここあ
+        assert_eq!(split("ココア ドレス"), ("ココア ドレス".into(), vec![]));
         assert_eq!(split("ＳＨＩＮＡＮＯ bob"), ("bob".into(), vec!["shinano".into()]));
-        // the pickers filter the same way: "しな" finds しなの
-        let found = l.find(&Params::parse("q=%E3%81%97%E3%81%AA"));
+        assert_eq!(split("lime doll coat"), ("coat".into(), vec!["lime".into()]));
+        // the pickers filter the same way: "ＳＨＩ" finds Shinano
+        let found = l.find(&Params::parse("q=%EF%BC%B3%EF%BC%A8%EF%BC%A9"));
         assert_eq!(found["items"][0]["slug"], "shinano");
         // too short to be taken as a name
         assert_eq!(split("io hair"), ("io hair".into(), vec![]));
