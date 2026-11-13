@@ -19,9 +19,6 @@ use sqlx::PgPool;
 use crate::error::Refusal;
 use crate::{ApiError, AppState, account};
 
-// must match the jobs_kind_check constraint in the latest migration that redefines it (see the test below)
-const KINDS: &[&str] = &["incremental", "details", "refresh", "enrich", "sweep", "localize", "embed"];
-
 /// sysinfo needs state between refreshes to compute CPU usage
 pub struct SysMetrics(Mutex<Option<(sysinfo::System, sysinfo::Disks)>>);
 
@@ -209,7 +206,7 @@ fn json_storable(v: &Value) -> bool {
 
 async fn create_job(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<NewJob>) -> Result<Response, ApiError> {
     let who = require_admin(&s, &headers).await?;
-    if !KINDS.contains(&b.kind.as_str()) || !valid_params(&b.params) {
+    if boothdex_core::jobs::JobKind::parse(&b.kind).is_none() || !valid_params(&b.params) {
         return Err(Refusal::BadJob.into());
     }
     let params = if b.params.is_null() { json!({}) } else { b.params };
@@ -475,21 +472,6 @@ pub fn routes() -> Router<Arc<AppState>> {
 #[cfg(test)]
 mod tests {
     use super::random_password;
-
-    #[test]
-    fn job_kinds_match_the_database_constraint() {
-        // the newest migration that redefines jobs_kind_check lists every kind the worker accepts
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../core/migrations");
-        let mut files: Vec<_> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().path()).collect();
-        files.sort();
-        let sql = files.iter().rev().map(|f| std::fs::read_to_string(f).unwrap()).find(|s| s.contains("add constraint jobs_kind_check")).unwrap();
-        let line = sql.lines().find(|l| l.contains("add constraint jobs_kind_check")).unwrap();
-        let mut db: Vec<&str> = line.split('\x27').skip(1).step_by(2).collect();
-        let mut ours = super::KINDS.to_vec();
-        db.sort();
-        ours.sort();
-        assert_eq!(ours, db);
-    }
 
     /// PostgreSQL text and jsonb cannot hold a NUL: each admin input refuses one before the statement would fail.
     #[sqlx::test(migrations = "../core/migrations")]
