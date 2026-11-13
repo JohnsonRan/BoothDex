@@ -27,8 +27,9 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // The filter sidebar shown by default, drawn by the server (HTML 47,500-49,000 over 7 reads, with the toolbar's row
 // 44,100), the dialogs' fading lower edge (CSS 45,503) and the presses kept for late menus and hearts (JS 396,067):
 // HTML to 49,500 and CSS to 45,750 (owner, 2026-11-12). Astryx 0.7.15, its motion, gesture and layer code in the
-// modules the frame and the filter rail use, and the rail's resize handle (HTML 50,696, JS 497,886, CSS 49,895 with
-// the API; 0.7.8 read HTML 48,677 on the same data): HTML to 51,500, JS to 498,000, CSS to 50,000 (owner, 2026-11-13).
+// modules the frame and the filter rail use (HTML 50,696, JS 497,886, CSS 49,895 with the API; 0.7.8 read HTML
+// 48,677 on the same data): HTML to 51,500, JS to 498,000, CSS to 50,000 (owner, 2026-11-13). Not counted: the chunks
+// the page preloads with <link rel="preload">, such as the filter rail's (8,368 B gzip on 2026-11-13).
 const BUDGET = { html: 51_500, js: 498_000, css: 50_000 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
