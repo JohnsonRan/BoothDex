@@ -228,7 +228,7 @@ export const zh = {
   "settings.preferences": "偏好",
   "settings.site": "BoothDex",
   "settings.appearance": "外观",
-  "settings.appearanceDesc": "页面的配色模式和风格。",
+  "settings.appearanceDesc": "页面的配色模式和布局。",
   "settings.syncNote": "保存在此浏览器；登录后也保存到账号。",
   "settings.system": "跟随系统",
   "settings.black": "纯黑模式",

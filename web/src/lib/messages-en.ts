@@ -234,7 +234,7 @@ export const en: Dict = {
   "settings.preferences": "Preferences",
   "settings.site": "BoothDex",
   "settings.appearance": "Appearance",
-  "settings.appearanceDesc": "The colour mode and style of the pages.",
+  "settings.appearanceDesc": "The colour mode and layout of the pages.",
   "settings.syncNote":
     "Saved in this browser, and in your account when you're signed in.",
   "settings.system": "System",
