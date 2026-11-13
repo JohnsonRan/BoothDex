@@ -124,12 +124,15 @@ export function FilterBand({
   const [folded] = useState(foldedNow);
   // the strip shrunk all the way with the scroll
   const [shrunk, setShrunk] = useState(folded);
-  // opened over the results by hand
-  const [open, setOpen] = useState(false);
-  // folding back over the results: laid out open until the morph ends
-  const [closing, setClosing] = useState(false);
-  // folded in place by hand: shrunk, out of the scroll's hands
-  const [tucked, setTucked] = useState(false);
+  // what the hand made of the strip: nothing (the scroll has it), opened over the results, folding back over the
+  // results (laid out open until the morph ends), or folded in place (shrunk, out of the scroll's hands)
+  const [hand, setHand] = useState<"none" | "open" | "closing" | "tucked">(
+    "none",
+  );
+  // the effects key on these two, not on `hand`: the end of a fold back over the results reruns none of them
+  const open = hand === "open";
+  const tucked = hand === "tucked";
+  const laidOpen = open || hand === "closing";
   // the scroll the shrink starts at and its length
   const span = useRef({ start: 0, length: 0, shrunk: folded });
   const openNow = useRef(open);
@@ -204,7 +207,7 @@ export function FilterBand({
             : "part",
       );
       // back at full size with the page, an opened strip is the same as one that is not
-      if (p <= 0) setOpen(false);
+      if (p <= 0) setHand((h) => (h === "open" ? "none" : h));
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(run);
@@ -298,14 +301,14 @@ export function FilterBand({
           top: s.getBoundingClientRect().top,
           morphs: opened.current,
         };
+        setHand("open");
       } else if (span.current.shrunk) {
-        setClosing(true);
+        setHand("closing");
         play(
           turnAlong([s], [0, -span.current.length], opened.current, true),
-          () => flushSync(() => setClosing(false)),
+          () => flushSync(() => setHand("none")),
         );
-      }
-      setOpen(next);
+      } else setHand("none");
     },
     [play],
   );
@@ -317,7 +320,7 @@ export function FilterBand({
         top: s.getBoundingClientRect().top,
         morphs: next ? morphsOf(partsOf(s)) : undefined,
       };
-    setTucked(next);
+    setHand(next ? "tucked" : "none");
   }, []);
   const toggle = useCallback(() => {
     if (turning.current) return;
@@ -333,7 +336,7 @@ export function FilterBand({
         // scrolled past: the shrink goes back in the flow above the tiles and the window as far down, in one frame
         const results = resultsRef.current;
         const was = results?.getBoundingClientRect().top ?? 0;
-        flushSync(() => setTucked(false));
+        flushSync(() => setHand("none"));
         scrollBy({
           top: (results?.getBoundingClientRect().top ?? 0) - was,
           behavior: "instant",
@@ -383,7 +386,7 @@ export function FilterBand({
         aria-label={label}
         variant="transparent"
         padding={0}
-        data-strip-open={open || closing ? "" : undefined}
+        data-strip-open={laidOpen ? "" : undefined}
         data-strip-tucked={tucked ? "" : undefined}
         // a start past page 1 is shrunk from the first paint; page 1 shrinks once measured
         data-morph={avatars && folded ? "" : undefined}
@@ -391,7 +394,7 @@ export function FilterBand({
         style={
           avatars
             ? ({
-                ...(open || closing ? OPEN : HEAD),
+                ...(laidOpen ? OPEN : HEAD),
                 "--strip-d": tucked ? "0px" : STRIP_D,
                 "--strip-dy": STRIP_DY,
                 "--strip-scale": STRIP_SCALE,

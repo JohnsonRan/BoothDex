@@ -293,9 +293,8 @@ function Section({
   );
 }
 
-// the widest count a choice shows: five digits, the largest being about 55,000 (lilToon, 2026-11); a count of six
-// digits widens the slot when it arrives. Six reserved now would wrap Chinese names that fit beside their counts.
-const WIDEST = 99_999;
+// the widest count a choice shows: six digits, which the catalogue (about 216,000 items, 2026-11) does not outgrow
+const WIDEST = 999_999;
 const SIZER: CSSProperties = {
   visibility: "hidden",
   blockSize: 0,
@@ -306,11 +305,12 @@ const SIZER: CSSProperties = {
  * A choice's result count, once the search answers (`n` null until then). From the first paint its slot is as
  * wide as the widest count, held by an unseen flat copy, so the label beside it keeps its line breaks when the
  * count arrives or a refresh clears it: in English, a category's name grew a line and moved every section below.
+ * The number goes without the count's unit ("件", "items"), as a shop's sidebar shows it: six bare digits take less
+ * room than five with the unit did, so no name beside a count takes another line.
  */
 function Count({ n }: { n: number | null }) {
-  const { t, ui } = useUi();
-  const text = (v: number) =>
-    t("title.count", { n: v.toLocaleString(LOCALES[ui]) });
+  const { ui } = useUi();
+  const text = (v: number) => v.toLocaleString(LOCALES[ui]);
   return (
     <VStack hAlign="end">
       <Text type="supporting" hasTabularNumbers style={SIZER}>

@@ -225,18 +225,28 @@ const changeSort = async (p) => (await openSort(p))();
     );
 
     if (!reduced) {
-      // a failed refresh keeps the results and offers a retry
+      // A failed refresh keeps the results and offers a retry. Kept means the same grid: results mounted anew read
+      // their page again, which fails too and puts up a second Banner and retry at the grid's end.
+      await p.evaluate(() => {
+        window.__grid = document.querySelector(".astryx-grid");
+      });
       await lab(proxy, { delay: 0, fail: 1 });
       await changeSort(p);
       const banner = p.getByText("Couldn't load items");
-      await banner.waitFor({ timeout: 10000 }).catch(() => {});
+      await banner
+        .first()
+        .waitFor({ timeout: 10000 })
+        .catch(() => {});
       const kept = await p.locator(".astryx-grid img").count();
+      const banners = await banner.count();
+      const same = await p.evaluate(() => window.__grid.isConnected);
       check(
-        (await banner.isVisible()) && kept > 0,
-        `${tag}: failed refresh keeps ${kept} covers with a Banner`,
+        banners === 1 && same && kept > 0,
+        `${tag}: failed refresh keeps the grid (${same ? "same" : "mounted anew"}) and ${kept} covers with ${banners} Banner(s)`,
       );
       await lab(proxy, { delay: 0, fail: 0 });
-      await p.getByRole("button", { name: "Try again" }).click();
+      // first: a second Banner already failed the check above
+      await p.getByRole("button", { name: "Try again" }).first().click();
       await banner.waitFor({ state: "hidden", timeout: 10000 }).catch(() => {});
       check(
         !(await banner.isVisible()),
