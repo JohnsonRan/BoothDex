@@ -248,7 +248,7 @@ struct ScheduleUpdate {
 
 async fn update_schedule(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(kind): Path<String>, Json(b): Json<ScheduleUpdate>) -> Result<Response, ApiError> {
     require_admin(&s, &headers).await?;
-    if !crate::error::storable(&kind) {
+    if boothdex_core::jobs::JobKind::parse(&kind).is_none() {
         return Err(Refusal::NoSuchSchedule.into());
     }
     if b.interval_minutes.is_some_and(|m| !(5..=10080).contains(&m)) || b.params.as_ref().is_some_and(|p| !p.is_object() || !valid_params(p)) {
