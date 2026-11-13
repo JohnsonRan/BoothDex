@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { NextConfig } from "next";
 
 // The Rust services sit behind the same origin so session cookies stay first-party (SameSite=Lax) and
@@ -11,11 +11,14 @@ const IMG_ORIGIN = process.env.IMG_ORIGIN ?? "http://127.0.0.1:3001";
 // Every remote image reaches the browser through /img (imgUrl and imageSrc in lib/catalog.ts), so the browser refuses
 // an image from any other host. data: carries the silhouettes drawn in CSS (components/catalog/silhouette.tsx).
 // The download's blob: URL is a link target, which img-src does not govern. Scripts and styles are not restricted.
-export const CONTENT_SECURITY_POLICY = "img-src 'self' data:";
+export const CONTENT_SECURITY_POLICY ="img-src 'self' data:";
 
 // Social platforms cache a share image by its URL, so SHARE_IMAGE in lib/seo.ts links /og.png with a hash of the
-// files that draw and size it; a changed picture gets a new URL. The fonts are the ones the route reads, and the
-// renderer is next/og's Node build, so a dependency upgrade that redraws the picture also changes the URL.
+// files that draw and size it; a changed picture gets a new URL. The fonts are the ones the route reads. next/og
+// lays the picture out with satori (index.node.js) and rasterises it with sharp when it can import it, with resvg
+// otherwise; sharp's package.json pins its libvips build. A dependency upgrade that redraws the picture, or sharp
+// appearing or going away, also changes the URL.
+const SHARP = "node_modules/sharp/package.json";
 const SHARE_IMAGE_INPUTS = [
   "src/app/og.png/route.tsx",
   "src/lib/seo.ts",
@@ -23,9 +26,12 @@ const SHARE_IMAGE_INPUTS = [
   "node_modules/@fontsource/figtree/files/figtree-latin-700-normal.woff",
   "node_modules/next/dist/compiled/@vercel/og/index.node.js",
   "node_modules/next/dist/compiled/@vercel/og/resvg.wasm",
+  SHARP,
 ];
+const readInput = (path: string) =>
+  path === SHARP && !existsSync(path) ? "no sharp" : readFileSync(path);
 export const shareImageHash = (
-  read: (path: string) => string | Uint8Array = readFileSync,
+  read: (path: string) => string | Uint8Array = readInput,
 ) => {
   const hash = createHash("sha256");
   for (const path of SHARE_IMAGE_INPUTS) hash.update(read(path));
