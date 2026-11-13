@@ -175,7 +175,7 @@ pub(crate) async fn search(
     // a query that names a category ("short hair", "shorthair") also matches the items enriched into it, so
     // spellings of one meaning end up with the same results
     let categories: Vec<String> =
-        s.snap().category_phrases.get(&meaning.split_whitespace().collect::<String>().to_lowercase()).cloned().into_iter().collect();
+        s.snap().category_phrases.get(&crate::text::fold(&meaning.split_whitespace().collect::<String>())).cloned().into_iter().collect();
     let recognized = recognized(&named, categories.first(), &meaning);
     let catalog_now = chrono::Utc::now().timestamp();
     let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
