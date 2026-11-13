@@ -166,7 +166,7 @@ function RailHandleControl({
   saved: RefObject<number>;
   onResize: (rem: number) => void;
 }) {
-  const { t } = useUi();
+  const { t, ui } = useUi();
   const region = useResizable({
     defaultSize: rem * px,
     minSize: RAIL_REM.min * px,
@@ -189,6 +189,10 @@ function RailHandleControl({
     <ResizeHandle
       resizable={region}
       label={t("filter.railResize")}
+      // the handle reports pixels; a screen reader reads the width in rem, as it is set and stored
+      aria-valuetext={t("filter.railWidth", {
+        width: size.toLocaleString(LOCALES[ui], { maximumFractionDigits: 1 }),
+      })}
       isAlwaysVisible={false}
       className="filter-rail-handle"
       onDoubleClick={() => region.resize(RAIL_REM.default * px)}
