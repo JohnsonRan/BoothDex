@@ -135,6 +135,10 @@ const FORMAT: u32 = 4;
 /// Words shorter than this must match exactly in a typo-tolerant retry: one edit in "hair" reaches "hare" and "pair".
 const TYPO_MIN: usize = 5;
 
+/// A typo-tolerant retry takes queries of at most this many words: each fuzzy word costs a scan of the term
+/// dictionary and a bitset per field, so a long query that misses on one word would pay for all the others.
+const TYPO_MAX_WORDS: usize = 3;
+
 /// Hiragana as katakana; every other character unchanged.
 fn kana(c: char) -> char {
     match c {
@@ -353,16 +357,18 @@ impl TextIndex {
     }
 
     /// Matches for a query that found nothing, allowing one typo (a letter added, dropped, changed, or two swapped)
-    /// in each word of at least `TYPO_MIN` letters: "shinnano" finds "Shinano". Only for queries written in ASCII:
-    /// in kana or kanji one changed character is usually another word. Shorter words must match exactly.
+    /// in each word of at least `TYPO_MIN` letters: "shinnano" finds "Shinano". Shorter words, and words with digits
+    /// ("20277" is not "2077"), must match exactly. Only for ASCII queries of at most `TYPO_MAX_WORDS` words: in
+    /// kana or kanji one changed character is usually another word.
     fn typo_tolerant(&self, searcher: &tantivy::Searcher, words: &[String]) -> Result<Vec<(Score, DocAddress)>> {
-        if !words.iter().all(|w| w.is_ascii()) || !words.iter().any(|w| w.len() >= TYPO_MIN) {
+        let typo = |w: &String| w.len() >= TYPO_MIN && w.bytes().all(|b| b.is_ascii_alphabetic());
+        if words.len() > TYPO_MAX_WORDS || !words.iter().all(|w| w.is_ascii()) || !words.iter().any(typo) {
             return Ok(Vec::new());
         }
         let word = |w: &String| -> Box<dyn Query> {
             let fields = self.named.iter().map(|&f| {
                 let term = Term::from_field_text(f, w);
-                let q: Box<dyn Query> = if w.len() >= TYPO_MIN {
+                let q: Box<dyn Query> = if typo(w) {
                     Box::new(FuzzyTermQuery::new(term, 1, true))
                 } else {
                     Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))
@@ -494,7 +500,14 @@ mod tests {
 
     #[test]
     fn a_query_finding_nothing_allows_one_typo_per_long_latin_word() {
-        let docs = vec![doc("Shinano Short Hair", ""), doc("Manuka Dress", ""), doc("Rusk Dragon Wings", ""), doc("ミルティナ用 ゴシックドレス", ""), doc("Press Kit", "")];
+        let docs = vec![
+            doc("Shinano Short Hair Ribbon", ""),
+            doc("Manuka Dress", ""),
+            doc("Rusk Dragon Wings", ""),
+            doc("ミルティナ用 ゴシックドレス", ""),
+            doc("Press Kit", ""),
+            doc("Cyberpunk 2077 Jacket", ""),
+        ];
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
         let ids = |q: &str| idx.search(q).unwrap().0.iter().collect::<Vec<_>>();
         for (q, expected) in [
@@ -509,6 +522,12 @@ mod tests {
             // only when nothing matched: "dress" does not also bring "press"
             ("dress", vec![1]),
             ("xyzzyq", vec![]),
+            // numbers are not words with typos: 20277 is not 2077
+            ("20277", vec![]),
+            ("manuka 20277", vec![]),
+            // at most three words are retried, which bounds its cost
+            ("shinnano short hair", vec![0]),
+            ("shinnano short hair ribbon", vec![]),
             // other scripts get no typo allowance
             ("ミルティノ", vec![]),
         ] {

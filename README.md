@@ -66,7 +66,8 @@ docker compose pull && docker compose up -d
 - Each search word is its own token, removable on its own; the words read as an avatar or a category join one
   token, led by the avatar's picture or a category icon.
 - Japanese text search uses Lindera (IPADIC). Full-width and half-width forms match each other, and so do hiragana
-  and katakana ("しなの" finds シナノ). A Latin query that finds nothing is tried again allowing one typo per word
+  and katakana ("しなの" finds シナノ). A Latin query of up to three words that matches no title, tag or author name is
+  tried again allowing one typo in each all-letter word
   of five or more letters ("shinnano" finds Shinano). Optional semantic search finds items by meaning across languages
   ("哥特裙" finds ゴスロリ dresses) and merges both rankings.
 
