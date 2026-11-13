@@ -123,7 +123,7 @@ export const zh = {
   "list.semanticUnavailable":
     "按意思搜索暂时不可用，这次只按关键词查找。稍后再搜一次通常就会恢复。",
   "list.typoTolerant":
-    "没有与输入完全一致的商品，下面的结果允许较长的词各有一处拼写错误。",
+    "输入的词没有完全一致的匹配，下面按词匹配的结果允许较长的词各有一处拼写错误。",
   "fav.add": "收藏",
   "fav.needSignIn": "登录后才能收藏",
   "fav.failed": "收藏失败",
