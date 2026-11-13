@@ -125,6 +125,8 @@ export const ja: Dict = {
   "trace.step.items": "商品の読み込み",
   "list.semanticUnavailable":
     "意味による検索は一時的に利用できないため、キーワードのみで検索しました。少し時間をおいて再検索すると通常は戻ります。",
+  "list.typoTolerant":
+    "入力どおりの語に一致する商品がなかったため、長めの語はそれぞれ 1 文字までのつづりの違いを許して検索しました。",
   "fav.add": "お気に入り",
   "fav.needSignIn": "お気に入りにはログインが必要です",
   "fav.failed": "お気に入りを更新できませんでした",

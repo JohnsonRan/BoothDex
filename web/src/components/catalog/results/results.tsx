@@ -104,6 +104,9 @@ export async function Results({
     <KeepResults>
       <Swap>
         <VStack gap={6}>
+          {result.typoTolerant && (
+            <SemanticNote text={t("list.typoTolerant")} />
+          )}
           <ResultPages
             // a new search starts over, and so do new tile texts or prices (a language, item text or currency
             // change), at the place the history entry keeps; the same search read again (a retry) keeps the pages
