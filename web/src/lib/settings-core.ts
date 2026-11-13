@@ -25,46 +25,6 @@ type Black = (typeof BLACK)[number];
  *  stored "top" was mostly never chosen: it reads as the rail now (owner). */
 const FILTER_PLACES = ["side", "row"] as const;
 type FilterPlace = (typeof FILTER_PLACES)[number];
-/** The Astryx themes, neutral first (the default, built into every page); the others load when chosen
- *  (themes/index.tsx). */
-export const STYLES = [
-  "neutral",
-  "stone",
-  "matcha",
-  "y2k",
-  "gothic",
-  "chocolate",
-  "butter",
-] as const;
-export type Style = (typeof STYLES)[number];
-/** Themes drawn in one mode whatever the setting: Gothic is dark-only (@astryxdesign/theme-gothic README.md:3-5). */
-export const SINGLE_MODE: Partial<Record<Style, "light" | "dark">> = {
-  gothic: "dark",
-};
-/** The mode a page is drawn in: a single-mode theme's own, otherwise the visitor's setting. */
-export const shownMode = (theme: Theme, style: Style): Theme =>
-  SINGLE_MODE[style] ?? theme;
-/** Switches of style, each shown once `prepare` has loaded it. The last one asked for wins, also one of the style
- *  already shown (it cancels a switch still loading), and one asked for before a change of account
- *  (`session`, lib/preferences.ts) is dropped. Settles as "failed" when the last one cannot load. */
-export function styleSwitch(
-  prepare: (style: Style) => Promise<boolean>,
-  session: () => number,
-) {
-  let last = 0;
-  return async (
-    style: Style,
-    show: () => void,
-  ): Promise<"shown" | "failed" | "replaced"> => {
-    const ask = ++last;
-    const at = session();
-    const ok = await prepare(style);
-    if (ask !== last || session() !== at) return "replaced";
-    if (!ok) return "failed";
-    show();
-    return "shown";
-  };
-}
 export const CURRENCIES = [
   "JPY",
   "USD",
@@ -85,7 +45,6 @@ export type Settings = {
   content: ItemTextSetting;
   currency: Currency;
   theme: Theme;
-  style: Style;
   black: Black;
   filters: FilterPlace;
 };
@@ -96,7 +55,6 @@ export const DEFAULT_SETTINGS: Settings = {
   content: "ui",
   currency: "JPY",
   theme: "system",
-  style: "neutral",
   black: "off",
   filters: "side",
 };
@@ -156,7 +114,6 @@ export function parseSettings(
     content: pick(v.content, ITEM_TEXT) ?? DEFAULT_SETTINGS.content,
     currency: pick(v.currency, CURRENCIES) ?? DEFAULT_SETTINGS.currency,
     theme: pick(v.theme, THEMES) ?? DEFAULT_SETTINGS.theme,
-    style: pick(v.style, STYLES) ?? DEFAULT_SETTINGS.style,
     black: pick(v.black, BLACK) ?? DEFAULT_SETTINGS.black,
     filters: pick(v.filters, FILTER_PLACES) ?? DEFAULT_SETTINGS.filters,
   };

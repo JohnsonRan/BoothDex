@@ -78,20 +78,13 @@ docker compose pull && docker compose up -d
 ### 外観と言語
 
 - インターフェイスは Meta の [Astryx](https://github.com/meta/astryx) デザインシステムで構築されています。
-- ライト、ダーク、システムのいずれかのモードと、7 種類の Astryx スタイル (ニュートラル、ストーン、抹茶、Y2K、ゴシック、チョコレート、バター) から選べます。スタイルは選択したときにだけ読み込まれ、サインイン中は選択内容がアカウントに保存されます。
+- ライト、ダーク、システムのいずれかのモードを選べます。ダークモードでは純黒モードも選べます。サインイン中は選択内容がアカウントに保存されます。
 - 表示言語は日本語・英語・簡体字中国語・韓国語に対応しています。商品タイトルの原文/翻訳切り替え、通貨換算表示に対応し、スマートフォンでも利用できます。
 
 <details>
-<summary>設定でカラーモードとスタイルを選べます</summary>
+<summary>設定でカラーモードを選べます</summary>
 
-![設定の外観ページ: テーマのモードと 7 種類のスタイル](docs/screenshots/ja/settings.webp)
-
-</details>
-
-<details>
-<summary>ダークモードの抹茶スタイル (英語表示)</summary>
-
-![ダークモードの抹茶スタイルで表示したホーム画面](docs/screenshots/matcha.webp)
+![設定の外観ページ: テーマのモードと純黒モード](docs/screenshots/ja/settings.webp)
 
 </details>
 

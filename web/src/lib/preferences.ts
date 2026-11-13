@@ -11,7 +11,6 @@ const NAMES = {
   content: "language",
   currency: "currency",
   theme: "theme",
-  style: "style",
   black: "black",
   filters: "filters",
 } as const satisfies Record<keyof Settings, string>;
@@ -22,20 +21,6 @@ let signedIn = false;
 export function setPreferenceSync(on: boolean) {
   signedIn = on;
 }
-
-// who is signed in (null: nobody; undefined until the session has read it), and how often that has changed
-let account: number | null | undefined;
-let accountChanges = 0;
-
-/** The session sets who is signed in once it has read it: a theme asked for under another account is not saved
- *  (components/providers.tsx). */
-export function setPreferenceAccount(id: number | null) {
-  if (account !== undefined && id !== account) accountChanges++;
-  account = id;
-}
-
-/** Counts the sign-ins and sign-outs since the page opened. */
-export const preferenceSession = () => accountChanges;
 
 /** Sends preferences to the account; a failure keeps them in this browser only, as on master. */
 function send(json: Record<string, string>) {

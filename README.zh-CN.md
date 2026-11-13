@@ -81,20 +81,13 @@ docker compose pull && docker compose up -d
 ### 外观与语言
 
 - 界面基于 Meta 的 [Astryx](https://github.com/meta/astryx) 设计系统构建。
-- 可选浅色、深色或跟随系统，以及 7 种 Astryx 风格：中性、岩石、抹茶、Y2K、哥特、巧克力与黄油。风格只在选中后加载；登录后，所选设置随账户同步。
+- 可选浅色、深色或跟随系统；深色模式下可开启纯黑模式。登录后，所选设置随账户同步。
 - 支持简体中文、英语、日语、韩语界面；商品标题支持原文或译文切换；支持货币换算，手机上同样可用。
 
 <details>
-<summary>在设置中选择颜色模式与风格</summary>
+<summary>在设置中选择颜色模式</summary>
 
-![设置中的外观页：主题模式与 7 种风格](docs/screenshots/zh-CN/settings.webp)
-
-</details>
-
-<details>
-<summary>深色模式下的抹茶风格（英文界面）</summary>
-
-![深色模式下抹茶风格的首页](docs/screenshots/matcha.webp)
+![设置中的外观页：主题模式与纯黑模式](docs/screenshots/zh-CN/settings.webp)
 
 </details>
 
