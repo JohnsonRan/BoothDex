@@ -12,8 +12,9 @@ use crate::params::Params;
 use crate::snapshot::{Lookup, Snapshot};
 use crate::{AppState, limit};
 
-/// The lists change only when the catalogue snapshot is rebuilt, at most once per 5 minutes (snapshot.rs), so a
-/// browser or the CDN may keep an answer that long: a repeated typeahead word or picker opening is not asked again.
+/// The lists change only when the catalogue snapshot is rebuilt: normally at most once per 5 minutes (snapshot.rs;
+/// an admin "reload now" can rebuild sooner). A browser or the CDN may keep an answer 5 minutes, so a repeated
+/// typeahead word or picker opening is not asked again; after a forced reload a kept list lags up to that long.
 const LOOKUP_CACHE: &str = "public, max-age=300";
 
 fn cached(body: Value) -> Response {
