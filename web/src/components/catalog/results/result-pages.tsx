@@ -92,16 +92,12 @@ export function ResultPages({
   const [failed, setFailed] = useState(false);
   const [cols, setCols] = useState(1);
   const r = useResultRefs(pages);
-  // the boxes' tile mask, for the look it was measured in; a hidden silhouette stands until it is measured
-  const [mask, setMask] = useState<{ look: string; style: CSSProperties }>();
+  // the boxes' tile mask; a hidden silhouette stands until it is measured
+  const [tileMask, setMask] = useState<CSSProperties>();
   const probe = useRef<HTMLDivElement>(null);
-  const tileMask = mask?.look === settings.style ? mask.style : undefined;
   useLayoutEffect(() => {
     if (tileMask || !probe.current || !r.grid.current) return;
-    setMask({
-      look: settings.style,
-      style: silhouetteMask(probe.current, r.grid.current),
-    });
+    setMask(silhouetteMask(probe.current, r.grid.current));
   });
   useLayoutEffect(() => {
     r.now.current = { pages };

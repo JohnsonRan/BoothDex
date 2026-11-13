@@ -1,8 +1,8 @@
 # Template map
 
 Every route and surface of the site, the Astryx template it is built from, and the rules it follows. The web
-frontend (`web/`) is being rebuilt on Astryx with the neutral theme as the default (six more Astryx themes load
-on demand, rule 7); phase 1 is the home page. Surfaces marked
+frontend (`web/`) is being rebuilt on Astryx with the neutral theme, its only theme (rule 7); phase 1 is the home
+page. Surfaces marked
 *planned* do not exist on this branch yet.
 
 Template names are the ids from `bunx astryx template --list` (page templates) or block names under
@@ -36,10 +36,9 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
    no semantic name are registered once under `site:` (`lib/icons.tsx`, table below). No hand-drawn glyphs
    (the logo is the brand mark, not an icon).
 7. Appearance: System (default), Light, Dark from the settings cookie; a head script sets `data-theme` and
-   `lang` before first paint, and the root `Theme` gets the same mode from the server. The style is neutral (the
-   default, built into every page) or one of six Astryx themes (`lib/settings-core.ts` `STYLES`: Stone, Matcha,
-   Y2K, Gothic, Chocolate, Butter), each loaded only when chosen (`themes/index.tsx`; Gothic is dark-only). Pure
-   black (a `Switch` under the styles) applies in dark mode only; the same script marks it as `data-black`.
+   `lang` before first paint, and the root `Theme` gets the same mode from the server. The theme is neutral, the
+   only one (owner, 2026-11-13: the six other Astryx themes were removed). Pure black (a `Switch` under the colour
+   mode) applies in dark mode only; the same script marks it as `data-black`.
 8. This file lists every surface before it is built.
 9. Astryx is MIT: `web/THIRD-PARTY-NOTICES.md` names each adapted template and carries the licence.
 
@@ -53,7 +52,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Density | `html { font-size: clamp(100%, …, 115%) }` in `globals.css`: the template's 100 % up to a 1440 px window, growing to 115 % at 2560 px (a 4K screen at 150 % display scaling; owner, 2026-11-13); every rem token follows it, and `--size-element-sm/md/lg` are restated as 1.75 / 2 / 2.25rem so controls scale with their text |
 | Control size | `sm` for the whole toolbar row, as the table-filter template: search, every filter clause, presets, sort, save and saved views |
 | Type | neutral scale: page title `Heading level={1}` (2xl); tile title `Heading level={4}` (base) at outline level 2; shop `Text type="body" color="secondary"` and price `Text type="large" weight="bold"`, as product-gallery's description and price (page.tsx:106-109) |
-| Colour | the chosen theme's tokens, light and dark via `light-dark()`; the one override is pure black (Deviations after the style audit) |
+| Colour | the neutral theme's tokens, light and dark via `light-dark()`; the one override is pure black (Deviations after the style audit) |
 | Radius, elevation | component defaults |
 
 ## Surfaces
@@ -74,7 +73,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms; sign-in only, without the tabs, while registration is closed) | checkpoint 1 |
 | Account menu | TopNav end, signed in | ghost `IconButton` with the user-circle glyph (template `shell-side-nav` account row, page.tsx:180), tooltip the display name; `DropdownMenu` with a header (display name, email) and two groups: favourites, recently viewed / settings, admin console (admins only), sign out | track D |
 | Language, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio group (interface language only); currency as a ghost DropdownMenu button of the same height | checkpoint 1 |
-| Settings (appearance, language, currency, item text, devices) | TopNav end, account menu | page `settings-dialog` (appearance: colour mode, style cards, pure black `Switch`); synced to the account when signed in; item text defaults to the interface language; signed in, an Account group with Devices: the account's sessions as the card's rows, a secondary Sign out on each but this device, which carries a `Token`; and Your data: the template's "Delete my account" row (page.tsx:1953-1958, destructive sm `Button`) opening block `DialogFormDialog` with the password field, Cancel and a destructive Delete account | track D |
+| Settings (appearance, language, currency, item text, devices) | TopNav end, account menu | page `settings-dialog` (appearance: colour mode cards, pure black `Switch`); synced to the account when signed in; item text defaults to the interface language; signed in, an Account group with Devices: the account's sessions as the card's rows, a secondary Sign out on each but this device, which carries a `Token`; and Your data: the template's "Delete my account" row (page.tsx:1953-1958, destructive sm `Button`) opening block `DialogFormDialog` with the password field, Cancel and a destructive Delete account | track D |
 | Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid; recently viewed is read in the browser) | track D |
 | Privacy policy, terms of use | `/privacy`, `/terms`; Settings > About rows; the register form's consent line (page `login-card` terms line, page.tsx:196-209) | page `documentation-technical` in the site frame: a reading column (`contentWidth` 960, page inset 6), `Heading level={1}` with a supporting "Last updated" line, then per section a `Divider` and a level-2 `Heading` over body `Text` paragraphs and disc `List`s; the cookie list a compact `Table`. The template's outline panel, phone selector, assistant card and code blocks are not used. Texts are server-only (`lib/legal-<lang>.ts`), the operator and contact from `OPERATOR_NAME` / `CONTACT_EMAIL` at runtime; inline links are underlined (neutral's accent is the text colour). From Settings > About and the register form the same body opens in a dialog over them (block `DialogScrollingContent` without its footer, 960 px wide, settings' height cap; "Last updated" as the `DialogHeader` subtitle, block `DialogWithSubtitle`); the body is one client component (`legal-body.tsx`) for both, and the dialog gets its texts as plain data from a server action, never as elements (a route's client manifest need not list the components they name); the terms' privacy link switches the dialog, a modified click opens the page | track G |
 | Admin frame | `/admin/*` | page `shell-side-nav` (collapsible, resizable `SideNav`, two titled groups, footer: back to site, language, colour mode; phone drawer from `AppShell`) | track F |
@@ -262,7 +261,7 @@ Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@ast
 - Scrollbars: `.astryx-dropdown-menu`, a Selector popup's listbox and a dialog's body take `scrollbar-width: none`
   in `globals.css` (the filter sidebar too, in `app/filter-row.css`), the item card's thumbnails and variations the same inline (the classic Windows bar crowded
   narrow menus and the card's rounded edge); they still scroll by wheel, touch and keyboard. The account menu
-  passes `menuMaxHeight` so its rows fit whole in themes with tall rows (Matcha: 55 px).
+  passes `menuMaxHeight` so its rows fit whole at the page scale.
 
 ## Icons
 
@@ -391,14 +390,12 @@ Deviations, all prop values or token-backed inline styles:
 - Settings theme cards: `columns={{minWidth: 80, max: 3}}` instead of settings-dialog's 96 (page.tsx:1179), so
   the three cards stay on one row in a phone's panel (264 px at 360, 294 px at 390).
 - Height caps: DropdownMenu's 300 px cap is lifted to `menuMaxHeight` 480 px (`lib/menu-height.ts`) on the
-  language, sort, download and account menus, whose rem rows outgrow it at the page scale or in a roomier theme;
+  language, sort, download and account menus, whose rem rows outgrow it at the page scale;
   the viewport still bounds them.
 - Dialog height: the item dialog takes settings' cap, `min(50rem, calc(100dvh - 2rem))` (`lib/dialog-height.ts`),
   instead of Dialog's default 75dvh, so on a short window it is as tall as settings (owner, 2026-11-09).
 - Search tokens: the Tokenizer's cap of a token's wrapper at the field's width is lifted (`app/filter-row.css`),
   so a token in a phone's narrow field keeps its words and the field scrolls them sideways.
-- Matcha and Y2K popups: a Selector's 300 px list cap and a ComplexSelector's 480 px panel cap grow by the themes'
-  1.5 times spacing (`themes/matcha.css`, `themes/y2k.css`), so an 8-row list and the price panel show whole.
 
 Checked and kept as the template:
 
@@ -419,7 +416,7 @@ Checked and kept as the template:
   query they answered. The list's 36rem rule skips `.astryx-tooltip`, so a token's tooltip keeps its own size.
 - Pure black (`app/globals.css`), the one colour override (rule 3): under `html[data-black]` in dark mode, pinned
   or followed from the system, the surface and body backgrounds are restated as `#000` and card, muted and
-  popover as `#111`, unlayered so it wins over every theme's layer. Synced to the account as `black`.
+  popover as `#111`, unlayered so it wins over the theme's layer. Synced to the account as `black`.
 - iOS Safari 26 ignores `theme-color` and tints its bars from the page's background: `<html>` takes
   `--color-background-surface`, the viewport is `viewport-fit=cover`, and `<body>` pads by the safe-area insets.
 - Avatar strip: no prev/next buttons on a touch screen (`(hover: none) and (pointer: coarse)`, `hasButtons`); it
@@ -457,7 +454,7 @@ a raw colour. Each one is converted when its file is next changed and a prop cov
   `min-block-size: 2lh`.
 - Scrolling: the saved views row, the gallery's thumbnails and the variations list (`overflow`, no scroll bar,
   `overscrollBehavior`).
-- Token colours: the theme previews in Settings, the admin chart's legend dots, the search trace's failed steps, the
+- Token colours: the colour mode previews in Settings, the admin chart's legend dots, the search trace's failed steps, the
   pressed chips.
 - Values known only at run time: the results grid's masks and the heights of boxes not drawn (`result-pages.tsx`), the
   strip's custom properties (`band.tsx`, `avatar-strip.tsx`), rotations.

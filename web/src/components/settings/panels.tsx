@@ -1,6 +1,6 @@
 "use client";
 // The settings dialog's panels, filled into template settings-dialog's: Appearance as its AppearancePanel's
-// card (page.tsx:1269-1306: the colour theme cards, then a second row, here the Astryx theme's cards), Language & region as its LanguagePanel
+// card (page.tsx:1269-1306: the colour theme cards, then rows of switches), Language & region as its LanguagePanel
 // (page.tsx:1797-1885, a Selector per row; more than three choices each), and About with master's credits
 // (settings-menu.tsx:128-157) as rows whose control opens the link (a Button: an action, not a value). The
 // values are the same settings the top-bar menus change (Providers' `update`), so both always agree. Signed in,
@@ -40,7 +40,7 @@ import {
 import { DataPanel } from "./delete-account";
 import { ProfilePanel } from "./profile";
 import { CONTROL_WIDTH, SettingsCard, SettingsRow } from "./rows";
-import { StyleChoiceCards, ThemeChoiceCards } from "./theme-choice";
+import { ThemeChoiceCards } from "./theme-choice";
 
 export type PanelId =
   | "appearance"
@@ -120,7 +120,6 @@ export const PANEL_GROUPS: PanelGroup[] = [
 
 function AppearancePanel() {
   const { t, settings, update } = useUi();
-  const toast = useToast();
   return (
     <SettingsCard>
       <SettingsRow
@@ -131,24 +130,6 @@ function AppearancePanel() {
           <ThemeChoiceCards
             value={settings.theme}
             onChange={(theme) => update({ theme })}
-          />
-        }
-      />
-      <SettingsRow
-        title={t("settings.style")}
-        icon="site:style"
-        description={t("settings.styleDesc")}
-        detail={
-          <StyleChoiceCards
-            value={settings.style}
-            onChange={async (style) => {
-              if (!(await update({ style })))
-                toast({
-                  body: t("settings.styleFailed"),
-                  type: "error",
-                  uniqueID: "settings.styleFailed",
-                });
-            }}
           />
         }
       />

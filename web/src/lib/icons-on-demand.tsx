@@ -25,7 +25,6 @@ import {
   Rss,
   Shapes,
   ShieldCheck,
-  SwatchBook,
   Type,
 } from "lucide-react";
 import { glyph } from "./icons";
@@ -36,8 +35,6 @@ registerIcons({
   "site:admin": <LayoutDashboard {...glyph} />,
   "site:signOut": <LogOut {...glyph} />,
   "site:appearance": <Palette {...glyph} />,
-  // the Astryx theme's row: the template's accent row icon (settings-dialog page.tsx:1288, SwatchIcon)
-  "site:style": <SwatchBook {...glyph} />,
   "site:system": <Monitor {...glyph} />,
   "site:devices": <MonitorSmartphone {...glyph} />,
   "site:password": <KeyRound {...glyph} />,

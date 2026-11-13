@@ -240,23 +240,12 @@ export const ja: Dict = {
   "settings.syncNote":
     "このブラウザーに保存されます。ログイン中はアカウントにも保存されます。",
   "settings.system": "システム",
-  "settings.style": "スタイル",
-  "settings.styleDesc": "サイト全体の配色、フォント、形です。",
-  "settings.darkOnly": "このスタイルはダークモードのみです。",
-  "settings.styleFailed": "このスタイルを読み込めませんでした",
   "settings.black": "純黒モード",
   "settings.blackDesc":
     "ダークモードで純黒の背景を使います。OLED 画面に適しています。",
   "settings.filters": "上部で絞り込み",
   "settings.filtersDesc":
     "広い画面では、絞り込みを左のサイドバーではなく、検索と並び替えと同じ上部に表示します。",
-  "style.neutral": "ニュートラル",
-  "style.stone": "ストーン",
-  "style.matcha": "抹茶",
-  "style.y2k": "Y2K",
-  "style.gothic": "ゴシック",
-  "style.chocolate": "チョコレート",
-  "style.butter": "バター",
   "settings.language": "言語と地域",
   "settings.languageDesc": "表示言語、商品テキスト、価格の通貨です。",
   "settings.uiDesc": "メニュー、ボタン、メッセージの言語です。",

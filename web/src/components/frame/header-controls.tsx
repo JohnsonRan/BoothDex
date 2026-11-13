@@ -11,12 +11,7 @@ import { IconButton } from "@astryxdesign/core/IconButton";
 import dynamic from "next/dynamic";
 import { useUi } from "@/components/providers";
 import { lateMenuButton } from "@/lib/late-menu";
-import {
-  type Currency,
-  LOCALES,
-  SINGLE_MODE,
-  shownMode,
-} from "@/lib/settings-core";
+import { type Currency, LOCALES } from "@/lib/settings-core";
 
 // the sign each currency is known by locally (Intl's narrow symbols repeat "$" and "¥" across currencies)
 export const CURRENCY_SYMBOLS: Record<Currency, string> = {
@@ -97,17 +92,13 @@ export const CurrencyMenu = dynamic(
 export function ColorModeToggle() {
   const { t, settings, update } = useUi();
   const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
-  const mode = shownMode(settings.theme, settings.style);
+  const mode = settings.theme;
   const isDark = mode === "dark" || (mode === "system" && prefersDark);
   const label = isDark ? t("theme.toLight") : t("theme.toDark");
-  // a theme drawn in one mode: disabled, its tooltip saying why (IconButton.doc.mjs:55-58, aria-disabled so it
-  // stays focusable while it has a tooltip)
-  const single = !!SINGLE_MODE[settings.style];
   return (
     <IconButton
       label={label}
-      tooltip={single ? t("settings.darkOnly") : label}
-      isDisabled={single}
+      tooltip={label}
       variant="ghost"
       icon={<Icon icon={isDark ? "site:light" : "site:dark"} size="sm" />}
       onClick={() => update({ theme: isDark ? "light" : "dark" })}

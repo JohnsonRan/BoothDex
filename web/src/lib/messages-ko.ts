@@ -237,23 +237,12 @@ export const ko: Dict = {
   "settings.syncNote":
     "이 브라우저에 저장되며, 로그인하면 계정에도 저장됩니다.",
   "settings.system": "시스템 설정",
-  "settings.style": "스타일",
-  "settings.styleDesc": "사이트 전체의 색, 글꼴, 모양입니다.",
-  "settings.darkOnly": "이 스타일은 다크 모드만 제공합니다.",
-  "settings.styleFailed": "이 스타일을 불러오지 못했습니다",
   "settings.black": "순수 검정 모드",
   "settings.blackDesc":
     "다크 모드에서 순수한 검은색 배경을 사용합니다. OLED 화면에 적합합니다.",
   "settings.filters": "위쪽 필터",
   "settings.filtersDesc":
     "넓은 화면에서 필터를 왼쪽 사이드바 대신 검색, 정렬과 함께 위쪽에 표시합니다.",
-  "style.neutral": "뉴트럴",
-  "style.stone": "스톤",
-  "style.matcha": "말차",
-  "style.y2k": "Y2K",
-  "style.gothic": "고딕",
-  "style.chocolate": "초콜릿",
-  "style.butter": "버터",
   "settings.language": "언어 및 지역",
   "settings.languageDesc": "화면 언어, 상품 텍스트, 가격 통화입니다.",
   "settings.uiDesc": "메뉴, 버튼, 메시지에 쓰는 언어입니다.",
