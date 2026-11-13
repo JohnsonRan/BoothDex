@@ -91,6 +91,15 @@ async fn check_semantic_search(pool: PgPool) {
         assert_eq!(ids, expected, "query {query}");
         assert_eq!(body["count"], expected.len());
     }
+
+    // an empty search answers, in the same response, what it finds without each filter group; the meaning-based
+    // matches of the request carry over (the provider at 127.0.0.1:9 never answers, the stored embedding does)
+    let empty = "q=silky%20strands&avatars=shinano&pmin=100000&without=avatars+pmin";
+    let response = search(State(state.clone()), limit::ClientIp("203.0.113.21".parse().unwrap()), HeaderMap::new(), RawQuery(Some(empty.into())))
+        .await
+        .unwrap_or_else(IntoResponse::into_response);
+    let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+    assert_eq!((&body["count"], &body["semantic"], &body["widerCounts"]), (&json!(0), &json!("used"), &json!([0, 1])), "{body}");
 }
 
 #[sqlx::test(migrations = "../core/migrations")]
