@@ -13,7 +13,8 @@ use rustc_hash::FxHashMap;
 use tantivy::collector::{Collector, DocSetCollector, SegmentCollector};
 use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
 use tantivy::schema::{FAST, Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions};
-use tantivy::tokenizer::{LowerCaser, NgramTokenizer, SimpleTokenizer, TextAnalyzer};
+use tantivy::tokenizer::{LowerCaser, NgramTokenizer, SimpleTokenizer, TextAnalyzer, Token, TokenFilter, TokenStream, Tokenizer};
+use unicode_normalization::UnicodeNormalization;
 use tantivy::{DocAddress, DocId, Index, IndexReader, Score, SegmentOrdinal, SegmentReader, TantivyDocument, Term};
 
 pub struct TextDoc {
@@ -69,6 +70,52 @@ impl SegmentCollector for ScoredSegment {
     }
 }
 
+/// Token filter that writes hiragana as katakana (see `fold`).
+#[derive(Clone)]
+struct KanaFolder;
+
+#[derive(Clone)]
+struct KanaFolderFilter<T>(T);
+
+struct KanaFolderStream<T>(T);
+
+impl TokenFilter for KanaFolder {
+    type Tokenizer<T: Tokenizer> = KanaFolderFilter<T>;
+
+    fn transform<T: Tokenizer>(self, tokenizer: T) -> KanaFolderFilter<T> {
+        KanaFolderFilter(tokenizer)
+    }
+}
+
+impl<T: Tokenizer> Tokenizer for KanaFolderFilter<T> {
+    type TokenStream<'a> = KanaFolderStream<T::TokenStream<'a>>;
+
+    fn token_stream<'a>(&'a mut self, text: &'a str) -> Self::TokenStream<'a> {
+        KanaFolderStream(self.0.token_stream(text))
+    }
+}
+
+impl<T: TokenStream> TokenStream for KanaFolderStream<T> {
+    fn advance(&mut self) -> bool {
+        if !self.0.advance() {
+            return false;
+        }
+        let text = &mut self.0.token_mut().text;
+        if !text.is_ascii() {
+            *text = text.chars().map(kana).collect();
+        }
+        true
+    }
+
+    fn token(&self) -> &Token {
+        self.0.token()
+    }
+
+    fn token_mut(&mut self) -> &mut Token {
+        self.0.token_mut()
+    }
+}
+
 fn text_field(tokenizer: &str, positions: bool) -> TextOptions {
     TextOptions::default().set_indexing_options(
         TextFieldIndexing::default()
@@ -79,11 +126,32 @@ fn text_field(tokenizer: &str, positions: bool) -> TextOptions {
 
 /// Bump when what goes into the index changes, so indexes already on disk are rebuilt.
 /// 3: tantivy 0.27 and Lindera 6 (dictionary and tokenizer versions changed).
-const FORMAT: u32 = 3;
+/// 4: NFKC and kana folding (`fold`).
+const FORMAT: u32 = 4;
 
-/// Lowercase letters and digits only: "Short-Hair" and "short hair" both become "shorthair".
+/// Hiragana as katakana; every other character unchanged.
+fn kana(c: char) -> char {
+    match c {
+        '\u{3041}'..='\u{3096}' | '\u{309d}'..='\u{309e}' => char::from_u32(c as u32 + 0x60).unwrap_or(c),
+        _ => c,
+    }
+}
+
+/// The form search compares text in: NFKC (full-width Latin and half-width kana become the ordinary forms),
+/// lowercase, and hiragana as katakana, so "ＤＲＥＳＳ", "ﾐﾙﾃｨﾅ" and "しなの" find "dress", "ミルティナ" and "シナノ".
+pub(crate) fn fold(s: &str) -> String {
+    s.nfkc().flat_map(char::to_lowercase).map(kana).collect()
+}
+
+/// Text handed to Lindera: NFKC only. Kana are folded per token afterwards (`KanaFolder`), because the
+/// dictionary segments hiragana words and particles differently from katakana.
+fn nfkc(s: &str) -> String {
+    s.nfkc().collect()
+}
+
+/// Folded letters and digits only: "Short-Hair" and "short hair" both become "shorthair".
 fn compact(s: &str) -> String {
-    s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+    fold(s).chars().filter(|c| c.is_alphanumeric()).collect()
 }
 
 /// Adjacent Latin words joined ("Short Hair" -> "shorthair"), indexed so a query written as one word finds text
@@ -108,7 +176,7 @@ fn joined_pairs(texts: &[&str]) -> String {
 /// Separators users type between words ("short-hair", "a/b") mean a word break, not query syntax
 /// (a leading "-" would otherwise exclude the word).
 fn query_words(q: &str) -> String {
-    q.chars().map(|c| if c.is_alphanumeric() || c == '"' { c } else { ' ' }).collect()
+    nfkc(q).chars().map(|c| if c.is_alphanumeric() || c == '"' { c } else { ' ' }).collect()
 }
 
 fn bigrams(s: &str) -> Vec<String> {
@@ -150,7 +218,7 @@ impl TextIndex {
         let segmenter = Segmenter::new(Mode::Normal, load_dictionary("embedded://ipadic")?, None);
         index
             .tokenizers()
-            .register("ja", TextAnalyzer::builder(LinderaTokenizer::from_segmenter(segmenter)).filter(LowerCaser).build());
+            .register("ja", TextAnalyzer::builder(LinderaTokenizer::from_segmenter(segmenter)).filter(LowerCaser).filter(KanaFolder).build());
         index
             .tokenizers()
             .register("bigram", TextAnalyzer::builder(NgramTokenizer::new(2, 2, false)?).filter(LowerCaser).build());
@@ -166,12 +234,13 @@ impl TextIndex {
                 let hay = compact(&format!("{} {}", d.title, d.tags));
                 let mut td = TantivyDocument::default();
                 td.add_u64(doc, i as u64);
-                td.add_text(title, &d.title);
-                td.add_text(tags, &d.tags);
-                td.add_text(author, &d.author);
-                td.add_text(bio, &d.bio);
+                let (t, g, b) = (nfkc(&d.title), nfkc(&d.tags), nfkc(&d.bio));
+                td.add_text(title, &t);
+                td.add_text(tags, &g);
+                td.add_text(author, nfkc(&d.author));
+                td.add_text(bio, &b);
                 td.add_text(gram, &hay);
-                td.add_text(pairs, joined_pairs(&[&d.title, &d.tags, &d.bio]));
+                td.add_text(pairs, joined_pairs(&[&t, &g, &b]));
                 writer.add_document(td)?;
                 haystack.push(hay);
             }
@@ -349,6 +418,42 @@ mod tests {
         for (query, expected) in [("a b", vec![0]), ("x z", vec![1]), ("s h", vec![2]), ("シ ョート", vec![3]), ("short hair", vec![2])] {
             assert_eq!(idx.search(query).unwrap().0.iter().collect::<Vec<_>>(), expected, "query {query:?}");
         }
+    }
+
+    #[test]
+    fn width_and_kana_variants_match_the_same_items() {
+        let docs = vec![doc("ミルティナ用 ゴシックドレス", "衣装"), doc("Gothic Bone Dress", "VRChat"), doc("しなの用 ショートヘア", ""), doc("ＦＵＬＬ Ｗｉｄｔｈ Hat", "")];
+        let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
+        let ids = |q: &str| idx.search(q).unwrap().0.iter().collect::<Vec<_>>();
+        for (q, expected) in [
+            ("ＤＲＥＳＳ", vec![1]),
+            ("full width", vec![3]),
+            ("ﾐﾙﾃｨﾅ", vec![0]),
+            ("みるてぃな", vec![0]),
+            ("みるてぃ", vec![0]),
+            ("シナノ", vec![2]),
+            ("しょーとへあ", vec![2]),
+        ] {
+            assert_eq!(ids(q), expected, "query {q:?}");
+        }
+    }
+
+    #[test]
+    fn author_and_bio_words_ignore_width_and_kana() {
+        // author and bio have no substring path: only their words can match
+        let bio = |title: &str, author: &str, bio: &str| TextDoc { title: title.into(), tags: String::new(), author: author.into(), bio: bio.into() };
+        let docs = vec![bio("衣装", "", "しなの対応"), bio("帽子", "", "ＲＥＡＤＭＥ included"), bio("髪型", "ＳＡＫＵＲＡ工房", ""), bio("靴", "", "Works on Kikyo")];
+        let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
+        let ids = |q: &str| idx.search(q).unwrap().0.iter().collect::<Vec<_>>();
+        for (q, expected) in [("シナノ", vec![0]), ("readme", vec![1]), ("sakura", vec![2]), ("ＫＩＫＹＯ", vec![3])] {
+            assert_eq!(ids(q), expected, "query {q:?}");
+        }
+    }
+
+    #[test]
+    fn fold_unifies_width_case_and_kana() {
+        assert_eq!(fold("ＡＢＣ ｱｲｳ あいう ゔ"), "abc アイウ アイウ ヴ");
+        assert_eq!(fold("ヷ・ー～"), "ヷ・ー~");
     }
 
     #[test]

@@ -13,6 +13,7 @@ use crate::AppState;
 use crate::catalog::Catalog;
 use crate::db;
 use crate::params::Params;
+use crate::text::fold;
 
 /// Name lookup for sidebar pickers and the command palette.
 pub(crate) struct Lookup(Vec<(Vec<String>, Value, u64)>);
@@ -25,7 +26,7 @@ impl Lookup {
     pub(crate) fn split_names<'q>(&self, q: &'q str) -> (String, Vec<(String, Vec<&'q str>)>) {
         let words: Vec<&str> = q.split_whitespace().collect();
         let slug_of = |w: &str| {
-            let w = w.to_lowercase();
+            let w = fold(w);
             (w.chars().count() >= 3).then(|| self.0.iter().find(|(keys, _, _)| keys.contains(&w))).flatten().and_then(|e| e.1["slug"].as_str().map(str::to_owned))
         };
         let (mut rest, mut slugs, mut i) = (Vec::new(), Vec::new(), 0);
@@ -48,14 +49,14 @@ impl Lookup {
     pub(crate) fn new(mut entries: Vec<(Vec<String>, Value, u64)>) -> Self {
         entries.retain(|e| e.2 > 0);
         for e in &mut entries {
-            e.0.iter_mut().for_each(|s| *s = s.to_lowercase());
+            e.0.iter_mut().for_each(|s| *s = fold(s));
         }
         entries.sort_by_key(|e| std::cmp::Reverse(e.2));
         Self(entries)
     }
 
     pub(crate) fn find(&self, p: &Params) -> Value {
-        let q = p.get("q").unwrap_or_default().to_lowercase();
+        let q = fold(&p.get("q").unwrap_or_default());
         let offset = p.num("offset").unwrap_or(0);
         let limit = p.num("limit").unwrap_or(20).clamp(1, 100);
         let items: Vec<Value> = self
@@ -74,11 +75,11 @@ impl Lookup {
     }
 }
 
-/// Search texts that name one smart category, without spaces and lowercased ("shorthair", "ショート" -> hair--short):
+/// Search texts that name one smart category, without spaces and folded (`text::fold`) ("shorthair", "ショート" -> hair--short):
 /// a parent's name, a child's name when no other child shares it, or child and parent names together
 /// in either order, per language.
 pub(crate) fn category_phrases(categories: &Value) -> HashMap<String, String> {
-    let norm = |s: &str| s.split_whitespace().collect::<String>().to_lowercase();
+    let norm = |s: &str| fold(&s.split_whitespace().collect::<String>());
     let langs = ["en", "ja", "ko", "zh"];
     let parents = categories.as_array().map(Vec::as_slice).unwrap_or_default();
     let mut child_names: HashMap<String, Vec<String>> = HashMap::new();
@@ -251,6 +252,12 @@ mod name_tests {
         assert_eq!(split("Shinano short hair"), ("short hair".into(), vec!["shinano".into()]));
         assert_eq!(split("しなの ボブ"), ("ボブ".into(), vec!["shinano".into()]));
         assert_eq!(split("rusk dragon wings"), ("wings".into(), vec!["rusk".into()]));
+        // width and kana do not matter: the name is しなの
+        assert_eq!(split("シナノ ボブ"), ("ボブ".into(), vec!["shinano".into()]));
+        assert_eq!(split("ＳＨＩＮＡＮＯ bob"), ("bob".into(), vec!["shinano".into()]));
+        // the pickers filter the same way: "しな" finds しなの
+        let found = l.find(&Params::parse("q=%E3%81%97%E3%81%AA"));
+        assert_eq!(found["items"][0]["slug"], "shinano");
         // too short to be taken as a name
         assert_eq!(split("io hair"), ("io hair".into(), vec![]));
         assert_eq!(split("short hair"), ("short hair".into(), vec![]));

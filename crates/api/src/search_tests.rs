@@ -257,13 +257,19 @@ fn semantic_cutoff_follows_the_best_match_and_drops_weak_ones() {
 fn queries_naming_a_category_find_it() {
     let cats = serde_json::json!([
         {"slug": "hair", "en": "Hair", "ja": "髪型", "children": [
-            {"slug": "hair--short", "en": "Short", "ja": "ショート"}, {"slug": "hair--other", "en": "Other"}]},
+            {"slug": "hair--short", "en": "Short", "ja": "ショート"}, {"slug": "hair--other", "en": "Other"},
+            {"slug": "hair--kemomimi", "en": "Animal ears", "ja": "けもみみ"}]},
         {"slug": "clothing", "en": "Clothing", "children": [{"slug": "clothing--other", "en": "Other"}]}
     ]);
     let m = super::snapshot::category_phrases(&cats);
     for q in ["shorthair", "hairshort", "short", "ショート"] {
         assert_eq!(m.get(q).map(String::as_str), Some("hair--short"), "{q}");
     }
+    // the search folds the query the same way (search.rs)
+    for q in ["しょーと", "ＳＨＯＲＴ", "ｼｮｰﾄ"] {
+        assert_eq!(m.get(&super::text::fold(q)).map(String::as_str), Some("hair--short"), "{q}");
+    }
+    assert_eq!(m.get(&super::text::fold("ケモミミ")).map(String::as_str), Some("hair--kemomimi"));
     assert_eq!(m.get("hair").map(String::as_str), Some("hair"));
     // a child name two parents share only counts together with its parent
     assert_eq!(m.get("other"), None);

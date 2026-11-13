@@ -21,14 +21,14 @@ pub(crate) async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip):
     };
     let _permit = s.acquire_search().await?;
     let small = Params::parse(&format!("limit=5&{raw}"));
-    let needle = text.to_lowercase();
+    let needle = crate::text::fold(&text);
     let snap = s.snap();
     let categories: Vec<Value> = snap.categories["categories"]
         .as_array()
         .into_iter()
         .flatten()
         .flat_map(|p| std::iter::once(p).chain(p["children"].as_array().into_iter().flatten()))
-        .filter(|c| ["en", "ja", "ko", "zh"].iter().any(|k| c[*k].as_str().is_some_and(|n| n.to_lowercase().contains(&needle))))
+        .filter(|c| ["en", "ja", "ko", "zh"].iter().any(|k| c[*k].as_str().is_some_and(|n| crate::text::fold(n).contains(&needle))))
         .take(5)
         .map(|c| json!({ "slug": c["slug"], "en": c["en"], "ja": c["ja"], "ko": c["ko"], "zh": c["zh"] }))
         .collect();
