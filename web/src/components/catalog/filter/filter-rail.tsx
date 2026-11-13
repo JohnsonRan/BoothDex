@@ -20,14 +20,25 @@ import { Collapsible, CollapsibleGroup } from "@astryxdesign/core/Collapsible";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { LayoutPanel } from "@astryxdesign/core/Layout";
 import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
+import { ResizeHandle, useResizable } from "@astryxdesign/core/Resizable";
 import { Selector } from "@astryxdesign/core/Selector";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Switch } from "@astryxdesign/core/Switch";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
-import { type CSSProperties, type ReactNode, useState } from "react";
+import {
+  type CSSProperties,
+  memo,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useUi } from "@/components/providers";
 import { FEATURES, type Feature, type Filters, RANGES } from "@/lib/catalog";
+import { RAIL_REM, railCookie, railToSave } from "@/lib/rail-width";
 import { LOCALES } from "@/lib/settings-core";
 import {
   type ClauseNames,
@@ -68,6 +79,109 @@ const SECTIONS = [
 export function FilterRail({
   facets,
   names,
+  width,
+}: {
+  facets: Promise<Facets>;
+  names: ClauseNames;
+  /** in rem, as the visitor last dragged it (lib/rail-width.ts) */
+  width: number;
+}) {
+  const { t } = useUi();
+  const [rem, setRem] = useState(width);
+  // the width the cookie holds: the one the page loaded with, then each one written
+  const saved = useRef(width);
+  const isNarrow = useMediaQuery(NO_RAIL_QUERY);
+  if (isNarrow) return null;
+  return (
+    <>
+      <LayoutPanel
+        role="region"
+        label={t("filter.rail")}
+        width={`${rem}rem`}
+        padding={0}
+        className="filter-rail"
+        style={RAIL}
+      >
+        <RailFields facets={facets} names={names} />
+      </LayoutPanel>
+      <RailHandle rem={rem} saved={saved} onResize={setRem} />
+    </>
+  );
+}
+
+const noSubscribe = () => () => {};
+
+/**
+ * The rail's resize handle, beside it at the content's edge. It mounts once the page has hydrated: the hook counts in
+ * pixels, and only the browser knows how many a rem is, while the server has already drawn the rail at the stored
+ * width in rem. Without a divider the handle takes no width, so mounting it moves nothing. A double-click goes back to
+ * the default width, as a split view's divider does; the arrow keys step the width (ResizeHandle).
+ */
+function RailHandle({
+  rem,
+  saved,
+  onResize,
+}: {
+  rem: number;
+  saved: RefObject<number>;
+  onResize: (rem: number) => void;
+}) {
+  const hydrated = useSyncExternalStore(
+    noSubscribe,
+    () => true,
+    () => false,
+  );
+  return hydrated ? (
+    <RailHandleControl rem={rem} saved={saved} onResize={onResize} />
+  ) : null;
+}
+
+function RailHandleControl({
+  rem,
+  saved,
+  onResize,
+}: {
+  rem: number;
+  saved: RefObject<number>;
+  onResize: (rem: number) => void;
+}) {
+  const { t } = useUi();
+  const [px] = useState(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+  );
+  const region = useResizable({
+    defaultSize: rem * px,
+    minSize: RAIL_REM.min * px,
+    maxSize: RAIL_REM.max * px,
+  });
+  const size = region.size / px;
+  useEffect(() => onResize(size), [size, onResize]);
+  // written once the width settles, not on every frame of a drag, and only when it differs from the cookie
+  useEffect(() => {
+    const next = railToSave(saved.current, size);
+    if (next === null) return;
+    const save = setTimeout(() => {
+      // biome-ignore lint/suspicious/noDocumentCookie: the server reads this cookie; Cookie Store is not in every browser
+      document.cookie = railCookie(next);
+      saved.current = next;
+    }, 300);
+    return () => clearTimeout(save);
+  }, [size, saved]);
+  return (
+    <ResizeHandle
+      resizable={region}
+      label={t("filter.railResize")}
+      isAlwaysVisible={false}
+      className="filter-rail-handle"
+      onDoubleClick={() => region.resize(RAIL_REM.default * px)}
+    />
+  );
+}
+
+/** The rail's fields, kept from rendering again on every frame of a drag, which changes only the rail's width. */
+const RailFields = memo(function RailFields({
+  facets,
+  names,
 }: {
   facets: Promise<Facets>;
   names: ClauseNames;
@@ -75,8 +189,6 @@ export function FilterRail({
   const { t } = useUi();
   const { filters: f, apply } = useFilterUrl();
   const answered = useFacets(facets);
-  const isNarrow = useMediaQuery(NO_RAIL_QUERY);
-  if (isNarrow) return null;
   const avatars = f.view === "avatars";
   const any = t("filter.timeAny");
 
@@ -109,14 +221,7 @@ export function FilterRail({
   );
 
   return (
-    <LayoutPanel
-      role="region"
-      label={t("filter.rail")}
-      width="16rem"
-      padding={0}
-      className="filter-rail"
-      style={RAIL}
-    >
+    <>
       {/* the band's toolbar inset above (band.tsx), so the first section lines up with the search */}
       <VStack
         gap={4}
@@ -265,9 +370,9 @@ export function FilterRail({
           )}
         </VStack>
       </VStack>
-    </LayoutPanel>
+    </>
   );
-}
+});
 
 /** A field's section in the group: its name as the trigger, open until folded by hand. */
 function Section({

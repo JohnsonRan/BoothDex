@@ -172,6 +172,14 @@
     display: none;
   }
 }
+/* The rail's resize handle sticks beside the rail at the window's height, as the rail does (filter-rail.tsx RAIL), so
+   its grip shows mid-window and not mid-page. */
+.filter-rail-handle {
+  position: sticky;
+  inset-block-start: var(--_app-shell-header-height, 0px);
+  align-self: flex-start;
+  block-size: calc(100dvh - var(--_app-shell-header-height, 0px));
+}
 /* The rail scrolls with no bar beside it, as a dialog's body does (app/globals.css). */
 .filter-rail {
   scrollbar-width: none;

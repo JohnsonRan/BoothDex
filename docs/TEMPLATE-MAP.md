@@ -433,7 +433,11 @@ Checked and kept as the template:
   (`position: sticky`, the window's height, `align-self: flex-start`); a `CheckboxList`'s items lose their List
   inline padding so they start where the `RadioList`s do (`app/filter-row.css`, one class above core's four
   `:not(#\#)`); shown only above 1024 px (`NO_RAIL_QUERY`, as `docs layout/responsive` recommends for a side
-  panel), the row keeping the filters below that.
+  panel), the row keeping the filters below that. Its width is the visitor's, 14 to 24 rem (default 16), dragged
+  on a `ResizeHandle` with no divider beside the panel (Resizable.doc, `useResizable`), which sticks with the rail
+  (`.filter-rail-handle`); the width lives in the `rail` cookie (`lib/rail-width.ts`), not in the settings, so the
+  server draws it in rem from the first paint and it stays with the screen it suits. The handle mounts after
+  hydration, the hook counting in pixels; a double-click restores the default.
 
 ## Inline styles kept (rule check, 2026-11-11)
 

@@ -52,6 +52,7 @@ export const zh = {
   "filter.clearAll": "全部清除",
   "filter.region": "筛选和排序",
   "filter.rail": "筛选",
+  "filter.railResize": "调整筛选栏宽度",
   "filter.more": "另外 {n} 项筛选",
   "view.avatars": "模型本体",
   "title.avatars": "模型本体",

@@ -54,6 +54,7 @@ export const ja: Dict = {
   "filter.clearAll": "すべてクリア",
   "filter.region": "絞り込みと並び替え",
   "filter.rail": "絞り込み",
+  "filter.railResize": "絞り込みの幅を変更",
   "filter.more": "ほか {n} 件のフィルター",
   "view.avatars": "アバター本体",
   "title.avatars": "アバター本体",
