@@ -186,27 +186,7 @@ pub async fn sweep(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
             break;
         }
         seen += cards.len() as u64;
-        let ids: Vec<i64> = cards.iter().map(|c| c.0).collect();
-        let prices: Vec<Option<i32>> = cards.iter().map(|c| c.1).collect();
-        // a changed list price makes the AI-inferred price stale, so drop it
-        touched += sqlx::query(
-            "update items i set price_jpy = coalesce(t.price, i.price_jpy), last_listed_at = now(), status = 'ok',
-                    smart_price = case when t.price is distinct from i.price_jpy and t.price is not null then null else i.smart_price end
-             from unnest($1::bigint[], $2::int[]) as t(id, price) where i.id = t.id",
-        )
-        .bind(&ids)
-        .bind(&prices)
-        .execute(ctx.pool)
-        .await?
-        .rows_affected();
-        let images = ctx.booth.images(&html);
-        let img_ids: Vec<i64> = images.iter().map(|r| r.0).collect();
-        let imgs: Vec<String> = images.iter().map(|r| serde_json::to_string(&r.1).unwrap()).collect();
-        sqlx::query(LISTING_IMAGES_UPSERT)
-            .bind(&img_ids)
-            .bind(&imgs)
-            .execute(ctx.pool)
-            .await?;
+        touched += store_listing_page(ctx, &html, &cards).await?;
         if !ctx.progress(page as i64, Some(last as i64), &format!("page {page}/{last}: {seen} seen"), false).await? {
             ctx.log("cancelled during listing walk; skipping delisting check").await?;
             return Ok(format!("cancelled at page {page}, {seen} seen"));
@@ -221,21 +201,47 @@ pub async fn sweep(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         bump_catalog(ctx.pool).await?;
         return Ok(format!("partial walk: {seen} seen on {page}/{last} pages, delisting check skipped"));
     }
-    // listed items carrying this tag that the walk did not see are delisting candidates
-    let missing: Vec<i64> = sqlx::query_scalar(
+    let missing = unseen_by_walk(ctx.pool, started, &tag, max_confirm).await?;
+    ctx.log(&format!("listing walk done: {seen} seen, {touched} known items updated; confirming {} missing items", missing.len())).await?;
+    let confirm = fetch_each(ctx, missing, delay, "sweep confirm").await?;
+    bump_catalog(ctx.pool).await?;
+    Ok(format!("{seen} seen on {page} pages; missing items: {confirm}"))
+}
+
+/// Stores one listing page: list prices of known items and the image links; returns how many known items it updated.
+async fn store_listing_page(ctx: &Ctx<'_>, html: &str, cards: &[(i64, Option<i32>)]) -> Result<u64> {
+    let ids: Vec<i64> = cards.iter().map(|c| c.0).collect();
+    let prices: Vec<Option<i32>> = cards.iter().map(|c| c.1).collect();
+    // a changed list price makes the AI-inferred price stale, so drop it
+    let touched = sqlx::query(
+        "update items i set price_jpy = coalesce(t.price, i.price_jpy), last_listed_at = now(), status = 'ok',
+                smart_price = case when t.price is distinct from i.price_jpy and t.price is not null then null else i.smart_price end
+         from unnest($1::bigint[], $2::int[]) as t(id, price) where i.id = t.id",
+    )
+    .bind(&ids)
+    .bind(&prices)
+    .execute(ctx.pool)
+    .await?
+    .rows_affected();
+    let images = ctx.booth.images(html);
+    let img_ids: Vec<i64> = images.iter().map(|r| r.0).collect();
+    let imgs: Vec<String> = images.iter().map(|r| serde_json::to_string(&r.1).unwrap()).collect();
+    sqlx::query(LISTING_IMAGES_UPSERT).bind(&img_ids).bind(&imgs).execute(ctx.pool).await?;
+    Ok(touched)
+}
+
+/// Listed items carrying this tag that the walk did not see are delisting candidates.
+async fn unseen_by_walk(pool: &PgPool, started: chrono::DateTime<chrono::Utc>, tag: &str, limit: i64) -> Result<Vec<i64>> {
+    Ok(sqlx::query_scalar(
         "select id from items where status = 'ok' and (last_listed_at is null or last_listed_at < $1)
            and exists (select 1 from unnest(booth_tags) b where lower(b) = lower($2))
          order by id desc limit $3",
     )
     .bind(started)
-    .bind(&tag)
-    .bind(max_confirm)
-    .fetch_all(ctx.pool)
-    .await?;
-    ctx.log(&format!("listing walk done: {seen} seen, {touched} known items updated; confirming {} missing items", missing.len())).await?;
-    let confirm = fetch_each(ctx, missing, delay, "sweep confirm").await?;
-    bump_catalog(ctx.pool).await?;
-    Ok(format!("{seen} seen on {page} pages; missing items: {confirm}"))
+    .bind(tag)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?)
 }
 
 async fn ai_client(pool: &PgPool) -> Result<crate::ai::Ai> {
@@ -294,6 +300,44 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     Ok(format!("{written} names translated to Chinese ({} unique strings)", zh.len()))
 }
 
+const ENRICH_ITEMS_SELECT: &str = "select id, title, bio, booth_category, price_jpy, booth_tags, variations, translations
+         from items where needs_enrichment and status = 'ok' and enrich_failures < 3 order by id desc limit $1";
+
+/// What one enrich batch shares: the category list for the prompt, the slugs a reply may use, the avatar matcher.
+struct EnrichKit {
+    category_list: String,
+    known: Vec<String>,
+    matcher: crate::avatars::Matcher,
+}
+
+async fn enrich_kit(pool: &PgPool) -> Result<EnrichKit> {
+    let cats: Vec<(String, String, Option<String>)> =
+        sqlx::query_as("select c.slug, c.name_en, p.name_en from smart_categories c left join smart_categories p on p.slug = c.parent_slug order by c.slug")
+            .fetch_all(pool)
+            .await?;
+    // children only: a parent is implied by its child (the API adds parents itself)
+    let leaf: Vec<&(String, String, Option<String>)> = cats.iter().filter(|c| c.2.is_some()).collect();
+    let known = leaf.iter().map(|c| c.0.clone()).collect();
+    let category_list = leaf.iter().map(|(slug, en, parent)| format!("{slug}: {} / {en}", parent.as_deref().unwrap_or_default())).collect::<Vec<_>>().join("\n");
+    let avatars: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as("select slug, name_en, name_ja, name_ko from avatars").fetch_all(pool).await?;
+    let matcher = crate::avatars::Matcher::new(avatars.into_iter().map(|(s, en, ja, ko)| (s, [Some(en), ja, ko].into_iter().flatten().collect())));
+    Ok(EnrichKit { category_list, known, matcher })
+}
+
+/// One model call for one item; a reply that parsed but failed validation (e.g. a misspelt category slug) gets one correction round.
+async fn enrich_reply(ai: &crate::ai::Ai, kit: &EnrichKit, item: &crate::ai::EnrichItem) -> Result<crate::ai::Enrichment> {
+    let system = crate::ai::ENRICH_SYSTEM;
+    let prompt = crate::ai::enrich_prompt(item, &kit.category_list);
+    let v = ai.json(system, &prompt).await?;
+    match crate::ai::validate_enrichment(&v, &kit.known, &item.translations) {
+        Err(e) => {
+            let v2 = ai.json_correction(system, &prompt, &v, &format!("{e:#}")).await?;
+            crate::ai::validate_enrichment(&v2, &kit.known, &item.translations).map_err(|e2| e2.context(format!("after correction (first: {e:#})")))
+        }
+        ok => ok,
+    }
+}
+
 /// AI enrichment for items our crawler ingested (needs_enrichment): categories, rating, Quest, smart price,
 /// translations and features via the model; avatar links by name matching (see avatars.rs).
 pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
@@ -305,66 +349,24 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let batch: i64 = param(params, "batch", 200);
     let concurrency: usize = param(params, "concurrency", 4usize).clamp(1, 16);
 
-    let cats: Vec<(String, String, Option<String>)> =
-        sqlx::query_as("select c.slug, c.name_en, p.name_en from smart_categories c left join smart_categories p on p.slug = c.parent_slug order by c.slug")
-            .fetch_all(ctx.pool)
-            .await?;
-    // children only: a parent is implied by its child (the API adds parents itself)
-    let leaf: Vec<&(String, String, Option<String>)> = cats.iter().filter(|c| c.2.is_some()).collect();
-    let known: Vec<String> = leaf.iter().map(|c| c.0.clone()).collect();
-    let category_list = leaf.iter().map(|(slug, en, parent)| format!("{slug}: {} / {en}", parent.as_deref().unwrap_or_default())).collect::<Vec<_>>().join("\n");
-    let avatars: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as("select slug, name_en, name_ja, name_ko from avatars").fetch_all(ctx.pool).await?;
-    let matcher = crate::avatars::Matcher::new(avatars.into_iter().map(|(s, en, ja, ko)| (s, [Some(en), ja, ko].into_iter().flatten().collect())));
-
-    let items: Vec<Value> = sqlx::query_scalar(
-        "select jsonb_build_object('id', id, 'title', title, 'bio', bio, 'booth_category', booth_category, 'price_jpy', price_jpy,
-                'booth_tags', booth_tags, 'variations', variations, 'translations', translations)
-         from items where needs_enrichment and status = 'ok' and enrich_failures < 3 order by id desc limit $1",
-    )
-    .bind(batch)
-    .fetch_all(ctx.pool)
-    .await?;
+    let kit = enrich_kit(ctx.pool).await?;
+    let items: Vec<crate::ai::EnrichItem> = sqlx::query_as(ENRICH_ITEMS_SELECT).bind(batch).fetch_all(ctx.pool).await?;
     let total = items.len() as i64;
     let (mut ok, mut failed) = (0i64, 0i64);
     let mut stream = futures_util::stream::iter(items.into_iter().map(|it| {
-        let prompt = crate::ai::enrich_prompt(&it, &category_list);
-        let (ai, known) = (&ai, &known);
-        async move {
-            let system = crate::ai::ENRICH_SYSTEM;
-            let validation = match ai.json(system, &prompt).await {
-                // a reply that parsed but failed validation (e.g. a misspelt category slug) gets one correction round
-                Ok(v) => match crate::ai::validate_enrichment(&v, known, &it["translations"]) {
-                    Err(e) => match ai.json_correction(system, &prompt, &v, &format!("{e:#}")).await {
-                        Ok(v2) => crate::ai::validate_enrichment(&v2, known, &it["translations"]).map_err(|e2| e2.context(format!("after correction (first: {e:#})"))),
-                        Err(err) => Err(err),
-                    },
-                    ok => ok,
-                },
-                Err(e) => Err(e),
-            };
-            (it, validation)
-        }
+        let (ai, kit) = (&ai, &kit);
+        async move { (enrich_reply(ai, kit, &it).await, it) }
     }))
     .buffer_unordered(concurrency);
     use futures_util::StreamExt;
-    while let Some((it, validation)) = stream.next().await {
-        let id = it["id"].as_i64().unwrap_or_default();
-        match validation {
+    while let Some((reply, it)) = stream.next().await {
+        match reply {
             Ok(e) => {
-                let variation_names: Vec<&str> = it["variations"].as_array().into_iter().flatten().filter_map(|v| v["name"].as_str()).collect();
-                let match_text = format!(
-                    "{} {} {}",
-                    it["title"].as_str().unwrap_or_default(),
-                    it["booth_tags"].as_array().map(|t| t.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ")).unwrap_or_default(),
-                    variation_names.join(" ")
-                );
-                let linked = matcher.find(&match_text);
-                let title = it["title"].as_str().unwrap_or_default();
-                let bio = it["bio"].as_str().unwrap_or_default();
-                if write_enrichment(ctx.pool, id, title, bio, &e, &linked).await? {
+                let linked = kit.matcher.find(&it.match_text());
+                if write_enrichment(ctx.pool, it.id, &it.title, &it.bio, &e, &linked).await? {
                     ok += 1;
                 } else {
-                    ctx.log(&format!("item {id}: changed while enriching, left pending")).await?;
+                    ctx.log(&format!("item {}: changed while enriching, left pending", it.id)).await?;
                 }
             }
             // provider-level failure: stop instead of charging it to every item in the batch
@@ -377,10 +379,10 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
             Err(err) => {
                 failed += 1;
                 sqlx::query("update items set enrich_failures = enrich_failures + 1 where id = $1")
-                    .bind(id)
+                    .bind(it.id)
                     .execute(ctx.pool)
                     .await?;
-                ctx.log(&format!("item {id}: {err:#}")).await?;
+                ctx.log(&format!("item {}: {err:#}", it.id)).await?;
             }
         }
         if !ctx.progress(ok + failed, Some(total), &format!("enrich: {ok} done, {failed} failed"), false).await? {
@@ -399,15 +401,20 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     // the chain ends here (backlog done, or a batch without success): embed what enrichment left without a
     // vector in one run, not after every batch, which would also embed the not-yet-enriched backlog
     if !ctx.again && cfg.embed_model.is_some() {
-        sqlx::query(
-            "insert into jobs (kind, params, created_by) select 'embed', '{}', 'enrich'
-             where exists (select 1 from items where status = 'ok' and not needs_enrichment and embedding is null)
-             on conflict do nothing",
-        )
-        .execute(ctx.pool)
-        .await?;
+        queue_embed(ctx.pool).await?;
     }
     Ok(format!("{ok} enriched, {failed} failed of {total}"))
+}
+
+async fn queue_embed(pool: &PgPool) -> Result<()> {
+    sqlx::query(
+        "insert into jobs (kind, params, created_by) select 'embed', '{}', 'enrich'
+         where exists (select 1 from items where status = 'ok' and not needs_enrichment and embedding is null)
+         on conflict do nothing",
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn write_enrichment(pool: &PgPool, id: i64, title: &str, bio: &str, e: &crate::ai::Enrichment, linked: &[String]) -> Result<bool> {
@@ -494,18 +501,7 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     // for trial runs
     let limit: i64 = param(params, "limit", i64::MAX);
 
-    // vectors from another model aren't comparable: start over when the model changes
-    let previous: Option<String> = sqlx::query_scalar("select value->>'model' from app_settings where key = 'embed_state'").fetch_optional(ctx.pool).await?.flatten();
-    if previous.as_deref() != Some(model.as_str()) {
-        if previous.is_some() {
-            let n = sqlx::query("update items set embedding = null where embedding is not null").execute(ctx.pool).await?.rows_affected();
-            ctx.log(&format!("model changed from {} to {model}: cleared {n} embeddings", previous.as_deref().unwrap_or("-"))).await?;
-        }
-        sqlx::query("insert into app_settings (key, value) values ('embed_state', $1) on conflict (key) do update set value = excluded.value, updated_at = now()")
-            .bind(serde_json::json!({ "model": model }))
-            .execute(ctx.pool)
-            .await?;
-    }
+    clear_embeddings_on_model_change(ctx, &model).await?;
 
     let total: i64 = sqlx::query_scalar("select count(*) from items where status = 'ok' and embedding is null").fetch_one(ctx.pool).await?;
     let http = reqwest::Client::builder().timeout(Duration::from_secs(120)).build()?;
@@ -560,19 +556,41 @@ pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
             break;
         }
     }
-    // search-text cache: other models' rows are useless, stale ones and the long tail go
+    prune_query_embeddings(ctx, &model).await?;
+    Ok(format!("{done} items embedded with {model}"))
+}
+
+/// Vectors from another model aren't comparable: start over when the model changes.
+async fn clear_embeddings_on_model_change(ctx: &Ctx<'_>, model: &str) -> Result<()> {
+    let previous: Option<String> = sqlx::query_scalar("select value->>'model' from app_settings where key = 'embed_state'").fetch_optional(ctx.pool).await?.flatten();
+    if previous.as_deref() == Some(model) {
+        return Ok(());
+    }
+    if previous.is_some() {
+        let n = sqlx::query("update items set embedding = null where embedding is not null").execute(ctx.pool).await?.rows_affected();
+        ctx.log(&format!("model changed from {} to {model}: cleared {n} embeddings", previous.as_deref().unwrap_or("-"))).await?;
+    }
+    sqlx::query("insert into app_settings (key, value) values ('embed_state', $1) on conflict (key) do update set value = excluded.value, updated_at = now()")
+        .bind(serde_json::json!({ "model": model }))
+        .execute(ctx.pool)
+        .await?;
+    Ok(())
+}
+
+/// Search-text cache: other models' rows are useless, stale ones and the long tail go.
+async fn prune_query_embeddings(ctx: &Ctx<'_>, model: &str) -> Result<()> {
     let pruned = sqlx::query(
         "delete from query_embeddings where model <> $1 or last_used_at < now() - interval '90 days'
             or ctid in (select ctid from query_embeddings order by last_used_at desc offset 50000)",
     )
-    .bind(&model)
+    .bind(model)
     .execute(ctx.pool)
     .await?
     .rows_affected();
     if pruned > 0 {
         ctx.log(&format!("pruned {pruned} cached search embeddings")).await?;
     }
-    Ok(format!("{done} items embedded with {model}"))
+    Ok(())
 }
 
 /// Points delisted items at the shop's re-upload (same shop, same title ignoring case and whitespace, newer id,
@@ -681,6 +699,26 @@ mod tests {
         let empty = sqlx::query(EMBEDDING_UPDATE).bind(Vec::<i64>::new()).bind(Vec::<HalfVector>::new()).bind(Vec::<String>::new())
             .execute(&pool).await.unwrap().rows_affected();
         assert_eq!(empty, 0);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn enrich_rows_read_into_the_typed_item(pool: PgPool) {
+        sqlx::query("insert into items (id, title, bio, author_name, author_uri, is_adult, status, scraped_at, needs_enrichment, enrich_failures, booth_category, price_jpy, booth_tags, variations, translations)
+                     values (1, 'Ring', 'desc', 'c', 'https://example.test', false, 'ok', now(), true, 0, '3D', 500, '{VRChat,MA}',
+                             '[{\"id\":\"1\",\"name\":\"Full set\",\"price_jpy\":500},{\"id\":\"2\",\"name\":\"\",\"price_jpy\":null}]', '{\"en\":{\"title\":\"Ring\"}}'),
+                            (2, 'Bare', '', 'c', 'https://example.test', false, 'ok', now(), true, 2, null, null, '{}', '[]', '{}'),
+                            (3, 'Failed thrice', '', 'c', 'https://example.test', false, 'ok', now(), true, 3, null, null, '{}', '[]', '{}'),
+                            (4, 'Done', '', 'c', 'https://example.test', false, 'ok', now(), false, 0, null, null, '{}', '[]', '{}')")
+            .execute(&pool).await.unwrap();
+        let items: Vec<crate::ai::EnrichItem> = sqlx::query_as(ENRICH_ITEMS_SELECT).bind(10i64).fetch_all(&pool).await.unwrap();
+        assert_eq!(items.iter().map(|i| i.id).collect::<Vec<_>>(), [2, 1]);
+        let ring = &items[1];
+        assert_eq!(ring.match_text(), "Ring VRChat MA Full set ");
+        let prompt = crate::ai::enrich_prompt(ring, "cats");
+        assert!(prompt.contains("Listed price: ¥500\nTags: VRChat, MA\nVariations:\n- Full set (¥500)\n-  (¥null)"), "{prompt}");
+        let bare = crate::ai::enrich_prompt(&items[0], "cats");
+        assert!(bare.contains("Booth category: \nListed price: ¥null\nTags: \nVariations:\n(none)"), "{bare}");
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
