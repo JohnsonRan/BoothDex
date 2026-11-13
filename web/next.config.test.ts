@@ -1,13 +1,21 @@
 import { expect, test } from "bun:test";
 import nextConfig, { shareImageHash } from "./next.config";
 
-test("every path is sent a policy that allows images from this origin and data: only", async () => {
+test("every path is sent one policy that allows images from this origin and data: only", async () => {
   const rules = (await nextConfig.headers?.()) ?? [];
-  const policy = rules
-    .find((rule) => rule.source === "/(.*)")
-    ?.headers.find((h) => h.key === "Content-Security-Policy")?.value;
+  const csp = rules.flatMap((rule) =>
+    rule.headers
+      .filter((h) => h.key.toLowerCase() === "content-security-policy")
+      .map((h) => ({ rule, policy: h.value })),
+  );
+  // one unconditional rule for every path: a second rule or a condition could send another policy somewhere
+  expect(csp.length).toBe(1);
+  const [{ rule, policy }] = csp;
+  expect(rule.source).toBe("/(.*)");
+  expect(rule.has).toBeUndefined();
+  expect(rule.missing).toBeUndefined();
   const imgSrc = policy
-    ?.split(";")
+    .split(";")
     .map((directive) => directive.trim().split(/\s+/))
     .find(([name]) => name === "img-src")
     ?.slice(1);
