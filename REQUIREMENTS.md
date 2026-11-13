@@ -41,7 +41,7 @@ meanwhile.
 | `bun test` in `web/` | 15 s | 103 tests in 3 s (2026-11-11, development host, load not recorded) | review |
 | Slowest test package | 16 s | `api` unit tests: 12.1 s, 15.4 s, 12.4 s (2026-11-11, GitHub-hosted ubuntu-latest, load not recorded) | review |
 | Home page first load, gzip -9: HTML | 51,500 B | 50,696 B over 3 reads, against 48,674 to 48,677 B for 0.7.8 on the same data (2026-11-13, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
-| Home page first load, gzip -9: JS | 498,000 B | 497,886 B over 3 reads (2026-11-13, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
+| Home page first load, gzip -9: JS | 521,000 B | 520,618 B over 3 reads, the preloaded chunks included (2026-11-13, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Home page first load, gzip -9: CSS | 50,000 B | 49,895 B over 3 reads (2026-11-13, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Source file size, p90 of this repository (pass bar) | 274 lines | 274 lines: nearest-rank p90 of the 272 tracked `.rs`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.css`, `.sql`, `.sh` and `.py` files (2026-11-12, `wc -l`) | review |
 | Commit subject length | 72 characters | a setting, not measured | review (no commit hook) |
@@ -143,9 +143,6 @@ after a release.
 | --- | --- | --- |
 | Extend the `Content-Security-Policy` in `web/next.config.ts` past `img-src`: `script-src` and `style-src`, `object-src 'none'`, `base-uri` and `frame-ancestors` | the change that sent `img-src 'self' data:` | That change covered images only; a `script-src` without `'unsafe-inline'` needs a nonce per request, and Next applies nonces only to dynamically rendered pages, so the statically prerendered parts (`/privacy`, `/terms`, the page shells) would turn dynamic; each directive needs its own sweep of every page |
 | Test that the upstream client's redirect closure counts hops through `follow_redirect` (`crates/imgproxy/src/upstream.rs`): only the off-host test covers the closure, and no test fails if it drops the hop limit | pre-review of #41 | Low, no secret or production risk: redirects stay on the same https host and the 20 s timeout bounds them; a test needs an https loopback server, so a certificate generator and a test-only trust store as new dependencies |
-| Count the chunks the home page preloads (`<link rel="preload" as="script">`) in `web/tools/size.mjs`: it counts only `<script src>`, so the filter rail's chunk (8,368 B gzip on 2026-11-13) is outside the JS budget | review of #46 | The gap predates #46 (the rail has loaded on demand since 2026-11-11); counting it moves every recorded baseline, so it needs its own measured change |
-| Give the filter rail's resize handle an `aria-valuetext` in rem: a screen reader reads its value in pixels ("344.4") | review of #46 | Low: the handle is named and keyboard-operable; the value is a width only the visitor compares |
-| Write the rail's width when the page unloads: a reload within 300 ms of the last drag frame clears the timer and the width is lost | review of #46 | Unconfirmed; the visitor loses at most the last drag, and drags it again |
 
 ## Open questions
 
