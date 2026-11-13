@@ -136,10 +136,13 @@ const paramNames = (f: Filters) =>
       .map((kv) => kv.split("=")[0]),
   );
 
-/** Each set clause with the search parameters that clearing it removes: the search's `without=` groups. */
+/** Each set clause the row shows, with the search parameters that clearing it removes: the search's `without=` groups. */
 export function clauseParams(f: Filters): [ClauseKey, string[]][] {
   const has = paramNames(f);
+  // as `clauseTexts`: the category belongs to the items view, the gender to the avatars view
+  const hidden: ClauseKey = f.view === "avatars" ? "sc" : "gender";
   return (Object.keys(CLAUSE_CLEAR) as ClauseKey[]).flatMap((key) => {
+    if (key === hidden) return [];
     const left = paramNames({ ...f, ...CLAUSE_CLEAR[key] });
     const gone = [...has].filter((name) => !left.has(name));
     return gone.length ? [[key, gone] as [ClauseKey, string[]]] : [];

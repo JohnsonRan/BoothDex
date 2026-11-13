@@ -85,6 +85,16 @@ describe("wider searches", () => {
       ["price", ["pmin", "pmax"]],
     ]);
     expect(clauseParams(parseFilters("q=cat"))).toEqual([]);
+    // a clause the row hides for this view takes no group: the API answers at most 8
+    for (const query of [
+      "v=avatars&avatars=manuka&sc=hair&gender=female&authors=a&adult=include&free=1&range=7d&if=quest&tags=t",
+      "sc=hair&gender=female&authors=a",
+    ]) {
+      const g = parseFilters(query);
+      expect(clauseParams(g).map(([key]): string => key)).toEqual(
+        Object.keys(clauseTexts(g, names, t)),
+      );
+    }
   });
   test("counts pair with the clauses; none found is left out, the most first", () => {
     const g = parseFilters("sc=avatar&pmin=500&range=7d&if=quest");
