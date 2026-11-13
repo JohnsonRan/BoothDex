@@ -13,12 +13,12 @@
   --font-family-heading: var(--font-family-body);
 }
 
-/* Documented deviation (docs/TEMPLATE-MAP.md): the page density. The owner's best view was the neutral theme
-   at 110-125 % browser zoom on the desktop page, so above the template's compact-surface width (768 px,
-   COMPACT_SURFACE_QUERY, table-filter page.tsx:1129) the root font size carries that scale and every rem token
-   (type, spacing, radius, icons) follows it. The one knob: 110 %, 115 % or 125 %. A phone stays at 100 %, as
-   the template is drawn: its filter row has no room for the scale. Control heights are px in Astryx
-   (28/32/36), so they are restated in rem to scale with the text they hold. Viewport breakpoints stay px. */
+/* Documented deviation (docs/TEMPLATE-MAP.md): the page density. The root font size is the template's 100 % up
+   to a 1440 px window and grows with the window to 115 % at 2560 px (a 4K screen at 150 % display scaling), the
+   owner's best view on a wide screen, so a smaller window keeps the template's density (owner, 2026-11-13). Every
+   rem token (type, spacing, radius, icons) follows it. The 100 % term keeps a larger browser default font in
+   effect, and the clamp's floor keeps zoom working. Control heights are px in Astryx (28/32/36), so they are
+   restated in rem to scale with the text they hold. Viewport breakpoints stay px. */
 /* The colour scheme of a Theme's element follows its data-theme alone, as Theme's own styles set it per mode, so a
    mode switch shows at once from the attributes (components/providers.tsx showLook) and React's render
    of it follows in a transition. Unlayered, so it wins over those styles' layer. */
@@ -66,10 +66,8 @@ html[data-black] [data-astryx-theme][data-theme="dark"] {
   }
 }
 
-@media (width > 768px) {
-  html {
-    font-size: 115%;
-  }
+html {
+  font-size: clamp(100%, calc(100% + (100vw - 1440px) * 0.0021429), 115%);
 }
 :root,
 [data-astryx-theme] {

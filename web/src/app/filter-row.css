@@ -125,7 +125,7 @@
   flex-shrink: 0;
 }
 /* OverflowList fits the clauses with gap={2} counted as a fixed 8 px (core OverflowList.js:124-136, spacingToPx),
-   while the list draws var(--spacing-2): 9.2 px in neutral at 115%, 13.8 px in Matcha and Y2K, whose "+N" then
+   while the list draws var(--spacing-2): up to 9.2 px in neutral at the 115 % root, 13.8 px in Matcha and Y2K, whose "+N" then
    no longer fit and wrapped out of sight. Its hidden measuring copy (the slot's other child) gives every item
    after the first, and the trigger, the difference as padding, so the widths it reads carry the gaps as drawn
    (core hooks/computeOverflow.js:51-54 adds a gap before each of those). The copy is never shown. */
