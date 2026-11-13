@@ -68,8 +68,8 @@ docker compose pull && docker compose up -d
 - Japanese text search uses Lindera (IPADIC). Full-width and half-width forms match each other, and so do hiragana
   and katakana ("しなの" finds シナノ). A Latin query of up to three words that matches no text is tried again over
   titles, tags and author names, allowing one typo in each all-letter word of five or more letters ("shinnano" finds
-  Shinano). Optional semantic search finds items by meaning across languages ("哥特裙" finds ゴスロリ dresses) and
-  merges both rankings.
+  Shinano), and the results page says so. Optional semantic search finds items by meaning across languages ("哥特裙"
+  finds ゴスロリ dresses) and merges both rankings.
 
 <details>
 <summary>Suggestions for "manuka": the avatar body, then matching items</summary>
@@ -262,7 +262,8 @@ booth_tags, linked_avatars and categories emptied, translations keep only titles
 booth_images/media at most 2; default response unchanged; fetch full records via `/api/items?ids=`).
 `without=` (groups of filter names, `+` between groups and `,` within one, at most 8, such as
 `without=sc+pmin,pmax`) makes a search that finds nothing also return `widerCounts`: what it finds without each
-group, in order.
+group, in order. `typoTolerant` is true when the query's words matched nothing as typed and the typo retry
+found the results.
 
 ## Acknowledgments
 

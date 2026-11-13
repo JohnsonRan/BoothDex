@@ -81,16 +81,16 @@ export const adminZh = {
     "按“热度 × 多久没更新”排序，逐个重新抓取商品页，更新价格、点赞、变体和下架状态",
   "kind.sweep": "全量巡检",
   "kind.sweep.desc":
-    "把 Booth 的 VRChat 列表从头翻到尾(约 3,400 页，1 小时)，更新所有商品的价格，并找出已下架的商品",
+    "把 Booth 的 VRChat 列表从头翻到尾（约 3,400 页，1 小时），更新所有商品的价格，并找出已下架的商品",
   "kind.enrich": "AI 处理",
   "kind.enrich.desc":
-    "为新商品生成分类、分级、推断价格和中英日韩翻译，并按名称匹配适配模型(每批 200 个，有积压时自动继续；配置 AI 模型之前不会运行)",
+    "为新商品生成分类、分级、推断价格和中英日韩翻译，并按名称匹配适配模型（每批 200 个，有积压时自动继续；配置 AI 模型之前不会运行）",
   "kind.embed": "语义向量",
   "kind.embed.desc":
-    "为新商品和改过标题或简介的商品生成语义搜索向量(设置向量模型之前不会运行)",
+    "为新商品和改过标题或简介的商品生成语义搜索向量（设置向量模型之前不会运行）",
   "kind.localize": "翻译分类",
   "kind.localize.desc":
-    "把分类和标签名翻译成中文(只翻译还没有中文名的)。保存 AI 设置后会自动运行一次",
+    "把分类和标签名翻译成中文（只翻译还没有中文名的）。保存 AI 设置后会自动运行一次",
   "status.queued": "排队中",
   "status.running": "运行中",
   "status.cancelling": "停止中",
@@ -154,7 +154,7 @@ export const adminZh = {
   "log.params": "参数",
   "log.error": "错误",
   "log.output": "日志",
-  "log.empty": "(暂无日志)",
+  "log.empty": "（暂无日志）",
   "dur.s": "{s} 秒",
   "dur.m": "{m} 分 {s} 秒",
   "dur.h": "{h} 小时 {m} 分",
@@ -212,7 +212,7 @@ export const adminZh = {
   "users.lastSignIn": "最后登录",
   "users.noRecord": "无记录",
   "users.data": "账号数据",
-  "users.dataValue": "收藏 {fav} · 订阅 {saved} · 已看 {views}",
+  "users.dataValue": "收藏 {fav} · 订阅 {saved} · 浏览 {views}",
   "users.sessions": "登录中的设备",
   "users.noSessions": "没有登录中的设备",
   "users.unknownDevice": "未知设备",

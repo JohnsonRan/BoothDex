@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 use serde::Serialize;
 
 use crate::search_request::{Adult, Range, SearchRequest, Sort, Support, View};
-use crate::text::{TextDoc, TextIndex};
+use crate::text::{TextDoc, TextIndex, TextMatches};
 
 pub const FEATURES: &[&str] = &["quest", "vrcfury", "ma", "liltoon", "poiyomi"];
 const AVATAR_CATEGORY: &str = "3D Characters";
@@ -122,6 +122,8 @@ pub struct SearchResult {
     pub dir: &'static str,
     pub ids: Vec<i64>,
     pub facets: Facets,
+    /// the text query matched nothing as typed and was answered by the typo-tolerant retry (see text.rs)
+    pub typo: bool,
 }
 
 impl Catalog {
@@ -330,9 +332,9 @@ impl Catalog {
     }
 
     /// The text query's hits and scores, joined by the meaning-based matches when there are any.
-    fn text_hits(&self, r: &SearchRequest, semantic: Option<Semantic>) -> Result<Option<(RoaringBitmap, FxHashMap<u32, f32>)>> {
+    fn text_hits(&self, r: &SearchRequest, semantic: Option<Semantic>) -> Result<Option<TextMatches>> {
         let mut text = r.q.as_deref().map(|q| self.text.search(q)).transpose()?;
-        if let (Some((hits, scores)), Some(sem)) = (text.as_mut(), semantic) {
+        if let (Some(TextMatches { hits, scores, .. }), Some(sem)) = (text.as_mut(), semantic) {
             // models named in the query: a meaning-based match must fit one of them
             let fits = (!sem.models.is_empty()).then(|| self.avatars.any(sem.models));
             if let Some(f) = &fits {
@@ -342,7 +344,7 @@ impl Catalog {
                 if sem.rest.trim().is_empty() {
                     *hits |= f;
                 } else {
-                    let (rest_hits, rest_scores) = self.text.search(sem.rest)?;
+                    let TextMatches { hits: rest_hits, scores: rest_scores, .. } = self.text.search(sem.rest)?;
                     let rest_hits = rest_hits & f;
                     for d in &rest_hits {
                         *scores.entry(d).or_default() += rest_scores.get(&d).copied().unwrap_or(0.0);
@@ -366,14 +368,14 @@ impl Catalog {
     /// text query), so `r`'s text and meaning-based matches hold for all of them. Counts only: no facets, no order.
     pub fn counts(&self, r: &SearchRequest, wider: &[SearchRequest], now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>) -> Result<Vec<u64>> {
         let text = self.text_hits(r, semantic)?;
-        Ok(wider.iter().map(|w| self.intersect(&self.constraints(w, now, text.as_ref().map(|(b, _)| b), favourites), None).len()).collect())
+        Ok(wider.iter().map(|w| self.intersect(&self.constraints(w, now, text.as_ref().map(|t| &t.hits), favourites), None).len()).collect())
     }
 
     /// `semantic`: item ids nearest to the query by meaning (see search.rs); they join the text hits and, when
     /// sorting by relevance, the two rankings are merged. Autocomplete and RSS skip facet counts.
     pub fn search(&self, r: &SearchRequest, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>, count_facets: bool) -> Result<SearchResult> {
         let text = self.text_hits(r, semantic)?;
-        let cs = self.constraints(r, now, text.as_ref().map(|(b, _)| b), favourites);
+        let cs = self.constraints(r, now, text.as_ref().map(|t| &t.hits), favourites);
         let hits = self.intersect(&cs, None);
 
         // disjunctive facets: each group's counts ignore that group's own selection
@@ -390,7 +392,7 @@ impl Catalog {
 
         let asc = r.asc;
         let (sort, scores) = match (r.sort, &text) {
-            (Sort::Relevant, Some((_, s))) => ("relevant", Some(s)),
+            (Sort::Relevant, Some(t)) => ("relevant", Some(&t.scores)),
             (Sort::Newest, _) => ("newest", None),
             (Sort::Price, _) => ("price", None),
             (Sort::Likes, _) => ("likes", None),
@@ -445,6 +447,7 @@ impl Catalog {
             dir: if asc { "asc" } else { "desc" },
             ids,
             facets,
+            typo: text.as_ref().is_some_and(|t| t.typo),
         })
     }
 }
@@ -684,6 +687,16 @@ mod tests {
         assert_eq!(ids(&c, "free=1"), [2]);
         assert_eq!(ids(&c, "v=avatars&gender=female"), [6]);
         assert_eq!(ids(&c, "v=avatars&asup=unsupported"), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn a_search_says_when_its_words_matched_only_with_a_typo() {
+        let mut ribbon = doc(1);
+        ribbon.title = "Shinano Ribbon".into();
+        let c = Catalog::build(vec![ribbon, doc(2)], 0, None).unwrap();
+        let typo = |q: &str| c.search_plain(q, 0, None).unwrap().typo;
+        assert!(typo("q=shinnano"));
+        assert!(!typo("q=shinano") && !typo("q=xyzzyq") && !typo("free=1"));
     }
 
     #[test]

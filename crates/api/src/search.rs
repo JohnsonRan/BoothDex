@@ -38,6 +38,8 @@ pub(crate) struct SearchResponse {
     timing: Timing,
     /// for a search that finds nothing, asked with `without=`: what it finds without each group, in order
     wider_counts: Vec<u64>,
+    /// the query's words matched nothing as typed, so its word matches allow one typo per long word
+    typo_tolerant: bool,
 }
 
 /// Query words the search took as a model (matching what fits it) or a smart category (matching what is in it):
@@ -206,6 +208,7 @@ pub(crate) async fn search(
         trace: trace.steps,
         timing: Timing { search_ms, total_ms: t0.elapsed().as_secs_f64() * 1e3 },
         wider_counts,
+        typo_tolerant: r.typo,
     })
     .into_response())
 }

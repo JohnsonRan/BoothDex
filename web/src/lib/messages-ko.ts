@@ -125,6 +125,8 @@ export const ko: Dict = {
   "trace.step.items": "상품 읽기",
   "list.semanticUnavailable":
     "의미 기반 검색을 일시적으로 사용할 수 없어 키워드로만 검색했습니다. 잠시 후 다시 검색하면 보통 복구됩니다.",
+  "list.typoTolerant":
+    "입력한 단어 그대로는 일치하는 결과가 없어, 단어 일치는 긴 단어마다 철자 오류를 한 군데까지 허용했습니다.",
   "fav.add": "즐겨찾기",
   "fav.needSignIn": "즐겨찾기는 로그인 후 사용할 수 있습니다",
   "fav.failed": "즐겨찾기를 변경하지 못했습니다",

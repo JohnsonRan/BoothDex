@@ -125,6 +125,8 @@ export const en: Dict = {
   "trace.step.items": "Read items",
   "list.semanticUnavailable":
     "Search by meaning is unavailable right now, so these results match your words only. Searching again in a moment usually brings it back.",
+  "list.typoTolerant":
+    "Your words matched nothing as typed, so word matches here allow one typo in each longer word.",
   "fav.add": "Favourite",
   "fav.needSignIn": "Sign in to save favourites",
   "fav.failed": "Couldn't update favourites",
