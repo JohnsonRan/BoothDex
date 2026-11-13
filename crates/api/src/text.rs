@@ -25,6 +25,14 @@ pub struct TextDoc {
     pub bio: String,
 }
 
+/// What a text query matches, as `TextIndex::search` finds it.
+pub struct TextMatches {
+    pub hits: RoaringBitmap,
+    pub scores: FxHashMap<u32, f32>,
+    /// the words matched nothing as typed, and `hits` came from the typo-tolerant retry
+    pub typo: bool,
+}
+
 pub struct TextIndex {
     reader: IndexReader,
     parser: QueryParser,
@@ -300,7 +308,7 @@ impl TextIndex {
     }
 
     /// Matching catalog docs with a relevance score (substring-only hits get a small floor score).
-    pub fn search(&self, q: &str) -> Result<(RoaringBitmap, FxHashMap<u32, f32>)> {
+    pub fn search(&self, q: &str) -> Result<TextMatches> {
         let searcher = self.reader.searcher();
         let mut hits = RoaringBitmap::new();
         let mut scores = FxHashMap::default();
@@ -346,14 +354,15 @@ impl TextIndex {
                 }
             }
         }
-        if hits.is_empty() {
+        let retry = hits.is_empty();
+        if retry {
             for (score, addr) in self.typo_tolerant(&searcher, &words)? {
                 let d = self.seg_docs[addr.segment_ord as usize][addr.doc_id as usize];
                 hits.insert(d);
                 scores.insert(d, score);
             }
         }
-        Ok((hits, scores))
+        Ok(TextMatches { typo: retry && !hits.is_empty(), hits, scores })
     }
 
     /// Matches for a query that found nothing, allowing one typo (a letter added, dropped, changed, or two swapped)
@@ -421,8 +430,8 @@ mod tests {
         // reopened from disk: same results
         let reopened = TextIndex::build(sample(), Some(&dir), fp1).unwrap();
         assert!(index_dir.join("reused").exists());
-        assert_eq!(reopened.search("dress").unwrap().0.iter().collect::<Vec<_>>(), [1]);
-        assert_eq!(reopened.search("ミルティ").unwrap().0.iter().collect::<Vec<_>>(), [0]);
+        assert_eq!(reopened.search("dress").unwrap().hits.iter().collect::<Vec<_>>(), [1]);
+        assert_eq!(reopened.search("ミルティ").unwrap().hits.iter().collect::<Vec<_>>(), [0]);
         // same doc count (3), but changed content and fingerprint forces a rebuild
         let s_changed = vec![
             doc("ミルティナ用 ゴシックドレス", "衣装"),
@@ -431,9 +440,9 @@ mod tests {
         ];
         let fp_changed = fingerprint(&s_changed);
         let changed = TextIndex::build(s_changed.into_iter(), Some(&dir), fp_changed).unwrap();
-        assert_eq!(changed.search("beach").unwrap().0.iter().collect::<Vec<_>>(), [1]);
-        assert_eq!(changed.search("bone").unwrap().0.iter().collect::<Vec<_>>(), Vec::<u32>::new());
-        assert_eq!(reopened.search("bone").unwrap().0.iter().collect::<Vec<_>>(), [1]);
+        assert_eq!(changed.search("beach").unwrap().hits.iter().collect::<Vec<_>>(), [1]);
+        assert_eq!(changed.search("bone").unwrap().hits.iter().collect::<Vec<_>>(), Vec::<u32>::new());
+        assert_eq!(reopened.search("bone").unwrap().hits.iter().collect::<Vec<_>>(), [1]);
         assert!(dir.join("unrelated").exists());
         drop(reopened);
         drop(changed);
@@ -441,7 +450,7 @@ mod tests {
         let s_two = vec![doc("Gothic Bone Dress", "VRChat"), doc("x", "y")];
         let fp_two = fingerprint(&s_two);
         let two = TextIndex::build(s_two.into_iter(), Some(&dir), fp_two).unwrap();
-        assert_eq!(two.search("dress").unwrap().0.iter().collect::<Vec<_>>(), [0]);
+        assert_eq!(two.search("dress").unwrap().hits.iter().collect::<Vec<_>>(), [0]);
         drop(two);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -449,13 +458,13 @@ mod tests {
     #[test]
     fn word_and_substring_matches() {
         let idx = TextIndex::build(sample(), None, 0).unwrap();
-        let (hits, scores) = idx.search("dress").unwrap();
+        let TextMatches { hits, scores, .. } = idx.search("dress").unwrap();
         assert_eq!(hits.iter().collect::<Vec<_>>(), [1]);
         assert!(scores[&1] > 0.01);
         // partial katakana name only reachable through the bigram path
-        let (hits, _) = idx.search("ミルティ").unwrap();
+        let hits = idx.search("ミルティ").unwrap().hits;
         assert_eq!(hits.iter().collect::<Vec<_>>(), [0]);
-        let (hits, _) = idx.search("nothing-here").unwrap();
+        let hits = idx.search("nothing-here").unwrap().hits;
         assert!(hits.is_empty());
     }
 
@@ -464,7 +473,7 @@ mod tests {
         let docs = vec![doc("AB accessory", ""), doc("XZ set", ""), doc("ShortHair", ""), doc("ショートヘア", "")];
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
         for (query, expected) in [("a b", vec![0]), ("x z", vec![1]), ("s h", vec![2]), ("シ ョート", vec![3]), ("short hair", vec![2])] {
-            assert_eq!(idx.search(query).unwrap().0.iter().collect::<Vec<_>>(), expected, "query {query:?}");
+            assert_eq!(idx.search(query).unwrap().hits.iter().collect::<Vec<_>>(), expected, "query {query:?}");
         }
     }
 
@@ -472,7 +481,7 @@ mod tests {
     fn width_and_kana_variants_match_the_same_items() {
         let docs = vec![doc("ミルティナ用 ゴシックドレス", "衣装"), doc("Gothic Bone Dress", "VRChat"), doc("しなの用 ショートヘア", ""), doc("ＦＵＬＬ Ｗｉｄｔｈ Hat", "")];
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
-        let ids = |q: &str| idx.search(q).unwrap().0.iter().collect::<Vec<_>>();
+        let ids = |q: &str| idx.search(q).unwrap().hits.iter().collect::<Vec<_>>();
         for (q, expected) in [
             ("ＤＲＥＳＳ", vec![1]),
             ("full width", vec![3]),
@@ -492,7 +501,7 @@ mod tests {
         let bio = |title: &str, author: &str, bio: &str| TextDoc { title: title.into(), tags: String::new(), author: author.into(), bio: bio.into() };
         let docs = vec![bio("衣装", "", "しなの対応"), bio("帽子", "", "ＲＥＡＤＭＥ included"), bio("髪型", "ＳＡＫＵＲＡ工房", ""), bio("靴", "", "Works on Kikyo")];
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
-        let ids = |q: &str| idx.search(q).unwrap().0.iter().collect::<Vec<_>>();
+        let ids = |q: &str| idx.search(q).unwrap().hits.iter().collect::<Vec<_>>();
         for (q, expected) in [("シナノ", vec![0]), ("readme", vec![1]), ("sakura", vec![2]), ("ＫＩＫＹＯ", vec![3])] {
             assert_eq!(ids(q), expected, "query {q:?}");
         }
@@ -509,7 +518,7 @@ mod tests {
             doc("Cyberpunk 2077 Jacket", ""),
         ];
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
-        let ids = |q: &str| idx.search(q).unwrap().0.iter().collect::<Vec<_>>();
+        let ids = |q: &str| idx.search(q).unwrap().hits.iter().collect::<Vec<_>>();
         for (q, expected) in [
             ("shinnano", vec![0]),
             ("manuak", vec![1]),
@@ -533,6 +542,10 @@ mod tests {
         ] {
             assert_eq!(ids(q), expected, "query {q:?}");
         }
+        // flagged only when the retry is what found the matches
+        let typo = |q: &str| idx.search(q).unwrap().typo;
+        assert!(typo("shinnano") && typo("dragn wings"));
+        assert!(!typo("shinano") && !typo("dress") && !typo("xyzzyq"));
     }
 
     #[test]
@@ -552,7 +565,7 @@ mod tests {
             TextDoc { title: "Hair cutting tool".into(), tags: "tool".into(), author: String::new(), bio: "Works on Shinano, makes short hair.".into() },
         ];
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
-        let ids = |q: &str| idx.search(q).unwrap().0.iter().collect::<Vec<_>>();
+        let ids = |q: &str| idx.search(q).unwrap().hits.iter().collect::<Vec<_>>();
         for q in ["shinano short hair", "shinano shorthair", "shinano short-hair", "Shinano  Short/Hair"] {
             assert_eq!(ids(q), [0, 1, 2, 5], "query {q:?}");
         }

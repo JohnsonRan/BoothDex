@@ -262,7 +262,8 @@ booth_tags, linked_avatars and categories emptied, translations keep only titles
 booth_images/media at most 2; default response unchanged; fetch full records via `/api/items?ids=`).
 `without=` (groups of filter names, `+` between groups and `,` within one, at most 8, such as
 `without=sc+pmin,pmax`) makes a search that finds nothing also return `widerCounts`: what it finds without each
-group, in order.
+group, in order. `typoTolerant` is true when the query's words matched nothing as typed and the typo retry
+found the results.
 
 ## Acknowledgments
 

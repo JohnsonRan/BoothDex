@@ -42,7 +42,11 @@ recognized: Array<Recognized>, trace: Array<TraceStep>, timing: Timing,
 /**
  * for a search that finds nothing, asked with `without=`: what it finds without each group, in order
  */
-widerCounts: Array<number>, };
+widerCounts: Array<number>, 
+/**
+ * the query's words matched nothing as typed, so its word matches allow one typo per long word
+ */
+typoTolerant: boolean, };
 
 export type SemanticStatus = "used" | "off" | "unavailable" | "skipped";
 
