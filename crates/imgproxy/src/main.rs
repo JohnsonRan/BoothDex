@@ -2,7 +2,8 @@
 //!   GET /b/{size}/{uuid}/i/{item}/{file}[?format=avif|png|jpeg]  Booth image (booth.pximg.net), re-encoded
 //!   GET /u/{size}/{user}/{file}[?format=…]                     Booth shop icon (users/{user}/icon_image), same
 //!   GET /a/{file}[?format=…]                                   BOOTH static image (asset.booth.pm/assets), same
-//!   GET /f/{uuid}/{file}[?format=…]                            pixiv Factory drawing (factory.pixiv.net), same
+//!   GET /f/{size}/{uuid}/{file}[?format=…]                     pixiv Factory drawing (factory.pixiv.net), scaled down
+//!                                                              here to a sized request; /f/{uuid}/{file} is "orig"
 //!   GET /v/{sha1}.webp                                         archived VRCatalogue image (delisted items)
 //! Output defaults to AVIF with full-resolution chroma (4:4:4), from libaom when built with the `libavif`
 //! feature (the container images are) and from rav1e otherwise; the archived files are WebP and served as they

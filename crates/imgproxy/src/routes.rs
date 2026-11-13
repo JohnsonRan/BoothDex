@@ -13,8 +13,8 @@ use axum::routing::get;
 use foyer::HybridCache;
 use tokio::sync::Semaphore;
 
-use crate::encode::{Format, avif_quality, decode, encode};
-use crate::upstream::{asset_upstream_url, factory_upstream_url, fetch_upstream, icon_upstream_url, upstream_url};
+use crate::encode::{Format, avif_quality, fit_side, transcode};
+use crate::upstream::{SIZES, asset_upstream_url, factory_upstream_url, fetch_upstream, icon_upstream_url, upstream_url};
 
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 /// Upstream 404s are cached (as an empty value) — Booth image paths are content-addressed and never come back
@@ -64,7 +64,7 @@ async fn booth(
     let (Some(url), Some(format)) = (upstream_url(&size, &uuid, &item, &file), Format::parse(q.format.as_deref())) else {
         return bad_request();
     };
-    proxy(s, format!("{size}/{uuid}/{item}/{file}:{format:?}"), url, &size, format).await
+    proxy(s, format!("{size}/{uuid}/{item}/{file}:{format:?}"), url, &size, format, None).await
 }
 
 async fn icon(
@@ -75,7 +75,7 @@ async fn icon(
     let (Some(url), Some(format)) = (icon_upstream_url(&size, &user, &file), Format::parse(q.format.as_deref())) else {
         return bad_request();
     };
-    proxy(s, format!("u/{size}/{user}/{file}:{format:?}"), url, &size, format).await
+    proxy(s, format!("u/{size}/{user}/{file}:{format:?}"), url, &size, format, None).await
 }
 
 async fn asset(State(s): State<Arc<AppState>>, Path(file): Path<String>, Query(q): Query<FormatQuery>) -> Response {
@@ -83,22 +83,43 @@ async fn asset(State(s): State<Arc<AppState>>, Path(file): Path<String>, Query(q
         return bad_request();
     };
     // a sized variant's quality: the one asset in use, the placeholder icon, is 150 px
-    proxy(s, format!("a/{file}:{format:?}"), url, "asset", format).await
+    proxy(s, format!("a/{file}:{format:?}"), url, "asset", format, None).await
 }
 
+/// The original drawing: the address the site used before it named a size, kept for pages and caches that hold it.
 async fn factory(
     State(s): State<Arc<AppState>>,
     Path((uuid, file)): Path<(String, String)>,
-    Query(q): Query<FormatQuery>,
+    query: Query<FormatQuery>,
 ) -> Response {
-    let (Some(url), Some(format)) = (factory_upstream_url(&uuid, &file), Format::parse(q.format.as_deref())) else {
-        return bad_request();
-    };
-    // pixiv Factory has no resize variants: every request gets the drawing at its own size
-    proxy(s, format!("f/{uuid}/{file}:{format:?}"), url, "orig", format).await
+    factory_sized(State(s), Path(("orig".to_owned(), uuid, file)), query).await
 }
 
-async fn proxy(s: Arc<AppState>, key: String, url: String, size: &str, format: Format) -> Response {
+async fn factory_sized(
+    State(s): State<Arc<AppState>>,
+    Path((size, uuid, file)): Path<(String, String, String)>,
+    Query(q): Query<FormatQuery>,
+) -> Response {
+    let (Some((key, url, side)), Some(format)) = (factory_request(&size, &uuid, &file), Format::parse(q.format.as_deref())) else {
+        return bad_request();
+    };
+    proxy(s, format!("{key}:{format:?}"), url, &size, format, side).await
+}
+
+/// Cache key (without the format), upstream URL and the square to fit into for a pixiv Factory drawing, or None when
+/// the path is not one. pixiv Factory has no resize variants, so imgproxy scales the original down itself. The
+/// original keeps the key it had before sizes existed, so the cached copies stay valid.
+fn factory_request(size: &str, uuid: &str, file: &str) -> Option<(String, String, Option<u32>)> {
+    if !SIZES.contains(&size) {
+        return None;
+    }
+    let url = factory_upstream_url(uuid, file)?;
+    let key = if size == "orig" { format!("f/{uuid}/{file}") } else { format!("f/{size}/{uuid}/{file}") };
+    Some((key, url, fit_side(size)))
+}
+
+/// `fit_side`: the square the decoded image is scaled down to before encoding, for an upstream without the size.
+async fn proxy(s: Arc<AppState>, key: String, url: String, size: &str, format: Format, fit_side: Option<u32>) -> Response {
     let quality = match format {
         Format::Avif => avif_quality(size),
         _ if size == "orig" => 88,
@@ -112,7 +133,7 @@ async fn proxy(s: Arc<AppState>, key: String, url: String, size: &str, format: F
             st.stats.upstream.fetch_add(1, Ordering::Relaxed);
             let Some(raw) = fetch_upstream(&st.client, &url).await? else { return Ok::<_, anyhow::Error>(Vec::new()) };
             let _permit = st.transcode.acquire().await?;
-            tokio::task::spawn_blocking(move || encode(&decode(&raw)?, format, quality)).await?
+            tokio::task::spawn_blocking(move || transcode(&raw, fit_side, format, quality)).await?
         })
         .await;
     match result {
@@ -162,8 +183,24 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
         .route("/u/{size}/{user}/{file}", get(icon))
         .route("/a/{file}", get(asset))
         .route("/f/{uuid}/{file}", get(factory))
+        .route("/f/{size}/{uuid}/{file}", get(factory_sized))
         .route("/v/{name}", get(archived))
         // internal: the API's admin overview reads it; the site does not forward it
         .route("/stats", get(stats))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_sized_factory_request_is_scaled_and_the_original_keeps_its_key() {
+        let (uuid, file) = ("04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74", "canvas_94032c5836.png");
+        let url = factory_upstream_url(uuid, file).unwrap();
+        assert_eq!(factory_request("300x300_a2_g5", uuid, file), Some((format!("f/300x300_a2_g5/{uuid}/{file}"), url.clone(), Some(300))));
+        assert_eq!(factory_request("orig", uuid, file), Some((format!("f/{uuid}/{file}"), url, None)));
+        assert_eq!(factory_request("999x999", uuid, file), None);
+        assert_eq!(factory_request("300x300_a2_g5", uuid, "a.jpg"), None);
+    }
 }

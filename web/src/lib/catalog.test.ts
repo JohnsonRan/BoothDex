@@ -186,10 +186,11 @@ test("an image no proxy route serves becomes the no-image state", () => {
 });
 
 test("pixiv Factory drawings go through the proxy, look-alikes do not", () => {
-  const out = `/img/f/${FACTORY_UUID}/canvas_94032c5836.png?format=avif`;
-  expect(imgUrl(one(FACTORY_SAMPLE))).toBe(out);
-  expect(imgUrl(one(FACTORY_SAMPLE), 0, "orig")).toBe(out);
-  expect(imageSrc(FACTORY_SAMPLE)).toBe(out);
+  const out = (size: string) =>
+    `/img/f/${size}/${FACTORY_UUID}/canvas_94032c5836.png?format=avif`;
+  expect(imgUrl(one(FACTORY_SAMPLE))).toBe(out("300x300_a2_g5"));
+  expect(imgUrl(one(FACTORY_SAMPLE), 0, "orig")).toBe(out("orig"));
+  expect(imageSrc(FACTORY_SAMPLE)).toBe(out("72x72_a2_g5"));
   for (const u of FACTORY_LOOKALIKES) {
     expect(imageSrc(u)).toBe("");
     expect(imgUrl(one(u))).toBe("");

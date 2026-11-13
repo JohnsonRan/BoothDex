@@ -8,7 +8,7 @@ use reqwest::redirect::Policy;
 use crate::public_dns::PublicOnly;
 
 /// Booth's own resize variants; anything else 403s upstream anyway. "orig" = original upload.
-const SIZES: &[&str] = &["48x48", "72x72_a2_g5", "300x300_a2_g5", "620x620", "orig"];
+pub(crate) const SIZES: &[&str] = &["48x48", "72x72_a2_g5", "300x300_a2_g5", "620x620", "orig"];
 const MAX_UPSTREAM_BYTES: usize = 25 * 1024 * 1024;
 
 fn is_uuid(s: &str) -> bool {

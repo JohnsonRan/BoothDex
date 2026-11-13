@@ -186,7 +186,7 @@ flowchart TD
 | `crates/core` | 公共类型、BOOTH 客户端及 `migrations/` 中的 PostgreSQL 表结构（服务启动时自动执行迁移） |
 | `crates/api` | 搜索 API。筛选使用内存 Roaring 位图；Tantivy 文本索引持久化在磁盘（`INDEX_DIR`）并在重启间复用；分页详情从 PostgreSQL 读取 |
 | `crates/worker` | 分三通道并发执行的后台任务器：`incremental`（增量上新）、`sweep`（全量巡检）、`details`、`refresh`、`enrich`、`localize` 与 `embed`（AI）。`worker run` 为守护进程，`worker once <kind> [params-json]` 单次执行指定任务 |
-| `crates/imgproxy` | `/b/{size}/...`（商品图片）、`/u/{size}/...`（店铺图标）、`/a/{file}`（BOOTH 静态图片）和 `/f/{uuid}/{file}`（pixiv Factory 图片）转码为 AVIF 并缓存；`/v/{sha1}.webp` 提供下架商品存档图片 |
+| `crates/imgproxy` | `/b/{size}/...`（商品图片）、`/u/{size}/...`（店铺图标）、`/a/{file}`（BOOTH 静态图片）和 `/f/{size}/{uuid}/{file}`（pixiv Factory 图片，由 imgproxy 缩小到该尺寸）转码为 AVIF 并缓存；`/v/{sha1}.webp` 提供下架商品存档图片 |
 | `web` | Next.js 前端站点与 `/admin` 管理后台 |
 | `deploy` | 容器构建文件、`docker-bake.hcl`、`compose.yaml` 与 `.env.example` |
 | `scripts` | 数据包打包校验脚本与模拟 AI 服务 |

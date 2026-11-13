@@ -5,6 +5,7 @@ use std::io::Cursor;
 use anyhow::Result;
 #[cfg(feature = "libavif")]
 use anyhow::bail;
+use image::imageops::FilterType;
 use image::{DynamicImage, ImageFormat, ImageReader, Limits};
 
 /// AVIF quality by size, on libavif's 0..=100 scale. Both values are smaller and closer to the source than the
@@ -81,6 +82,32 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<DynamicImage> {
     limits.max_alloc = Some(512 * 1024 * 1024);
     reader.limits(limits);
     Ok(reader.decode()?)
+}
+
+/// The side of the square a sized request fits into, from the size's leading `{side}x{side}` (Booth's sizes are
+/// all square); None for "orig".
+pub(crate) fn fit_side(size: &str) -> Option<u32> {
+    size.split_once('x')?.0.parse().ok()
+}
+
+/// The image scaled down to fit a `side` px square, keeping its aspect ratio; an image that already fits is kept as
+/// it is, never enlarged.
+pub(crate) fn fit(img: DynamicImage, side: u32) -> DynamicImage {
+    if img.width() <= side && img.height() <= side {
+        return img;
+    }
+    img.resize(side, side, FilterType::Lanczos3)
+}
+
+/// The upstream bytes as the response: decoded, scaled down to `fit_side` when the upstream has no such size, and
+/// encoded.
+pub(crate) fn transcode(raw: &[u8], fit_side: Option<u32>, format: Format, quality: u8) -> Result<Vec<u8>> {
+    let img = decode(raw)?;
+    let img = match fit_side {
+        Some(side) => fit(img, side),
+        None => img,
+    };
+    encode(&img, format, quality)
 }
 
 /// 8-bit AVIF with full-resolution chroma (4:4:4), from libaom through the system's libavif (src/aom.c).
@@ -176,5 +203,25 @@ mod tests {
         let avif = encode(&img, Format::Avif, avif_quality("300x300_a2_g5")).unwrap();
         // the colour item and its alpha auxiliary item: two AV1 configurations
         assert_eq!(avif.windows(4).filter(|w| *w == b"av1C").count(), 2);
+    }
+
+    #[test]
+    fn a_sized_transcode_fits_the_square_and_never_enlarges() {
+        let png = |w, h| {
+            let mut out = Cursor::new(Vec::new());
+            DynamicImage::ImageRgb8(image::RgbImage::new(w, h)).write_to(&mut out, ImageFormat::Png).unwrap();
+            out.into_inner()
+        };
+        let size = |raw: &[u8], side| {
+            let img = decode(&transcode(raw, side, Format::Png, 0).unwrap()).unwrap();
+            (img.width(), img.height())
+        };
+        let wide = png(1200, 600);
+        assert_eq!(size(&wide, fit_side("300x300_a2_g5")), (300, 150));
+        assert_eq!(size(&wide, fit_side("620x620")), (620, 310));
+        assert_eq!(size(&wide, fit_side("orig")), (1200, 600));
+        assert_eq!(size(&png(100, 400), fit_side("72x72_a2_g5")), (18, 72));
+        assert_eq!(size(&png(200, 100), fit_side("300x300_a2_g5")), (200, 100));
+        assert_eq!(fit_side("48x48"), Some(48));
     }
 }

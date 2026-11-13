@@ -54,7 +54,7 @@ fn image_path(it: &crate::db::ItemResponse) -> Option<String> {
         let uuid_ok = uuid.len() == 36 && uuid.split('-').map(str::len).eq([8, 4, 4, 4, 12]) && uuid.split('-').all(hex_lower);
         let stem = file.strip_suffix(".png")?;
         let file_ok = (1..=120).contains(&stem.len()) && stem.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-');
-        return (uuid_ok && file_ok).then(|| format!("/img/f/{uuid}/{file}?format=avif"));
+        return (uuid_ok && file_ok).then(|| format!("/img/f/300x300_a2_g5/{uuid}/{file}?format=avif"));
     }
     let sha = it.media.first()?.rsplit_once("/booth/")?.1.strip_suffix(".webp")?;
     (sha.len() == 40 && hex_lower(sha)).then(|| format!("/img/v/{sha}.webp"))
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn factory_drawing_maps_to_the_f_route() {
         let xml = feed(item(Some(vec![FACTORY]), vec![]));
-        assert!(xml.contains("https://example.com/img/f/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/canvas_94032c5836.png?format=avif"));
+        assert!(xml.contains("https://example.com/img/f/300x300_a2_g5/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/canvas_94032c5836.png?format=avif"));
     }
 
     /// The cases in `tests/fixtures/feed-image-paths.json` are shared with `imgUrl` in `web/src/lib/catalog.ts`:
