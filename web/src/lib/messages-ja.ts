@@ -236,7 +236,7 @@ export const ja: Dict = {
   "settings.preferences": "環境設定",
   "settings.site": "BoothDex",
   "settings.appearance": "外観",
-  "settings.appearanceDesc": "ページのカラー モードとスタイルです。",
+  "settings.appearanceDesc": "ページのカラー モードとレイアウトです。",
   "settings.syncNote":
     "このブラウザーに保存されます。ログイン中はアカウントにも保存されます。",
   "settings.system": "システム",

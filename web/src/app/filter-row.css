@@ -125,27 +125,12 @@
   flex-shrink: 0;
 }
 /* OverflowList fits the clauses with gap={2} counted as a fixed 8 px (core OverflowList.js:124-136, spacingToPx),
-   while the list draws var(--spacing-2): up to 9.2 px in neutral at the 115 % root, 13.8 px in Matcha and Y2K, whose "+N" then
-   no longer fit and wrapped out of sight. Its hidden measuring copy (the slot's other child) gives every item
+   while the list draws var(--spacing-2), wider when the root is (up to 9.2 px on a wide window, more with a larger
+   browser font), so the "+N" no longer fit and wrapped out of sight. Its hidden measuring copy (the slot's other child) gives every item
    after the first, and the trigger, the difference as padding, so the widths it reads carry the gaps as drawn
    (core hooks/computeOverflow.js:51-54 adds a gap before each of those). The copy is never shown. */
 .filter-slot > :not(.filter-clauses) > :not(:first-child) {
   padding-inline-start: max(0px, var(--spacing-2) - 8px);
-}
-/* Every control in the row is `sm` (filter-style.ts CONTROL_SIZE), as tall as the row (.filter-clauses). A Selector
-   only has its size as a minimum, which a theme's own padding can pass (Butter's theme.css:732-735 pads it with
-   --spacing-2, 43 px): pinned to the size, as the search's TextInput is, its text stays centred and nothing is
-   clipped. */
-.filter-row .astryx-selector {
-  block-size: var(--size-element-sm);
-}
-/* A theme with wider control padding draws "+8" wider than the slot's 3rem floor (Y2K and Matcha 56 px), which the
-   list clipped to "+" on a phone's own row and at 440 px, where the search and the reserve leave the slot its
-   floor. Once folded the list is never narrower than what it shows: the trigger may run past the slot's end, over
-   a phone's empty row or into the start of the reserve, before the readout's text. The slot keeps its floor, so the
-   fold still measures it and folds every clause. Elsewhere the fold leaves the list as wide as the slot already. */
-.filter-toolbar .filter-clauses:not([data-unfolded]) {
-  min-inline-size: max-content;
 }
 /* 3rem: the trigger's place, as the slot's floor counts it (.filter-slot). The template's 44 px is the
    trigger as the template draws it; "+8" is 19.8 px wide on a phone, which 44 px clips to "+…". */
@@ -226,7 +211,7 @@
   flex-shrink: 0;
 }
 /* The Tokenizer caps each token's wrapper at the field's width (core src/Tokenizer/Tokenizer.tsx:404-410), which
-   in a phone's 7.5rem field squeezed Matcha's and Y2K's roomier tokens down to their picture and ×. Uncapped, a
+   in a phone's 7.5rem field squeezes a token of a few words down to its picture and ×. Uncapped, a
    token keeps its words and the field scrolls them. The folded "+N more" list keeps the cap. */
 .filter-search .astryx-tokenizer > span:has(.astryx-token) {
   max-width: none;
@@ -249,8 +234,8 @@
 }
 
 /* The refresh progress on the filter band's bottom edge (catalog/refresh.tsx), by its theme hooks and only here:
-   a 2 px square-ended line over the band's divider instead of the 8 px pill on a muted track, which read as a
-   separate bar in themes with a tinted muted colour (Y2K's beige). Core's rules carry up to four :not(#\#), so
+   a 2 px square-ended line over the band's divider instead of the 8 px pill on a muted track, so the progress reads as
+   part of the band and not as a bar of its own. Core's rules carry up to four :not(#\#), so
    these carry one class more. */
 .band-progress .astryx-progress-bar-track:not(#\#):not(#\#):not(#\#):not(#\#) {
   height: 2px;

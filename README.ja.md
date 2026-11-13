@@ -16,7 +16,7 @@
 
 BoothDex は、[BOOTH](https://booth.pm) で販売されている VRChat 向け商品をインデックス化し、対応アバター、カテゴリ、タグ、機能、価格などの条件で高速に絞り込める検索エンジンです。2026-11-01 に閉鎖された VRCatalogue の後継を目指して開発が始まり、互換性のある検索構文を備えています。本プロジェクトは独立したオープンソースプロジェクトであり、pixiv、BOOTH、および VRCatalogue とは一切関係ありません。商品データおよび画像の権利は各制作者に帰属し、すべての商品は BOOTH の販売ページへ直接リンクしています。
 
-![ホーム画面（カテゴリ：髪型）: フィルター行、アバター本体のカルーセル、商品グリッド](docs/screenshots/ja/home.webp)
+![ホーム画面（カテゴリ：髪型）: 絞り込みのサイドバー、アバター本体のカルーセル、商品グリッド](docs/screenshots/ja/home.webp)
 
 ## はじめに
 
@@ -84,7 +84,7 @@ docker compose pull && docker compose up -d
 <details>
 <summary>設定でカラーモードを選べます</summary>
 
-![設定の外観ページ: テーマのモードと純黒モード](docs/screenshots/ja/settings.webp)
+![設定の外観ページ: テーマのモード、純黒モード、上部で絞り込み](docs/screenshots/ja/settings.webp)
 
 </details>
 

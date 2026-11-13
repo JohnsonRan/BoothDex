@@ -233,7 +233,7 @@ export const ko: Dict = {
   "settings.preferences": "환경 설정",
   "settings.site": "BoothDex",
   "settings.appearance": "모양",
-  "settings.appearanceDesc": "페이지의 색 모드와 스타일입니다.",
+  "settings.appearanceDesc": "페이지의 색 모드와 레이아웃입니다.",
   "settings.syncNote":
     "이 브라우저에 저장되며, 로그인하면 계정에도 저장됩니다.",
   "settings.system": "시스템 설정",
