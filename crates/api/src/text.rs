@@ -1,7 +1,8 @@
-//! Tantivy text index, kept on disk (memory-mapped) when a directory is given, otherwise in RAM. Two ways to match:
+//! Tantivy text index, kept on disk (memory-mapped) when a directory is given, otherwise in RAM. Three ways to match:
 //! - words: Lindera (IPADIC) morphological tokens over title/tags/author/bio, BM25-ranked
 //! - substring: character bigrams over title/tags with spaces and punctuation removed, verified per query word by
 //!   `contains` (covers partial names like "ミル" → "ミルティナ", and "shorthair" / "short hair" / "short-hair")
+//! - typos: a Latin query that matches nothing either way is tried once more allowing one typo per word (`typo_tolerant`)
 
 use std::path::Path;
 
@@ -11,7 +12,7 @@ use lindera_tantivy::tokenizer::LinderaTokenizer;
 use roaring::RoaringBitmap;
 use rustc_hash::FxHashMap;
 use tantivy::collector::{Collector, DocSetCollector, SegmentCollector};
-use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
+use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, Query, QueryParser, TermQuery};
 use tantivy::schema::{FAST, Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions};
 use tantivy::tokenizer::{LowerCaser, NgramTokenizer, SimpleTokenizer, TextAnalyzer, Token, TokenFilter, TokenStream, Tokenizer};
 use unicode_normalization::UnicodeNormalization;
@@ -28,6 +29,8 @@ pub struct TextIndex {
     reader: IndexReader,
     parser: QueryParser,
     gram: Field,
+    /// title, tags and author: the word fields a typo-tolerant retry searches
+    named: [Field; 3],
     /// per segment: tantivy doc id -> catalog doc index
     seg_docs: Vec<Vec<u32>>,
     /// title + tags, compacted (see `compact`), for substring verification
@@ -128,6 +131,9 @@ fn text_field(tokenizer: &str, positions: bool) -> TextOptions {
 /// 3: tantivy 0.27 and Lindera 6 (dictionary and tokenizer versions changed).
 /// 4: NFKC and kana folding (`fold`).
 const FORMAT: u32 = 4;
+
+/// Words shorter than this must match exactly in a typo-tolerant retry: one edit in "hair" reaches "hare" and "pair".
+const TYPO_MIN: usize = 5;
 
 /// Hiragana as katakana; every other character unchanged.
 fn kana(c: char) -> char {
@@ -286,7 +292,7 @@ impl TextIndex {
                 }
             }
         }
-        Ok(Self { reader, parser, gram, seg_docs, haystack })
+        Ok(Self { reader, parser, gram, named: [title, tags, author], seg_docs, haystack })
     }
 
     /// Matching catalog docs with a relevance score (substring-only hits get a small floor score).
@@ -336,7 +342,37 @@ impl TextIndex {
                 }
             }
         }
+        if hits.is_empty() {
+            for (score, addr) in self.typo_tolerant(&searcher, &words)? {
+                let d = self.seg_docs[addr.segment_ord as usize][addr.doc_id as usize];
+                hits.insert(d);
+                scores.insert(d, score);
+            }
+        }
         Ok((hits, scores))
+    }
+
+    /// Matches for a query that found nothing, allowing one typo (a letter added, dropped, changed, or two swapped)
+    /// in each word of at least `TYPO_MIN` letters: "shinnano" finds "Shinano". Only for queries written in ASCII:
+    /// in kana or kanji one changed character is usually another word. Shorter words must match exactly.
+    fn typo_tolerant(&self, searcher: &tantivy::Searcher, words: &[String]) -> Result<Vec<(Score, DocAddress)>> {
+        if !words.iter().all(|w| w.is_ascii()) || !words.iter().any(|w| w.len() >= TYPO_MIN) {
+            return Ok(Vec::new());
+        }
+        let word = |w: &String| -> Box<dyn Query> {
+            let fields = self.named.iter().map(|&f| {
+                let term = Term::from_field_text(f, w);
+                let q: Box<dyn Query> = if w.len() >= TYPO_MIN {
+                    Box::new(FuzzyTermQuery::new(term, 1, true))
+                } else {
+                    Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))
+                };
+                (Occur::Should, q)
+            });
+            Box::new(BooleanQuery::new(fields.collect()))
+        };
+        let query = BooleanQuery::new(words.iter().map(|w| (Occur::Must, word(w))).collect());
+        Ok(searcher.search(&query, &ScoredDocs)?)
     }
 }
 
@@ -452,6 +488,30 @@ mod tests {
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
         let ids = |q: &str| idx.search(q).unwrap().0.iter().collect::<Vec<_>>();
         for (q, expected) in [("シナノ", vec![0]), ("readme", vec![1]), ("sakura", vec![2]), ("ＫＩＫＹＯ", vec![3])] {
+            assert_eq!(ids(q), expected, "query {q:?}");
+        }
+    }
+
+    #[test]
+    fn a_query_finding_nothing_allows_one_typo_per_long_latin_word() {
+        let docs = vec![doc("Shinano Short Hair", ""), doc("Manuka Dress", ""), doc("Rusk Dragon Wings", ""), doc("ミルティナ用 ゴシックドレス", ""), doc("Press Kit", "")];
+        let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
+        let ids = |q: &str| idx.search(q).unwrap().0.iter().collect::<Vec<_>>();
+        for (q, expected) in [
+            ("shinnano", vec![0]),
+            ("manuak", vec![1]),
+            ("dragn wings", vec![2]),
+            ("wings drgon", vec![2]),
+            // a word under 5 letters must still match exactly
+            ("hari", vec![]),
+            ("rusk dragn", vec![2]),
+            ("rusc dragn", vec![]),
+            // only when nothing matched: "dress" does not also bring "press"
+            ("dress", vec![1]),
+            ("xyzzyq", vec![]),
+            // other scripts get no typo allowance
+            ("ミルティノ", vec![]),
+        ] {
             assert_eq!(ids(q), expected, "query {q:?}");
         }
     }
