@@ -34,7 +34,6 @@ mod search_tests;
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
@@ -45,7 +44,7 @@ use sqlx::PgPool;
 use account::account_write_rate_limit;
 use error::ApiError;
 use items::items_by_id;
-use lookups::{lookup, lookup_rate_limit};
+use lookups::{categories, lookup, lookup_rate_limit};
 use palette::palette;
 use rss::rss_feed;
 #[cfg(test)]
@@ -153,7 +152,7 @@ async fn main() -> Result<()> {
         .route("/api/authors", get(lookup(|s| &s.authors)))
         .route("/api/tags", get(lookup(|s| &s.tags)))
         .route("/api/booth-tags", get(lookup(|s| &s.booth_tags)))
-        .route("/api/categories", get(|State(s): State<Arc<AppState>>| async move { Json(s.snap().categories.clone()) }))
+        .route("/api/categories", get(categories))
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), lookup_rate_limit));
 
     let app = Router::new()
