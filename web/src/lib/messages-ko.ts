@@ -189,6 +189,8 @@ export const ko: Dict = {
   "account.required": "필수 항목입니다",
   "account.usernameRule": "영문, 숫자, 밑줄 3–24자",
   "account.emailInvalid": "올바른 이메일 주소를 입력하세요",
+  "account.emailAscii":
+    "이메일 주소에는 영문, 숫자, 반각 기호만 사용할 수 있습니다",
   "account.passwordShort": "10자 이상 입력하세요",
   "saved.desc":
     "지금의 검색어, 필터, 정렬을 저장합니다. 한 번에 다시 열거나 조건에 맞는 새 상품을 RSS로 구독할 수 있습니다.",

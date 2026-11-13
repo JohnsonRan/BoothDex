@@ -189,6 +189,8 @@ export const en: Dict = {
   "account.required": "Required",
   "account.usernameRule": "3–24 letters, digits or underscores",
   "account.emailInvalid": "Enter a valid email address",
+  "account.emailAscii":
+    "Use only English letters, digits and symbols such as . _ + -",
   "account.passwordShort": "At least 10 characters",
   "saved.desc":
     "Keeps the search, filters and sort as they are now: open them again in one click, or follow new matching items by RSS.",
