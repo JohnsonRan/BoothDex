@@ -99,7 +99,7 @@ async fn check_semantic_search(pool: PgPool) {
         .await
         .unwrap_or_else(IntoResponse::into_response);
     let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
-    assert_eq!((&body["count"], &body["semantic"], &body["widerCounts"]), (&json!(0), &json!("used"), &json!([0, 1])), "{body}");
+    assert_eq!((&body["count"], &body["semantic"], &body["widerCounts"], &body["typoTolerant"]), (&json!(0), &json!("used"), &json!([0, 1]), &json!(false)), "{body}");
 }
 
 #[sqlx::test(migrations = "../core/migrations")]
