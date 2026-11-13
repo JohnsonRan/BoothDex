@@ -417,7 +417,9 @@ function Section({
         </Text>
       }
     >
-      {children}
+      {/* the compact group pads a section's content by a step at each end, so its last field met the divider
+          half as far from it as its first is from the name above; another step at the end evens the two */}
+      <VStack paddingBlockEnd={1}>{children}</VStack>
     </Collapsible>
   );
 }
