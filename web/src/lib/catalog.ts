@@ -63,7 +63,8 @@ const FACTORY =
 
 /**
  * Proxied, AVIF-encoded image URL: Booth (booth.pximg.net) and pixiv Factory images; delisted items fall back to
- * our archived copies (WebP). Any other URL gives "".
+ * our archived copies (WebP). Any other URL gives "". The RSS feed repeats this rule as `image_path` in
+ * `crates/api/src/rss.rs`: change one, change the other.
  */
 export function imgUrl(
   it: Pick<ItemResponse, "booth_images" | "media">,
