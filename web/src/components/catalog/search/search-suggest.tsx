@@ -6,7 +6,7 @@
 // :112-122). Each word of the applied query is a token, as on Mercari: its × (or Backspace) searches without it.
 // Enter with no row highlighted adds the typed words and searches; the API matches every word either way. Once the
 // search answers, the words it read as a model or a smart category (its `recognized`) are one token, led by the
-// model's picture or a category glyph and described as what they were read as.
+// model's picture or a category glyph and described as what they were read as; a model's token shows its name.
 
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Icon } from "@astryxdesign/core/Icon";
@@ -193,7 +193,9 @@ export function SearchSuggest({
         return (
           <Tooltip content={read}>
             <Token
-              label={word.label}
+              // a model token is named for the model, so a misspelt name ("shinnano") reads as what was searched;
+              // the query keeps the words as typed (`word.label`)
+              label={mark.kind === "model" ? mark.name : word.label}
               size={CONTROL_SIZE}
               onRemove={remove}
               description={read}
