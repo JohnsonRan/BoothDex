@@ -92,6 +92,8 @@ export const ko: Dict = {
   "theme.toLight": "라이트 모드로 전환",
   "theme.toDark": "다크 모드로 전환",
   "list.emptyHint": "필터를 지우고 다시 시도해 주세요.",
+  "list.emptyWider": "다음 필터 중 하나를 제거하면 상품을 찾을 수 있습니다.",
+  "list.dropClause": "{clause} 제거({count})",
   "list.startingTitle": "서비스를 시작하는 중입니다",
   "list.loading": "불러오는 중",
   "list.allLoaded": "{n}개 항목을 모두 불러왔습니다",

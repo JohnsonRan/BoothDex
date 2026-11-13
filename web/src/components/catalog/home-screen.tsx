@@ -14,7 +14,10 @@ import { Suspense } from "react";
 import { RecentCount, RecentResults } from "@/components/account/recent-view";
 import { ViewActions } from "@/components/account/view-actions";
 import { FilterBand } from "@/components/catalog/band/band";
-import type { ClauseNames } from "@/components/catalog/filter/clause-text";
+import {
+  type ClauseNames,
+  clauseParams,
+} from "@/components/catalog/filter/clause-text";
 import { FilterRail } from "@/components/catalog/filter/filter-rail-slot";
 import type {
   Facets,
@@ -167,7 +170,13 @@ async function Catalog({
   // nothing is searched for the recent view: the browser reads it (account/recent.tsx)
   const outcome: Promise<SearchOutcome> = recent
     ? Promise.resolve({ state: "error" })
-    : searchItems(filters, page, noSemantic);
+    : searchItems(
+        filters,
+        page,
+        noSemantic,
+        // an empty answer counts what each clause, dropped alone, would find (the empty state, results.tsx)
+        clauseParams(filters).map(([, params]) => params),
+      );
   const [avatars, categories, tags, railWidth] = await Promise.all([
     listAvatars().catch(() => []),
     listCategories().catch(() => []),
@@ -295,6 +304,7 @@ async function Catalog({
                   rates={rates}
                   settings={settings}
                   filters={filters}
+                  names={names}
                   noSemantic={noSemantic}
                 />
               )}

@@ -329,9 +329,8 @@ impl Catalog {
         cs.iter().filter(|(g, _)| Some(*g) != skip).fold(self.all.clone(), |acc, (_, b)| acc & b)
     }
 
-    /// `semantic`: item ids nearest to the query by meaning (see search.rs); they join the text hits and, when
-    /// sorting by relevance, the two rankings are merged. Autocomplete and RSS skip facet counts.
-    pub fn search(&self, r: &SearchRequest, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>, count_facets: bool) -> Result<SearchResult> {
+    /// The text query's hits and scores, joined by the meaning-based matches when there are any.
+    fn text_hits(&self, r: &SearchRequest, semantic: Option<Semantic>) -> Result<Option<(RoaringBitmap, FxHashMap<u32, f32>)>> {
         let mut text = r.q.as_deref().map(|q| self.text.search(q)).transpose()?;
         if let (Some((hits, scores)), Some(sem)) = (text.as_mut(), semantic) {
             // models named in the query: a meaning-based match must fit one of them
@@ -360,6 +359,20 @@ impl Catalog {
             hits.extend(docs);
             *hits |= cat;
         }
+        Ok(text)
+    }
+
+    /// How many items each of `wider` finds: requests that differ from `r` only in their filters (never in the
+    /// text query), so `r`'s text and meaning-based matches hold for all of them. Counts only: no facets, no order.
+    pub fn counts(&self, r: &SearchRequest, wider: &[SearchRequest], now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>) -> Result<Vec<u64>> {
+        let text = self.text_hits(r, semantic)?;
+        Ok(wider.iter().map(|w| self.intersect(&self.constraints(w, now, text.as_ref().map(|(b, _)| b), favourites), None).len()).collect())
+    }
+
+    /// `semantic`: item ids nearest to the query by meaning (see search.rs); they join the text hits and, when
+    /// sorting by relevance, the two rankings are merged. Autocomplete and RSS skip facet counts.
+    pub fn search(&self, r: &SearchRequest, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>, count_facets: bool) -> Result<SearchResult> {
+        let text = self.text_hits(r, semantic)?;
         let cs = self.constraints(r, now, text.as_ref().map(|(b, _)| b), favourites);
         let hits = self.intersect(&cs, None);
 
@@ -671,6 +684,23 @@ mod tests {
         assert_eq!(ids(&c, "free=1"), [2]);
         assert_eq!(ids(&c, "v=avatars&gender=female"), [6]);
         assert_eq!(ids(&c, "v=avatars&asup=unsupported"), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn an_empty_search_counts_what_each_without_group_finds() {
+        let c = catalog();
+        let wider = |q: &str| {
+            let (r, counts) = crate::search::search_and_wider(&c, q, &request(q), 0, None, None).unwrap();
+            (r.count, counts)
+        };
+        // each group dropped alone, in order (only the manuka item has lilToon); an unknown name changes nothing
+        assert_eq!(wider("avatars=manuka&free=1&if=liltoon&without=avatars+free+if+nonsense"), (0, vec![0, 1, 0, 0]));
+        assert_eq!(wider("avatars=manuka&pmin=1&pmax=500&without=pmin,pmax+avatars"), (0, vec![1, 0]));
+        // the text query stays: dropping the filter finds only what the words find
+        assert_eq!(wider("q=item%201&free=1&without=free+q"), (0, vec![1, 0]));
+        // a search that finds something, or one without `without`, counts nothing
+        assert_eq!(wider("avatars=manuka&without=avatars"), (1, vec![]));
+        assert_eq!(wider("avatars=manuka&free=1"), (0, vec![]));
     }
 
     #[test]

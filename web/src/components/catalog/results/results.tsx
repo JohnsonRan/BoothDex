@@ -6,6 +6,10 @@
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import {
+  type ClauseNames,
+  widerSearches,
+} from "@/components/catalog/filter/clause-text";
 import { ClearAll } from "@/components/catalog/filter/filter-bar";
 import { KeepResults, Swap } from "@/components/catalog/refresh";
 import { SearchTrace } from "@/components/catalog/search/search-trace";
@@ -65,12 +69,14 @@ export async function Results({
   rates,
   settings,
   filters,
+  names,
   noSemantic,
 }: {
   outcome: Promise<SearchOutcome>;
   rates: Promise<Rates>;
   settings: Settings;
   filters: Filters;
+  names: ClauseNames;
   noSemantic: boolean;
 }) {
   const o = await outcome;
@@ -79,15 +85,18 @@ export async function Results({
   // this page's search went without meaning-based matches, asked to or not: the rest of the page and the later
   // pages are read the same way, so the result set stays the one the first tiles came from
   const lexical = noSemantic || (!!filters.q && result.semantic !== "used");
+  const t = translator(settings.ui);
   if (result.items.length === 0)
     return (
       <KeepResults>
         <Swap>
-          <EmptyResults />
+          <EmptyResults
+            // an API from before `widerCounts` leaves it out
+            wider={widerSearches(filters, names, t, result.widerCounts ?? [])}
+          />
         </Swap>
       </KeepResults>
     );
-  const t = translator(settings.ui);
   const known = await rates;
   const href = (n: number) =>
     `?${pageQuery(filtersToQuery(filters), n, lexical)}`;

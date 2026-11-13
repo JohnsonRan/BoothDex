@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_FILTERS, parseFilters } from "@/lib/catalog";
+import { DEFAULT_FILTERS, filtersToQuery, parseFilters } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
 import {
+  CLAUSE_CLEAR,
+  type ClauseKey,
   type ClauseNames,
+  clauseParams,
   clauseTexts,
   priceText,
   sortLabel,
   summaryTokens,
+  widerSearches,
 } from "./clause-text";
 
 describe("priceText", () => {
@@ -46,6 +50,65 @@ describe("clauseTexts", () => {
   test("the avatar view has gender instead of category", () => {
     const f = parseFilters("v=avatars&gender=female&sc=avatar");
     expect(clauseTexts(f, names, t)).toEqual({ gender: "Gender is Female" });
+  });
+});
+
+describe("wider searches", () => {
+  const f = parseFilters(
+    "q=cat&authors=shop&sc=avatar&avatars=manuka&adult=include&free=1&range=7d&if=quest&tags=hair--short&extags=nsfw",
+  );
+  test("clearing a clause sets defaults the search query leaves out", () => {
+    for (const patch of Object.values(CLAUSE_CLEAR))
+      expect(filtersToQuery({ ...DEFAULT_FILTERS, ...patch })).toBe("");
+  });
+  test("each set clause names the parameters that clearing it alone removes", () => {
+    const all = clauseTexts(f, names, t);
+    const params = clauseParams(f);
+    expect(params.map(([key]): string => key)).toEqual(Object.keys(all));
+    expect(Object.fromEntries(params)).toEqual({
+      author: ["authors"],
+      sc: ["sc"],
+      avatar: ["avatars"],
+      adult: ["adult"],
+      price: ["free"],
+      range: ["range"],
+      features: ["if"],
+      tags: ["tags", "extags"],
+    });
+    for (const [key] of params) {
+      const { [key]: _, ...rest } = all;
+      expect(clauseTexts({ ...f, ...CLAUSE_CLEAR[key] }, names, t)).toEqual(
+        rest,
+      );
+    }
+    expect(clauseParams(parseFilters("pmin=500&pmax=900"))).toEqual([
+      ["price", ["pmin", "pmax"]],
+    ]);
+    expect(clauseParams(parseFilters("q=cat"))).toEqual([]);
+    // a clause the row hides for this view takes no group: the API answers at most 8
+    for (const query of [
+      "v=avatars&avatars=manuka&sc=hair&gender=female&authors=a&adult=include&free=1&range=7d&if=quest&tags=t",
+      "sc=hair&gender=female&authors=a",
+    ]) {
+      const g = parseFilters(query);
+      expect(clauseParams(g).map(([key]): string => key)).toEqual(
+        Object.keys(clauseTexts(g, names, t)),
+      );
+    }
+  });
+  test("counts pair with the clauses; none found is left out, the most first", () => {
+    const g = parseFilters("sc=avatar&pmin=500&range=7d&if=quest");
+    const w = (key: ClauseKey, label: string, count: number) => ({
+      key,
+      label,
+      count,
+    });
+    expect(widerSearches(g, names, t, [3, 0, 40, 3])).toEqual([
+      w("range", "Published is Past 7 days", 40),
+      w("sc", "Categories is Avatars", 3),
+      w("features", "Quest", 3),
+    ]);
+    expect(widerSearches(g, names, t, [])).toEqual([]);
   });
 });
 

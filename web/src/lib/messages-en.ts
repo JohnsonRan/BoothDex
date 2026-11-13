@@ -92,6 +92,8 @@ export const en: Dict = {
   "theme.toLight": "Switch to light mode",
   "theme.toDark": "Switch to dark mode",
   "list.emptyHint": "Clear the filters and try again.",
+  "list.emptyWider": "Remove one of these filters to find items.",
+  "list.dropClause": "Remove {clause} ({count})",
   "list.startingTitle": "The service is starting",
   "list.loading": "Loading",
   "list.allLoaded": "All {n} items loaded",
