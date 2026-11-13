@@ -12,7 +12,12 @@ import type { ReactElement } from "react";
 import { useUi } from "@/components/providers";
 import { FEATURES, type Feature, type Filters, RANGES } from "@/lib/catalog";
 import { LOCALES } from "@/lib/settings-core";
-import { type ClauseKey, type ClauseNames, clauseTexts } from "./clause-text";
+import {
+  CLAUSE_CLEAR,
+  type ClauseKey,
+  type ClauseNames,
+  clauseTexts,
+} from "./clause-text";
 import {
   CONTROL_SIZE,
   type Facets,
@@ -60,7 +65,7 @@ export function useClauses(
       value={value || null}
       renderValue={() => texts[key]}
       controlStyle={value ? FILTER_FILL : undefined}
-      onChange={(v) => onChange(v ?? "")}
+      onChange={(v) => (v == null ? apply(CLAUSE_CLEAR[key]) : onChange(v))}
     />
   );
 
@@ -93,7 +98,7 @@ export function useClauses(
         value={f.author}
         controlStyle={FILTER_FILL}
         onChange={(v) => {
-          if (v == null) apply({ author: "" });
+          if (v == null) apply(CLAUSE_CLEAR.author);
         }}
       />
     ),

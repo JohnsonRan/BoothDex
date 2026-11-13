@@ -6,14 +6,25 @@
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import {
+  type ClauseNames,
+  type Wider,
+  widestFirst,
+  withoutEach,
+} from "@/components/catalog/filter/clause-text";
 import { ClearAll } from "@/components/catalog/filter/filter-bar";
 import { KeepResults, Swap } from "@/components/catalog/refresh";
 import { SearchTrace } from "@/components/catalog/search/search-trace";
 import { type Filters, filtersToQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
 import { drawnWith, pageQuery } from "@/lib/result-pages";
-import type { SearchOutcome } from "@/lib/server-data";
-import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
+import { type SearchOutcome, searchItems } from "@/lib/server-data";
+import {
+  LOCALES,
+  type Rates,
+  type Settings,
+  type Translate,
+} from "@/lib/settings-core";
 import { FIRST_TILES, tileOf } from "./item-tile";
 import { PageInView } from "./page-in-view";
 import { ResultPages } from "./result-pages";
@@ -60,17 +71,35 @@ export async function ResultCount({
   );
 }
 
+/** For an empty search: what each set clause, dropped alone, would find; read the way the empty search was. */
+async function wider(
+  filters: Filters,
+  names: ClauseNames,
+  t: Translate,
+  lexical: boolean,
+): Promise<Wider[]> {
+  const counted = await Promise.all(
+    withoutEach(filters, names, t).map(async ({ key, label, filters }) => {
+      const o = await searchItems(filters, 1, lexical, 1);
+      return { key, label, count: o.state === "ok" ? o.result.count : 0 };
+    }),
+  );
+  return widestFirst(counted);
+}
+
 export async function Results({
   outcome,
   rates,
   settings,
   filters,
+  names,
   noSemantic,
 }: {
   outcome: Promise<SearchOutcome>;
   rates: Promise<Rates>;
   settings: Settings;
   filters: Filters;
+  names: ClauseNames;
   noSemantic: boolean;
 }) {
   const o = await outcome;
@@ -79,15 +108,15 @@ export async function Results({
   // this page's search went without meaning-based matches, asked to or not: the rest of the page and the later
   // pages are read the same way, so the result set stays the one the first tiles came from
   const lexical = noSemantic || (!!filters.q && result.semantic !== "used");
+  const t = translator(settings.ui);
   if (result.items.length === 0)
     return (
       <KeepResults>
         <Swap>
-          <EmptyResults />
+          <EmptyResults wider={await wider(filters, names, t, lexical)} />
         </Swap>
       </KeepResults>
     );
-  const t = translator(settings.ui);
   const known = await rates;
   const href = (n: number) =>
     `?${pageQuery(filtersToQuery(filters), n, lexical)}`;

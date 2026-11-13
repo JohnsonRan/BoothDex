@@ -41,6 +41,7 @@ import { FEATURES, type Feature, type Filters, RANGES } from "@/lib/catalog";
 import { RAIL_REM, railCookie, railToSave } from "@/lib/rail-width";
 import { LOCALES } from "@/lib/settings-core";
 import {
+  CLAUSE_CLEAR,
   type ClauseNames,
   clauseTexts,
   digits,
@@ -261,7 +262,7 @@ const RailFields = memo(function RailFields({
             options={[f.author]}
             value={f.author}
             onChange={(v) => {
-              if (v == null) apply({ author: "" });
+              if (v == null) apply(CLAUSE_CLEAR.author);
             }}
           />
         )}
@@ -313,7 +314,9 @@ const RailFields = memo(function RailFields({
                   label,
                 }))}
                 value={f.avatar || null}
-                onChange={(v) => apply({ avatar: v ?? "" })}
+                onChange={(v) =>
+                  apply(v == null ? CLAUSE_CLEAR.avatar : { avatar: v })
+                }
               />
             </Section>
           )}

@@ -295,6 +295,7 @@ async function Catalog({
                   rates={rates}
                   settings={settings}
                   filters={filters}
+                  names={names}
                   noSemantic={noSemantic}
                 />
               )}

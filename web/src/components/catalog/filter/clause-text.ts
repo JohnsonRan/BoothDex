@@ -26,6 +26,19 @@ export type ClauseKey =
   | "features"
   | "tags";
 
+/** What clearing each clause sets: the filter row's clears and the empty state's suggestions (results.tsx). */
+export const CLAUSE_CLEAR: Record<ClauseKey, Partial<Filters>> = {
+  author: { author: "" },
+  sc: { sc: "" },
+  gender: { gender: "" },
+  avatar: { avatar: "" },
+  adult: { adult: "safe" },
+  price: { free: false, pmin: 0, pmax: 0 },
+  range: { range: "" },
+  features: { features: [] },
+  tags: { tags: [], extags: [] },
+};
+
 /** The sorts the view control offers: URL sort and direction, and the label. */
 export const SORTS = [
   ["trending", "desc", "sort.trending"],
@@ -112,6 +125,24 @@ export function clauseTexts(
   if (multi.tags.length) out.tags = firstAndCount(multi.tags);
   return out;
 }
+
+/** A search one clause wider than the current one: the clause dropped, its text, and how many items it finds. */
+export type Wider = { key: ClauseKey; label: string; count: number };
+
+/** Every set clause with the filters that drop just that clause. */
+export function withoutEach(f: Filters, names: ClauseNames, t: Translate) {
+  return (
+    Object.entries(clauseTexts(f, names, t)) as [ClauseKey, string][]
+  ).map(([key, label]) => ({
+    key,
+    label,
+    filters: { ...f, ...CLAUSE_CLEAR[key] },
+  }));
+}
+
+/** The wider searches that find something, the most items first; ties keep the row's order. */
+export const widestFirst = (list: Wider[]) =>
+  list.filter((w) => w.count > 0).sort((a, b) => b.count - a.count);
 
 /** A search's conditions as the summary's tokens: the text query, the pressed presets, then the clauses. */
 export function summaryTokens(

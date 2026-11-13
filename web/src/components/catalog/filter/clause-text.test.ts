@@ -7,6 +7,8 @@ import {
   priceText,
   sortLabel,
   summaryTokens,
+  widestFirst,
+  withoutEach,
 } from "./clause-text";
 
 describe("priceText", () => {
@@ -46,6 +48,36 @@ describe("clauseTexts", () => {
   test("the avatar view has gender instead of category", () => {
     const f = parseFilters("v=avatars&gender=female&sc=avatar");
     expect(clauseTexts(f, names, t)).toEqual({ gender: "Gender is Female" });
+  });
+});
+
+describe("wider searches", () => {
+  test("each set clause, dropped alone, leaves every other clause", () => {
+    const f = parseFilters(
+      "q=cat&authors=shop&sc=avatar&avatars=manuka&adult=include&free=1&range=7d&if=quest&tags=hair--short&extags=nsfw",
+    );
+    const all = clauseTexts(f, names, t);
+    const wider = withoutEach(f, names, t);
+    expect(wider.map((w): string => w.key)).toEqual(Object.keys(all));
+    for (const { key, label, filters } of wider) {
+      const { [key]: dropped, ...rest } = all;
+      expect(label).toBe(dropped ?? "");
+      expect(clauseTexts(filters, names, t)).toEqual(rest);
+      expect(filters.q).toBe("cat");
+    }
+  });
+  test("nothing set offers nothing", () => {
+    expect(withoutEach(DEFAULT_FILTERS, names, t)).toEqual([]);
+  });
+  test("those that find nothing are left out, the most items first", () => {
+    const w = (key: "sc" | "price" | "range" | "tags", count: number) => ({
+      key,
+      label: key,
+      count,
+    });
+    expect(
+      widestFirst([w("sc", 3), w("price", 0), w("range", 40), w("tags", 3)]),
+    ).toEqual([w("range", 40), w("sc", 3), w("tags", 3)]);
   });
 });
 
