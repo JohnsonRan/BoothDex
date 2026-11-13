@@ -153,6 +153,8 @@ async fn auth_limiter_exhaustion_throttles_both_login_and_register() {
             "handler {name} must return 429 when auth limiter is exhausted"
         );
     }
+    // the refused sign-in printed its warning, which spent this address's one line a minute
+    assert!(state.limits.auth_log.take(ip.0).is_err());
 }
 
 #[tokio::test]

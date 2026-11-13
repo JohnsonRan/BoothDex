@@ -240,6 +240,8 @@ fn nearest_binds_only_parameters_used_by_each_query() {
 #[test]
 fn queries_are_normalized_for_the_cache() {
     assert_eq!(super::search::normalize_query("  Gothic   Dress "), "gothic dress");
+    // query_embeddings cannot store a NUL
+    assert_eq!(super::search::normalize_query("gothic\0dress\0"), "gothic dress");
 }
 
 #[test]

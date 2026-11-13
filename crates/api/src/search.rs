@@ -219,7 +219,8 @@ pub(crate) async fn semantic_vector(s: Arc<AppState>, ip: std::net::IpAddr, q: &
 
 /// The search text the embedding is cached under: case and spacing don't change the meaning.
 pub(crate) fn normalize_query(q: &str) -> String {
-    q.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    // a NUL breaks words like a space: query_embeddings cannot store it
+    q.split(|c: char| c.is_whitespace() || c == '\0').filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ").to_lowercase()
 }
 
 pub(crate) struct ClearInflight {

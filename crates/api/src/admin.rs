@@ -192,7 +192,16 @@ struct NewJob {
 }
 
 fn valid_params(p: &Value) -> bool {
-    (p.is_null() || p.is_object()) && p.to_string().len() <= 2000
+    (p.is_null() || p.is_object()) && p.to_string().len() <= 2000 && json_storable(p)
+}
+
+fn json_storable(v: &Value) -> bool {
+    match v {
+        Value::String(s) => crate::error::storable(s),
+        Value::Array(a) => a.iter().all(json_storable),
+        Value::Object(o) => o.iter().all(|(k, v)| crate::error::storable(k) && json_storable(v)),
+        _ => true,
+    }
 }
 
 async fn create_job(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<NewJob>) -> Result<Response, ApiError> {
@@ -239,6 +248,9 @@ struct ScheduleUpdate {
 
 async fn update_schedule(State(s): State<Arc<AppState>>, headers: HeaderMap, Path(kind): Path<String>, Json(b): Json<ScheduleUpdate>) -> Result<Response, ApiError> {
     require_admin(&s, &headers).await?;
+    if boothdex_core::jobs::JobKind::parse(&kind).is_none() {
+        return Err(Refusal::NoSuchSchedule.into());
+    }
     if b.interval_minutes.is_some_and(|m| !(5..=10080).contains(&m)) || b.params.as_ref().is_some_and(|p| !p.is_object() || !valid_params(p)) {
         return Err(Refusal::BadSchedule.into());
     }
@@ -324,7 +336,8 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
     require_admin(&s, &headers).await?;
     let url_ok = b.base_url.as_deref().is_none_or(|u| u.len() <= 300 && (u.starts_with("https://") || u.starts_with("http://")));
     let effort = b.reasoning_effort.as_deref().map(settings::reasoning_effort);
-    if !url_ok || [&b.model, &b.embed_model].iter().any(|m| m.as_deref().is_some_and(|m| m.len() > 100)) || b.api_key.as_deref().is_some_and(|k| k.len() > 500) || effort == Some(None) {
+    let storable = [&b.base_url, &b.model, &b.embed_model, &b.api_key].iter().all(|f| f.as_deref().is_none_or(crate::error::storable));
+    if !url_ok || !storable || [&b.model, &b.embed_model].iter().any(|m| m.as_deref().is_some_and(|m| m.len() > 100)) || b.api_key.as_deref().is_some_and(|k| k.len() > 500) || effort == Some(None) {
         return Err(Refusal::BadAiSettings.into());
     }
     let _guard = s.ai_save.lock().await;
@@ -420,6 +433,10 @@ fn random_password() -> anyhow::Result<String> {
 /// returned once, to the admin, who passes it on; it is never stored in plain text.
 async fn reset_password(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<ResetPassword>) -> Result<Response, ApiError> {
     let who = require_admin(&s, &headers).await?;
+    // no stored name holds a NUL
+    if !crate::error::storable(&b.username) {
+        return Err(Refusal::NoSuchUser.into());
+    }
     let password = random_password()?;
     let hash = account::hash_password(password.clone()).await?;
     let mut tx = s.pool.begin().await?;
@@ -459,6 +476,51 @@ pub fn routes() -> Router<Arc<AppState>> {
 #[cfg(test)]
 mod tests {
     use super::random_password;
+
+    /// PostgreSQL text and jsonb cannot hold a NUL: each admin input refuses one before the statement would fail.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn a_nul_in_admin_input_is_refused_not_failed(pool: sqlx::PgPool) {
+        use axum::extract::{Path, Query, State};
+        use axum::http::{HeaderMap, StatusCode, header};
+        use axum::response::{IntoResponse, Response};
+        use axum::Json;
+        use serde_json::json;
+
+        use crate::{ApiError, account};
+
+        let boss: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash, is_admin) values ('boss', 'boss@example.test', 'Boss', 'x', true) returning id")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+            .bind(account::token_hash("tok-boss"))
+            .bind(boss)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let state = account::test_state(pool.clone());
+        let mut h = HeaderMap::new();
+        h.insert(header::COOKIE, "session=tok-boss".parse().unwrap());
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
+
+        let found = super::users::list(State(state.clone()), h.clone(), Query(serde_json::from_value(json!({ "q": "bo\0" })).unwrap())).await.ok().unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(found.into_body(), 1 << 20).await.unwrap()).unwrap();
+        assert_eq!(body, json!({ "total": 0, "users": [] }));
+        let job = super::NewJob { kind: "embed".into(), params: json!({ "note": "a\0" }) };
+        assert_eq!(status(super::create_job(State(state.clone()), h.clone(), Json(job)).await), StatusCode::BAD_REQUEST);
+        let schedule = |kind: &str, params: serde_json::Value| {
+            let update = super::ScheduleUpdate { enabled: None, interval_minutes: None, params: Some(params) };
+            super::update_schedule(State(state.clone()), h.clone(), Path(kind.into()), Json(update))
+        };
+        assert_eq!(status(schedule("refresh\0", json!({})).await), StatusCode::NOT_FOUND);
+        assert_eq!(status(schedule("refresh", json!({ "a\0": 1 })).await), StatusCode::BAD_REQUEST);
+        let reset = super::reset_password(State(state.clone()), h.clone(), Json(super::ResetPassword { username: "bo\0ss".into() }));
+        assert_eq!(status(reset.await), StatusCode::NOT_FOUND);
+        let ai = serde_json::from_value(json!({ "api_key": "sk-secret\0" })).unwrap();
+        assert_eq!(status(super::put_ai(State(state.clone()), h.clone(), Json(ai)).await), StatusCode::BAD_REQUEST);
+        assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from jobs").fetch_one(&pool).await.unwrap(), 0);
+    }
 
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
