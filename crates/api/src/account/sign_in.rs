@@ -22,11 +22,11 @@ fn valid_email(e: &str) -> bool {
 }
 
 fn valid_login(l: &str) -> bool {
-    l.len() <= 254
+    l.len() <= 254 && crate::error::storable(l)
 }
 
 pub(super) fn valid_display_name(n: &str) -> bool {
-    (1..=50).contains(&n.trim().chars().count())
+    (1..=50).contains(&n.trim().chars().count()) && crate::error::storable(n)
 }
 
 /// Open unless an admin closed it.
@@ -106,7 +106,12 @@ pub(crate) async fn login(
     headers: HeaderMap,
     Json(b): Json<Login>,
 ) -> Result<Response, ApiError> {
-    s.limits.auth.check(ip)?;
+    if let Err(limited) = s.limits.auth.check(ip) {
+        if s.limits.auth_log.take(ip).is_ok() {
+            eprintln!("warn: sign-in rate limited from {ip}");
+        }
+        return Err(limited.into());
+    }
     if !valid_login(&b.login) {
         return Err(Refusal::BadCredentials.into());
     }
@@ -252,5 +257,18 @@ mod tests {
         // the 10th failure of a name no account has, which may hold a password: the log must not show it
         seed("hunter2-secret", 9);
         assert_eq!(answer(sign_in(8, "hunter2-secret", "wrong-password").await).await, wrong);
+    }
+
+    /// A name no account has, with the password the dummy hash was made from, passes the password check: it is still
+    /// refused as a failure, so it neither clears the name's failure count nor reaches the session insert.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn the_dummy_hash_password_signs_in_to_no_account(pool: PgPool) {
+        let state = test_state(pool.clone());
+        (0..9).for_each(|_| _ = state.throttle.fail("ghost"));
+        let form = Login { login: "ghost".into(), password: "timing-equaliser-not-a-password".into(), keep: false };
+        let r = login(State(state.clone()), crate::limit::ClientIp([198, 51, 100, 9].into()), HeaderMap::new(), Json(form)).await;
+        assert_eq!(answer(r).await.0, StatusCode::UNAUTHORIZED);
+        assert!(state.throttle.blocked("ghost"));
     }
 }

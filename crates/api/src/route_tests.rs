@@ -93,9 +93,11 @@ async fn search_cpu_timing_excludes_the_permit_queue() {
     let body: serde_json::Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
     let steps = body["trace"].as_array().unwrap();
     let ms = |step: &str| steps.iter().find(|s| s["step"] == step).unwrap()["ms"].as_f64().unwrap();
-    assert!(ms("queue") >= 25.0, "{body}");
-    assert!(body["timing"]["searchMs"].as_f64().unwrap() <= ms("search") + 1.0, "{body}");
-    assert!(body["timing"]["totalMs"].as_f64().unwrap() >= ms("queue"), "{body}");
+    // trace steps are rounded to 0.1 ms, so a step reads at most 0.05 ms below its true length; nothing else is slack
+    const ROUNDING_MS: f64 = 0.05;
+    assert!(ms("queue") >= 30.0 - ROUNDING_MS, "{body}");
+    assert!(body["timing"]["searchMs"].as_f64().unwrap() <= ms("search") + ROUNDING_MS, "{body}");
+    assert!(body["timing"]["totalMs"].as_f64().unwrap() + ROUNDING_MS >= ms("queue"), "{body}");
 }
 
 #[tokio::test]
@@ -151,6 +153,8 @@ async fn auth_limiter_exhaustion_throttles_both_login_and_register() {
             "handler {name} must return 429 when auth limiter is exhausted"
         );
     }
+    // the refused sign-in printed its warning, which spent this address's one line a minute
+    assert!(state.limits.auth_log.take(ip.0).is_err());
 }
 
 #[tokio::test]

@@ -130,22 +130,45 @@ Each title must be non-empty and at most 300 characters. Do not translate the de
 Before replying, check that the JSON is syntactically valid, every required key is present, and categories contains at least one exact listed slug.";
 
 /// User message for one item. Long descriptions are cut to keep cost bounded.
-pub fn enrich_prompt(item: &Value, category_list: &str) -> String {
-    let bio: String = item["bio"].as_str().unwrap_or_default().chars().take(2500).collect();
-    let variations: Vec<String> = item["variations"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|v| format!("- {} (¥{})", v["name"].as_str().unwrap_or_default(), v["price_jpy"]))
-        .collect();
+pub fn enrich_prompt(item: &EnrichItem, category_list: &str) -> String {
+    let bio: String = item.bio.chars().take(2500).collect();
+    let variations: Vec<String> = item.variations.0.iter().map(|v| format!("- {} (¥{})", v.name, v.price_jpy)).collect();
     format!(
         "Categories (slug: meaning):\n{category_list}\n\nListing\nTitle: {}\nBooth category: {}\nListed price: ¥{}\nTags: {}\nVariations:\n{}\nDescription:\n{bio}",
-        item["title"].as_str().unwrap_or_default(),
-        item["booth_category"].as_str().unwrap_or_default(),
-        item["price_jpy"],
-        item["booth_tags"].as_array().map(|t| t.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", ")).unwrap_or_default(),
+        item.title,
+        item.booth_category.as_deref().unwrap_or_default(),
+        item.price_jpy.map_or_else(|| "null".to_owned(), |p| p.to_string()),
+        item.booth_tags.join(", "),
         if variations.is_empty() { "(none)".to_owned() } else { variations.join("\n") },
     )
+}
+
+/// One `items` row waiting for enrichment. `price_jpy` is null for a few malformed listings; a variation's
+/// price is kept as the stored JSON, which prints as `null` when Booth gave none.
+#[derive(sqlx::FromRow)]
+pub struct EnrichItem {
+    pub id: i64,
+    pub title: String,
+    pub bio: String,
+    pub booth_category: Option<String>,
+    pub price_jpy: Option<i32>,
+    pub booth_tags: Vec<String>,
+    pub variations: sqlx::types::Json<Vec<Variation>>,
+    pub translations: Value,
+}
+
+#[derive(serde::Deserialize)]
+pub struct Variation {
+    pub name: String,
+    pub price_jpy: Value,
+}
+
+impl EnrichItem {
+    /// Text the avatar matcher searches: title, tags and variation names.
+    pub fn match_text(&self) -> String {
+        let variation_names: Vec<&str> = self.variations.0.iter().map(|v| v.name.as_str()).collect();
+        format!("{} {} {}", self.title, self.booth_tags.join(" "), variation_names.join(" "))
+    }
 }
 
 /// Validated enrichment result, ready to write. Only titles are translated: they feed cross-language search
@@ -332,14 +355,16 @@ mod tests {
     #[test]
     fn enrichment_prompt_includes_classification_evidence() {
         let categories = "accessories--rings: Accessories / Rings\nprops--other: Props / Other";
-        let item = json!({
-            "title": "【VRChat想定】No Signal Ring【MA対応】",
-            "booth_category": "3D小道具",
-            "price_jpy": 500,
-            "booth_tags": ["VRChat", "Modular Avatar"],
-            "variations": [{"name": "Full set", "price_jpy": 500}],
-            "bio": "An animated ring accessory for avatar fingers."
-        });
+        let item = EnrichItem {
+            id: 1,
+            title: "【VRChat想定】No Signal Ring【MA対応】".into(),
+            booth_category: Some("3D小道具".into()),
+            price_jpy: Some(500),
+            booth_tags: vec!["VRChat".into(), "Modular Avatar".into()],
+            variations: sqlx::types::Json(vec![Variation { name: "Full set".into(), price_jpy: json!(500) }]),
+            bio: "An animated ring accessory for avatar fingers.".into(),
+            translations: json!({}),
+        };
         let prompt = enrich_prompt(&item, categories);
         for evidence in [
             categories,

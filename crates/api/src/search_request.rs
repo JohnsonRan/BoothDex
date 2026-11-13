@@ -130,3 +130,20 @@ impl From<&Params> for SearchRequest {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(query: &str) -> SearchRequest {
+        SearchRequest::from(&Params::parse(query))
+    }
+
+    #[test]
+    fn a_query_with_no_sort_sorts_by_relevance() {
+        assert!(matches!(request("q=dress").sort, Sort::Relevant));
+        assert!(matches!(request("sort=relevant").sort, Sort::Relevant));
+        assert!(matches!(request("q=dress&sort=newest").sort, Sort::Newest));
+        assert!(matches!(request("q=dress&sort=nonsense").sort, Sort::Trending));
+    }
+}

@@ -23,7 +23,7 @@ const texts: LegalTexts = {
           {
             list: [
               "Your IP address and browser details, which come with every request. They're used to deliver pages and to limit abusive traffic; the rate limits are kept in memory only.",
-              "Each sign-in attempt, successful or not, and each failed check of your current password: the IP address and, if the account exists, its username, written to the server log to detect password guessing and misuse.",
+              "Sign-in attempts, successful or not, and failed checks of your current password: the IP address and, if the account exists, its username, written to the server log to detect password guessing and misuse.",
               "What you search for. When semantic search is on, the search text is sent to an AI provider to work out its meaning, with nothing that identifies you.",
             ],
           },

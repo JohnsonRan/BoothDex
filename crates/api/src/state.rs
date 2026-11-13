@@ -136,6 +136,7 @@ pub(crate) fn test_state() -> std::sync::Arc<super::AppState> {
                 embed_ip: super::limit::RateLimiter::new(0.25, 8.0, 64),
                 embed_global: super::limit::RateLimiter::new(2.0, 20.0, 1),
                 auth: super::limit::RateLimiter::new(0.2, 5.0, 64),
+                auth_log: super::limit::RateLimiter::new(1.0 / 60.0, 1.0, 64),
                 account: super::limit::RateLimiter::new(2.0, 2.0, 64),
             },
             "http://127.0.0.1:3000".into(),
