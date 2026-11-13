@@ -203,7 +203,7 @@ pub struct Limits {
     pub embed_global: RateLimiter,
     /// /api/account/{login,register}: 0.2 req/s, burst 5
     pub auth: RateLimiter,
-    /// the warning for a sign-in refused by `auth`: one line per address a minute, so a flood cannot fill the log
+    /// the warning for a sign-in refused by `auth`: one line per address (per /64 for IPv6) a minute, so a flood cannot fill the log
     pub auth_log: RateLimiter,
     /// /api/account changes (favourites, viewed items, saved searches, settings): 2 req/s, burst 30
     pub account: RateLimiter,
