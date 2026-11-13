@@ -253,4 +253,17 @@ mod tests {
         seed("hunter2-secret", 9);
         assert_eq!(answer(sign_in(8, "hunter2-secret", "wrong-password").await).await, wrong);
     }
+
+    /// A name no account has, with the password the dummy hash was made from, passes the password check: it is still
+    /// refused as a failure, so it neither clears the name's failure count nor reaches the session insert.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn the_dummy_hash_password_signs_in_to_no_account(pool: PgPool) {
+        let state = test_state(pool.clone());
+        (0..9).for_each(|_| _ = state.throttle.fail("ghost"));
+        let form = Login { login: "ghost".into(), password: "timing-equaliser-not-a-password".into(), keep: false };
+        let r = login(State(state.clone()), crate::limit::ClientIp([198, 51, 100, 9].into()), HeaderMap::new(), Json(form)).await;
+        assert_eq!(answer(r).await.0, StatusCode::UNAUTHORIZED);
+        assert!(state.throttle.blocked("ghost"));
+    }
 }
