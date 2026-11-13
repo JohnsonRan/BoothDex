@@ -125,6 +125,30 @@ async fn check_feed_and_palette(pool: PgPool) {
 
 #[sqlx::test(migrations = "../core/migrations")]
 #[ignore = "requires PostgreSQL with pgvector"]
+async fn the_palette_items_follow_the_callers_adult_setting(pool: PgPool) {
+    multi_thread(check_palette_adult(pool)).await;
+}
+
+async fn check_palette_adult(pool: PgPool) {
+    use axum::body::to_bytes;
+
+    sqlx::raw_sql("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, published_at) values
+                   (1, 'Rock Band Tee', 'creator', 'https://example.test', false, 'ok', now(), now()),
+                   (2, 'Rock Adult Set', 'creator', 'https://example.test', true, 'ok', now(), now());")
+        .execute(&pool).await.unwrap();
+    let state = app(pool.clone(), Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap(), Lookup::new(Vec::new()));
+    let ip = limit::ClientIp("203.0.113.31".parse().unwrap());
+    for (query, expected) in [("q=rock", vec![1]), ("q=rock&adult=adult_only", vec![2]), ("q=rock&adult=include", vec![1, 2])] {
+        let found = palette(State(state.clone()), ip, RawQuery(Some(query.into()))).await.unwrap_or_else(IntoResponse::into_response);
+        let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+        let mut ids: Vec<i64> = json["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect();
+        ids.sort();
+        assert_eq!(ids, expected, "query {query}");
+    }
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
 async fn load_items_fills_every_field(pool: PgPool) {
     // every column set: a key missing from load_items' jsonb_build_object would come back as null (Option = None)
     sqlx::raw_sql(
@@ -216,6 +240,8 @@ fn nearest_binds_only_parameters_used_by_each_query() {
 #[test]
 fn queries_are_normalized_for_the_cache() {
     assert_eq!(super::search::normalize_query("  Gothic   Dress "), "gothic dress");
+    // query_embeddings cannot store a NUL
+    assert_eq!(super::search::normalize_query("gothic\0dress\0"), "gothic dress");
 }
 
 #[test]

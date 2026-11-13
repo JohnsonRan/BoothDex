@@ -26,7 +26,7 @@ pub(super) async fn list_searches(State(s): State<Arc<AppState>>, headers: Heade
 
 /// A saved search's name: 1 to 100 characters once trimmed.
 fn valid_search_name(name: &str) -> bool {
-    (1..=100).contains(&name.trim().chars().count())
+    (1..=100).contains(&name.trim().chars().count()) && crate::error::storable(name)
 }
 
 #[derive(Deserialize)]
@@ -38,7 +38,7 @@ pub(super) struct NewSearch {
 pub(super) async fn add_search(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<NewSearch>) -> Result<Response, ApiError> {
     let u = require_user(&s, &headers).await?;
     let query = b.query.trim().trim_start_matches('?');
-    if !valid_search_name(&b.name) || query.len() > 2000 || query.contains(char::is_whitespace) {
+    if !valid_search_name(&b.name) || query.len() > 2000 || query.contains(char::is_whitespace) || !crate::error::storable(query) {
         return Err(Refusal::BadSavedSearch.into());
     }
     let id: Option<i64> = sqlx::query_scalar(

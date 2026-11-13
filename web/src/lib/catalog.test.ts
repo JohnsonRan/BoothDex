@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Recognized } from "./api-types";
 import {
   activeFilterCount,
@@ -184,10 +186,11 @@ test("an image no proxy route serves becomes the no-image state", () => {
 });
 
 test("pixiv Factory drawings go through the proxy, look-alikes do not", () => {
-  const out = `/img/f/${FACTORY_UUID}/canvas_94032c5836.png?format=avif`;
-  expect(imgUrl(one(FACTORY_SAMPLE))).toBe(out);
-  expect(imgUrl(one(FACTORY_SAMPLE), 0, "orig")).toBe(out);
-  expect(imageSrc(FACTORY_SAMPLE)).toBe(out);
+  const out = (size: string) =>
+    `/img/f/${size}/${FACTORY_UUID}/canvas_94032c5836.png?format=avif`;
+  expect(imgUrl(one(FACTORY_SAMPLE))).toBe(out("300x300_a2_g5"));
+  expect(imgUrl(one(FACTORY_SAMPLE), 0, "orig")).toBe(out("orig"));
+  expect(imageSrc(FACTORY_SAMPLE)).toBe(out("72x72_a2_g5"));
   for (const u of FACTORY_LOOKALIKES) {
     expect(imageSrc(u)).toBe("");
     expect(imgUrl(one(u))).toBe("");
@@ -334,4 +337,29 @@ test("the words of a mark make one token, where they stand together", () => {
     ["Mao", undefined],
   ]);
   expect(tokens("", [model])).toEqual([]);
+});
+
+// The feed's `image_path` in crates/api/src/rss.rs reads the same file in its tests, so the two mappings stay equal.
+const SHARED_CASES: {
+  name: string;
+  booth_images: string[] | null;
+  media: string[];
+  path: string | null;
+}[] = JSON.parse(
+  readFileSync(
+    join(
+      import.meta.dir,
+      "../../../crates/api/tests/fixtures/feed-image-paths.json",
+    ),
+    "utf8",
+  ),
+).cases;
+
+test("imgUrl gives the paths of the fixture shared with the RSS feed", () => {
+  expect(SHARED_CASES.length).toBeGreaterThan(20);
+  for (const c of SHARED_CASES)
+    expect({ name: c.name, url: imgUrl(c) }).toEqual({
+      name: c.name,
+      url: c.path ?? "",
+    });
 });

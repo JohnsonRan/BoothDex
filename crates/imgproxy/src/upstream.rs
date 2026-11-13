@@ -5,8 +5,10 @@ use axum::http::StatusCode;
 use reqwest::Url;
 use reqwest::redirect::Policy;
 
+use crate::public_dns::PublicOnly;
+
 /// Booth's own resize variants; anything else 403s upstream anyway. "orig" = original upload.
-const SIZES: &[&str] = &["48x48", "72x72_a2_g5", "300x300_a2_g5", "620x620", "orig"];
+pub(crate) const SIZES: &[&str] = &["48x48", "72x72_a2_g5", "300x300_a2_g5", "620x620", "orig"];
 const MAX_UPSTREAM_BYTES: usize = 25 * 1024 * 1024;
 
 fn is_uuid(s: &str) -> bool {
@@ -56,13 +58,24 @@ fn redirect_allowed(from: &Url, to: &Url) -> bool {
     to.scheme() == "https" && to.host_str() == from.host_str() && to.port_or_known_default() == from.port_or_known_default()
 }
 
-/// The one client for every upstream host: it follows at most 10 redirects, reqwest's default count, and only those
-/// `redirect_allowed` accepts. A refused redirect comes back as the 3xx response, which `fetch_upstream` fails.
+/// Redirects followed for one request, reqwest's default count.
+const MAX_REDIRECTS: usize = 10;
+
+/// Whether to follow a redirect to `to`, given the URLs already requested: the first is the original request, so
+/// `previous` holds one URL more than the redirects followed so far.
+fn follow_redirect(previous: &[Url], to: &Url) -> bool {
+    previous.len() <= MAX_REDIRECTS && redirect_allowed(&previous[0], to)
+}
+
+/// The one client for every upstream host: it follows only the redirects `follow_redirect` accepts, and connects only
+/// to the public addresses `PublicOnly` resolves. A refused redirect comes back as the 3xx response, which
+/// `fetch_upstream` fails. It uses no proxy: a proxy from the environment or the system settings would resolve the
+/// host itself, past `PublicOnly`.
 pub(crate) fn upstream_client() -> reqwest::Result<reqwest::Client> {
     // reqwest is built with `rustls-no-provider`, so building a client panics until a provider is installed
     rustls::crypto::ring::default_provider().install_default().ok();
-    let policy = Policy::custom(|a| if a.previous().len() <= 10 && redirect_allowed(&a.previous()[0], a.url()) { a.follow() } else { a.stop() });
-    reqwest::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).build()
+    let policy = Policy::custom(|a| if follow_redirect(a.previous(), a.url()) { a.follow() } else { a.stop() });
+    reqwest::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).dns_resolver(PublicOnly).no_proxy().build()
 }
 
 pub(crate) async fn fetch_upstream(client: &reqwest::Client, url: &str) -> Result<Option<Vec<u8>>> {
@@ -159,21 +172,87 @@ mod tests {
         assert!(!redirect_allowed(&factory, &url("https://127.0.0.1/b")));
     }
 
-    /// Loopback only: proves the client refuses an off-host redirect that reqwest's default policy follows.
+    #[test]
+    fn the_tenth_redirect_is_followed_and_the_eleventh_is_not() {
+        let hop = |n: usize| Url::parse(&format!("https://booth.pximg.net/{n}")).unwrap();
+        let requested = |redirects: usize| (0..=redirects).map(hop).collect::<Vec<_>>();
+        // the 10th redirect: the original request and 9 followed redirects came before it
+        assert!(follow_redirect(&requested(9), &hop(10)));
+        assert!(!follow_redirect(&requested(10), &hop(11)));
+        assert!(!follow_redirect(&requested(0), &Url::parse("https://evil.example/").unwrap()));
+    }
+
+    async fn serve_on_loopback(app: axum::Router) -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        port
+    }
+
+    /// Loopback only: proves the client refuses an off-host redirect that reqwest's default policy follows. Both URLs
+    /// are IP literals, so the refusal is the redirect policy's and not `PublicOnly`'s.
     #[tokio::test]
     async fn the_client_refuses_an_off_host_redirect() {
         use axum::http::header::LOCATION;
         use axum::routing::get;
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let app = axum::Router::new()
-            .route("/r", get(move || async move { (StatusCode::FOUND, [(LOCATION, format!("http://localhost:{port}/i"))]) }))
-            .route("/i", get(|| async { "image" }));
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let start = format!("http://127.0.0.1:{port}/r");
+        let other = serve_on_loopback(axum::Router::new().route("/i", get(|| async { "image" }))).await;
+        let app = axum::Router::new().route("/r", get(move || async move { (StatusCode::FOUND, [(LOCATION, format!("http://127.0.0.1:{other}/i"))]) }));
+        let start = format!("http://127.0.0.1:{}/r", serve_on_loopback(app).await);
         assert!(fetch_upstream(&upstream_client().unwrap(), &start).await.is_err());
         // the same request with reqwest's default policy, so the refusal above is the policy's doing
         let default = reqwest::Client::builder().build().unwrap();
         assert_eq!(fetch_upstream(&default, &start).await.unwrap().as_deref(), Some(&b"image"[..]));
+    }
+
+    /// Loopback only: proves the client refuses a host name that resolves to loopback, which reqwest's default
+    /// resolver connects to.
+    #[tokio::test]
+    async fn the_client_refuses_a_name_that_resolves_to_loopback() {
+        let port = serve_on_loopback(axum::Router::new().route("/i", axum::routing::get(|| async { "image" }))).await;
+        let url = format!("http://localhost:{port}/i");
+        let refused = fetch_upstream(&upstream_client().unwrap(), &url).await.unwrap_err();
+        assert!(format!("{refused:#}").contains("resolves to no public address"), "{refused:#}");
+        let default = reqwest::Client::builder().build().unwrap();
+        assert_eq!(fetch_upstream(&default, &url).await.unwrap().as_deref(), Some(&b"image"[..]));
+    }
+
+    /// Set only in the child process of `the_client_ignores_proxy_variables`.
+    const PROXY_CHILD: &str = "IMGPROXY_TEST_PROXY_CHILD";
+
+    /// Loopback only: proves a proxy named in the environment cannot carry a request past `PublicOnly`. The
+    /// environment is process-wide, so the request runs in a child copy of this test binary (`proxy_child`) with the
+    /// proxy variables pointing at a listener here, which must see no connection.
+    #[tokio::test]
+    async fn the_client_ignores_proxy_variables() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_url = format!("http://127.0.0.1:{}", proxy.local_addr().unwrap().port());
+        let connected = Arc::new(AtomicBool::new(false));
+        let seen = connected.clone();
+        // a connection is recorded, then dropped, so a proxied request fails at once instead of waiting
+        tokio::spawn(async move {
+            while proxy.accept().await.is_ok() {
+                seen.store(true, Ordering::SeqCst);
+            }
+        });
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+        child.args(["--exact", "upstream::tests::proxy_child"]).env(PROXY_CHILD, "1").env_remove("NO_PROXY").env_remove("no_proxy");
+        for var in ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"] {
+            child.env(var, &proxy_url);
+        }
+        let out = tokio::task::spawn_blocking(move || child.output()).await.unwrap().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+        assert!(!connected.load(Ordering::SeqCst), "the request went to the proxy");
+    }
+
+    /// The child half of `the_client_ignores_proxy_variables`; it passes without doing anything in a normal run.
+    #[tokio::test]
+    async fn proxy_child() {
+        if std::env::var_os(PROXY_CHILD).is_none() {
+            return;
+        }
+        let refused = fetch_upstream(&upstream_client().unwrap(), "http://localhost:9/i").await.unwrap_err();
+        assert!(format!("{refused:#}").contains("resolves to no public address"), "{refused:#}");
     }
 }

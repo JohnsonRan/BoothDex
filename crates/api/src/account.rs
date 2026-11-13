@@ -251,4 +251,33 @@ mod tests {
             refused(StatusCode::BAD_REQUEST, "bad_preferences", "unknown preference")
         );
     }
+
+    /// PostgreSQL text cannot hold a NUL: each free-text field refuses one before the statement would fail with a 500.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn a_nul_in_free_text_is_refused_not_failed(pool: PgPool) {
+        signed_in(&pool).await;
+        let state = test_state(pool.clone());
+        let status = |r: Result<Response, ApiError>| r.into_response().status();
+        let sign_in = login(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 30].into()), HeaderMap::new(), Json(Login {
+            login: "a\0".into(),
+            password: "0123456789".into(),
+            keep: false,
+        }));
+        assert_eq!(status(sign_in.await), StatusCode::UNAUTHORIZED);
+        let sign_up = register(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 31].into()), HeaderMap::new(), Json(Register {
+            display_name: "Ann\0".into(),
+            username: "ann".into(),
+            email: "ann@example.test".into(),
+            password: "0123456789".into(),
+            keep: false,
+        }));
+        assert_eq!(status(sign_up.await), StatusCode::BAD_REQUEST);
+        let profile = serde_json::from_value(json!({ "display_name": "A\0" })).unwrap();
+        assert_eq!(status(update_profile(State(state.clone()), headers(), Json(profile)).await), StatusCode::BAD_REQUEST);
+        let add = |name: &str, query: &str| add_search(State(state.clone()), headers(), Json(NewSearch { name: name.into(), query: query.into() }));
+        assert_eq!(status(add("n\0", "q=x").await), StatusCode::BAD_REQUEST);
+        assert_eq!(status(add("n", "q=\0").await), StatusCode::BAD_REQUEST);
+        assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from users").fetch_one(&pool).await.unwrap(), 1);
+    }
 }

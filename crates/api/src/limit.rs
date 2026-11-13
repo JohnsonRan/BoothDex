@@ -203,6 +203,8 @@ pub struct Limits {
     pub embed_global: RateLimiter,
     /// /api/account/{login,register}: 0.2 req/s, burst 5
     pub auth: RateLimiter,
+    /// the warning for a sign-in refused by `auth`: one line per address (per /64 for IPv6) a minute, so a flood cannot fill the log
+    pub auth_log: RateLimiter,
     /// /api/account changes (favourites, viewed items, saved searches, settings): 2 req/s, burst 30
     pub account: RateLimiter,
 }
@@ -220,6 +222,7 @@ impl Default for Limits {
             embed_ip: RateLimiter::new(0.25, 8.0, 8192),
             embed_global: RateLimiter::new(2.0, 20.0, 1),
             auth: RateLimiter::new(0.2, 5.0, 8192),
+            auth_log: RateLimiter::new(1.0 / 60.0, 1.0, 8192),
             account: RateLimiter::new(2.0, 30.0, 8192),
         }
     }

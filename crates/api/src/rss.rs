@@ -44,7 +44,8 @@ fn esc(s: &str) -> String {
 /// Path of the item's first image on the site's own origin, or `None` for no image. Mirrors `imgUrl` in
 /// `web/src/lib/catalog.ts` at its default size, the image the result tile shows: change one, change the other.
 fn image_path(it: &crate::db::ItemResponse) -> Option<String> {
-    if let Some(b) = it.booth_images.as_ref().and_then(|v| v.first()) {
+    // an empty first entry counts as none, as in `imgUrl`
+    if let Some(b) = it.booth_images.as_ref().and_then(|v| v.first()).filter(|b| !b.is_empty()) {
         if let Some(rest) = b.strip_prefix("https://booth.pximg.net/") {
             return Some(format!("/img/b/300x300_a2_g5/{rest}?format=avif"));
         }
@@ -53,7 +54,7 @@ fn image_path(it: &crate::db::ItemResponse) -> Option<String> {
         let uuid_ok = uuid.len() == 36 && uuid.split('-').map(str::len).eq([8, 4, 4, 4, 12]) && uuid.split('-').all(hex_lower);
         let stem = file.strip_suffix(".png")?;
         let file_ok = (1..=120).contains(&stem.len()) && stem.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-');
-        return (uuid_ok && file_ok).then(|| format!("/img/f/{uuid}/{file}?format=avif"));
+        return (uuid_ok && file_ok).then(|| format!("/img/f/300x300_a2_g5/{uuid}/{file}?format=avif"));
     }
     let sha = it.media.first()?.rsplit_once("/booth/")?.1.strip_suffix(".webp")?;
     (sha.len() == 40 && hex_lower(sha)).then(|| format!("/img/v/{sha}.webp"))
@@ -161,7 +162,25 @@ mod tests {
     #[test]
     fn factory_drawing_maps_to_the_f_route() {
         let xml = feed(item(Some(vec![FACTORY]), vec![]));
-        assert!(xml.contains("https://example.com/img/f/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/canvas_94032c5836.png?format=avif"));
+        assert!(xml.contains("https://example.com/img/f/300x300_a2_g5/04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74/canvas_94032c5836.png?format=avif"));
+    }
+
+    /// The cases in `tests/fixtures/feed-image-paths.json` are shared with `imgUrl` in `web/src/lib/catalog.ts`:
+    /// `web/src/lib/catalog.test.ts` reads the same file, so the two mappings must agree on every case listed there; an input the fixture lacks is not compared.
+    #[test]
+    fn image_path_matches_the_shared_fixture() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!("../tests/fixtures/feed-image-paths.json")).unwrap();
+        let strings = |v: &serde_json::Value| v.as_array().map(|a| a.iter().map(|s| s.as_str().unwrap().to_owned()).collect::<Vec<_>>());
+        let cases = fixture["cases"].as_array().unwrap();
+        assert!(cases.len() > 20);
+        for c in cases {
+            let it = crate::db::ItemResponse {
+                booth_images: strings(&c["booth_images"]),
+                media: strings(&c["media"]).unwrap(),
+                ..Default::default()
+            };
+            assert_eq!(image_path(&it).as_deref(), c["path"].as_str(), "{}", c["name"]);
+        }
     }
 
     #[test]

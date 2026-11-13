@@ -32,7 +32,7 @@ flowchart LR
   api -. "query embed" .-> ai
 ```
 
-`imgproxy` fetches only from `booth.pximg.net`, `asset.booth.pm` and `factory.pixiv.net`, over https, and follows no redirect off the host.
+`imgproxy` fetches only from `booth.pximg.net`, `asset.booth.pm` and `factory.pixiv.net`, over https, and follows no redirect off the host. It ignores `HTTP_PROXY`, `HTTPS_PROXY` and the system proxy settings, and connects only to public addresses: when DNS answers with only private, loopback or other special-purpose addresses, the request fails, the client gets a 502, and the log names the host. NAT64 addresses (`64:ff9b::/96`) count as special-purpose, so the container needs IPv4 or native IPv6 egress.
 
 `postgres`, `api`, `worker` and `imgproxy` publish no host ports; run maintenance commands through `docker compose exec` (for example `docker compose exec postgres psql -U catalogue catalogue`). `podman compose` works with the same commands.
 
@@ -218,7 +218,7 @@ boothdex.example.com {
 | Update (prebuilt) | `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' $(docker compose ps -q api); docker compose pull && docker compose up -d` (prints the running version's commit first: keep it for a rollback) |
 | Update (from source) | `git pull && docker compose up -d --build` |
 | Tail logs | `docker compose logs -f api worker` |
-| Review sign-in attempts | `docker compose logs api \| grep -e sign-in -e 'password check'` (failures, successes and locks, with the client IP; kept as long as the `api` log, 3 × 10 MB) |
+| Review sign-in attempts | `docker compose logs api \| grep -e sign-in -e 'password check'` (failures, successes and locks, with the client IP, and `warn: sign-in rate limited from <ip>` at most once a minute per address (per /64 for IPv6) when the per-IP limit refuses a sign-in; kept as long as the `api` log, 3 × 10 MB) |
 | Lift a sign-in lockout | in `/admin`, reset the password, or disable then re-enable the account (signs the member out) |
 | Restart one service | `docker compose restart worker` |
 | Backup database | `docker compose exec -T postgres pg_dump -U catalogue -Fc catalogue > backup-$(date +%F).dump` (schedule daily, keep off-server) |
