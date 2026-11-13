@@ -203,4 +203,32 @@ mod tests {
         assert_eq!(factory_request("999x999", uuid, file), None);
         assert_eq!(factory_request("300x300_a2_g5", uuid, "a.jpg"), None);
     }
+
+    /// Loopback only, and no request reaches an upstream: each path is routed but refused by its handler's checks.
+    #[tokio::test]
+    async fn both_factory_routes_reach_their_handler() {
+        let cache = foyer::HybridCacheBuilder::new().memory(1024 * 1024).storage().build().await.unwrap();
+        let state = Arc::new(AppState {
+            stats: Stats::default(),
+            mem_mb: 1,
+            disk_mb: 0,
+            cache,
+            client: crate::upstream::upstream_client().unwrap(),
+            transcode: Semaphore::new(1),
+            archive: None,
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, router(state)).await.unwrap() });
+        let uuid = "04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74";
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let status = |path: String| {
+            let request = client.get(format!("{base}/{path}"));
+            async move { request.send().await.unwrap().status() }
+        };
+        // a handler answers 400 for a path it refuses; a path no route matches gets axum's 404
+        assert_eq!(status(format!("f/999x999/{uuid}/a.png")).await, StatusCode::BAD_REQUEST);
+        assert_eq!(status(format!("f/{uuid}/a.jpg")).await, StatusCode::BAD_REQUEST);
+        assert_eq!(status("f/a/b/c/d".to_owned()).await, StatusCode::NOT_FOUND);
+    }
 }
