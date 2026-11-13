@@ -98,6 +98,9 @@
 .strip-thumb {
   inline-size: var(--strip-card);
   transform-origin: 0 0;
+  /* the face is the card's size set in by the ring (AspectRatio keeps its width at 100 %), so it stands past the
+     thumb's end edges; AspectRatio's own clip cut the shrunk chip flat there. The card clips its image itself. */
+  overflow: visible;
   /* the face's inset at the chip's size: the thumb moves back by it, so the face, not the card's corner, lands on
      the chip's place, flush with the capsule and inside the Carousel's clip (it stood 0.6-1 px low and right) */
   --_face-in: calc(var(--spacing-0-5) * var(--strip-scale));
