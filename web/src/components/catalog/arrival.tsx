@@ -35,17 +35,20 @@ export function Arrival({ children }: { children: ReactNode }) {
     const running: Animation[] = [];
     const stop = cancelOnReducedMotion(running);
     // A streamed boundary swaps its fallback for the content in one script; the observer's callback is a
-    // microtask, so the entrance starts before that content is painted.
+    // microtask, so the entrance starts before that content is painted. The content takes the silhouette's
+    // place in its parent; what the same commit adds elsewhere was on screen already (at hydration, the sort
+    // button swapped for its client twin while the results' boundary renders its silhouette again).
     const watch = new MutationObserver((records) => {
-      const arrived: Element[] = [];
-      let replaced = false;
-      for (const r of records) {
+      const replaced = new Set<Node>();
+      for (const r of records)
         for (const n of r.removedNodes)
-          if (n instanceof Element && painted.has(n)) replaced = true;
-        for (const n of r.addedNodes)
-          if (n instanceof Element && !n.matches(SILHOUETTE)) arrived.push(n);
-      }
-      if (replaced && arrived.length && !prefersReducedMotion())
+          if (n instanceof Element && painted.has(n)) replaced.add(r.target);
+      const arrived: Element[] = [];
+      for (const r of records)
+        if (replaced.has(r.target))
+          for (const n of r.addedNodes)
+            if (n instanceof Element && !n.matches(SILHOUETTE)) arrived.push(n);
+      if (arrived.length && !prefersReducedMotion())
         running.push(...enter(arrived));
       if (root.querySelector(SILHOUETTE)) markPainted();
       else watch.disconnect();
