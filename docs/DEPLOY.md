@@ -32,7 +32,7 @@ flowchart LR
   api -. "query embed" .-> ai
 ```
 
-`imgproxy` fetches only from `booth.pximg.net`, `asset.booth.pm` and `factory.pixiv.net`, over https, and follows no redirect off the host.
+`imgproxy` fetches only from `booth.pximg.net`, `asset.booth.pm` and `factory.pixiv.net`, over https, and follows no redirect off the host. It connects only to public addresses: when DNS answers with only private, loopback or other special-purpose addresses, the request fails, the client gets a 502, and the log names the host. NAT64 addresses (`64:ff9b::/96`) count as special-purpose, so the container needs IPv4 or native IPv6 egress.
 
 `postgres`, `api`, `worker` and `imgproxy` publish no host ports; run maintenance commands through `docker compose exec` (for example `docker compose exec postgres psql -U catalogue catalogue`). `podman compose` works with the same commands.
 

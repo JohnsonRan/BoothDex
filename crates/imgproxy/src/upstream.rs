@@ -5,6 +5,8 @@ use axum::http::StatusCode;
 use reqwest::Url;
 use reqwest::redirect::Policy;
 
+use crate::public_dns::PublicOnly;
+
 /// Booth's own resize variants; anything else 403s upstream anyway. "orig" = original upload.
 const SIZES: &[&str] = &["48x48", "72x72_a2_g5", "300x300_a2_g5", "620x620", "orig"];
 const MAX_UPSTREAM_BYTES: usize = 25 * 1024 * 1024;
@@ -65,13 +67,14 @@ fn follow_redirect(previous: &[Url], to: &Url) -> bool {
     previous.len() <= MAX_REDIRECTS && redirect_allowed(&previous[0], to)
 }
 
-/// The one client for every upstream host: it follows only the redirects `follow_redirect` accepts. A refused
-/// redirect comes back as the 3xx response, which `fetch_upstream` fails.
+/// The one client for every upstream host: it follows only the redirects `follow_redirect` accepts, and connects only
+/// to the public addresses `PublicOnly` resolves. A refused redirect comes back as the 3xx response, which
+/// `fetch_upstream` fails.
 pub(crate) fn upstream_client() -> reqwest::Result<reqwest::Client> {
     // reqwest is built with `rustls-no-provider`, so building a client panics until a provider is installed
     rustls::crypto::ring::default_provider().install_default().ok();
     let policy = Policy::custom(|a| if follow_redirect(a.previous(), a.url()) { a.follow() } else { a.stop() });
-    reqwest::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).build()
+    reqwest::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).dns_resolver(PublicOnly).build()
 }
 
 pub(crate) async fn fetch_upstream(client: &reqwest::Client, url: &str) -> Result<Option<Vec<u8>>> {
@@ -178,21 +181,37 @@ mod tests {
         assert!(!follow_redirect(&requested(0), &Url::parse("https://evil.example/").unwrap()));
     }
 
-    /// Loopback only: proves the client refuses an off-host redirect that reqwest's default policy follows.
+    async fn serve_on_loopback(app: axum::Router) -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        port
+    }
+
+    /// Loopback only: proves the client refuses an off-host redirect that reqwest's default policy follows. Both URLs
+    /// are IP literals, so the refusal is the redirect policy's and not `PublicOnly`'s.
     #[tokio::test]
     async fn the_client_refuses_an_off_host_redirect() {
         use axum::http::header::LOCATION;
         use axum::routing::get;
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let app = axum::Router::new()
-            .route("/r", get(move || async move { (StatusCode::FOUND, [(LOCATION, format!("http://localhost:{port}/i"))]) }))
-            .route("/i", get(|| async { "image" }));
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let start = format!("http://127.0.0.1:{port}/r");
+        let other = serve_on_loopback(axum::Router::new().route("/i", get(|| async { "image" }))).await;
+        let app = axum::Router::new().route("/r", get(move || async move { (StatusCode::FOUND, [(LOCATION, format!("http://127.0.0.1:{other}/i"))]) }));
+        let start = format!("http://127.0.0.1:{}/r", serve_on_loopback(app).await);
         assert!(fetch_upstream(&upstream_client().unwrap(), &start).await.is_err());
         // the same request with reqwest's default policy, so the refusal above is the policy's doing
         let default = reqwest::Client::builder().build().unwrap();
         assert_eq!(fetch_upstream(&default, &start).await.unwrap().as_deref(), Some(&b"image"[..]));
+    }
+
+    /// Loopback only: proves the client refuses a host name that resolves to loopback, which reqwest's default
+    /// resolver connects to.
+    #[tokio::test]
+    async fn the_client_refuses_a_name_that_resolves_to_loopback() {
+        let port = serve_on_loopback(axum::Router::new().route("/i", axum::routing::get(|| async { "image" }))).await;
+        let url = format!("http://localhost:{port}/i");
+        let refused = fetch_upstream(&upstream_client().unwrap(), &url).await.unwrap_err();
+        assert!(format!("{refused:#}").contains("resolves to no public address"), "{refused:#}");
+        let default = reqwest::Client::builder().build().unwrap();
+        assert_eq!(fetch_upstream(&default, &url).await.unwrap().as_deref(), Some(&b"image"[..]));
     }
 }

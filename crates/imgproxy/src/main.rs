@@ -9,12 +9,14 @@
 //! are. Results are cached in foyer (memory + disk); responses are immutable so the CDN keeps them, which is
 //! why the site names the format in its URLs. Only booth.pximg.net, asset.booth.pm and factory.pixiv.net are ever
 //! fetched, over https, and only Booth-shaped paths under fixed directories (with Booth's own sizes for pximg) are
-//! accepted, so this is not an open proxy. A redirect is followed only on the same https host (src/upstream.rs).
+//! accepted, so this is not an open proxy. A redirect is followed only on the same https host (src/upstream.rs), and
+//! a host is connected to only at a public address (src/public_dns.rs).
 //!
 //! Env: BIND (127.0.0.1:3001), CACHE_DIR (./imgcache), CACHE_DISK_MB (10240), CACHE_MEM_MB (256),
 //!      ARCHIVE_IMAGES (dir of <sha1>.webp files)
 
 mod encode;
+mod public_dns;
 mod routes;
 mod upstream;
 
