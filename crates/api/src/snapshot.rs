@@ -53,8 +53,9 @@ impl Lookup {
             if let Some(slug) = slug_of(words[i]) {
                 slugs.push((slug, vec![words[i]]));
             } else if let Some(slug) = misspelt(words[i]) {
+                // a name repeated in a row is kept as its first spelling (below): a dropped misspelling is no typo
+                typo |= slugs.last().is_none_or(|(s, _)| *s != slug);
                 slugs.push((slug, vec![words[i]]));
-                typo = true;
             } else {
                 rest.push(words[i]);
             }
@@ -313,5 +314,8 @@ mod name_tests {
         assert_eq!(split("karon", &[]), ("karon".into(), vec![], false));
         assert_eq!(split("lume", &[]), ("lume".into(), vec![], false));
         assert_eq!(split("shinnanoo", &[]), ("shinnanoo".into(), vec![], false));
+        // a misspelling after the right name is dropped with its repeat, so no typo was read
+        assert_eq!(split("shinano shinnano bob", &[]), ("bob".into(), vec![("shinano".into(), vec!["shinano"])], false));
+        assert!(split("shinnano shinano bob", &[]).2);
     }
 }

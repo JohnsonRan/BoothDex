@@ -39,6 +39,8 @@ pub struct TextIndex {
     gram: Field,
     /// title, tags and author: the word fields a typo-tolerant retry searches
     named: [Field; 3],
+    /// the description: with `named`, every field the word query searches (`knows`)
+    bio: Field,
     /// per segment: tantivy doc id -> catalog doc index
     seg_docs: Vec<Vec<u32>>,
     /// title + tags, compacted (see `compact`), for substring verification
@@ -317,7 +319,7 @@ impl TextIndex {
                 }
             }
         }
-        Ok(Self { reader, parser, gram, named: [title, tags, author], seg_docs, haystack })
+        Ok(Self { reader, parser, gram, named: [title, tags, author], bio, seg_docs, haystack })
     }
 
     /// Matching catalog docs with a relevance score (substring-only hits get a small floor score).
@@ -378,11 +380,11 @@ impl TextIndex {
         Ok(TextMatches { typo: retry && !hits.is_empty(), hits, scores })
     }
 
-    /// Whether some title, tag or author name has `word` (folded) as a word.
+    /// Whether some title, tag, author name or description has `word` (folded) as a word.
     pub fn knows(&self, word: &str) -> bool {
         let searcher = self.reader.searcher();
         let word = fold(word);
-        self.named.iter().any(|&f| searcher.doc_freq(&Term::from_field_text(f, &word)).is_ok_and(|n| n > 0))
+        self.named.iter().chain([&self.bio]).any(|&f| searcher.doc_freq(&Term::from_field_text(f, &word)).is_ok_and(|n| n > 0))
     }
 
     /// Matches for a query that found nothing, allowing one typo (a letter added, dropped, changed, or two swapped)
@@ -568,6 +570,9 @@ mod tests {
         assert!(!typo("shinano") && !typo("dress") && !typo("xyzzyq"));
         // words of titles, tags and author names, in any case; never a word with a typo
         assert!(idx.knows("Shinano") && idx.knows("press") && !idx.knows("shinnano"));
+        // and the words of descriptions, which the word query searches too
+        let described = TextIndex::build(vec![TextDoc { title: "Hat".into(), tags: String::new(), author: String::new(), bio: "for Karins".into() }].into_iter(), None, 0).unwrap();
+        assert!(described.knows("karins"));
     }
 
     #[test]

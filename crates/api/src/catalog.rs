@@ -127,7 +127,7 @@ pub struct SearchResult {
 }
 
 impl Catalog {
-    /// Whether some title, tag or author name has `word` as a word.
+    /// Whether some title, tag, author name or description has `word` as a word.
     pub fn knows_word(&self, word: &str) -> bool {
         self.text.knows(word)
     }
