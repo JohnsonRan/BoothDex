@@ -93,7 +93,7 @@ export const ja: Dict = {
   "theme.toDark": "ダークモードに切り替え",
   "list.emptyHint": "絞り込み条件をクリアしてもう一度お試しください。",
   "list.emptyWider": "次の絞り込み条件のいずれかを外すと、商品が見つかります。",
-  "list.dropClause": "{clause} を外す ({count})",
+  "list.dropClause": "{clause}を外す（{count}）",
   "list.startingTitle": "サービスを起動しています",
   "list.loading": "読み込み中",
   "list.allLoaded": "全{n}件を読み込みました",

@@ -90,7 +90,7 @@ export const zh = {
   "theme.toDark": "切换到深色模式",
   "list.emptyHint": "清除筛选条件后再试。",
   "list.emptyWider": "移除下面任一筛选条件即可找到商品。",
-  "list.dropClause": "移除 {clause} ({count})",
+  "list.dropClause": "移除{clause}（{count}）",
   "list.startingTitle": "服务正在启动",
   "list.loading": "正在加载",
   "list.allLoaded": "已加载全部 {n} 件",
