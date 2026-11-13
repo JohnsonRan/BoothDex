@@ -30,13 +30,15 @@ import {
   type CSSProperties,
   memo,
   type ReactNode,
+  type RefObject,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { useUi } from "@/components/providers";
 import { FEATURES, type Feature, type Filters, RANGES } from "@/lib/catalog";
-import { RAIL_REM, railCookie } from "@/lib/rail-width";
+import { RAIL_REM, railCookie, railToSave } from "@/lib/rail-width";
 import { LOCALES } from "@/lib/settings-core";
 import {
   type ClauseNames,
@@ -86,6 +88,8 @@ export function FilterRail({
 }) {
   const { t } = useUi();
   const [rem, setRem] = useState(width);
+  // the width the cookie holds: the one the page loaded with, then each one written
+  const saved = useRef(width);
   const isNarrow = useMediaQuery(NO_RAIL_QUERY);
   if (isNarrow) return null;
   return (
@@ -100,7 +104,7 @@ export function FilterRail({
       >
         <RailFields facets={facets} names={names} />
       </LayoutPanel>
-      <RailHandle rem={rem} onResize={setRem} />
+      <RailHandle rem={rem} saved={saved} onResize={setRem} />
     </>
   );
 }
@@ -115,9 +119,11 @@ const noSubscribe = () => () => {};
  */
 function RailHandle({
   rem,
+  saved,
   onResize,
 }: {
   rem: number;
+  saved: RefObject<number>;
   onResize: (rem: number) => void;
 }) {
   const hydrated = useSyncExternalStore(
@@ -125,14 +131,18 @@ function RailHandle({
     () => true,
     () => false,
   );
-  return hydrated ? <RailHandleControl rem={rem} onResize={onResize} /> : null;
+  return hydrated ? (
+    <RailHandleControl rem={rem} saved={saved} onResize={onResize} />
+  ) : null;
 }
 
 function RailHandleControl({
   rem,
+  saved,
   onResize,
 }: {
   rem: number;
+  saved: RefObject<number>;
   onResize: (rem: number) => void;
 }) {
   const { t } = useUi();
@@ -145,17 +155,18 @@ function RailHandleControl({
     maxSize: RAIL_REM.max * px,
   });
   const size = region.size / px;
-  const [stored] = useState(rem);
   useEffect(() => onResize(size), [size, onResize]);
-  // written once the width settles, not on every frame of a drag, and only once the visitor has changed it
+  // written once the width settles, not on every frame of a drag, and only when it differs from the cookie
   useEffect(() => {
-    if (size === stored) return;
+    const next = railToSave(saved.current, size);
+    if (next === null) return;
     const save = setTimeout(() => {
       // biome-ignore lint/suspicious/noDocumentCookie: the server reads this cookie; Cookie Store is not in every browser
-      document.cookie = railCookie(size);
+      document.cookie = railCookie(next);
+      saved.current = next;
     }, 300);
     return () => clearTimeout(save);
-  }, [size, stored]);
+  }, [size, saved]);
   return (
     <ResizeHandle
       resizable={region}
