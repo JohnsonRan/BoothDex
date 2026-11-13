@@ -121,9 +121,8 @@ export const zh = {
   "trace.step.search": "关键词搜索和排序",
   "trace.step.items": "读取商品",
   "list.semanticUnavailable":
-    "按意思搜索暂时不可用，这次只按关键词查找。稍后再搜一次通常就会恢复。",
-  "list.typoTolerant":
-    "输入的词没有完全一致的匹配，下面按词匹配的结果允许较长的词各有一处拼写错误。",
+    "语义搜索暂时不可用，这次只按关键词查找。稍后再搜一次通常就会恢复。",
+  "list.typoTolerant": "没有找到完全匹配的关键词，已按相近的拼写为你查找。",
   "fav.add": "收藏",
   "fav.needSignIn": "登录后才能收藏",
   "fav.failed": "收藏失败",
@@ -139,7 +138,7 @@ export const zh = {
   "detail.rating.SFW": "全年龄",
   "detail.rating.Suggestive": "轻微性感",
   "detail.rating.NSFW": "成人",
-  "detail.quest": "Quest 对应",
+  "detail.quest": "支持 Quest",
   "detail.delisted": "已下架",
   "detail.relisted": "已作为新商品重新上架",
   "detail.fits": "适配你的模型 {name}",

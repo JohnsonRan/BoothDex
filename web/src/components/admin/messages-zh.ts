@@ -212,7 +212,7 @@ export const adminZh = {
   "users.lastSignIn": "最后登录",
   "users.noRecord": "无记录",
   "users.data": "账号数据",
-  "users.dataValue": "收藏 {fav} · 订阅 {saved} · 已看 {views}",
+  "users.dataValue": "收藏 {fav} · 订阅 {saved} · 浏览 {views}",
   "users.sessions": "登录中的设备",
   "users.noSessions": "没有登录中的设备",
   "users.unknownDevice": "未知设备",
