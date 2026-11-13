@@ -8,7 +8,7 @@ use sqlx::PgPool;
 /// Values for the `reasoning_effort` request field; sent as is, "none" included.
 pub const REASONING_EFFORTS: [&str; 6] = ["none", "minimal", "low", "medium", "high", "xhigh"];
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AiConfig {
     pub base_url: Option<String>,
     pub model: Option<String>,
@@ -23,6 +23,24 @@ pub struct AiConfig {
     pub api_key_from_env: bool,
     pub reasoning_effort_from_env: bool,
     pub embed_model_from_env: bool,
+}
+
+/// Prints every field but the API key, which shows only whether one is set: a `{:?}` in a log must not leak it.
+impl std::fmt::Debug for AiConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiConfig")
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("reasoning_effort", &self.reasoning_effort)
+            .field("embed_model", &self.embed_model)
+            .field("base_url_from_env", &self.base_url_from_env)
+            .field("model_from_env", &self.model_from_env)
+            .field("api_key_from_env", &self.api_key_from_env)
+            .field("reasoning_effort_from_env", &self.reasoning_effort_from_env)
+            .field("embed_model_from_env", &self.embed_model_from_env)
+            .finish()
+    }
 }
 
 pub fn reasoning_effort(s: &str) -> Option<&'static str> {
@@ -73,6 +91,14 @@ pub async fn ai(pool: &PgPool) -> Result<AiConfig, sqlx::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_hides_the_api_key() {
+        let config = resolve(&json!({ "api_key": "sk-planted-secret" }), |_| None);
+        assert_eq!(config.api_key.as_deref(), Some("sk-planted-secret"));
+        let printed = format!("{config:?}");
+        assert!(!printed.contains("sk-planted-secret") && printed.contains("<redacted>"), "{printed}");
+    }
 
     #[test]
     fn env_overrides_database() {
