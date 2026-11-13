@@ -7,6 +7,7 @@ use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::booth::Booth;
+use boothdex_core::jobs::JobKind;
 
 pub struct Ctx<'a> {
     pub pool: &'a PgPool,
@@ -600,15 +601,15 @@ async fn link_relisted(pool: &PgPool) -> Result<u64> {
 }
 
 pub async fn run(ctx: &mut Ctx<'_>, kind: &str, params: &Value) -> Result<String> {
-    match kind {
-        "embed" => embed(ctx, params).await,
-        "localize" => localize(ctx, params).await,
-        "sweep" => sweep(ctx, params).await,
-        "incremental" => incremental(ctx, params).await,
-        "details" => details(ctx, params).await,
-        "refresh" => refresh(ctx, params).await,
-        "enrich" => enrich(ctx, params).await,
-        other => bail!("unknown job kind {other}"),
+    match JobKind::parse(kind) {
+        Some(JobKind::Embed) => embed(ctx, params).await,
+        Some(JobKind::Localize) => localize(ctx, params).await,
+        Some(JobKind::Sweep) => sweep(ctx, params).await,
+        Some(JobKind::Incremental) => incremental(ctx, params).await,
+        Some(JobKind::Details) => details(ctx, params).await,
+        Some(JobKind::Refresh) => refresh(ctx, params).await,
+        Some(JobKind::Enrich) => enrich(ctx, params).await,
+        None => bail!("unknown job kind {kind}"),
     }
 }
 
