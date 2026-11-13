@@ -166,7 +166,7 @@ function RailHandleControl({
   saved: RefObject<number>;
   onResize: (rem: number) => void;
 }) {
-  const { t } = useUi();
+  const { t, ui } = useUi();
   const region = useResizable({
     defaultSize: rem * px,
     minSize: RAIL_REM.min * px,
@@ -174,21 +174,24 @@ function RailHandleControl({
   });
   const size = region.size / px;
   useEffect(() => onResize(size), [size, onResize]);
-  // written once the width settles, not on every frame of a drag, and only when it differs from the cookie
+  // written at once, so a reload right after a change keeps it: the cookie holds quarter rems, so a drag writes it
+  // only when it crosses one (about every 4 px), not on every frame. Not on unload: the browser sends the reload's
+  // request before the old page's pagehide runs.
   useEffect(() => {
     const next = railToSave(saved.current, size);
     if (next === null) return;
-    const save = setTimeout(() => {
-      // biome-ignore lint/suspicious/noDocumentCookie: the server reads this cookie; Cookie Store is not in every browser
-      document.cookie = railCookie(next);
-      saved.current = next;
-    }, 300);
-    return () => clearTimeout(save);
+    // biome-ignore lint/suspicious/noDocumentCookie: the server reads this cookie; Cookie Store is not in every browser
+    document.cookie = railCookie(next);
+    saved.current = next;
   }, [size, saved]);
   return (
     <ResizeHandle
       resizable={region}
       label={t("filter.railResize")}
+      // the handle reports pixels; a screen reader reads the width in rem, as it is set and stored
+      aria-valuetext={t("filter.railWidth", {
+        width: size.toLocaleString(LOCALES[ui], { maximumFractionDigits: 1 }),
+      })}
       isAlwaysVisible={false}
       className="filter-rail-handle"
       onDoubleClick={() => region.resize(RAIL_REM.default * px)}

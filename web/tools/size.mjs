@@ -28,9 +28,10 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // 44,100), the dialogs' fading lower edge (CSS 45,503) and the presses kept for late menus and hearts (JS 396,067):
 // HTML to 49,500 and CSS to 45,750 (owner, 2026-11-12). Astryx 0.7.15, its motion, gesture and layer code in the
 // modules the frame and the filter rail use (HTML 50,696, JS 497,886, CSS 49,895 with the API; 0.7.8 read HTML
-// 48,677 on the same data): HTML to 51,500, JS to 498,000, CSS to 50,000 (owner, 2026-11-13). Not counted: the chunks
-// the page preloads with <link rel="preload">, such as the filter rail's (8,368 B gzip on 2026-11-13).
-const BUDGET = { html: 51_500, js: 498_000, css: 50_000 };
+// 48,677 on the same data): HTML to 51,500, JS to 498,000, CSS to 50,000 (owner, 2026-11-13). The chunks the
+// page preloads, counted from then on (three, the filter rail's among them): the same code read JS 495,444 without them
+// and 520,593 with them, and 520,618 with the rail handle's value text: JS to 521,000 (owner, 2026-11-13).
+const BUDGET = { html: 51_500, js: 521_000, css: 50_000 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
@@ -44,7 +45,19 @@ const text = html.toString("utf8");
 const refs = (re) => [
   ...new Set([...text.matchAll(re)].map((m) => new URL(m[1], page).href)),
 ];
-const js = refs(/<script[^>]+src="([^"]+)"/g);
+// A chunk the page preloads (`<link rel="preload" as="script">`, such as the filter rail's) is fetched with the first
+// load as a script tag's is, so it counts too.
+const preloads = [...text.matchAll(/<link\b[^>]*>/g)]
+  .map((m) => m[0])
+  .filter(
+    (tag) =>
+      /\brel="modulepreload"/.test(tag) ||
+      (/\brel="preload"/.test(tag) && /\bas="script"/.test(tag)),
+  )
+  .map((tag) => tag.match(/\bhref="([^"]+)"/)?.[1])
+  .filter(Boolean)
+  .map((href) => new URL(href, page).href);
+const js = [...new Set([...refs(/<script[^>]+src="([^"]+)"/g), ...preloads])];
 const css = refs(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g);
 const total = async (urls) =>
   (await Promise.all(urls.map(async (u) => gz(await get(u))))).reduce(

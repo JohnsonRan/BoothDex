@@ -55,6 +55,7 @@ export const en: Dict = {
   "filter.region": "Filters and sort",
   "filter.rail": "Filters",
   "filter.railResize": "Resize filters",
+  "filter.railWidth": "Width {width} rem",
   "filter.more": "{n} more filters",
   "view.avatars": "Avatar bodies",
   "title.avatars": "Avatar bodies",
