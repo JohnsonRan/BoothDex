@@ -12,6 +12,7 @@ import {
   searchQuery,
   tagName,
 } from "./catalog";
+import { parseRailWidth, RAIL_COOKIE } from "./rail-width";
 import {
   CURRENCIES,
   parseSettings,
@@ -40,6 +41,11 @@ export async function readSettings(): Promise<Settings> {
     decoded = raw && decodeURIComponent(raw);
   } catch {}
   return parseSettings(decoded, hdrs.get("accept-language"));
+}
+
+/** The filter rail's width in rem, as the visitor last dragged it (lib/rail-width.ts). */
+export async function readRailWidth(): Promise<number> {
+  return parseRailWidth((await cookies()).get(RAIL_COOKIE)?.value);
 }
 
 /** "starting": the API is still loading after a restart (503) or unreachable; "error": it is up but failed. */

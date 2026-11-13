@@ -54,6 +54,7 @@ export const ko: Dict = {
   "filter.clearAll": "모두 초기화",
   "filter.region": "필터와 정렬",
   "filter.rail": "필터",
+  "filter.railResize": "필터 너비 조정",
   "filter.more": "필터 {n}개 더 보기",
   "view.avatars": "아바타 본체",
   "title.avatars": "아바타 본체",

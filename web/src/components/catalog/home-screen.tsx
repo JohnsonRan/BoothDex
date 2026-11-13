@@ -45,6 +45,7 @@ import {
   itemHero,
   listAvatars,
   listCategories,
+  readRailWidth,
   readSettings,
   type SearchOutcome,
   searchItems,
@@ -167,10 +168,11 @@ async function Catalog({
   const outcome: Promise<SearchOutcome> = recent
     ? Promise.resolve({ state: "error" })
     : searchItems(filters, page, noSemantic);
-  const [avatars, categories, tags] = await Promise.all([
+  const [avatars, categories, tags, railWidth] = await Promise.all([
     listAvatars().catch(() => []),
     listCategories().catch(() => []),
     tagLabels([...filters.tags, ...filters.extags], settings.ui),
+    readRailWidth(),
   ]);
   const avatar = avatars.find((a) => a.slug === filters.avatar);
   // only names cross to the browser, not the whole taxonomy in every language
@@ -223,7 +225,7 @@ async function Catalog({
       // the filters at the side (Settings), beside the band and the results; the recent view has none
       start={
         settings.filters === "side" && !recent ? (
-          <FilterRail facets={facets} names={names} />
+          <FilterRail facets={facets} names={names} width={railWidth} />
         ) : undefined
       }
       header={
