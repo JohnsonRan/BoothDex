@@ -34,8 +34,10 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // 0.7.16 (JS 520,914 to 523,999, CSS 49,901 to 50,561 on the same host; the layer, menu and tooltip fixes and the
 // forced-colors edges) and the refresh bar's code loaded after the page (JS 521,999): JS to 522,500, CSS to
 // 50,750 (owner, 2026-11-14). The HTML of identical code read 51,498 to 51,503 across builds: Next writes a random
-// build ID into it. HTML to 51,520, room for that noise and nothing else (owner, 2026-11-15).
-const BUDGET = { html: 51_520, js: 522_500, css: 50_750 };
+// build ID into it. HTML to 51,520, room for that noise and nothing else (owner, 2026-11-15). The avatar strip's
+// arrows centred on the card and faded with the shrink, the filter rail's section names and the item dialog's
+// favourite and copy labels centred on their icons: CSS 50,807 over 3 reads, to 51,000 (owner, 2026-11-15).
+const BUDGET = { html: 51_520, js: 522_500, css: 51_000 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {

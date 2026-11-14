@@ -7,7 +7,8 @@
    name (and the selected chip's capsule) fades in from 90 %, once its avatar
    has moved clear of where it stands. The label goes by half-way, the surface the shrunk strip lays over the results fades in with its divider, and the Carousel's
    prev/next buttons, which sit on the top layer above the band, go as the shrink starts (`data-shrink`, not an
-   animation: `visibility` would keep the main thread drawing every frame). Only transform and opacity move,
+   animation: `visibility` would keep the main thread drawing every frame; they fade with the caption as well, so
+   they never stand over the chips before the main thread sets it). Only transform and opacity move,
    scroll-driven over the shrink's range (`--strip-y0` from the band, `--strip-d`), so the compositor runs it with
    the scroll; without scroll timelines (Firefox) the same keyframes stand paused at the band's `--strip-p`. It runs
    once the band knows where the shrink starts (`data-morph`, set as it hydrates, or from the server for a start
@@ -182,20 +183,9 @@
 [data-morph] .strip-name {
   animation-name: strip-name;
 }
-[data-chips] .strip-thumb {
-  translate: calc(var(--chip-dx) - var(--_face-in))
-    calc(var(--strip-dy) - var(--_face-in));
-  scale: var(--strip-scale);
-}
-[data-chips] :is(.strip-card, .strip-caption) {
-  opacity: 0;
-}
 /* the selected chip's hidden caption as wide as its semibold name */
 [data-chips] .strip-tile[data-selected] .strip-caption {
   font-weight: var(--font-weight-semibold);
-}
-[data-chips] :is(.strip-face, .strip-name) {
-  opacity: 1;
 }
 .strip-surface {
   position: absolute;
@@ -217,9 +207,14 @@
   .astryx-carousel-scroller {
   mask-image: none;
 }
-[data-shrink="part"] [data-strip] [popover],
-[data-shrink="all"]:not([data-strip-open]) [data-strip] [popover] {
-  visibility: hidden;
+/* The buttons centre on the card's square, not on the card and its caption: the Carousel's overlay covers the whole
+   carousel (core Carousel.js `coverStyle`, the buttons centred in it), so it stops at the square's height from the top.
+   They also fade out with the caption on the scroll's timeline: the compositor shrinks the strip while a busy main
+   thread has yet to set `data-shrink`, and the buttons stood over the chips until it did. */
+[data-strip] [popover] {
+  max-block-size: var(--strip-card);
+  inset-block-end: auto;
+  animation-name: strip-caption;
 }
 .strip-row {
   pointer-events: auto;
@@ -231,7 +226,8 @@
   .strip-label,
   .strip-caption,
   .strip-name,
-  .strip-surface
+  .strip-surface,
+  [data-strip] [popover]
 ) {
   animation-duration: auto;
   animation-timing-function: linear;
@@ -248,7 +244,8 @@
     .strip-label,
     .strip-caption,
     .strip-name,
-    .strip-surface
+    .strip-surface,
+    [data-strip] [popover]
   ) {
     animation-duration: 1s;
     animation-play-state: paused;
@@ -264,7 +261,8 @@
       .strip-label,
       .strip-caption,
       .strip-name,
-      .strip-surface
+      .strip-surface,
+      [data-strip] [popover]
     ) {
     animation: none;
   }
@@ -277,23 +275,32 @@
     .strip-label,
     .strip-caption,
     .strip-name,
-    .strip-surface
+    .strip-surface,
+    [data-strip] [popover]
   ) {
   animation: none;
+}
+[data-shrink="part"] [data-strip] [popover],
+[data-shrink="all"]:not([data-strip-open]) [data-strip] [popover] {
+  visibility: hidden;
 }
 [data-strip-open] .strip-surface {
   inset: 0;
   opacity: 1;
 }
+/* shrunk all the way, and the chips laid out, the strip is drawn as the morph ends */
+[data-chips] .strip-thumb,
 [data-shrink="all"]:not([data-strip-open]) .strip-thumb {
   translate: calc(var(--chip-dx) - var(--_face-in))
     calc(var(--strip-dy) - var(--_face-in));
   scale: var(--strip-scale);
 }
+[data-chips] :is(.strip-card, .strip-caption),
 [data-shrink="all"]:not([data-strip-open])
   :is(.strip-card, .strip-caption, .strip-label) {
   opacity: 0;
 }
+[data-chips] :is(.strip-face, .strip-name),
 [data-shrink="all"]:not([data-strip-open]) :is(.strip-face, .strip-name) {
   opacity: 1;
 }

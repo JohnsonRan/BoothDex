@@ -126,7 +126,7 @@ export function ItemInfo({
             target="_blank"
             endContent={<Icon icon="externalLink" />}
           />
-          <HStack gap={2}>
+          <HStack gap={2} className="item-acts">
             <StackItem size="fill">
               <Button
                 label={t("fav.add")}

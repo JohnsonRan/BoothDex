@@ -42,7 +42,7 @@ meanwhile.
 | Slowest test package | 16 s | `api` unit tests: 12.1 s, 15.4 s, 12.4 s (2026-11-11, GitHub-hosted ubuntu-latest, load not recorded) | review |
 | Home page first load, gzip -9: HTML | 51,520 B | 51,498 to 51,503 B for the same code across builds, which differ only in the random build ID Next writes into the HTML; the 20 B above 51,500 is room for that noise, not for new content (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Home page first load, gzip -9: JS | 522,500 B | 521,999 B over 3 reads with Astryx 0.7.16, the preloaded chunks included, against 520,914 B for 0.7.15 on the same host (2026-11-14, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
-| Home page first load, gzip -9: CSS | 50,750 B | 50,561 B over 3 reads with Astryx 0.7.16, against 49,901 B for 0.7.15 on the same host (2026-11-14, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
+| Home page first load, gzip -9: CSS | 51,000 B | 50,807 B over 3 reads with the avatar strip's arrows, the filter rail's section names and the item dialog's favourite label centred on their icons, against 50,737 B before them on the same host (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Source file size, p90 of this repository (pass bar) | 274 lines | 274 lines: nearest-rank p90 of the 272 tracked `.rs`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.css`, `.sql`, `.sh` and `.py` files (2026-11-12, `wc -l`) | review |
 | Commit subject length | 72 characters | a setting, not measured | review (no commit hook) |
 
