@@ -36,8 +36,11 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // 50,750 (owner, 2026-11-14). The HTML of identical code read 51,498 to 51,503 across builds: Next writes a random
 // build ID into it. HTML to 51,520, room for that noise and nothing else (owner, 2026-11-15). The avatar strip's
 // arrows centred on the card and faded with the shrink, the filter rail's section names and the item dialog's
-// favourite and copy labels centred on their icons: CSS 50,807 over 3 reads, to 51,000 (owner, 2026-11-15).
-const BUDGET = { html: 51_520, js: 522_500, css: 51_000 };
+// favourite and copy labels centred on their icons: CSS 50,807 over 3 reads, to 51,000 (owner, 2026-11-15). The
+// reader kept in place through a resize or a rail drag (JS 522,569), the frame unclipped around the results (CSS
+// 50,838) and HTML at 51,506 to 51,508 with live titles: every budget to the next 500 B, so a small change is not
+// blocked by a few bytes (owner, 2026-11-15: "提，如果有别的预算紧的也一块提了").
+const BUDGET = { html: 52_000, js: 523_000, css: 51_500 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
