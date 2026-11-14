@@ -41,7 +41,7 @@ meanwhile.
 | `bun test` in `web/` | 15 s | 103 tests in 3 s (2026-11-11, development host, load not recorded) | review |
 | Slowest test package | 16 s | `api` unit tests: 12.1 s, 15.4 s, 12.4 s (2026-11-11, GitHub-hosted ubuntu-latest, load not recorded) | review |
 | Home page first load, gzip -9: HTML | 52,000 B | 51,604 to 51,605 B with the reduce-motion switch, against 51,506 to 51,508 B recorded before it, with live titles; the build ID Next writes into the HTML moves the same code by about 5 B (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
-| Home page first load, gzip -9: JS | 523,000 B | 522,810 B with the reduce-motion switch, against 522,569 B recorded before it with the reader kept in place through a resize or a rail drag (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
+| Home page first load, gzip -9: JS | 523,000 B | 522,819 B with the place kept through a resize after a page read replaced it, against 522,810 B with the reduce-motion switch before it on the same host (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Home page first load, gzip -9: CSS | 51,500 B | 50,880 B with the reduce-motion switch, against 50,838 B recorded before it with the frame unclipped around the results (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Source file size, p90 of this repository (pass bar) | 274 lines | 274 lines: nearest-rank p90 of the 272 tracked `.rs`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.css`, `.sql`, `.sh` and `.py` files (2026-11-12, `wc -l`) | review |
 | Commit subject length | 72 characters | a setting, not measured | review (no commit hook) |
@@ -92,9 +92,9 @@ Lab checks, run by hand and not part of a gate: `web/tools/motion.cjs`, `web/too
 second, and every run of `nav.cjs`, needs `LAB_AI_OFF=1`, an API on this machine started with `AI_BASE_URL` at a
 closed port (`http://127.0.0.1:9`), so the search embeds nothing, and `slow-api.mjs` pointed at that API; the proxy
 refuses a search with `q` to any other upstream. Build and start the site with `API_ORIGIN` set to the proxy:
-`next build` fixes the browser's `/api` rewrite. When `check:size` reads over budget, `web/tools/size-diff.mjs`
-compares two `next analyze` snapshots by package and source directory, to find what grew before a raise is
-proposed.
+`next build` fixes the browser's `/api` rewrite; `nav.cjs` takes the proxy's URL as its third argument. When
+`check:size` reads over budget, `web/tools/size-diff.mjs` compares two `next analyze` snapshots by package and
+source directory, to find what grew before a raise is proposed.
 
 ## Exceptions
 
@@ -155,6 +155,7 @@ after a release.
 | Extend the `Content-Security-Policy` in `web/next.config.ts` with `script-src` and `style-src` | the change that sent `img-src 'self' data:`; `object-src 'none'`, `base-uri 'self'` and `frame-ancestors 'none'` were added on 2026-11-15 | Without `'unsafe-inline'` either directive needs a nonce per request, and Next applies nonces only to dynamically rendered pages, so the statically prerendered parts (`/privacy`, `/terms`, the page shells) would turn dynamic; each directive needs its own sweep of every page |
 | Centre the filter rail's ja and ko section names on their chevrons: they sit 1.0 to 1.34 px above at 1440 and 2560 (1.5x), while zh and en are within 0.5 px | PR #70, 2026-11-15 | The kana and Hangul fallback fonts place their glyphs differently from Figtree's capitals and Chrome has no ideographic edge for `text-box`, so only a nudge per locale is left; 1 px is not visible (owner, 2026-11-15: "1px肉眼看不出来，暂时不处理吧") |
 | Make the reduce-motion switch reach the Astryx motion that follows only the system's setting: the entrances of dialogs, menus, popovers, tooltips and selectors (StyleX CSS under `prefers-reduced-motion` media queries, `Layer/layerAnimations`, `Dialog`), the press feedback, the Carousel's smooth scroll on its prev/next buttons, and the AppShell, MobileNav, Resizable, BottomSheet and swipe timings that read `matchMedia` | the reduce-motion switch, 2026-11-15 | Astryx 0.7.16 has no public way in: its private `data-astryx-reduced-motion` mark reaches only its animator, and its public theme knob `reducedMotion: 'always'` is not shipped yet. Each would take an override of hashed StyleX classes or a patch of the library; the entrances are at most 200 ms and the switch already stops the site's own motion and the Skeleton pulse (`tools/motion.cjs` lists what still runs) |
+| Take the tile in view in the resize observer when the kept place was removed since the last frame (`use-result-frame.ts`, the observer's `a`), the second half of the fallback cut in PR #71 | review of PR #71 budget cuts, 2026-11-15 | Not reproduced: in every lab run the frame after the commit that removed the kept tile took the place again before the next resize (`nav.cjs` step 7 stays green without it); the resize would have to land in the same frame as that commit |
 
 ## Open questions
 

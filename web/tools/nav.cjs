@@ -8,16 +8,21 @@
 //   6. the page-3 address opened in a new tab starts with page 3's first result in its first row, in its column of
 //      the whole result set from the first frame it is painted in until page 2 has arrived above it, records no
 //      layout shift, and keeps its place through a window dragged to 800 px and back;
-//   7. an `item=` link opens its dialog; closing it drops the parameter without leaving a history entry.
+//   7. with the window inside an unread page's box, resized to 800 px, that page read with no scroll in between,
+//      and resized back: the tile first in view after the read is back in its row (slow-api.mjs holds the read);
+//   8. an `item=` link opens its dialog; closing it drops the parameter without leaving a history entry.
 // A place is the first tile showing below the filter band; "the same place" is that tile's top within 2 px, in
 // any column. At 1440 px that tile is page 2's last but one, leading the row page 3 starts in, so step 5 also needs
 // page 2 read again on the return, not left as boxes (lib/result-pages.ts boxParts, lib/result-frame.ts framePages).
 // The search sends `q`, so this needs LAB_AI_OFF=1 and an API with AI_BASE_URL at a closed port (lab.cjs).
-//   node tools/nav.cjs [page url=http://127.0.0.1:3203/] [query=ドレス]
-const { launch, scrollToPage } = require("./lab.cjs");
+//   node tools/nav.cjs [page url=http://127.0.0.1:3203/] [query=ドレス] [proxy url=http://127.0.0.1:3298]
+const { launch, lab, scrollToPage } = require("./lab.cjs");
 
-const [origin = "http://127.0.0.1:3203/", query = "ドレス"] =
-  process.argv.slice(2);
+const [
+  origin = "http://127.0.0.1:3203/",
+  query = "ドレス",
+  proxy = "http://127.0.0.1:3298",
+] = process.argv.slice(2);
 if (process.env.LAB_AI_OFF !== "1")
   throw new Error(
     "the search sends q: set LAB_AI_OFF=1 with an API whose AI_BASE_URL is a closed port",
@@ -308,7 +313,62 @@ async function stablePlace(p) {
   }
   await tab.close();
 
-  // 7. a shared item link
+  // 7. the place kept by a box that a page read then replaces (use-result-frame.ts run): the window in the middle
+  // of page 1's box, unread above a start at page 3, so the box is the place; reads held until after the resize
+  const held = await context.newPage();
+  await held.goto(new URL("/?page=3", origin).href, { waitUntil: "load" });
+  await ready(held);
+  await held.waitForTimeout(1500);
+  await lab(proxy, { delay: 5000 });
+  const boxTop = await held.evaluate(() => {
+    const box = [
+      ...document.querySelectorAll(".astryx-grid > :not([data-item])"),
+    ].find((e) => e.getBoundingClientRect().height > 2 * innerHeight);
+    return box && box.getBoundingClientRect().top + scrollY;
+  });
+  await held.evaluate((y) => scrollTo(0, y), (boxTop ?? 0) + 300);
+  await held.waitForTimeout(400);
+  const heldCdp = await context.newCDPSession(held);
+  const widen = async (width) => {
+    await heldCdp.send("Emulation.setDeviceMetricsOverride", {
+      width,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await held.evaluate(() => new Promise(requestAnimationFrame));
+  };
+  await widen(800);
+  // the read lands with the window where it was: the first in view is a tile again
+  await held
+    .waitForFunction(
+      () => {
+        const band = document.querySelector(
+          "[data-band-content]",
+        )?.previousElementSibling;
+        const edge = band ? band.getBoundingClientRect().bottom : 0;
+        return [...document.querySelectorAll(".astryx-grid > *")].find(
+          (e) => e.getBoundingClientRect().bottom > edge,
+        )?.dataset.item;
+      },
+      null,
+      { timeout: 20000 },
+    )
+    .catch(() => {});
+  await held.waitForTimeout(800);
+  const landed = await place(held);
+  await lab(proxy, { delay: 0 });
+  await widen(1440);
+  await held.waitForTimeout(300);
+  const after = landed && (await placeOf(held, landed.id));
+  check(
+    "a resize after a page read replaced the box that kept the place keeps it",
+    boxTop !== undefined && !!landed && sameRow(landed, after),
+    `box at ${boxTop}, ${show(landed)} -> ${after ? after.top : "none"}`,
+  );
+  await held.close();
+
+  // 8. a shared item link
   const shared = await context.newPage();
   await shared.goto(new URL(`/?item=${deep.id}`, origin).href, {
     waitUntil: "load",
