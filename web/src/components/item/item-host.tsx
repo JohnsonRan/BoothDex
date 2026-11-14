@@ -8,7 +8,7 @@
 // does not wait for the network, nor for next/dynamic's Suspense reveal, which React holds back up to 300 ms.
 // Closing closes at once and lets the history step follow: a Back the router answers first re-renders the page
 // before the dialog would. Pressing a tile fetches its record (item-cache.ts), so the fetch starts before the
-// click lands; a mouse resting on a tile fetches nothing.
+// click lands; a mouse resting on a tile fetches nothing but the tile's second image.
 
 import {
   createContext,
@@ -135,6 +135,27 @@ export function ItemHost({
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
+  }, []);
+
+  // a mouse resting on a tile gives its second image an address, once (item-tile.tsx, app/catalog.css .tile-second)
+  useEffect(() => {
+    if (!matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    const onOver = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || !(e.target instanceof Element)) return;
+      const img = e.target
+        .closest("[data-item]")
+        ?.querySelector<HTMLImageElement>("img[data-second]:not([src])");
+      const cover = img?.parentElement?.querySelector<HTMLImageElement>(
+        "img:not([data-second])",
+      );
+      // the address is relative to the cover's (item-tile.tsx besideCover)
+      if (!img?.dataset.second || !cover) return;
+      // set here rather than in each tile's markup, which carries only what the first paint needs
+      img.decoding = "async";
+      img.src = new URL(img.dataset.second, cover.src).href;
+    };
+    document.addEventListener("pointerover", onOver, { passive: true });
+    return () => document.removeEventListener("pointerover", onOver);
   }, []);
 
   // mounted from the first item on, so the dialog can play its closing transition

@@ -113,18 +113,21 @@ The rest are prop values, not style overrides:
   level stays 2 through `accessibilityLevel`.
 - The Card Grid template groups cards under per-category headings; BoothDex pages results instead, so there
   is one `Divider` above one grid.
-- Product Gallery tiles have no badges; BoothDex adds NEW and up to two feature tags as a `Badge` row under
-  the price (an `HStack` as in the Badge Category Tags block), only on tiles that have one. NEW is
-  `variant="blue"` (as the Item With Media block's "New"), feature tags the default neutral. Master showed them
-  over the cover; the Overlay Bottom Strip block does the same with `Overlay`, but Overlay is a client component
-  and ~70 of them (one per marked tile on the first page) raised median Lighthouse TBT from 1669 to 2969 ms
-  (5 runs each), so the row stays server-rendered. `Badge` is not for counts only: `astryx component Badge`
+- Product Gallery tiles have no badges; BoothDex adds NEW and up to two feature tags as `Badge`s (an `HStack`
+  as in the Badge Category Tags block) along the cover's lower edge, as master did, only on tiles that have one.
+  NEW is `variant="blue"` (as the Item With Media block's "New"), feature tags the default neutral. The Overlay
+  Bottom Strip block places them with `Overlay`, but Overlay is a client component and ~70 of them (one per
+  marked tile on the first page) raised median Lighthouse TBT from 1669 to 2969 ms (5 runs each), so the badges
+  share the cover's grid area in server markup instead (`app/catalog.css` `.tile-cover`). They sat under the
+  price until 2026-11-14, when the owner returned them to the cover for desktop use.
+  `Badge` is not for counts only: `astryx component Badge`
   documents status labels and category tags (blocks `BadgeStatusLabels`, `BadgeCategoryTags`); the
   `astryx init` rule "Badge = counts only" is shorthand for "not for metadata".
-- The tile has no hover second image: `Card` has no media swap, and `Overlay showOn="hover"` keeps its
-  content mounted (visibility is CSS), so every first-screen tile would download its second image, and it is a
-  client component per tile (the TBT cost above). Listed for
-  the owner.
+- The tile shows its second image while a mouse rests on it: `Card` has no media swap, and `Overlay
+  showOn="hover"` keeps its content mounted (visibility is CSS), so every first-screen tile would download its
+  second image, and it is a client component per tile (the TBT cost above). The second image is an `<img>` in the
+  cover's grid area with its address in `data-second`; `item/item-host.tsx`'s one listener sets it on the first
+  hover by a mouse, and CSS fades it in on `:hover` where the pointer hovers and is fine (owner, 2026-11-14).
 - Results are not dimmed while a navigation is pending (no Astryx component exposes a pending state for a
   region). Owner ruling 2026-11-06: an indeterminate `ProgressBar` under the header instead, as in doona's
   `apps/lite`; replaced in checkpoint 1 (owner: the bar on every change was ugly) by the 150/300 ms rule and a

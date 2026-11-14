@@ -87,14 +87,32 @@ test("a full page renders the first screen on the server and the rest in the bro
   const html = render(items);
   expect(html.match(/<img /g)).toHaveLength(FIRST_TILES);
   // a Skeleton under every server cover, and one tile silhouette after the last server tile (cover, two title
-  // lines, shop icon and name, price, badge row); the other tiles are drawn near the viewport
-  expect(html.match(/class="astryx-skeleton/g)).toHaveLength(FIRST_TILES + 7);
+  // lines, shop icon and name, price); the other tiles are drawn near the viewport
+  expect(html.match(/class="astryx-skeleton/g)).toHaveLength(FIRST_TILES + 6);
 });
 
-test("every tile reserves two title lines and a badge row, as its loading silhouette does", () => {
+test("every tile reserves two title lines, as its loading silhouette does", () => {
   const html = render([item, { ...item, id: 2 }]);
   expect(html.match(/min-block-size:2lh/g)).toHaveLength(2);
-  expect(html.match(/min-height:var\(--spacing-5\)/g)).toHaveLength(2);
+});
+
+test("a tile's badges sit on its cover, and its second image waits for a pointer", () => {
+  const html = render([
+    {
+      ...item,
+      features: ["quest"],
+      booth_images: [
+        ...(item.booth_images ?? []),
+        "https://booth.pximg.net/u/i/1/second.jpg",
+      ],
+    },
+  ]);
+  const cover = html.slice(html.indexOf('class="tile-cover"'));
+  expect(cover.indexOf("Quest")).toBeGreaterThan(-1);
+  expect(cover.indexOf("Quest")).toBeLessThan(cover.indexOf("<h4"));
+  const second = html.match(/<img [^>]*class="tile-second"[^>]*>/)?.[0] ?? "";
+  expect(second).toContain('data-second="second.jpg?format=avif"');
+  expect(second).not.toMatch(/ src=/);
 });
 
 test("tiles show the title in the chosen language, the shop and the price", () => {

@@ -1,7 +1,10 @@
 // One result tile, adapted from the Product Gallery template's ProductCard (@astryxdesign/cli assets/templates/pages/product-gallery):
 // square media, then title, a secondary line (the shop, with its icon) and the price in large bold; the price
-// row ends with the favourite button, and NEW and feature tags follow as Badges (Badge Category Tags block). Not over the cover: Overlay is a client component,
-// and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration; only a viewed tile mounts one (viewed-mark.tsx).
+// row ends with the favourite button. NEW and feature tags sit over the cover's lower edge as Badges (master's
+// place; Badge Category Tags block), stacked in the cover's grid rather than in an Overlay: Overlay is a client
+// component, and ~70 of them cost ~1.3 s of Lighthouse TBT on hydration; only a viewed tile mounts one
+// (viewed-mark.tsx). A pointer resting on the tile shows the item's second image (app/catalog.css .tile-second),
+// whose address item-host.tsx's one listener sets on the first hover, so no tile downloads it unasked.
 // No directive: the server builds the tiles' data (tileOf) and Tiles (tiles.tsx) draws them, from the server's
 // first screen and the browser's later tiles. The favourite button carries no handler of its own: one listener
 // answers every one (account/favourites.tsx). The viewed mark is the tile's only stateful part; the shop icon is
@@ -45,6 +48,16 @@ export type Tile = {
   price: string;
   /** NEW first, then up to two feature tags */
   marks: string[];
+  /**
+   * the second image, shown while a pointer rests on the tile ("" when the item has none): relative to the cover's
+   * address when it sits beside it, as it does for an item's own images, so the shared path is not sent twice
+   */
+  second: string;
+};
+
+const besideCover = (cover: string, second: string) => {
+  const dir = cover.slice(0, cover.lastIndexOf("/") + 1);
+  return dir && second.startsWith(dir) ? second.slice(dir.length) : second;
 };
 
 export const tileOf = (
@@ -63,6 +76,7 @@ export const tileOf = (
     ...(isNew(item) ? ["NEW"] : []),
     ...item.features.slice(0, 2).map((f) => FEATURES[f as Feature] ?? f),
   ],
+  second: besideCover(imgUrl(item, 0), imgUrl(item, 1)),
 });
 
 // Template product-gallery's Grid (page.tsx:148-149), with master's density (owner: 「太大了。為什麼一頁只有4張圖了」):
@@ -123,12 +137,29 @@ export function ItemTile({
   const cover = (
     <Card padding={0}>
       <AspectRatio ratio={1}>
-        <SkeletonImage
-          src={tile.cover}
-          loading={index < EAGER ? "eager" : "lazy"}
-          fetchPriority={index < HIGH ? "high" : undefined}
-          decoding="async"
-        />
+        {/* one grid cell holding the cover, the second image over it and the badges at its lower edge */}
+        <span className="tile-cover">
+          <SkeletonImage
+            src={tile.cover}
+            loading={index < EAGER ? "eager" : "lazy"}
+            fetchPriority={index < HIGH ? "high" : undefined}
+            decoding="async"
+          />
+          {tile.second && (
+            <img className="tile-second" data-second={tile.second} alt="" />
+          )}
+          {tile.marks.length > 0 && (
+            <HStack gap={1} wrap="wrap" className="tile-marks">
+              {tile.marks.map((m) => (
+                <Badge
+                  key={m}
+                  label={m}
+                  variant={m === "NEW" ? "blue" : undefined}
+                />
+              ))}
+            </HStack>
+          )}
+        </span>
       </AspectRatio>
     </Card>
   );
@@ -185,16 +216,6 @@ export function ItemTile({
             size="sm"
             icon={<Icon icon="site:favourite" size="sm" />}
           />
-        </HStack>
-        {/* kept when empty: one badge tall, as in the silhouette */}
-        <HStack gap={1} wrap="wrap" minHeight="var(--spacing-5)">
-          {tile.marks.map((m) => (
-            <Badge
-              key={m}
-              label={m}
-              variant={m === "NEW" ? "blue" : undefined}
-            />
-          ))}
         </HStack>
       </VStack>
     </VStack>
