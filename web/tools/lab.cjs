@@ -132,7 +132,9 @@ const GEOMETRY = () => {
   const elements = (el) =>
     [...(el?.children ?? [])].filter((c) => c.tagName !== "TEMPLATE");
   out.count = box(elements(main.querySelector("[data-readout]"))[0]);
-  out.search = box(main.querySelector("input"));
+  // the field's slot, the same box before and after its tokens' code is here (search-box.tsx); the input inside
+  // starts after the tokens, and the slot sits in the band, outside <main>
+  out.search = box(document.querySelector(".filter-search"));
   out.avatars = box(main.querySelector('[aria-roledescription="carousel"]'));
   const top = grid ? grid.getBoundingClientRect().top : Infinity;
   // keyed by the button's name (digits folded, so "+2" and "+3" are one), not by its place in the row: the "+N" fold
