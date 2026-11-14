@@ -16,6 +16,8 @@ pub(crate) struct AppState {
     /// wakes the reloader early (admin "reload now")
     pub(crate) reload: tokio::sync::Notify,
     pub(crate) site_url: String,
+    /// `ADMIN_USERNAMES` as read at startup; registration refuses these names (see `account::register`)
+    pub(crate) admin_names: Option<Vec<String>>,
     pub(crate) throttle: account::LoginThrottle,
     pub(crate) dummy_hash: String,
     pub(crate) gallery: gallery::Fetcher,
@@ -62,6 +64,7 @@ impl AppState {
             snap: arc_swap::ArcSwap::from_pointee(snap),
             reload: tokio::sync::Notify::new(),
             site_url,
+            admin_names: None,
             throttle: Default::default(),
             dummy_hash,
             gallery,

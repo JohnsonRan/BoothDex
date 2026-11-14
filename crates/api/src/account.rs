@@ -2,8 +2,11 @@
 //! searches. An admin can disable an account (admin/users.rs) or close registration (app_settings 'registration').
 //! Not yet: Discord/X OAuth (needs app credentials) and password-reset email (needs a mail service).
 //!
-//! CSRF: the session cookie is SameSite=Lax and CORS never allows credentials, so cross-site
-//! requests can't carry it; body-carrying mutations additionally require JSON.
+//! CSRF: the session cookie is SameSite=Lax and CORS never allows credentials, so a request from another site
+//! carries no cookie. A page on another subdomain of the same site does send it, so every API request other than
+//! GET, HEAD or OPTIONS that the browser marks as not same-origin (`Sec-Fetch-Site`) is refused before any route runs
+//! (`refuse_cross_site_writes`); a request without that header, from another client or an old browser, relies on
+//! SameSite alone. Body-carrying mutations additionally require JSON.
 
 mod favourites;
 mod password;
@@ -102,6 +105,18 @@ pub(crate) async fn account_write_rate_limit(
 ) -> Response {
     if req.method() != axum::http::Method::GET && let Err(r) = s.limits.account.check(ip) {
         return r.into_response();
+    }
+    next.run(req).await
+}
+
+/// Refuses a write the browser sent from another origin, same-site subdomains included. `none` is a request the
+/// visitor made directly (typed in the address bar); the site's own calls arrive as `same-origin` through its rewrite.
+pub(crate) async fn refuse_cross_site_writes(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    use axum::http::Method;
+    let write = ![Method::GET, Method::HEAD, Method::OPTIONS].contains(req.method());
+    let cross = req.headers().get("sec-fetch-site").is_some_and(|v| v != "same-origin" && v != "none");
+    if write && cross {
+        return ApiError::from(Refusal::CrossSiteRequest).into_response();
     }
     next.run(req).await
 }
