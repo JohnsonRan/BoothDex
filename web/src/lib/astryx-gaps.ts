@@ -153,7 +153,7 @@ export const ASTRYX_GAPS: Record<"zh" | "ja" | "ko", Record<string, string>> = {
       "{count, plural, other {#개 선택됨}}",
     "@astryx.numberInput.invalidNumber": "유효하지 않은 숫자",
     "@astryx.scrollRegion.label": "콘텐츠",
-    "@astryx.switch.loading": "로드 중",
+    "@astryx.switch.loading": "불러오는 중",
     "@astryx.timestamp.copyFailed": "클립보드에 복사하지 못했습니다.",
     "@astryx.tokenizer.add": "추가",
     "@astryx.tokenizer.addValue": "{value} 추가",
