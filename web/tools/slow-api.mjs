@@ -2,7 +2,7 @@
 // and the real API. Point the server's run-time API_ORIGIN at it; it forwards every request unchanged (GET only,
 // so production is read, never written) and holds `/api/search` back for the current delay. The checks set the
 // delay between steps, so one server serves a fast first load and a slow next page:
-//   node tools/slow-api.mjs [port=3298] [upstream=https://boothdex.ihtw.moe, or the lab API http://127.0.0.1:3400]
+//   node tools/slow-api.mjs [port=3298] [upstream=https://boothdex.dev, or the lab API http://127.0.0.1:3400]
 //   curl 127.0.0.1:3298/__lab?delay=2500        search answers 2.5 s late (0: no delay)
 //   curl 127.0.0.1:3298/__lab?fail=1            search answers 500 (the API is up, so the page shows "failed")
 //   curl 127.0.0.1:3298/__lab?cache=1           a search asked before answers at once from memory (a quick
@@ -11,7 +11,7 @@ import http from "node:http";
 import https from "node:https";
 
 const port = Number(process.argv[2] ?? 3298);
-const upstream = new URL(process.argv[3] ?? "https://boothdex.ihtw.moe");
+const upstream = new URL(process.argv[3] ?? "https://boothdex.dev");
 // a local lab API (http://127.0.0.1:3400) is plain http
 const client = upstream.protocol === "http:" ? http : https;
 const agent = new client.Agent({ keepAlive: true, maxSockets: 32 });
