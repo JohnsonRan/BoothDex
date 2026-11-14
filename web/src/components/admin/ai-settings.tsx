@@ -22,6 +22,11 @@ import { type Ai, EFFORTS } from "./types";
 
 type Field = "base_url" | "model" | "embed_model";
 const MODEL_CHOICES = 12;
+// A field the server environment sets keeps isReadOnly (focusable, selectable, full contrast) and gets the muted surface.
+const locked = (on?: boolean) =>
+  on
+    ? { controlStyle: { backgroundColor: "var(--color-background-muted)" } }
+    : {};
 
 export function AiSettings() {
   const t = useAdminT();
@@ -99,6 +104,7 @@ export function AiSettings() {
       label={t(label)}
       description={env[field] ? t("ai.env") : desc && t(desc)}
       isReadOnly={env[field]}
+      {...locked(env[field])}
       value={form[field]}
       onChange={(v) => setForm((f) => ({ ...f, [field]: v }))}
     />
@@ -132,6 +138,7 @@ export function AiSettings() {
         label={t("ai.effort")}
         description={env.reasoning_effort ? t("ai.env") : t("ai.effortDesc")}
         isReadOnly={env.reasoning_effort}
+        {...locked(env.reasoning_effort)}
         value={effort}
         options={EFFORTS.map((e) => ({ value: e, label: t(`effort.${e}`) }))}
         onChange={setEffort}
@@ -149,6 +156,7 @@ export function AiSettings() {
               : t("ai.keyNone")
         }
         isReadOnly={env.api_key}
+        {...locked(env.api_key)}
         value={key}
         onChange={setKey}
       />
