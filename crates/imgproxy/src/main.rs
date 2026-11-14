@@ -16,8 +16,8 @@
 //! 200 MiB budget, and holds the reservation until its transcode ends, so the bodies in memory are bounded; a miss
 //! that finds no room within 10 s is answered 503 with `Retry-After`. The number of upstream requests in flight is
 //! not bounded, and cache hits reserve nothing. Each client (an IPv4 address or an IPv6 /64, found as the API finds it,
-//! crates/limit) may send 10 misses a second in bursts of 200; a miss past that is answered 429 with `Retry-After` and
-//! fetches nothing. Cache hits are never limited.
+//! crates/limit) may send 100 misses a second in bursts of 2,000; a miss past that is answered 429 with `Retry-After`
+//! and fetches nothing. Cache hits are never limited.
 //!
 //! Env: BIND (127.0.0.1:3001), CACHE_DIR (./imgcache), CACHE_DISK_MB (10240), CACHE_MEM_MB (256),
 //!      ARCHIVE_IMAGES (dir of <sha1>.webp files)

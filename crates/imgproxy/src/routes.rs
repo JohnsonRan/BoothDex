@@ -34,10 +34,12 @@ pub(crate) const BODY_BUDGET_KIB: usize = 8 * MAX_UPSTREAM_BYTES / 1024;
 /// runs from the request on, so half of it is left for reading the body once the budget is granted.
 pub(crate) const FETCH_WAIT: Duration = Duration::from_secs(UPSTREAM_TIMEOUT.as_secs() / 2);
 
-/// Cache misses one client (an IPv4 address or an IPv6 /64) may send to the upstream hosts: 10 a second, in bursts of
-/// 200, which is a results page of 100 tiles with a cover and a shop icon each when none of them is cached.
+/// Cache misses one client (an IPv4 address or an IPv6 /64) may send to the upstream hosts: 100 a second, in bursts of
+/// 2,000. A fast 10 s scroll to results page 3 at 1440x900 requested 542 images, up to 341 in one second, and a fling
+/// to page 41 at 2560x1440 requested 8,146, up to 494 a second (lab, 2026-11-15), so a smaller bucket would break
+/// covers in ordinary browsing.
 pub(crate) fn miss_limiter() -> RateLimiter {
-    RateLimiter::new(10.0, 200.0, 8192)
+    RateLimiter::new(100.0, 2000.0, 8192)
 }
 
 #[derive(Default)]
