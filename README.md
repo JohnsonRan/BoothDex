@@ -25,7 +25,7 @@ VRCatalogue. Item data and images belong to their creators; every item links bac
 
 See the [deployment guide](docs/DEPLOY.md) for full setup, reverse-proxy examples and backup commands. The stack
 runs PostgreSQL 17 (`pgvector`), three Rust services and the Next.js site with Docker or Podman Compose, exposes
-a single port (`WEB_LISTEN`, default `3100`) for your TLS reverse proxy, and needs a Linux server with **6 GB+
+a single port (`WEB_LISTEN`, default `127.0.0.1:3100`) for your TLS reverse proxy, and needs a Linux server with **6 GB+
 RAM** (8 GB recommended, or 4 GB with swap).
 
 ```mermaid
