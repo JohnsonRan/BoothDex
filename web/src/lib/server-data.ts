@@ -23,7 +23,7 @@ import {
 } from "./settings-core";
 
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:3000";
-const PAGE_SIZE = 100;
+export const PAGE_SIZE = 100;
 /** How long the rate service may take before prices fall back to yen (the results wait for the rates). */
 const RATES_TIMEOUT_MS = 2000;
 

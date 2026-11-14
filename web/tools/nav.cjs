@@ -5,13 +5,12 @@
 //   3. scrolling into results page 3 writes `page=3`;
 //   4. a tile opens its item as `item=<id>`; Back closes it and leaves the same tile at the same place;
 //   5. leaving for another page and coming Back returns to that tile at that place, as does a reload;
-//   6. the page-3 address opened in a new tab starts with page 3's first result in its first row;
+//   6. the page-3 address opened in a new tab starts with page 3's first result in its first row, in its column of
+//      the whole result set from the first frame it is painted in until page 2 has arrived above it;
 //   7. an `item=` link opens its dialog; closing it drops the parameter without leaving a history entry.
 // A place is the first tile showing below the filter band; "the same place" is that tile's top within 2 px, in
-// any column. Columns are not compared: a page whose tiles are not loaded is a box of whole rows (lib/result-pages.ts
-// pageBlock), so the column a tile lands in depends on which pages above it are loaded (REQUIREMENTS.md, "Open
-// questions"). On master of 2026-11-14 step 5 fails for that reason: the tile leading the row is page 2's last, and
-// page 2 comes back as a box, so that tile is gone and page 3 starts the row.
+// any column. At 1440 px that tile is page 2's last but one, leading the row page 3 starts in, so step 5 also needs
+// page 2 read again on the return, not left as boxes (lib/result-pages.ts boxParts, lib/result-frame.ts framePages).
 // The search sends `q`, so this needs LAB_AI_OFF=1 and an API with AI_BASE_URL at a closed port (lab.cjs).
 //   node tools/nav.cjs [page url=http://127.0.0.1:3203/] [query=ドレス]
 const { launch, scrollToPage } = require("./lab.cjs");
@@ -222,7 +221,20 @@ async function stablePlace(p) {
   const api = new URL("/api/search", origin);
   api.search = `q=${encodeURIComponent(query)}&sort=relevant&page=3&pageSize=100&fields=card`;
   const third = (await (await fetch(api)).json()).items?.[0]?.id;
+  api.searchParams.set("page", "2");
+  const second = (await (await fetch(api)).json()).items?.at(-1)?.id;
   const tab = await context.newPage();
+  // the x of page 3's first result in the first frame it is painted in
+  await tab.addInitScript((id) => {
+    const seen = () => {
+      const r = document
+        .querySelector(`[data-item="${id}"]`)
+        ?.getBoundingClientRect();
+      if (r?.width) window.__firstX = r.x;
+      else requestAnimationFrame(seen);
+    };
+    requestAnimationFrame(seen);
+  }, String(third));
   await tab.goto(deepUrl, { waitUntil: "load" });
   await ready(tab);
   const fresh = await stablePlace(tab);
@@ -231,6 +243,29 @@ async function stablePlace(p) {
     "the page-3 address opens with page 3's first result in the first row in view",
     param(tab, "page") === "3" && !!fresh && sameRow(fresh, start),
     `${show(start)}, first in view ${show(fresh)}`,
+  );
+  // page 2, read above it, leaves it where it was first painted: in its column of the whole set
+  await tab.waitForSelector(`[data-item="${second}"]`, { timeout: 15000 });
+  const column = await tab.evaluate((id) => {
+    const tile = document.querySelector(`[data-item="${id}"]`);
+    const grid = tile.parentElement;
+    const tracks = getComputedStyle(grid)
+      .gridTemplateColumns.split(" ")
+      .filter(parseFloat);
+    const x = tile.getBoundingClientRect().x;
+    // a column's pitch is the grid's width over its columns, near enough with a small gap
+    const pitch = grid.clientWidth / tracks.length;
+    return {
+      cols: tracks.length,
+      col: Math.round((x - grid.getBoundingClientRect().x) / pitch) + 1,
+      first: Math.round(window.__firstX),
+      now: Math.round(x),
+    };
+  }, String(third));
+  check(
+    "page 3's first result stays in its column from its first paint",
+    column.first === column.now && column.col === (200 % column.cols) + 1,
+    `column ${column.col} of ${column.cols}, x ${column.first} -> ${column.now}`,
   );
   await tab.close();
 

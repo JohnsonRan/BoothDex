@@ -29,7 +29,7 @@ let kept: (Kept<Page> & { drawn: string; place: Snapshot | null }) | undefined;
 
 export function useResultPlace(
   r: ResultRefs,
-  { keep, load, loadNext, before, measure }: PageReads,
+  { keep, load, loadNext, before }: PageReads,
   {
     page,
     total,
@@ -90,7 +90,6 @@ export function useResultPlace(
   useLayoutEffect(() => {
     history.scrollRestoration = "manual";
     r.width.current = r.grid.current?.clientWidth ?? 0;
-    measure();
     const drawn = drawnWith(settings);
     // New settings (a language or currency change) remount the results through a router refresh, which writes a
     // history entry of Next's own without the place: the place these results last saved goes on from here.

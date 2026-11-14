@@ -98,18 +98,31 @@ export function restorePlan<P>(
   return { page: snap.page };
 }
 
-/** The estimated height of a whole page not read yet: its rows at the measured row pitch, less the gap after the last. */
-export const pageBlock = (
-  pageSize: number,
-  cols: number,
-  pitch: number,
-  gap: number,
-) => Math.ceil(pageSize / cols) * pitch - gap;
+/**
+ * The boxes page `n` draws while it is not read: `lead` cells closing the row the page above ends in, `rows` whole
+ * rows, and `tail` cells opening the next row. The page fills exactly its own cells of the whole result set (every
+ * page before the last is full), so the next page's first tile lands in its own column.
+ */
+export function boxParts(n: number, pageSize: number, cols: number) {
+  const lead = Math.min(
+    pageSize,
+    (cols - (((n - 1) * pageSize) % cols)) % cols,
+  );
+  return {
+    lead,
+    rows: Math.floor((pageSize - lead) / cols),
+    tail: (pageSize - lead) % cols,
+  };
+}
+
+/** The empty cells before the first page drawn, page `n`, so its first tile stands in its column of the whole set. */
+export const leadOffset = (n: number, pageSize: number, cols: number) =>
+  ((n - 1) * pageSize) % cols;
 
 /** A results page as the grid draws it, with tiles of type `T`. */
 export type Page<T> = {
   n: number;
-  /** none: not read yet, drawn as one box of `block` px (near view: silhouette tiles) */
+  /** none: not read yet, drawn as the boxes of its cells (boxParts; near view: silhouette tiles) */
   tiles: T[];
   /** the server's first screen of its page; the rest is still to read */
   partial?: boolean;
@@ -117,7 +130,6 @@ export type Page<T> = {
   heights?: number[];
   /** its tiles come and go a few a frame (PageTiles): the change moves nothing in view */
   gradual?: boolean;
-  block?: number;
   near?: boolean;
   /** reading it failed: a notice to retry stands in its place */
   failed?: boolean;
@@ -126,27 +138,35 @@ export type Page<T> = {
 /** Which way a read goes: the next page at the end, or a page above the reader. */
 export type Dir = "next" | "prev";
 
-/** The grid children a page draws: its tiles, a page of silhouettes near view, else one box or notice. */
-export const kidsOf = <T>(q: Page<T>, pageSize: number) =>
-  q.tiles.length || (q.near && !q.failed ? pageSize : 1);
-
-/** The index of each page's first grid child. */
-export function pageStarts<T>(pages: Page<T>[], pageSize: number) {
-  let at = 0;
-  return pages.map((q) => {
-    const s = at;
-    at += kidsOf(q, pageSize);
-    return s;
-  });
+/** The grid children a page draws at `cols` columns: its tiles, a notice, a page of silhouettes near view, else its boxes. */
+export function kidsOf<T>(q: Page<T>, pageSize: number, cols: number) {
+  if (q.tiles.length) return q.tiles.length;
+  if (q.failed) return 1;
+  if (q.near) return pageSize;
+  const { lead, rows, tail } = boxParts(q.n, pageSize, cols);
+  return [lead, rows, tail].filter(Boolean).length;
 }
 
-/** The pages before `n`, at most ABOVE of them, as boxes of `block` px. */
-export function boxesBefore<T>(n: number, block: number): Page<T>[] {
+/**
+ * The index of each page's first grid child, after the child offsetting the first page (leadOffset) when there is
+ * one, and last the index past the last page's children.
+ */
+export function pageStarts<T>(
+  pages: Page<T>[],
+  pageSize: number,
+  cols: number,
+) {
+  const at = [Number(leadOffset(pages[0].n, pageSize, cols) > 0)];
+  for (const q of pages) at.push(at[at.length - 1] + kidsOf(q, pageSize, cols));
+  return at;
+}
+
+/** The pages before `n`, at most ABOVE of them, not read yet. */
+export function boxesBefore<T>(n: number): Page<T>[] {
   const from = Math.max(1, n - ABOVE);
   return Array.from({ length: n - from }, (_, i) => ({
     n: from + i,
     tiles: [],
-    block,
   }));
 }
 
@@ -195,14 +215,10 @@ export const withFailed = <T>(pages: Page<T>[], n: number, failed: boolean) =>
   pages.map((q) => (q.n === n ? { ...q, failed } : q));
 
 /**
- * The pages at a new width: a page given up for boxes takes `tile` px per tile, a page not read `block` px; the
- * pages drawn reflow by themselves.
+ * The pages at a new width: a page given up for boxes takes `tile` px per tile. The pages drawn reflow by
+ * themselves, and the boxes of a page not read follow the columns and the measured row pitch.
  */
-export const resized = <T>(pages: Page<T>[], tile: number, block: number) =>
+export const resized = <T>(pages: Page<T>[], tile: number) =>
   pages.map((q) =>
-    q.heights
-      ? { ...q, heights: q.heights.map(() => tile) }
-      : q.tiles.length
-        ? q
-        : { ...q, block },
+    q.heights ? { ...q, heights: q.heights.map(() => tile) } : q,
   );

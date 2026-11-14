@@ -7,24 +7,35 @@
 // reader's own scrolling, the results hydrating (they set history.scrollRestoration to manual and keep the place
 // from there, use-result-place.ts), or 10 s ends it: a stream stalled longer than that is left where it is rather
 // than moved under a reader who may be reading it.
-// A reload, Back or Forward is the results' own restore and is left to it; a page restored from the back-forward
-// cache runs no script, and React never runs a script it renders on a client-side navigation. Anything missing
-// makes it do nothing.
+// The page's first tile goes to its column of the whole result set (page size times the pages before it, modulo
+// the grid's columns), so it never moves when the pages above arrive; the results drop it as they hydrate, when the
+// pages they put above it hold it there (use-page-reads.ts measure). A reload, Back or Forward gets the column too,
+// on a reload even from an entry whose scroll restoration the results left manual, but its scrolling is the results'
+// own restore and is left to it; a page restored from the back-forward cache runs no script, and React never runs a
+// script it renders on a client-side navigation. Anything missing makes it do nothing.
 // The line is band-edge.ts covered(): the band's sticky top plus its height, its strip shrunk; the top is the top bar's
 // height (less the strip's shrink), which the AppShell sets on its root only once it hydrates, so this sets it
 // first, as AppShell does. The results then start at that line, where the band's bottom edge meets them.
+// React in development reports both styles, the column and the AppShell's height, as attributes that did not match
+// at hydration. It patches neither and production React does not compare them: both are meant to stay until the
+// AppShell and the results take over.
+
+import { PAGE_SIZE } from "./server-data";
 
 export const DEEP_START = `;(function(){var d=document,o,
-I=["wheel","touchstart","keydown","pointerdown"],n=performance.getEntriesByType&&performance.getEntriesByType("navigation")[0];
-if(n&&n.type!=="navigate")return;
+I=["wheel","touchstart","keydown","pointerdown"],n=performance.getEntriesByType&&performance.getEntriesByType("navigation")[0],
+r=n&&n.type!=="navigate",p=/[?&]page=(\\d+)/.exec(location.search);
 function px(v){return parseFloat(v)||0}
 function stop(){o&&o.disconnect();I.forEach(function(e){removeEventListener(e,stop,true)})}
-function go(){try{if(history.scrollRestoration==="manual")return stop();
+function go(){try{if(!r&&history.scrollRestoration==="manual")return stop();
 var c=d.querySelector("[data-band-content]");if(!c||c.closest("[hidden]"))return;
+var f=c.querySelector("[data-item]");
+if(f&&p)f.style.gridColumn=(p[1]-1)*${PAGE_SIZE}%getComputedStyle(f.parentElement).gridTemplateColumns.split(" ").length+1;
+if(r)return f&&stop();
 var b=c.previousElementSibling;if(!b)return;
 var h=d.querySelector(".astryx-app-shell-header"),a=d.querySelector(".astryx-app-shell");
 if(h&&a)a.style.setProperty("--_app-shell-header-height",h.getBoundingClientRect().height+"px");
 var t=b.getBoundingClientRect(),e=px(getComputedStyle(b).top)+t.height,y=c.getBoundingClientRect().top;
-scrollTo(0,y+scrollY-e);if(c.querySelector("[data-item]"))stop()}catch(x){stop()}}
+scrollTo(0,y+scrollY-e);if(f)stop()}catch(x){stop()}}
 o=new MutationObserver(go);o.observe(d.body,{childList:true,subtree:true});
 I.forEach(function(e){addEventListener(e,stop,{capture:true,passive:true})});setTimeout(stop,10000);go()})();`;
