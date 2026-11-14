@@ -20,6 +20,7 @@ test("stored settings win, invalid fields fall back", () => {
     theme: "light",
     content: "en",
     black: "off",
+    motion: "system",
     filters: "side",
   });
   expect(
@@ -27,6 +28,12 @@ test("stored settings win, invalid fields fall back", () => {
   ).toEqual({ ...DEFAULT_SETTINGS, ui: "ja" });
   expect(parseSettings("not json")).toEqual(DEFAULT_SETTINGS);
   expect(parseSettings(undefined)).toEqual(DEFAULT_SETTINGS);
+});
+
+test("reduced motion follows the system unless turned on", () => {
+  expect(DEFAULT_SETTINGS.motion).toBe("system");
+  expect(parseSettings('{"motion":"reduce"}').motion).toBe("reduce");
+  expect(parseSettings('{"motion":"on"}').motion).toBe("system");
 });
 
 test("pure black is off unless turned on", () => {

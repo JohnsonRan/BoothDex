@@ -38,17 +38,18 @@ export const viewport: Viewport = {
 
 // Applies the saved appearance and language before first paint (from the cookie, or master's localStorage copy
 // until providers.tsx moves it over). Without a saved mode the page follows the system (no data-theme), so only a
-// pinned light or dark mode needs the attribute; pure black marks <html> with data-black (globals.css).
-// SESSION_HINT_SCRIPT marks the last session's sign-in the same way.
+// pinned light or dark mode needs the attribute; pure black marks <html> with data-black (globals.css), and reduced
+// motion with data-motion (lib/motion.ts). SESSION_HINT_SCRIPT marks the last session's sign-in the same way.
 const preferences = `try{var m=document.cookie.match(/(?:^|; )settings=([^;]*)/);
 var s=JSON.parse(m?decodeURIComponent(m[1]):localStorage.getItem("settings")||"{}");var d=document.documentElement;
 if(s.theme==="light"||s.theme==="dark")d.setAttribute("data-theme",s.theme);
 if(s.black==="on")d.setAttribute("data-black","");
+if(s.motion==="reduce")d.setAttribute("data-motion","reduce");
 var l={zh:"zh-CN",en:"en-US",ja:"ja-JP",ko:"ko-KR"}[s.ui];if(l)d.lang=l}catch(e){}`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    // data-theme, data-black, data-account and lang may be changed by the script below before hydration
+    // data-theme, data-black, data-motion, data-account and lang may be changed by the script below before hydration
     <html
       lang="zh-CN"
       data-astryx-theme="neutral"

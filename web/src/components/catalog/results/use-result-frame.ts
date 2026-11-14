@@ -156,8 +156,12 @@ export function useResultFrame(
       if (!g) return;
       // the place a new width keeps (sized below), taken only at the width the pages were drawn for (during a
       // drag the next width is laid out before this frame runs), and not again until the window moves: after a
-      // change of columns another tile can be first in view, and following it would let the place drift a row
-      if (g.clientWidth === r.width.current && scrollY !== sizedY) {
+      // change of columns another tile can be first in view, and following it would let the place drift a row;
+      // taken again, though, once a commit removed it (a page read that replaced a box)
+      if (
+        g.clientWidth === r.width.current &&
+        (scrollY !== sizedY || !r.seen.current?.el.isConnected)
+      ) {
         r.seen.current = anchorNow();
         sizedY = Number.NaN;
       }

@@ -12,6 +12,7 @@ const NAMES = {
   currency: "currency",
   theme: "theme",
   black: "black",
+  motion: "motion",
   filters: "filters",
 } as const satisfies Record<keyof Settings, string>;
 
@@ -30,11 +31,12 @@ function send(json: Record<string, string>) {
 
 /** Sends changed settings to the account; item text that follows the interface language is sent as "ui". */
 export function savePreferences(patch: Partial<Settings>) {
-  send(
-    Object.fromEntries(
-      Object.entries(patch).map(([k, v]) => [NAMES[k as keyof Settings], v]),
+  const json = Object.fromEntries(
+    Object.entries(patch).flatMap(([k, v]) =>
+      k in NAMES ? [[NAMES[k as keyof typeof NAMES], v]] : [],
     ),
   );
+  if (Object.keys(json).length) send(json);
 }
 
 /** Sends "my avatar" (the avatar-fit view's pick) to the account. */

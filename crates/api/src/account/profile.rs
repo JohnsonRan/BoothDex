@@ -20,7 +20,7 @@ pub fn validate_preferences(v: &Value) -> Result<(), &'static str> {
     for (k, val) in obj {
         let s = val.as_str().ok_or("preference values must be strings")?;
         // "" removes a known key
-        let ok = s.is_empty() && ["ui", "language", "currency", "theme", "style", "black", "filters", "avatar", "adult"].contains(&k.as_str())
+        let ok = s.is_empty() && ["ui", "language", "currency", "theme", "style", "black", "motion", "filters", "avatar", "adult"].contains(&k.as_str())
             || match k.as_str() {
             // interface language
             "ui" => ["zh", "en", "ja", "ko"].contains(&s),
@@ -32,6 +32,8 @@ pub fn validate_preferences(v: &Value) -> Result<(), &'static str> {
             "style" => (1..=20).contains(&s.len()) && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
             // pure black in dark mode (web lib/settings-core.ts BLACK)
             "black" => ["on", "off"].contains(&s),
+            // reduce motion whatever the system says, or follow it (web lib/settings-core.ts MOTIONS)
+            "motion" => ["system", "reduce"].contains(&s),
             // the filters in a rail at the side or the toolbar's row (web lib/settings-core.ts FILTER_PLACES); "top",
             // the row's old name, from a page still open on the earlier site, which now reads it as the rail
             "filters" => ["side", "row", "top"].contains(&s),
@@ -180,6 +182,9 @@ mod tests {
         assert!(validate_preferences(&json!({"style": "Y2K"})).is_err());
         assert!(validate_preferences(&json!({"black": "on"})).is_ok());
         assert!(validate_preferences(&json!({"black": "yes"})).is_err());
+        assert!(validate_preferences(&json!({"motion": "reduce"})).is_ok());
+        assert!(validate_preferences(&json!({"motion": ""})).is_ok());
+        assert!(validate_preferences(&json!({"motion": "on"})).is_err());
         assert!(validate_preferences(&json!({"filters": "side"})).is_ok());
         assert!(validate_preferences(&json!({"filters": "row"})).is_ok());
         assert!(validate_preferences(&json!({"filters": "left"})).is_err());

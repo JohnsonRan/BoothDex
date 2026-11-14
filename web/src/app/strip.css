@@ -235,6 +235,13 @@
   animation-timeline: scroll(root);
   animation-range: var(--strip-y0, 0px)
     calc(var(--strip-y0, 0px) + var(--strip-d));
+  /* not only under `data-morph`: the buttons' fade runs before the band sets it */
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+  :where(:root[data-motion="reduce"]) & {
+    animation: none;
+  }
 }
 @supports not (animation-timeline: scroll()) {
   :is(
@@ -250,21 +257,6 @@
     animation-duration: 1s;
     animation-play-state: paused;
     animation-delay: calc(var(--strip-p, 0) * -1s);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  [data-morph]
-    :is(
-      .strip-thumb,
-      .strip-face,
-      .strip-card,
-      .strip-label,
-      .strip-caption,
-      .strip-name,
-      .strip-surface,
-      [data-strip] [popover]
-    ) {
-    animation: none;
   }
 }
 :is([data-strip-open], [data-strip-tucked])

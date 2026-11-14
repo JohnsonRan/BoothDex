@@ -43,13 +43,22 @@ const UiContext = createContext<Ui | null>(null);
 /** master's localStorage key for the settings, before they moved to the cookie */
 const LEGACY_SETTINGS = "settings";
 
-type Look = Pick<Settings, "theme" | "black">;
+type Look = Pick<Settings, "theme" | "black" | "motion">;
 
-/** Puts a colour mode on <html> and the root Theme's element at once, ahead of the render that follows
- *  (globals.css lets these attributes alone set the colour scheme). */
-function showLook({ theme, black }: Look) {
+/** Astryx 0.7.16's private mark (core privateAttributes/reducedMotion.stylex.ts): its animator reduces the motion of
+ *  every element inside it. On <body>, as the root Theme rewrites the one on <html> whenever it renders a mode. */
+const ASTRYX_REDUCED_MOTION = "data-astryx-reduced-motion";
+
+/** Puts a colour mode and reduced motion on <html> and the root Theme's element at once, ahead of the render that
+ *  follows (globals.css lets these attributes alone set the colour scheme; the CSS and lib/motion.ts read
+ *  data-motion). */
+function showLook({ theme, black, motion }: Look) {
   const html = document.documentElement;
   html.toggleAttribute("data-black", black === "on");
+  if (motion === "reduce") html.dataset.motion = motion;
+  else delete html.dataset.motion;
+  // Astryx's own animator reads its mark on <body> (the root Theme rewrites <html>): set in the same task
+  document.body.toggleAttribute(ASTRYX_REDUCED_MOTION, motion === "reduce");
   for (const el of [html, html.querySelector("body [data-astryx-theme]")]) {
     if (!el) continue;
     if (theme === "system") el.removeAttribute("data-theme");
@@ -86,6 +95,7 @@ export function Providers({
   const [look, setLook] = useState<Look>({
     theme: fromServer.theme,
     black: fromServer.black,
+    motion: fromServer.motion,
   });
   const locale = LOCALES[fromServer.ui];
   // what the cookie holds: a second change made before the first one's render arrives builds on it
@@ -99,8 +109,12 @@ export function Providers({
       document.cookie = `${SETTINGS_COOKIE}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=31536000; samesite=lax`;
       // signed in, the account keeps them too (lib/preferences.ts)
       savePreferences(patch);
-      if (patch.theme || patch.black) {
-        const shown = { theme: next.theme, black: next.black };
+      if (patch.theme || patch.black || patch.motion) {
+        const shown = {
+          theme: next.theme,
+          black: next.black,
+          motion: next.motion,
+        };
         showLook(shown);
         // the new look then reaches every Icon and setting in a transition: an urgent update hydrated the page's
         // pending content (site-frame's Activity) in one long task, up to 1 s at 4x CPU
@@ -140,6 +154,11 @@ export function Providers({
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
+
+  const reduced = look.motion === "reduce";
+  useEffect(() => {
+    document.body.toggleAttribute(ASTRYX_REDUCED_MOTION, reduced);
+  }, [reduced]);
 
   // visitors from before the cookie existed: their settings move over from localStorage once, as on master
   const { update } = value;

@@ -237,6 +237,8 @@ export const zh = {
   "settings.system": "跟随系统",
   "settings.black": "纯黑模式",
   "settings.blackDesc": "深色模式下使用纯黑背景，适合 OLED 屏幕。",
+  "settings.motion": "减少动效",
+  "settings.motionDesc": "减少页面上的动画。关闭时跟随系统设置。",
   "settings.filters": "顶部筛选",
   "settings.filtersDesc":
     "宽屏下把筛选项和搜索、排序一起放在顶部，不用左侧栏。",
