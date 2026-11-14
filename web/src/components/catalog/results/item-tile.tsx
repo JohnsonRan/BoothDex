@@ -48,7 +48,7 @@ export type Tile = {
   price: string;
   /** NEW first, then up to two feature tags */
   marks: string[];
-  /** the second image, shown while a pointer rests on the tile ("" when the item has one) */
+  /** the second image, shown while a pointer rests on the tile ("" when the item has none) */
   second: string;
 };
 
