@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use axum::Router;
 use axum::extract::{Path, Query, State};
@@ -12,13 +13,17 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use foyer::HybridCache;
 use tokio::sync::Semaphore;
+use tokio::time::error::Elapsed;
 
 use crate::encode::{Format, avif_quality, fit_side, transcode};
-use crate::upstream::{SIZES, asset_upstream_url, factory_upstream_url, fetch_upstream, icon_upstream_url, upstream_url};
+use crate::upstream::{SIZES, UPSTREAM_TIMEOUT, asset_upstream_url, factory_upstream_url, fetch_upstream, icon_upstream_url, upstream_url};
 
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 /// Upstream 404s are cached (as an empty value) — Booth image paths are content-addressed and never come back
 const NOT_FOUND_CACHE: &str = "public, max-age=86400";
+/// How long a cache miss waits for a fetch permit before it is answered 503: as long as one upstream request of the
+/// permit holder ahead of it may take. A miss that waits longer is behind a queue the permits cannot drain in time.
+pub(crate) const FETCH_WAIT: Duration = UPSTREAM_TIMEOUT;
 
 #[derive(Default)]
 pub(crate) struct Stats {
@@ -36,6 +41,11 @@ pub(crate) struct AppState {
     pub(crate) disk_mb: usize,
     pub(crate) cache: HybridCache<String, Vec<u8>>,
     pub(crate) client: reqwest::Client,
+    /// Cache misses that may hold an upstream body at once, from the start of its download to the end of its
+    /// transcode; this bounds the bodies in memory and the requests to the upstream hosts.
+    pub(crate) fetches: Semaphore,
+    /// How long a cache miss waits for one of `fetches`; FETCH_WAIT outside tests
+    pub(crate) fetch_wait: Duration,
     pub(crate) transcode: Semaphore,
     pub(crate) archive: Option<PathBuf>,
 }
@@ -131,12 +141,20 @@ async fn proxy(s: Arc<AppState>, key: String, url: String, size: &str, format: F
         .cache
         .get_or_fetch(&key, move || async move {
             st.stats.upstream.fetch_add(1, Ordering::Relaxed);
+            // the one timeout in this closure: an `Elapsed` error below means no fetch permit came in time
+            let _fetch = tokio::time::timeout(st.fetch_wait, st.fetches.acquire()).await??;
             let Some(raw) = fetch_upstream(&st.client, &url).await? else { return Ok::<_, anyhow::Error>(Vec::new()) };
             let _permit = st.transcode.acquire().await?;
             tokio::task::spawn_blocking(move || transcode(&raw, fit_side, format, quality)).await?
         })
         .await;
     match result {
+        Err(e) if e.downcast_ref::<Elapsed>().is_some() => {
+            s.stats.errors.fetch_add(1, Ordering::Relaxed);
+            eprintln!("{key}: busy, no fetch permit within {:?}", s.fetch_wait);
+            let retry_after = FETCH_WAIT.as_secs().to_string();
+            (StatusCode::SERVICE_UNAVAILABLE, [(header::RETRY_AFTER, retry_after), (header::CACHE_CONTROL, "no-store".to_owned())], "busy").into_response()
+        }
         Ok(entry) => {
             let bytes = entry.value().clone();
             if bytes.is_empty() {
@@ -204,19 +222,104 @@ mod tests {
         assert_eq!(factory_request("300x300_a2_g5", uuid, "a.jpg"), None);
     }
 
-    /// Loopback only, and no request reaches an upstream: each path is routed but refused by its handler's checks.
-    #[tokio::test]
-    async fn both_factory_routes_reach_their_handler() {
+    async fn test_state(fetches: usize, fetch_wait: Duration) -> Arc<AppState> {
         let cache = foyer::HybridCacheBuilder::new().memory(1024 * 1024).storage().build().await.unwrap();
-        let state = Arc::new(AppState {
+        Arc::new(AppState {
             stats: Stats::default(),
             mem_mb: 1,
             disk_mb: 0,
             cache,
             client: crate::upstream::upstream_client().unwrap(),
+            fetches: Semaphore::new(fetches),
+            fetch_wait,
             transcode: Semaphore::new(1),
             archive: None,
-        });
+        })
+    }
+
+    /// An upstream on loopback that answers every `/{file}` with the same small PNG, and the count of requests it
+    /// has received. Its URLs are IP literals, which the upstream client allows; no request leaves the host.
+    async fn counting_upstream() -> (String, Arc<AtomicU64>) {
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(image::RgbImage::new(8, 8)).write_to(&mut png, image::ImageFormat::Png).unwrap();
+        let png = png.into_inner();
+        let requests = Arc::new(AtomicU64::new(0));
+        let seen = requests.clone();
+        let app = Router::new().route(
+            "/{file}",
+            get(move || {
+                seen.fetch_add(1, Ordering::SeqCst);
+                let png = png.clone();
+                async move { png }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (base, requests)
+    }
+
+    fn miss(s: &Arc<AppState>, base: &str, n: usize) -> impl Future<Output = Response> + use<> {
+        proxy(s.clone(), format!("k{n}"), format!("{base}/{n}.png"), "300x300_a2_g5", Format::Png, None)
+    }
+
+    async fn until(requests: &AtomicU64, n: u64) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while requests.load(Ordering::SeqCst) < n {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the upstream saw too few requests");
+    }
+
+    /// Loopback only. With the one transcode permit held here, no miss can finish, so every download the upstream
+    /// sees is a body still held in memory: there must be no more than the fetch permits.
+    #[tokio::test]
+    async fn uncached_requests_hold_no_more_bodies_than_the_fetch_permits() {
+        let s = test_state(2, Duration::from_secs(60)).await;
+        let (base, requests) = counting_upstream().await;
+        let encoding = s.transcode.acquire().await.unwrap();
+        let misses: Vec<_> = (0..10).map(|n| tokio::spawn(miss(&s, &base, n))).collect();
+        until(&requests, 2).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(requests.load(Ordering::SeqCst), 2, "more bodies downloaded than fetch permits");
+        drop(encoding);
+        for m in misses {
+            assert_eq!(m.await.unwrap().status(), StatusCode::OK);
+        }
+        assert_eq!(requests.load(Ordering::SeqCst), 10);
+        // a cache hit takes no permit: it is served while every fetch and transcode permit is held
+        let (_fetches, _encoding) = (s.fetches.acquire_many(2).await.unwrap(), s.transcode.acquire().await.unwrap());
+        let hit = tokio::time::timeout(Duration::from_secs(5), miss(&s, &base, 0)).await.expect("a cache hit waited for a permit");
+        assert_eq!(hit.status(), StatusCode::OK);
+        assert_eq!(requests.load(Ordering::SeqCst), 10);
+    }
+
+    /// Loopback only. A miss that gets no fetch permit within `fetch_wait` is told to come back, and the answer is
+    /// not cached anywhere: the same request succeeds once a permit is free.
+    #[tokio::test]
+    async fn a_miss_without_a_fetch_permit_in_time_gets_503() {
+        let s = test_state(1, Duration::from_millis(200)).await;
+        let (base, requests) = counting_upstream().await;
+        let encoding = s.transcode.acquire().await.unwrap();
+        let first = tokio::spawn(miss(&s, &base, 0));
+        until(&requests, 1).await;
+        let busy = tokio::time::timeout(Duration::from_secs(5), miss(&s, &base, 1)).await.expect("the miss waited past fetch_wait");
+        assert_eq!(busy.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(busy.headers()[header::RETRY_AFTER], FETCH_WAIT.as_secs().to_string());
+        assert_eq!(busy.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        drop(encoding);
+        assert_eq!(first.await.unwrap().status(), StatusCode::OK);
+        assert_eq!(miss(&s, &base, 1).await.status(), StatusCode::OK);
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
+    }
+
+    /// Loopback only, and no request reaches an upstream: each path is routed but refused by its handler's checks.
+    #[tokio::test]
+    async fn both_factory_routes_reach_their_handler() {
+        let state = test_state(1, FETCH_WAIT).await;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, router(state)).await.unwrap() });

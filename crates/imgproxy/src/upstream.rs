@@ -10,6 +10,8 @@ use crate::public_dns::PublicOnly;
 /// Booth's own resize variants; anything else 403s upstream anyway. "orig" = original upload.
 pub(crate) const SIZES: &[&str] = &["48x48", "72x72_a2_g5", "300x300_a2_g5", "620x620", "orig"];
 const MAX_UPSTREAM_BYTES: usize = 25 * 1024 * 1024;
+/// The longest one upstream request may take, redirects included.
+pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn is_uuid(s: &str) -> bool {
     s.len() == 36 && s.char_indices().all(|(i, c)| if [8, 13, 18, 23].contains(&i) { c == '-' } else { c.is_ascii_hexdigit() && !c.is_ascii_uppercase() })
@@ -75,7 +77,7 @@ pub(crate) fn upstream_client() -> reqwest::Result<reqwest::Client> {
     // reqwest is built with `rustls-no-provider`, so building a client panics until a provider is installed
     rustls::crypto::ring::default_provider().install_default().ok();
     let policy = Policy::custom(|a| if follow_redirect(a.previous(), a.url()) { a.follow() } else { a.stop() });
-    reqwest::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).dns_resolver(PublicOnly).no_proxy().build()
+    reqwest::Client::builder().timeout(UPSTREAM_TIMEOUT).redirect(policy).dns_resolver(PublicOnly).no_proxy().build()
 }
 
 pub(crate) async fn fetch_upstream(client: &reqwest::Client, url: &str) -> Result<Option<Vec<u8>>> {

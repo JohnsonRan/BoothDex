@@ -12,6 +12,10 @@
 //! fetched, over https, and only Booth-shaped paths under fixed directories (with Booth's own sizes for pximg) are
 //! accepted, so this is not an open proxy. A redirect is followed only on the same https host (src/upstream.rs), and
 //! a host is connected to only at a public address (src/public_dns.rs).
+//! A cache miss downloads and transcodes only while it holds one of twice as many fetch permits as images are
+//! encoded at once, so the upstream bodies in memory and the requests to the upstream hosts are bounded; a miss that
+//! gets no permit within 20 s is answered 503 with `Retry-After`. Cache hits take no permit. There is no per-client
+//! limit here: the front proxy or CDN sets one for /img/*.
 //!
 //! Env: BIND (127.0.0.1:3001), CACHE_DIR (./imgcache), CACHE_DISK_MB (10240), CACHE_MEM_MB (256),
 //!      ARCHIVE_IMAGES (dir of <sha1>.webp files)
@@ -30,7 +34,7 @@ use tokio::sync::Semaphore;
 
 #[cfg(feature = "libavif")]
 use encode::MAX_TRANSCODES;
-use routes::{AppState, Stats};
+use routes::{AppState, FETCH_WAIT, Stats};
 use upstream::upstream_client;
 
 fn env_num(key: &str, default: usize) -> usize {
@@ -71,6 +75,10 @@ async fn serve() -> Result<()> {
         disk_mb,
         cache,
         client: upstream_client()?,
+        // a download for each image being encoded and one waiting, so the encoders do not idle on the network. With
+        // libaom that is at most 8 bodies of at most 25 MB; the burst measured at MAX_TRANSCODES held all 24 at once.
+        fetches: Semaphore::new(2 * transcodes),
+        fetch_wait: FETCH_WAIT,
         transcode: Semaphore::new(transcodes),
         archive: std::env::var("ARCHIVE_IMAGES").ok().map(PathBuf::from),
     });
