@@ -412,7 +412,7 @@ function Section({
     <Collapsible
       value={value}
       trigger={
-        <Text type="body" weight="semibold">
+        <Text type="body" weight="semibold" className="rail-name">
           {field}
         </Text>
       }

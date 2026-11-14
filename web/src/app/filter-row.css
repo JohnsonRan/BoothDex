@@ -174,6 +174,13 @@
     display: none;
   }
 }
+/* A section's name (catalog/filter/filter-rail.tsx Section) is body text in Collapsible's trigger label, which trims
+   its line to the capitals and baseline of the trigger's larger type: inline, the name sat on that baseline, its own
+   capitals' middle 1-1.7 px under the chevron's. As a block, the name's own line is the one trimmed, so the trigger
+   centres the name's capitals on the chevron. */
+.rail-name {
+  display: block;
+}
 /* The rail's resize handle sticks beside the rail at the window's height, as the rail does (filter-rail.tsx RAIL), so
    its grip shows mid-window and not mid-page. */
 .filter-rail-handle {
