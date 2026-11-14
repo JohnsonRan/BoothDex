@@ -226,6 +226,8 @@ boothdex.example.com {
 | Backup archived images | Copy `/srv/boothdex/images` once (changes only if you archive newly delisted items) |
 | Restore database | `docker compose stop api worker && docker compose exec -T postgres pg_restore -U catalogue -d catalogue --clean --if-exists --no-owner --role=catalogue < backup.dump && docker compose start api worker` |
 
+An `.env` copied from `.env.example` before the default became `127.0.0.1:3100` sets `WEB_LISTEN=3100`, which publishes the site on all interfaces. Change it to `WEB_LISTEN=127.0.0.1:3100` unless the proxy runs on another machine, then run `docker compose up -d web`.
+
 An update applies its new database migrations when `api` and `worker` start, each migration in its own transaction. CI applies a pull request's migrations to the public data bundle (`.github/workflows/migrations.yml`). The bundle holds no rows of the account tables (`users`, `sessions`, `favourites`, `item_stats` and others), so migrations of those tables are tested on an empty database only.
 
 If `api` or `worker` stops at startup after an update, `docker compose logs api worker` names the migration that failed. To go back to the images that ran before, or when the new version starts and then misbehaves:
