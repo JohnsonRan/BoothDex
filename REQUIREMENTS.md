@@ -40,7 +40,7 @@ meanwhile.
 | Rust tests, not counting the build | 3 min | 109 tests in 4 s (2026-11-11, development host, load not recorded) | review |
 | `bun test` in `web/` | 15 s | 103 tests in 3 s (2026-11-11, development host, load not recorded) | review |
 | Slowest test package | 16 s | `api` unit tests: 12.1 s, 15.4 s, 12.4 s (2026-11-11, GitHub-hosted ubuntu-latest, load not recorded) | review |
-| Home page first load, gzip -9: HTML | 51,500 B | 50,696 B over 3 reads, against 48,674 to 48,677 B for 0.7.8 on the same data (2026-11-13, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
+| Home page first load, gzip -9: HTML | 51,520 B | 51,498 to 51,503 B for the same code across builds, which differ only in the random build ID Next writes into the HTML; the 20 B above 51,500 is room for that noise, not for new content (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Home page first load, gzip -9: JS | 522,500 B | 521,999 B over 3 reads with Astryx 0.7.16, the preloaded chunks included, against 520,914 B for 0.7.15 on the same host (2026-11-14, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Home page first load, gzip -9: CSS | 50,750 B | 50,561 B over 3 reads with Astryx 0.7.16, against 49,901 B for 0.7.15 on the same host (2026-11-14, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Source file size, p90 of this repository (pass bar) | 274 lines | 274 lines: nearest-rank p90 of the 272 tracked `.rs`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.css`, `.sql`, `.sh` and `.py` files (2026-11-12, `wc -l`) | review |
