@@ -15,7 +15,6 @@ import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { SearchResponse } from "@/lib/api-types";
 import { type Filters, searchQuery } from "@/lib/catalog";
-import { columnCount } from "@/lib/grid";
 import { anchorAt, firstBelow } from "@/lib/result-frame";
 import {
   boxesBefore,
@@ -224,10 +223,9 @@ export function usePageReads(
     const g = r.grid.current;
     if (!g) return 0;
     const style = getComputedStyle(g);
-    // a page's box drawn for more columns spans past the last one and adds implicit columns, tiles flowing into
-    // them: held at 0px, they are left out (lib/grid.ts columnCount); drawn for the right columns, there are none
-    g.style.gridAutoColumns = "0px";
-    setCols(columnCount(style.gridTemplateColumns));
+    // read before the grid is drawn for fewer columns, a page's box spanning past the last one adds implicit columns
+    // and the count is too high: each measure after a commit (result-pages.tsx) reads fewer, until none are left
+    setCols(style.gridTemplateColumns.split(" ").length);
     const tile = g.querySelector<HTMLElement>("[data-item]");
     if (!tile) return 0;
     // the column lib/deep-start.ts gave the server's first tile goes: the pages put above it in the same commit

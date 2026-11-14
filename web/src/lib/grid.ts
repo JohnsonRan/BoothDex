@@ -15,11 +15,3 @@ export const remColumns = (
       gridTemplateColumns: `repeat(auto-${repeat}, minmax(min(100%, ${minWidth}${pairGap === undefined ? "" : `, (100% - var(--spacing-${pairGap})) / 2`}), 1fr))`,
     },
   }) as const;
-
-/**
- * The columns of a grid from its resolved track list (`getComputedStyle(grid).gridTemplateColumns`), read with
- * `grid-auto-columns: 0px`: the implicit tracks an item spanning past the last column adds then resolve to 0px and
- * are not counted. Each auto-filled column is wider than 0 in a laid-out grid.
- */
-export const columnCount = (tracks: string) =>
-  tracks.split(" ").filter(Number.parseFloat).length;
