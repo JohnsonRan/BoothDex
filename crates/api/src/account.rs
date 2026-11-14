@@ -44,6 +44,7 @@ use sign_in::registration;
 use views::{add_views, clear_views, list_views};
 
 use crate::error::Refusal;
+use crate::limit::Check;
 use crate::{ApiError, AppState, limit};
 
 pub struct User {

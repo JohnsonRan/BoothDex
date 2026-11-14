@@ -17,6 +17,7 @@ serde_json = "1"
 sqlx = { version = "0.9", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls", "json", "chrono", "migrate", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 boothdex-core = { path = "crates/core" }
+boothdex-limit = { path = "crates/limit" }
 
 # Unoptimized, Argon2 takes about 0.3 s a hash, and the account tests hash and verify dozens of times.
 [profile.dev.package.argon2]

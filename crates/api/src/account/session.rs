@@ -172,8 +172,10 @@ mod tests {
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
     async fn a_session_stores_the_client_ip_not_a_forged_header(pool: PgPool) {
+        use boothdex_limit::client_ip;
+
         use crate::account::{Login, Register, hash_password, login, register};
-        use crate::limit::{ClientIp, client_ip};
+        use crate::limit::ClientIp;
 
         sqlx::query("insert into users (username, email, display_name, password_hash) values ('ann', 'ann@example.test', 'Ann', $1)")
             .bind(hash_password("0123456789".into()).await.ok().unwrap())

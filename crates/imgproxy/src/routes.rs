@@ -1,6 +1,7 @@
 //! The HTTP routes: request validation, the cache in front of the upstream fetch and the transcode, and the
 //! operator counters.
 
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -11,6 +12,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
+use boothdex_limit::{ClientIp, RateLimiter};
 use foyer::HybridCache;
 use tokio::sync::Semaphore;
 use tokio::time::error::Elapsed;
@@ -31,6 +33,12 @@ pub(crate) const BODY_BUDGET_KIB: usize = 8 * MAX_UPSTREAM_BYTES / 1024;
 /// How long a cache miss waits for its share of the body budget before it is answered 503. The upstream timeout
 /// runs from the request on, so half of it is left for reading the body once the budget is granted.
 pub(crate) const FETCH_WAIT: Duration = Duration::from_secs(UPSTREAM_TIMEOUT.as_secs() / 2);
+
+/// Cache misses one client (an IPv4 address or an IPv6 /64) may send to the upstream hosts: 10 a second, in bursts of
+/// 200, which is a results page of 100 tiles with a cover and a shop icon each when none of them is cached.
+pub(crate) fn miss_limiter() -> RateLimiter {
+    RateLimiter::new(10.0, 200.0, 8192)
+}
 
 #[derive(Default)]
 pub(crate) struct Stats {
@@ -55,6 +63,8 @@ pub(crate) struct AppState {
     pub(crate) body_budget: Semaphore,
     /// How long a cache miss waits for its reservation; FETCH_WAIT outside tests
     pub(crate) fetch_wait: Duration,
+    /// miss_limiter() outside tests; a cache hit takes nothing from it
+    pub(crate) misses: RateLimiter,
     pub(crate) transcode: Semaphore,
     pub(crate) archive: Option<PathBuf>,
 }
@@ -77,52 +87,56 @@ struct FormatQuery {
 
 async fn booth(
     State(s): State<Arc<AppState>>,
+    ClientIp(ip): ClientIp,
     Path((size, uuid, item, file)): Path<(String, String, String, String)>,
     Query(q): Query<FormatQuery>,
 ) -> Response {
     let (Some(url), Some(format)) = (upstream_url(&size, &uuid, &item, &file), Format::parse(q.format.as_deref())) else {
         return bad_request();
     };
-    proxy(s, format!("{size}/{uuid}/{item}/{file}:{format:?}"), url, &size, format, None).await
+    proxy(s, ip, format!("{size}/{uuid}/{item}/{file}:{format:?}"), url, &size, format, None).await
 }
 
 async fn icon(
     State(s): State<Arc<AppState>>,
+    ClientIp(ip): ClientIp,
     Path((size, user, file)): Path<(String, String, String)>,
     Query(q): Query<FormatQuery>,
 ) -> Response {
     let (Some(url), Some(format)) = (icon_upstream_url(&size, &user, &file), Format::parse(q.format.as_deref())) else {
         return bad_request();
     };
-    proxy(s, format!("u/{size}/{user}/{file}:{format:?}"), url, &size, format, None).await
+    proxy(s, ip, format!("u/{size}/{user}/{file}:{format:?}"), url, &size, format, None).await
 }
 
-async fn asset(State(s): State<Arc<AppState>>, Path(file): Path<String>, Query(q): Query<FormatQuery>) -> Response {
+async fn asset(State(s): State<Arc<AppState>>, ClientIp(ip): ClientIp, Path(file): Path<String>, Query(q): Query<FormatQuery>) -> Response {
     let (Some(url), Some(format)) = (asset_upstream_url(&file), Format::parse(q.format.as_deref())) else {
         return bad_request();
     };
     // a sized variant's quality: the one asset in use, the placeholder icon, is 150 px
-    proxy(s, format!("a/{file}:{format:?}"), url, "asset", format, None).await
+    proxy(s, ip, format!("a/{file}:{format:?}"), url, "asset", format, None).await
 }
 
 /// The original drawing: the address the site used before it named a size, kept for pages and caches that hold it.
 async fn factory(
     State(s): State<Arc<AppState>>,
+    ClientIp(ip): ClientIp,
     Path((uuid, file)): Path<(String, String)>,
     query: Query<FormatQuery>,
 ) -> Response {
-    factory_sized(State(s), Path(("orig".to_owned(), uuid, file)), query).await
+    factory_sized(State(s), ClientIp(ip), Path(("orig".to_owned(), uuid, file)), query).await
 }
 
 async fn factory_sized(
     State(s): State<Arc<AppState>>,
+    ClientIp(ip): ClientIp,
     Path((size, uuid, file)): Path<(String, String, String)>,
     Query(q): Query<FormatQuery>,
 ) -> Response {
     let (Some((key, url, side)), Some(format)) = (factory_request(&size, &uuid, &file), Format::parse(q.format.as_deref())) else {
         return bad_request();
     };
-    proxy(s, format!("{key}:{format:?}"), url, &size, format, side).await
+    proxy(s, ip, format!("{key}:{format:?}"), url, &size, format, side).await
 }
 
 /// Cache key (without the format), upstream URL and the square to fit into for a pixiv Factory drawing, or None when
@@ -137,29 +151,41 @@ fn factory_request(size: &str, uuid: &str, file: &str) -> Option<(String, String
     Some((key, url, fit_side(size)))
 }
 
-/// `fit_side`: the square the decoded image is scaled down to before encoding, for an upstream without the size.
-async fn proxy(s: Arc<AppState>, key: String, url: String, size: &str, format: Format, fit_side: Option<u32>) -> Response {
+/// `ip`: the client, whose bucket in `misses` a cache miss draws from. `fit_side`: the square the decoded image is
+/// scaled down to before encoding, for an upstream without the size.
+async fn proxy(s: Arc<AppState>, ip: IpAddr, key: String, url: String, size: &str, format: Format, fit_side: Option<u32>) -> Response {
     let quality = match format {
         Format::Avif => avif_quality(size),
         _ if size == "orig" => 88,
         _ => 80,
     };
     s.stats.requests.fetch_add(1, Ordering::Relaxed);
-    let st = s.clone();
-    let result = s
-        .cache
-        .get_or_fetch(&key, move || async move {
-            st.stats.upstream.fetch_add(1, Ordering::Relaxed);
-            let Some(resp) = open_upstream(&st.client, &url).await? else { return Ok::<_, anyhow::Error>(Vec::new()) };
-            let bound = body_bound(&resp);
-            // the one timeout in this closure: an `Elapsed` error below means the budget had no room in time. The bound
-            // is at most MAX_UPSTREAM_BYTES, 25,600 KiB, so the cast keeps it.
-            let _body = tokio::time::timeout(st.fetch_wait, st.body_budget.acquire_many(bound.div_ceil(1024) as u32)).await??;
-            let raw = read_body(resp, bound).await?;
-            let _permit = st.transcode.acquire().await?;
-            tokio::task::spawn_blocking(move || transcode(&raw, fit_side, format, quality)).await?
-        })
-        .await;
+    // A hit, or a request that joins a fetch of the same key in flight, never meets the limit. A cache read that
+    // fails counts as a miss; get_or_fetch reads again and reports its own error.
+    let result = match s.cache.get(&key).await {
+        Ok(Some(entry)) => Ok(entry),
+        _ => {
+            if let Err(retry_after) = s.misses.take(ip) {
+                s.stats.errors.fetch_add(1, Ordering::Relaxed);
+                let headers = [(header::RETRY_AFTER, retry_after.to_string()), (header::CACHE_CONTROL, "no-store".to_owned())];
+                return (StatusCode::TOO_MANY_REQUESTS, headers, "too many requests").into_response();
+            }
+            let st = s.clone();
+            s.cache
+                .get_or_fetch(&key, move || async move {
+                    st.stats.upstream.fetch_add(1, Ordering::Relaxed);
+                    let Some(resp) = open_upstream(&st.client, &url).await? else { return Ok::<_, anyhow::Error>(Vec::new()) };
+                    let bound = body_bound(&resp);
+                    // the one timeout in this closure: an `Elapsed` error below means the budget had no room in time. The
+                    // bound is at most MAX_UPSTREAM_BYTES, 25,600 KiB, so the cast keeps it.
+                    let _body = tokio::time::timeout(st.fetch_wait, st.body_budget.acquire_many(bound.div_ceil(1024) as u32)).await??;
+                    let raw = read_body(resp, bound).await?;
+                    let _permit = st.transcode.acquire().await?;
+                    tokio::task::spawn_blocking(move || transcode(&raw, fit_side, format, quality)).await?
+                })
+                .await
+        }
+    };
     match result {
         Err(e) if e.downcast_ref::<Elapsed>().is_some() => {
             s.stats.errors.fetch_add(1, Ordering::Relaxed);
@@ -206,7 +232,7 @@ async fn stats(State(s): State<Arc<AppState>>) -> axum::Json<serde_json::Value> 
     }))
 }
 
-pub(crate) fn router(state: Arc<AppState>) -> Router {
+fn router(state: Arc<AppState>) -> Router {
     Router::new()
         // public: the images, which the site forwards from /img
         .route("/b/{size}/{uuid}/i/{item}/{file}", get(booth))
@@ -218,6 +244,12 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
         // internal: the API's admin overview reads it; the site does not forward it
         .route("/stats", get(stats))
         .with_state(state)
+}
+
+/// Serves the routes with each connection's peer address, which `ClientIp` reads: a public peer is the client itself,
+/// and only an internal one (the site's server) is trusted for the forwarded headers.
+pub(crate) async fn serve(listener: tokio::net::TcpListener, state: Arc<AppState>) -> std::io::Result<()> {
+    axum::serve(listener, router(state).into_make_service_with_connect_info::<SocketAddr>()).await
 }
 
 #[cfg(test)]
@@ -235,15 +267,20 @@ mod tests {
     }
 
     async fn test_state(budget_kib: usize, fetch_wait: Duration) -> Arc<AppState> {
+        limited_state(miss_limiter(), crate::upstream::upstream_client().unwrap(), budget_kib, fetch_wait).await
+    }
+
+    async fn limited_state(misses: RateLimiter, client: reqwest::Client, budget_kib: usize, fetch_wait: Duration) -> Arc<AppState> {
         let cache = foyer::HybridCacheBuilder::new().memory(1024 * 1024).storage().build().await.unwrap();
         Arc::new(AppState {
             stats: Stats::default(),
             mem_mb: 1,
             disk_mb: 0,
             cache,
-            client: crate::upstream::upstream_client().unwrap(),
+            client,
             body_budget: Semaphore::new(budget_kib),
             fetch_wait,
+            misses,
             transcode: Semaphore::new(1),
             archive: None,
         })
@@ -267,7 +304,78 @@ mod tests {
     }
 
     fn miss(s: &Arc<AppState>, base: &str, n: usize) -> impl Future<Output = Response> + use<> {
-        proxy(s.clone(), format!("k{n}"), format!("{base}/{n}.png"), "300x300_a2_g5", Format::Png, None)
+        miss_from(s, ip("203.0.113.1"), base, n)
+    }
+
+    fn miss_from(s: &Arc<AppState>, client: IpAddr, base: &str, n: usize) -> impl Future<Output = Response> + use<> {
+        proxy(s.clone(), client, format!("k{n}"), format!("{base}/{n}.png"), "300x300_a2_g5", Format::Png, None)
+    }
+
+    fn ip(s: &str) -> IpAddr {
+        s.parse().unwrap()
+    }
+
+    /// Loopback only. With a bucket of two misses, a client's third miss is answered 429 and never reaches the
+    /// upstream; another client still has its own bucket, and a cache hit is served from an empty one.
+    #[tokio::test]
+    async fn misses_are_limited_per_client_and_hits_never() {
+        let fetched = Arc::new(AtomicU64::new(0));
+        let (count, thumb) = (fetched.clone(), png(0));
+        let respond = move || {
+            count.fetch_add(1, Ordering::Relaxed);
+            std::future::ready(thumb.clone())
+        };
+        let base = serve(Router::new().route("/{file}", get(respond))).await;
+        let client = crate::upstream::upstream_client().unwrap();
+        let s = limited_state(RateLimiter::new(1e-6, 2.0, 8), client, BODY_BUDGET_KIB, FETCH_WAIT).await;
+        let (a, b) = (ip("203.0.113.1"), ip("203.0.113.2"));
+        for n in 0..2 {
+            assert_eq!(miss_from(&s, a, &base, n).await.status(), StatusCode::OK);
+        }
+        let limited = miss_from(&s, a, &base, 2).await;
+        assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(limited.headers()[header::RETRY_AFTER].to_str().unwrap().parse::<u64>().unwrap() >= 1);
+        assert_eq!(limited.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(fetched.load(Ordering::Relaxed), 2);
+        assert_eq!((s.stats.upstream.load(Ordering::Relaxed), s.stats.errors.load(Ordering::Relaxed)), (2, 1));
+        assert_eq!(miss_from(&s, b, &base, 2).await.status(), StatusCode::OK);
+        for n in 0..3 {
+            assert_eq!(miss_from(&s, a, &base, n).await.status(), StatusCode::OK, "a hit was limited");
+        }
+        assert_eq!(fetched.load(Ordering::Relaxed), 3);
+    }
+
+    /// Nothing leaves the host: the upstream client goes through a proxy at a closed loopback port, so a miss the limit
+    /// lets through fails there with 502. Every image route keys its misses on the client the site forwarded, and on
+    /// the peer's own address when no header names one (served on [::1], whose bucket is not 127.0.0.1's).
+    #[tokio::test]
+    async fn every_image_route_limits_the_client_ip() {
+        rustls::crypto::ring::default_provider().install_default().ok();
+        let dead_end = reqwest::Client::builder().proxy(reqwest::Proxy::all("http://127.0.0.1:9").unwrap()).build().unwrap();
+        let s = limited_state(RateLimiter::new(1e-6, 1.0, 8), dead_end, BODY_BUDGET_KIB, FETCH_WAIT).await;
+        let listener = tokio::net::TcpListener::bind("[::1]:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(super::serve(listener, s.clone()));
+        let (drained, other) = (ip("203.0.113.1"), ip("203.0.113.2"));
+        for client in [drained, ip("::1")] {
+            assert!(s.misses.take(client).is_ok());
+        }
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        let status = |path: &str, forwarded: Option<IpAddr>| {
+            let request = http.get(format!("{base}/{path}"));
+            let request = match forwarded {
+                Some(client) => request.header("x-forwarded-for", client.to_string()),
+                None => request,
+            };
+            async move { request.send().await.unwrap().status() }
+        };
+        let uuid = "04cee5a2-f70c-49f2-b9b6-4c09a6b9bb74";
+        let paths = [format!("b/300x300_a2_g5/{uuid}/i/1/a.png"), "u/48x48/1/a.png".into(), "a/a.png".into(), format!("f/{uuid}/a.png"), format!("f/300x300_a2_g5/{uuid}/a.png")];
+        for path in &paths {
+            assert_eq!(status(path, Some(drained)).await, StatusCode::TOO_MANY_REQUESTS, "{path}");
+        }
+        assert_eq!(status(&paths[0], None).await, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(status(&paths[0], Some(other)).await, StatusCode::BAD_GATEWAY);
     }
 
     fn assert_busy(r: &Response) {
