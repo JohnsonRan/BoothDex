@@ -7,7 +7,7 @@
 //   5. leaving for another page and coming Back returns to that tile at that place, as does a reload;
 //   6. the page-3 address opened in a new tab starts with page 3's first result in its first row, in its column of
 //      the whole result set from the first frame it is painted in until page 2 has arrived above it, records no
-//      layout shift, and keeps its place through a resize to 800 px and back;
+//      layout shift, and keeps its place through a window dragged to 800 px and back;
 //   7. an `item=` link opens its dialog; closing it drops the parameter without leaving a history entry.
 // A place is the first tile showing below the filter band; "the same place" is that tile's top within 2 px, in
 // any column. At 1440 px that tile is page 2's last but one, leading the row page 3 starts in, so step 5 also needs
@@ -279,16 +279,31 @@ async function stablePlace(p) {
     shift < 0.01,
     shift.toFixed(3),
   );
-  // a new width keeps the first tile in view at its top, however the rows reflow
-  for (const width of [800, 1440]) {
-    const before = await stablePlace(tab);
-    await tab.setViewportSize({ width, height: 900 });
-    await tab.waitForTimeout(800);
-    const after = before && (await placeOf(tab, before.id));
+  // a window dragged narrower and back, a step a frame, keeps the tile first in view before it at its top in
+  // every frame, however the rows reflow
+  const kept = await stablePlace(tab);
+  const cdp = await context.newCDPSession(tab);
+  for (const [from, to] of [
+    [1440, 800],
+    [800, 1440],
+  ]) {
+    let worst = 0;
+    for (let i = 1; i <= 20; i++) {
+      const width = Math.round(from + ((to - from) * i) / 20);
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await tab.evaluate(() => new Promise(requestAnimationFrame));
+      const now = await placeOf(tab, kept.id);
+      worst = Math.max(worst, Math.abs((now.top ?? Infinity) - kept.top));
+    }
     check(
-      `a resize to ${width} px keeps the place`,
-      !!after && sameRow(before, after),
-      `${show(before)} -> ${show(after)}`,
+      `a resize from ${from} to ${to} px keeps the place`,
+      worst <= 2,
+      `${show(kept)}, at most ${worst} px off`,
     );
   }
   await tab.close();
