@@ -15,8 +15,9 @@
 //! A cache miss reads the upstream body only after reserving its declared length (25 MiB when it declares none) from a
 //! 200 MiB budget, and holds the reservation until its transcode ends, so the bodies in memory are bounded; a miss
 //! that finds no room within 10 s is answered 503 with `Retry-After`. The number of upstream requests in flight is
-//! not bounded, and cache hits reserve nothing. There is no per-client limit here: the front proxy or CDN sets one
-//! for /img/*.
+//! not bounded, and cache hits reserve nothing. Each client (an IPv4 address or an IPv6 /64, found as the API finds it,
+//! crates/limit) may send 10 misses a second in bursts of 200; a miss past that is answered 429 with `Retry-After` and
+//! fetches nothing. Cache hits are never limited.
 //!
 //! Env: BIND (127.0.0.1:3001), CACHE_DIR (./imgcache), CACHE_DISK_MB (10240), CACHE_MEM_MB (256),
 //!      ARCHIVE_IMAGES (dir of <sha1>.webp files)
@@ -35,7 +36,7 @@ use tokio::sync::Semaphore;
 
 #[cfg(feature = "libavif")]
 use encode::MAX_TRANSCODES;
-use routes::{AppState, BODY_BUDGET_KIB, FETCH_WAIT, Stats};
+use routes::{AppState, BODY_BUDGET_KIB, FETCH_WAIT, Stats, miss_limiter};
 use upstream::upstream_client;
 
 fn env_num(key: &str, default: usize) -> usize {
@@ -78,13 +79,13 @@ async fn serve() -> Result<()> {
         client: upstream_client()?,
         body_budget: Semaphore::new(BODY_BUDGET_KIB),
         fetch_wait: FETCH_WAIT,
+        misses: miss_limiter(),
         transcode: Semaphore::new(transcodes),
         archive: std::env::var("ARCHIVE_IMAGES").ok().map(PathBuf::from),
     });
-    let app = routes::router(state.clone());
     let bind = std::env::var("BIND").unwrap_or_else(|_| "127.0.0.1:3001".into());
     println!("imgproxy listening on http://{bind}, cache {dir}");
-    axum::serve(tokio::net::TcpListener::bind(&bind).await?, app).await?;
+    routes::serve(tokio::net::TcpListener::bind(&bind).await?, state.clone()).await?;
     state.cache.close().await?;
     Ok(())
 }

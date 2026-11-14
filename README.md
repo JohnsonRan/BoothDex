@@ -203,6 +203,7 @@ flowchart TD
 | Path | Contents |
 |---|---|
 | `crates/core` | Shared types, BOOTH client and PostgreSQL `migrations/`, applied automatically by services on startup |
+| `crates/limit` | The client IP behind the reverse proxy and the per-IP token bucket, shared by `api` and `imgproxy` |
 | `crates/api` | Search API. Facets are Roaring bitmaps in memory; the Tantivy text index lives on disk (`INDEX_DIR`) and is reused across restarts; page payloads come from PostgreSQL |
 | `crates/worker` | Job runner across 3 lanes: `incremental` (new items), `sweep` (full listing), `details`, `refresh`, `enrich`, `localize` and `embed` (AI). `worker run` is the daemon; `worker once <kind> [params-json]` runs a single job |
 | `crates/imgproxy` | `/b/{size}/...` (item images), `/u/{size}/...` (shop icons), `/a/{file}` (BOOTH static images) and `/f/{size}/{uuid}/{file}` (pixiv Factory drawings, scaled down to the size by imgproxy) transcode and cache images as AVIF; `/v/{sha1}.webp` serves archived images |

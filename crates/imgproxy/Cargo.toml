@@ -16,6 +16,7 @@ asm = ["image/nasm"]
 
 [dependencies]
 anyhow.workspace = true
+boothdex-limit.workspace = true
 axum = "0.8"
 foyer = "0.22"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "avif", "rayon"] }
