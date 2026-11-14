@@ -25,6 +25,12 @@
   mask-repeat: space repeat;
 }
 
+/* The item dialog's favourite and copy buttons (item/item-info.tsx): each label (the Button's text span, beside its
+   icon's) trimmed to its capitals and baseline, so the Button centres the text's middle on its icon's. In the full line
+   box the text stood 1.5-2.3 px above the heart. Both are trimmed, so the two labels keep one baseline. */
+.item-acts .astryx-button > span > span:not(:has(svg)) {
+  text-box: trim-both cap alphabetic;
+}
 /* A tile's cover cell (catalog/results/item-tile.tsx): the cover, the second image over it and the badges along
    its lower edge share one grid area, so none of them is positioned. The second image has no address until a
    pointer first rests on the tile (item/item-host.tsx), and shows only while one does. */
