@@ -110,7 +110,7 @@ const RECORDER = () => {
 /**
  * Boxes (document coordinates) of the frame and of the tiles on the first screen: the header, the title row,
  * the count (in the filter row's readout), the search field, the avatar strip, every control button above the
- * grid (by name), and per tile its cover, title, shop, price and badge row.
+ * grid (by name), and per tile its cover, title, shop and price.
  */
 const GEOMETRY = () => {
   const box = (el) => {
@@ -162,8 +162,8 @@ const GEOMETRY = () => {
     out[`tile${i}`] = box(t);
     out[`tile${i}.cover`] = box(t.children[0]);
     const text = t.children[1]?.children ?? [];
-    // title, shop row (icon and name), price row (price and favourite button), badge row
-    ["title", "shop", "price", "badges"].forEach((part, n) => {
+    // title, shop row (icon and name), price row (price and favourite button)
+    ["title", "shop", "price"].forEach((part, n) => {
       out[`tile${i}.${part}`] = box(text[n]);
     });
   });

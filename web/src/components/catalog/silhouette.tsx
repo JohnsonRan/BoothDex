@@ -42,7 +42,7 @@ export function TextSilhouette({
   ));
 }
 
-/** One result tile: square cover, two title lines, shop, price, badge row (item-tile.tsx). */
+/** One result tile: square cover, two title lines, shop, price (item-tile.tsx; its badges sit on the cover). */
 export function TileSilhouette({
   ref,
   style,
@@ -76,9 +76,6 @@ export function TileSilhouette({
           <StackItem size="fill">
             <TextSilhouette type="large" width="35%" />
           </StackItem>
-        </HStack>
-        <HStack minHeight="var(--spacing-5)">
-          <Skeleton height="var(--spacing-5)" width="40%" radius="rounded" />
         </HStack>
       </VStack>
     </VStack>

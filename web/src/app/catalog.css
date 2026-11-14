@@ -24,3 +24,41 @@
   mask-size: var(--_tile-size, auto);
   mask-repeat: space repeat;
 }
+
+/* A tile's cover cell (catalog/results/item-tile.tsx): the cover, the second image over it and the badges along
+   its lower edge share one grid area, so none of them is positioned. The second image has no address until a
+   pointer first rests on the tile (item/item-host.tsx), and shows only while one does. */
+.tile-cover {
+  display: grid;
+  width: 100%;
+  height: 100%;
+}
+.tile-cover > * {
+  grid-area: 1 / 1;
+}
+.tile-second {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+.tile-marks {
+  position: relative;
+  align-self: end;
+  padding: var(--spacing-2);
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tile-second {
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  [data-item]:hover .tile-second[src] {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile-second {
+    transition: none;
+  }
+}
