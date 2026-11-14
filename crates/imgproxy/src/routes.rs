@@ -345,6 +345,41 @@ mod tests {
         assert_eq!(fetched.load(Ordering::Relaxed), 3);
     }
 
+    /// Loopback only. The upstream holds its answer until released, so the three later requests for the same key
+    /// arrive while the first one's fetch is in flight: they join it and take no token from a bucket of one.
+    #[tokio::test]
+    async fn requests_joining_a_fetch_in_flight_take_no_token() {
+        let (fetched, release) = (Arc::new(AtomicU64::new(0)), Arc::new(Semaphore::new(0)));
+        let (count, gate, thumb) = (fetched.clone(), release.clone(), png(0));
+        let respond = move || {
+            let (count, gate, thumb) = (count.clone(), gate.clone(), thumb.clone());
+            async move {
+                count.fetch_add(1, Ordering::Relaxed);
+                let _open = gate.acquire().await.unwrap();
+                thumb
+            }
+        };
+        let base = serve(Router::new().route("/{file}", get(respond))).await;
+        let client = crate::upstream::upstream_client().unwrap();
+        let s = limited_state(RateLimiter::new(1e-6, 1.0, 8), client, BODY_BUDGET_KIB, FETCH_WAIT).await;
+        let first = tokio::spawn(miss(&s, &base, 0));
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while fetched.load(Ordering::Relaxed) == 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the first miss never reached the upstream");
+        let joined: Vec<_> = (0..3).map(|_| tokio::spawn(miss(&s, &base, 0))).collect();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        release.add_permits(1);
+        for request in std::iter::once(first).chain(joined) {
+            let answer = tokio::time::timeout(Duration::from_secs(5), request).await.expect("a request got no answer").unwrap();
+            assert_eq!(answer.status(), StatusCode::OK);
+        }
+        assert_eq!(fetched.load(Ordering::Relaxed), 1);
+    }
+
     /// Nothing leaves the host: the upstream client goes through a proxy at a closed loopback port, so a miss the limit
     /// lets through fails there with 502. Every image route keys its misses on the client the site forwarded, and on
     /// the peer's own address when no header names one (served on [::1], whose bucket is not 127.0.0.1's).
