@@ -102,7 +102,7 @@ test("a tile's badges sit on its cover, and its second image waits for a pointer
       ...item,
       features: ["quest"],
       booth_images: [
-        ...item.booth_images,
+        ...(item.booth_images ?? []),
         "https://booth.pximg.net/u/i/1/second.jpg",
       ],
     },
