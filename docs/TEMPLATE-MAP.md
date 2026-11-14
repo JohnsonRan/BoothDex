@@ -222,8 +222,8 @@ Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@ast
   chevron of Collapsible's trigger anatomy turned up to fold, `aria-expanded` and `aria-controls` naming the cards.
 - Readout "Page N" (`page-in-view.tsx` `PageInView`): from page 2 on the readout reads "Page N · {n} items", N
   the page in view (the address's). No template has it. `.readout-line` (`app/filter-row.css`) puts it on the
-  side away from where the count is set (before it at the row's end, after it on a phone's own line), so the
-  count never moves when it appears.
+  side away from where the line is set (before the count at the row's end, last on a phone's own line, after
+  "Clear all"), so nothing in the line moves when it appears.
 - Clause list clip (`app/filter-row.css` `.filter-clauses`): 1 px of block padding cancelled by a -1 px margin,
   so the clip reaches 1 px past the controls; flush with them, the sticky band's sub-pixel offset (the top bar is
   55.17 px tall) cut a control's top or bottom border.
@@ -299,10 +299,11 @@ suggestion adds its name to them and a recent search replaces them. The words th
 smart category (the API's `recognized`) join one token, led by the avatar's picture or the `site:category` glyph,
 its tooltip naming the reading ("Avatar: Mao", "Categories: Hair · Short"); removing it removes all its words. Not
 1:1: the list is 36rem wide and up to 60vh tall instead of the field's width and 300 px (`app/filter-row.css`).
-With a text query, the readout's count is a link reading "{n} · {ms}" (the search's latency) that opens the search
+With a text query, the readout's count is a link that opens the search
 trace (how the search was answered and the time of each step) in a `Popover` laid out as block
 PopoverKeyboardShortcuts; master showed it as a chip beside the count, which the readout's reserved width has no
-room for.
+room for. The latency is in the trace only: on the trigger it pushed a page-2 readout past its reserve and over the
+last clause (owner, 2026-11-14).
 
 | Master filter | Clause | Not 1:1 |
 |---|---|---|

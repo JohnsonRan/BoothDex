@@ -44,8 +44,8 @@
   flex-shrink: 0;
 }
 /* The count line, or its silhouette (each a VStack), spans the readout exactly and sets its text at the end, so the
-   box is the readout's whatever fills it (tools/loading-layout.cjs). A line longer than the reserve (a text
-   search's timing, the page cue) grows toward the start, into the row's free width, and never past the end cluster.
+   box is the readout's whatever fills it (tools/loading-layout.cjs). A line longer than the reserve (the page
+   cue with a long count) grows toward the start, into the row's free width, and never past the end cluster.
    "Clear all" alone, after a failed search, is a button, set at the end by a margin, not justify-content, which the
    HStack's own alignment class sets. */
 .filter-readout > :first-child {
