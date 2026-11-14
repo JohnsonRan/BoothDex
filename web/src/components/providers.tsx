@@ -57,6 +57,8 @@ function showLook({ theme, black, motion }: Look) {
   html.toggleAttribute("data-black", black === "on");
   if (motion === "reduce") html.dataset.motion = motion;
   else delete html.dataset.motion;
+  // Astryx's own animator reads its mark on <body> (the root Theme rewrites <html>): set in the same task
+  document.body.toggleAttribute(ASTRYX_REDUCED_MOTION, motion === "reduce");
   for (const el of [html, html.querySelector("body [data-astryx-theme]")]) {
     if (!el) continue;
     if (theme === "system") el.removeAttribute("data-theme");
