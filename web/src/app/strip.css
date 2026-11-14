@@ -210,6 +210,12 @@
 [data-shrink="all"]:not([data-strip-open]) [data-strip] [popover] {
   visibility: hidden;
 }
+/* The buttons centre on the card's square, not on the card and its caption: the Carousel's overlay covers the whole
+   carousel (core Carousel.js `coverStyle`, the buttons centred in it), so it stops at the square's height from the top. */
+[data-strip] [popover] {
+  max-block-size: var(--strip-card);
+  inset-block-end: auto;
+}
 .strip-row {
   pointer-events: auto;
 }
