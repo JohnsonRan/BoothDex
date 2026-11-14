@@ -18,7 +18,6 @@ import { type Filters, searchQuery } from "@/lib/catalog";
 import { columnCount } from "@/lib/grid";
 import { anchorAt, firstBelow } from "@/lib/result-frame";
 import {
-  boxesBefore,
   type Dir,
   pageStarts,
   type Page as ResultPage,
@@ -212,9 +211,6 @@ export function usePageReads(
     [load],
   );
 
-  /** The pages before `n`, at most ABOVE of them, not read yet. */
-  const before = (n: number) => boxesBefore<Tile>(n);
-
   /**
    * The grid's columns, and from a tile drawn its height and the row pitch, which size the boxes standing for pages
    * not read and tiles not drawn yet; returns the tile's height. Read before the grid is drawn for new columns, the
@@ -254,7 +250,6 @@ export function usePageReads(
     load,
     loadNext,
     loadInto,
-    before,
     measure,
   };
 }

@@ -13,6 +13,7 @@ import {
   SCREENS,
   SNAPSHOT,
   type Snapshot,
+  withAbove,
   withPage,
 } from "@/lib/result-pages";
 import { showInView } from "./page-in-view";
@@ -30,7 +31,7 @@ const SETTLE_MS = 200;
 
 export function useResultFrame(
   r: ResultRefs,
-  { starts, keep, above, loadNext, loadInto, before, measure }: PageReads,
+  { starts, keep, above, loadNext, loadInto, measure }: PageReads,
   {
     page,
     key,
@@ -153,12 +154,7 @@ export function useResultFrame(
       if (up && r.nearTop.current && first > 1)
         above(
           "boxes",
-          () =>
-            keep(() =>
-              setPages((cur) =>
-                cur[0].n === first ? [...before(first), ...cur] : cur,
-              ),
-            ),
+          () => keep(() => setPages((cur) => withAbove(cur, first))),
           true,
         );
       const kids = g.children;
