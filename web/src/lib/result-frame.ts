@@ -42,7 +42,7 @@ export function anchorAt(
   return from;
 }
 
-/** Where the pages stand this frame (viewport px), and how the reader moves. */
+/** Where the pages stand this frame (viewport px), and whether the reader is scrolling. */
 export type Frame = {
   /** each page's first child's top, and its end (the next page's top, the last child's bottom for the last) */
   tops: number[];
@@ -50,10 +50,6 @@ export type Frame = {
   /** the viewport's height, and the filter band's bottom edge in it */
   height: number;
   edge: number;
-  /** the index of the page in view */
-  inView: number;
-  /** the reader last moved up */
-  up: boolean;
   /** scroll events are still coming */
   scrolling: boolean;
 };
@@ -72,10 +68,10 @@ export function framePages<T>(
   return pages.map((q, j) => {
     const far = isFar(f.tops[j], f.bottoms[j], f.height);
     if (!q.tiles.length) {
-      // a box above the page in view turns to silhouettes only when the reader moves up: their rows run on
-      // into the page below and reflow it. One starting above the reader (another height above the tile in
-      // view) waits for scrolling to stop.
-      const near = !far && (j >= f.inView || f.up);
+      // its silhouettes fill exactly the cells of its boxes (result-pages.ts boxParts), so the change moves
+      // nothing below it, above the page in view too. One starting above the reader (another height above the
+      // tile in view) waits for scrolling to stop.
+      const near = !far;
       if (near === !!q.near || (f.tops[j] < f.edge && f.scrolling)) return q;
       return { ...q, near };
     }

@@ -8,10 +8,8 @@
 //   6. the page-3 address opened in a new tab starts with page 3's first result in its first row;
 //   7. an `item=` link opens its dialog; closing it drops the parameter without leaving a history entry.
 // A place is the first tile showing below the filter band; "the same place" is that tile's top within 2 px, in
-// any column. Columns are not compared: a page whose tiles are not loaded is a box of whole rows (lib/result-pages.ts
-// pageBlock), so the column a tile lands in depends on which pages above it are loaded (REQUIREMENTS.md, "Open
-// questions"). On master of 2026-11-14 step 5 fails for that reason: the tile leading the row is page 2's last, and
-// page 2 comes back as a box, so that tile is gone and page 3 starts the row.
+// any column. At 1440 px that tile is page 2's last but one, leading the row page 3 starts in, so step 5 also needs
+// page 2 read again on the return, not left as boxes (lib/result-pages.ts boxParts, lib/result-frame.ts framePages).
 // The search sends `q`, so this needs LAB_AI_OFF=1 and an API with AI_BASE_URL at a closed port (lab.cjs).
 //   node tools/nav.cjs [page url=http://127.0.0.1:3203/] [query=ドレス]
 const { launch, scrollToPage } = require("./lab.cjs");

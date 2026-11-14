@@ -35,8 +35,6 @@ const frame = (over: Partial<Frame> = {}): Frame => ({
   bottoms: [-1900, 3000, 6000],
   height: 900,
   edge: 100,
-  inView: 1,
-  up: false,
   scrolling: false,
   ...over,
 });
@@ -76,7 +74,7 @@ test("framePages draws a page back near view, gradually only from below the scre
   ];
   const next = framePages(
     p,
-    frame({ tops: [-500, 1000], bottoms: [1000, 2000], inView: 0 }),
+    frame({ tops: [-500, 1000], bottoms: [1000, 2000] }),
     never,
   );
   expect(next[0]).toEqual({
@@ -88,32 +86,29 @@ test("framePages draws a page back near view, gradually only from below the scre
   expect(next[1].gradual).toBe(true);
 });
 
-test("framePages turns a box near view to silhouettes: below the page in view, or above it moving up", () => {
+test("framePages turns a box near view to silhouettes, above the page in view as below it", () => {
   const p: Page<T>[] = [
     { n: 1, tiles: [] },
     { n: 2, tiles: [tile(2)] },
     { n: 3, tiles: [] },
   ];
   const f = frame({ tops: [-800, 50, 1000], bottoms: [50, 1000, 1900] });
-  const down = framePages(p, f, never);
-  expect(down[0]).toBe(p[0]);
-  expect(down[2].near).toBe(true);
-  expect(framePages(p, { ...f, up: true }, never)[0].near).toBe(true);
+  const next = framePages(p, f, never);
+  expect(next[0].near).toBe(true);
+  expect(next[2].near).toBe(true);
   // one starting above the band waits for scrolling to stop
-  expect(framePages(p, { ...f, up: true, scrolling: true }, never)[0]).toBe(
-    p[0],
-  );
+  expect(framePages(p, { ...f, scrolling: true }, never)[0]).toBe(p[0]);
   // a box gone far again stops being silhouettes
   const far = framePages(
     [{ n: 1, tiles: [], near: true }],
-    frame({ tops: [5000], bottoms: [9000], inView: 0 }),
+    frame({ tops: [5000], bottoms: [9000] }),
     never,
   );
   expect(far[0].near).toBe(false);
-  // a box that is the page in view (a deep start, a jump) turns to silhouettes moving down too
+  // a box that is the page in view (a deep start, a jump)
   const inView = framePages(
     [{ n: 1, tiles: [] }],
-    frame({ tops: [0], bottoms: [900], inView: 0 }),
+    frame({ tops: [0], bottoms: [900] }),
     never,
   );
   expect(inView[0].near).toBe(true);

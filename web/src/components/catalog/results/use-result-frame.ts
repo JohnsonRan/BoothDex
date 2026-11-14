@@ -197,8 +197,6 @@ export function useResultFrame(
           bottoms,
           height: h,
           edge: c,
-          inView: i,
-          up,
           scrolling: r.scrolling.current,
         },
         // a far page's tiles measured for its boxes; none while focus is inside it
