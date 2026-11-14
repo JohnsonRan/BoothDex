@@ -40,27 +40,25 @@ export async function ResultCount({
     n: o.result.count.toLocaleString(LOCALES[settings.ui]),
   });
   return (
-    <>
-      <Swap>
-        <HStack gap={2} vAlign="center" className="readout-line">
-          <PageInView page={o.result.page} />
-          {hasQuery ? (
-            <SearchTrace
-              count={count}
-              semantic={o.result.semantic}
-              steps={o.result.trace}
-              serverMs={o.result.timing.totalMs}
-              totalMs={o.ms}
-            />
-          ) : (
-            <Text type="supporting" color="secondary" hasTabularNumbers>
-              {count}
-            </Text>
-          )}
-        </HStack>
-      </Swap>
-      <ClearAll afterCount />
-    </>
+    <Swap>
+      <HStack gap={2} vAlign="center" className="readout-line">
+        <PageInView page={o.result.page} />
+        {hasQuery ? (
+          <SearchTrace
+            count={count}
+            semantic={o.result.semantic}
+            steps={o.result.trace}
+            serverMs={o.result.timing.totalMs}
+            totalMs={o.ms}
+          />
+        ) : (
+          <Text type="supporting" color="secondary" hasTabularNumbers>
+            {count}
+          </Text>
+        )}
+        <ClearAll afterCount />
+      </HStack>
+    </Swap>
   );
 }
 

@@ -43,25 +43,30 @@
 .filter-readout > * {
   flex-shrink: 0;
 }
-/* The count, or its silhouette (each a VStack), takes the readout's free width and sets its text at the end, so the
-   box starts at the readout's start whatever fills it: the silhouette, the count alone, or the count before
-   "Clear all" (tools/loading-layout.cjs). "Clear all" alone, after a failed search, is a button, set at the end by
-   a margin, not justify-content, which the HStack's own alignment class sets. */
+/* The count line, or its silhouette (each a VStack), spans the readout exactly and sets its text at the end, so the
+   box is the readout's whatever fills it (tools/loading-layout.cjs). A line longer than the reserve (a text
+   search's timing, the page cue) grows toward the start, into the row's free width, and never past the end cluster.
+   "Clear all" alone, after a failed search, is a button, set at the end by a margin, not justify-content, which the
+   HStack's own alignment class sets. */
 .filter-readout > :first-child {
   margin-inline-start: auto;
 }
 .filter-readout > div:first-child {
   margin-inline-start: 0;
-  flex-grow: 1;
+  flex: 1 1 0;
+  min-width: 0;
   align-items: flex-end;
 }
 
-/* The page cue (catalog/results/result-pages.tsx PageInView) joins the count on the side away from where the count is set,
-   so the count never moves when it appears in the sticky band: before it while the count sits at the end, after it
-   on a phone, where the readout starts its own line. */
+/* The page cue (catalog/results/page-in-view.tsx) joins the line on the side away from where it is set, so nothing
+   in it moves when the cue appears as the reader scrolls: before the count while the line sits at the end, last on
+   a phone, where the readout starts its own line, after "Clear all" and with its dot first. */
 .readout-line {
   align-self: stretch;
   justify-content: flex-end;
+}
+.readout-line > * {
+  flex-shrink: 0;
 }
 
 /* A phone (owner's request; the template keeps one line): where the row cannot hold the search, the trigger and the
@@ -83,10 +88,11 @@
   }
   .filter-toolbar .filter-readout > :first-child {
     margin-inline-start: 0;
-    flex-grow: 0;
+    flex: 0 0 auto;
     align-items: flex-start;
   }
-  .filter-toolbar .readout-line {
+  .filter-toolbar .page-cue {
+    order: 1;
     flex-direction: row-reverse;
   }
 }
