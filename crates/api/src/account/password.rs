@@ -7,6 +7,7 @@ use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use argon2::Argon2;
 
 use crate::error::Refusal;
+use crate::limit::Check;
 use crate::{ApiError, AppState};
 
 pub(super) const MAX_FAILURES: u32 = 10;

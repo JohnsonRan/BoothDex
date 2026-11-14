@@ -17,6 +17,7 @@ import {
   readSnapshot,
   restorePlan,
   type Snapshot,
+  withAbove,
 } from "@/lib/result-pages";
 import type { Settings } from "@/lib/settings-core";
 import type { Page, PageReads, ResultRefs } from "./use-page-reads";
@@ -29,7 +30,7 @@ let kept: (Kept<Page> & { drawn: string; place: Snapshot | null }) | undefined;
 
 export function useResultPlace(
   r: ResultRefs,
-  { keep, load, loadNext, before }: PageReads,
+  { keep, load, loadNext }: PageReads,
   {
     page,
     total,
@@ -114,11 +115,10 @@ export function useResultPlace(
     } else if (plan && plan.page !== page)
       load(
         plan.page,
-        (_, fresh) => [...before(plan.page), { n: plan.page, tiles: fresh }],
+        (_, fresh) => withAbove([{ n: plan.page, tiles: fresh }], plan.page),
         "next",
       );
-    else if (page > 1)
-      keep(() => setPages((p) => [...before(page), ...p]), true);
+    else if (page > 1) keep(() => setPages((p) => withAbove(p, page)), true);
     else if (snap) position();
     return () => {
       kept = {

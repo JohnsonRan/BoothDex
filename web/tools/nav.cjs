@@ -6,7 +6,8 @@
 //   4. a tile opens its item as `item=<id>`; Back closes it and leaves the same tile at the same place;
 //   5. leaving for another page and coming Back returns to that tile at that place, as does a reload;
 //   6. the page-3 address opened in a new tab starts with page 3's first result in its first row, in its column of
-//      the whole result set from the first frame it is painted in until page 2 has arrived above it;
+//      the whole result set from the first frame it is painted in until page 2 has arrived above it, records no
+//      layout shift, and keeps its place through a window dragged to 800 px and back;
 //   7. an `item=` link opens its dialog; closing it drops the parameter without leaving a history entry.
 // A place is the first tile showing below the filter band; "the same place" is that tile's top within 2 px, in
 // any column. At 1440 px that tile is page 2's last but one, leading the row page 3 starts in, so step 5 also needs
@@ -224,8 +225,12 @@ async function stablePlace(p) {
   api.searchParams.set("page", "2");
   const second = (await (await fetch(api)).json()).items?.at(-1)?.id;
   const tab = await context.newPage();
-  // the x of page 3's first result in the first frame it is painted in
+  // the x of page 3's first result in the first frame it is painted in, and the layout shifts from the first paint
   await tab.addInitScript((id) => {
+    window.__shift = 0;
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) window.__shift += e.value;
+    }).observe({ type: "layout-shift", buffered: true });
     const seen = () => {
       const r = document
         .querySelector(`[data-item="${id}"]`)
@@ -267,6 +272,40 @@ async function stablePlace(p) {
     column.first === column.now && column.col === (200 % column.cols) + 1,
     `column ${column.col} of ${column.cols}, x ${column.first} -> ${column.now}`,
   );
+  // the pages put above it with the window scrolled by their height move nothing in view
+  const shift = await tab.evaluate(() => window.__shift);
+  check(
+    "the page-3 start records no layout shift",
+    shift < 0.01,
+    shift.toFixed(3),
+  );
+  // a window dragged narrower and back, a step a frame, keeps the tile first in view before it at its top in
+  // every frame, however the rows reflow
+  const kept = await stablePlace(tab);
+  const cdp = await context.newCDPSession(tab);
+  for (const [from, to] of [
+    [1440, 800],
+    [800, 1440],
+  ]) {
+    let worst = 0;
+    for (let i = 1; i <= 20; i++) {
+      const width = Math.round(from + ((to - from) * i) / 20);
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await tab.evaluate(() => new Promise(requestAnimationFrame));
+      const now = await placeOf(tab, kept.id);
+      worst = Math.max(worst, Math.abs((now.top ?? Infinity) - kept.top));
+    }
+    check(
+      `a resize from ${from} to ${to} px keeps the place`,
+      worst <= 2,
+      `${show(kept)}, at most ${worst} px off`,
+    );
+  }
   await tab.close();
 
   // 7. a shared item link
