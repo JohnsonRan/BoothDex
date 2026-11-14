@@ -12,6 +12,18 @@ const [
   delay = "2500",
 ] = process.argv.slice(2);
 const ENTRANCE = ["page-enter", "row-enter"];
+// the animations running on what can be seen: a hidden element's draws nothing (Tokenizer keeps its idle Spinner
+// mounted and hidden)
+const RUNNING = () =>
+  document
+    .getAnimations()
+    .filter(
+      (a) =>
+        a.playState === "running" &&
+        a.effect?.target?.checkVisibility({ visibilityProperty: true }) !==
+          false,
+    )
+    .map((a) => a.animationName ?? a.id);
 // A filter change as a visitor makes it: the toolbar's sort menu, switched between its default (Trending, or
 // Relevance on a text search) and Newest. Opening the menu is separate from picking the item, so a timed refresh
 // starts at the pick.
@@ -155,12 +167,7 @@ const changeSort = async (p) => (await openSort(p))();
     const first = await entrances(p);
     const rows = first.filter((a) => a.id === "row-enter").length;
     const sections = first.length - rows;
-    const anyRunning = await p.evaluate(() =>
-      document
-        .getAnimations()
-        .filter((a) => a.playState === "running")
-        .map((a) => a.animationName ?? a.id),
-    );
+    const anyRunning = await p.evaluate(RUNNING);
     if (reduced)
       check(
         first.length === 0 && anyRunning.length === 0,
@@ -274,21 +281,7 @@ const changeSort = async (p) => (await openSort(p))();
     if (reduced) {
       const samples = [];
       for (let i = 0; i < 5; i++) {
-        samples.push(
-          await p.evaluate(() =>
-            document
-              .getAnimations()
-              // a hidden element's animation draws nothing (Tokenizer keeps its idle Spinner mounted and hidden)
-              .filter(
-                (a) =>
-                  a.playState === "running" &&
-                  a.effect?.target?.checkVisibility({
-                    visibilityProperty: true,
-                  }) !== false,
-              )
-              .map((a) => a.animationName ?? a.id),
-          ),
-        );
+        samples.push(await p.evaluate(RUNNING));
         await p.waitForTimeout(200);
       }
       check(
