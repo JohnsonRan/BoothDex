@@ -2,15 +2,19 @@
 // The results as one endless grid (the table-filter template's useInfiniteBatches, page.tsx:1160-1237, with our
 // /api/search pages for its timer). The server renders the page in the URL, its first screen of tiles in the HTML;
 // the rest of that page and the next pages are read here and drawn in the same grid, so rows run on across pages.
-// A start past page 1 puts the pages before it above it as boxes of a page's estimated height (its rows at the row
-// pitch measured from the server's tiles), the window scrolled by as much before the first paint, so the
+// A start past page 1 puts the pages before it above it as boxes of a page's cells (its rows at the row pitch
+// measured from the server's tiles), the window scrolled by as much before the first paint, so the
 // scrollbar shows the place and scrolling up just works: the page in view is read into its box, whichever it is.
 // Only ABOVE pages are put up at once; more join as the reader nears the top of them, which keeps the document
 // within every engine's element height (2,000 pages on a two-column phone would be about 30 million px).
 // The address bar names the page in view (replaced, never pushed), and the history entry keeps the first tile in
 // view, so a reload or a return lands on it with the pages it had.
-// Pages more than SCREENS screens from view give their tiles up for boxes of the same heights (a page not read
-// yet is one box; near view, silhouette tiles); a box paints the tiles' silhouettes (silhouette.tsx
+// Every page holds exactly its own cells of the whole result set, so a tile stands in the same column whatever is
+// drawn above it: a page not read yet is a box closing the row the page above ends in, a box of its whole rows and
+// a box opening the next row (lib/result-pages.ts boxParts; near view, silhouette tiles), and a first page past
+// page 1 starts after empty cells up to its column (leadOffset).
+// Pages more than SCREENS screens from view give their tiles up for boxes of the same heights; a box paints the
+// tiles' silhouettes (silhouette.tsx
 // silhouetteMask), so no speed of scrolling shows an empty page, and every change keeps the first tile in view
 // where it was (the grid opts out of the browser's own scroll anchoring, which not every engine has, so all of
 // them move the same way). A change above the reader waits for scrolling to stop: moving the scroll position
@@ -40,7 +44,7 @@ import {
 import { useUi } from "@/components/providers";
 import { type Filters, searchQuery } from "@/lib/catalog";
 import { ROWS } from "@/lib/motion";
-import { type Dir, withFailed } from "@/lib/result-pages";
+import { boxParts, type Dir, leadOffset, withFailed } from "@/lib/result-pages";
 import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
 import { FIRST_TILES, GRID, type Tile } from "./item-tile";
 import { PageTiles } from "./page-tiles";
@@ -56,6 +60,26 @@ const PROBE: CSSProperties = {
   insetBlockStart: 0,
   visibility: "hidden",
 };
+
+/** A page not read yet as the boxes of its cells (lib/result-pages.ts boxParts): lead cells, whole rows, tail cells. */
+function PageBoxes({ lead, rows, tail }: ReturnType<typeof boxParts>) {
+  // `n` rows of tiles: a tile's height and a pitch for each row after the first (use-page-reads.ts measure)
+  const box = (columns: number | "full", n: number) => (
+    <GridSpan
+      columns={columns}
+      aria-hidden
+      className="page-box"
+      style={{ blockSize: `calc(var(--_pitch) * ${n - 1} + var(--_tile-h))` }}
+    />
+  );
+  return (
+    <>
+      {lead > 0 && box(lead, 1)}
+      {rows > 0 && box("full", rows)}
+      {tail > 0 && box(tail, 1)}
+    </>
+  );
+}
 
 export function ResultPages({
   page,
@@ -100,7 +124,7 @@ export function ResultPages({
     setMask(silhouetteMask(probe.current, r.grid.current));
   });
   useLayoutEffect(() => {
-    r.now.current = { pages };
+    r.now.current = { pages, cols };
   });
 
   const key = `${searchQuery(filters, 1, pageSize)}${lexical ? "&sem=0" : ""}`;
@@ -114,6 +138,7 @@ export function ResultPages({
     setPages,
     setLoading,
     setFailed,
+    setCols,
   });
   const { keep } = reads;
   useResultPlace(r, reads, {
@@ -132,7 +157,6 @@ export function ResultPages({
   const hasPrev = pages[0].n > 1;
   useResultFrame(r, reads, {
     page,
-    pageSize,
     key,
     lexical,
     hasNext,
@@ -140,11 +164,11 @@ export function ResultPages({
     loading,
     failed,
     setPages,
-    setCols,
     setMask,
   });
 
   const favLabel = t("fav.add");
+  const offset = leadOffset(pages[0].n, pageSize, cols);
   return (
     <>
       <Grid
@@ -158,6 +182,8 @@ export function ResultPages({
           overflowAnchor: "none",
         }}
       >
+        {/* the cells before the first page drawn (lib/result-pages.ts pageStarts counts it) */}
+        {offset > 0 && <GridSpan columns={offset} aria-hidden />}
         {pages.map((q) => (
           <Fragment key={q.n}>
             {q.failed ? (
@@ -176,12 +202,7 @@ export function ResultPages({
                   <TileSilhouette key={i} />
                 ))
               ) : (
-                <GridSpan
-                  columns="full"
-                  aria-hidden
-                  className="page-box"
-                  style={{ blockSize: q.block }}
-                />
+                <PageBoxes {...boxParts(q.n, pageSize, cols)} />
               )
             ) : (
               <PageTiles

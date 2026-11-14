@@ -90,9 +90,9 @@ test("framePages draws a page back near view, gradually only from below the scre
 
 test("framePages turns a box near view to silhouettes: below the page in view, or above it moving up", () => {
   const p: Page<T>[] = [
-    { n: 1, tiles: [], block: 900 },
+    { n: 1, tiles: [] },
     { n: 2, tiles: [tile(2)] },
-    { n: 3, tiles: [], block: 900 },
+    { n: 3, tiles: [] },
   ];
   const f = frame({ tops: [-800, 50, 1000], bottoms: [50, 1000, 1900] });
   const down = framePages(p, f, never);
@@ -112,7 +112,7 @@ test("framePages turns a box near view to silhouettes: below the page in view, o
   expect(far[0].near).toBe(false);
   // a box that is the page in view (a deep start, a jump) turns to silhouettes moving down too
   const inView = framePages(
-    [{ n: 1, tiles: [], block: 900 }],
+    [{ n: 1, tiles: [] }],
     frame({ tops: [0], bottoms: [900], inView: 0 }),
     never,
   );

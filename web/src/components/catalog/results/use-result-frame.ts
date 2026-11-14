@@ -8,7 +8,6 @@ import { framePages, pageToRead } from "@/lib/result-frame";
 import {
   type Dir,
   pageAt,
-  pageStarts,
   resized,
   resultsQuery,
   SCREENS,
@@ -31,10 +30,18 @@ const SETTLE_MS = 200;
 
 export function useResultFrame(
   r: ResultRefs,
-  { kidsOf, keep, above, loadNext, loadInto, before, measure }: PageReads,
+  {
+    kidsOf,
+    starts,
+    keep,
+    above,
+    loadNext,
+    loadInto,
+    before,
+    measure,
+  }: PageReads,
   {
     page,
-    pageSize,
     key,
     lexical,
     hasNext,
@@ -42,11 +49,9 @@ export function useResultFrame(
     loading,
     failed,
     setPages,
-    setCols,
     setMask,
   }: {
     page: number;
-    pageSize: number;
     key: string;
     lexical: boolean;
     hasNext: boolean;
@@ -54,7 +59,6 @@ export function useResultFrame(
     loading: Dir | null;
     failed: boolean;
     setPages: Dispatch<SetStateAction<Page[]>>;
-    setCols: Dispatch<SetStateAction<number>>;
     setMask: (mask: undefined) => void;
   },
 ) {
@@ -126,7 +130,7 @@ export function useResultFrame(
       const i = p.findIndex((q) => q.n === shown);
       if (!g || i < 0 || r.restoring.current) return false;
       if (resultsQuery(location.search) !== own) return true;
-      const from = pageStarts(p, pageSize)[i];
+      const from = starts(p)[i];
       const edge = covered();
       const el = g.children[
         firstInView(g.children, from, from + kidsOf(p[i]), edge)
@@ -167,7 +171,7 @@ export function useResultFrame(
           true,
         );
       const kids = g.children;
-      const at = pageStarts(p, pageSize);
+      const at = starts(p);
       const h = innerHeight;
       const tops = at.map((s) => kids[s].getBoundingClientRect().top);
       const lastKid = kids[at[at.length - 1] + kidsOf(p[p.length - 1]) - 1];
@@ -232,20 +236,20 @@ export function useResultFrame(
       up = true;
       schedule();
     };
-    // a new width reflows the rows: the boxes take the height of a tile, or of a page, laid out at it
+    // a new width reflows the rows: the boxes take the columns, the pitch and a tile's height laid out at it,
+    // measured after the place is taken, so their change of height is kept out of view too
     const onResize = () => {
       const g = r.grid.current;
       if (!g || g.clientWidth === r.width.current) return;
       r.width.current = g.clientWidth;
-      setCols(getComputedStyle(g).gridTemplateColumns.split(" ").length);
       setMask(undefined);
-      measure();
-      const tile = g.querySelector("[data-item]");
-      const height = tile?.getBoundingClientRect().height ?? 0;
-      keep(() => setPages((cur) => resized(cur, height, r.block.current)));
+      keep(() => {
+        measure();
+        const tile = g.querySelector("[data-item]");
+        const height = tile?.getBoundingClientRect().height ?? 0;
+        setPages((cur) => resized(cur, height));
+      });
     };
-    const g = r.grid.current;
-    if (g) setCols(getComputedStyle(g).gridTemplateColumns.split(" ").length);
     r.tick.current = schedule;
     addEventListener("scroll", onScroll, { passive: true });
     addEventListener("wheel", onWheel, { passive: true });

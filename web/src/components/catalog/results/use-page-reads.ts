@@ -20,7 +20,7 @@ import {
   boxesBefore,
   type Dir,
   kidsOf as kidsOfPage,
-  pageBlock,
+  pageStarts,
   type Page as ResultPage,
   type Snapshot,
   withFailed,
@@ -59,11 +59,9 @@ export function useResultRefs(pages: Page[]) {
   /** the place last saved to the history entry */
   const place = useRef<Snapshot | null>(null);
   const width = useRef(0);
-  /** the estimated height of a whole page not read yet */
-  const block = useRef(0);
   const tick = useRef(() => {});
-  /** the pages last drawn, for the callbacks and the frame */
-  const now = useRef({ pages });
+  /** the pages last drawn and the columns they were drawn at, for the callbacks and the frame */
+  const now = useRef({ pages, cols: 1 });
   const [refs] = useState(() => ({
     grid,
     end,
@@ -76,7 +74,6 @@ export function useResultRefs(pages: Page[]) {
     restoring,
     place,
     width,
-    block,
     tick,
     now,
   }));
@@ -97,6 +94,7 @@ export function usePageReads(
     setPages,
     setLoading,
     setFailed,
+    setCols,
   }: {
     filters: Filters;
     pageSize: number;
@@ -107,6 +105,7 @@ export function usePageReads(
     setPages: Dispatch<SetStateAction<Page[]>>;
     setLoading: Dispatch<SetStateAction<Dir | null>>;
     setFailed: Dispatch<SetStateAction<boolean>>;
+    setCols: Dispatch<SetStateAction<number>>;
   },
 ) {
   const { t } = useUi();
@@ -115,8 +114,16 @@ export function usePageReads(
       `/api/search?${searchQuery(filters, n, pageSize)}&fields=card${lexical ? "&sem=0" : ""}`,
     [filters, pageSize, lexical],
   );
-  /** the grid children a page draws */
-  const kidsOf = useCallback((q: Page) => kidsOfPage(q, pageSize), [pageSize]);
+  /** the grid children a page draws, at the columns last drawn */
+  const kidsOf = useCallback(
+    (q: Page) => kidsOfPage(q, pageSize, r.now.current.cols),
+    [r, pageSize],
+  );
+  /** the index of each page's first grid child, at the columns last drawn */
+  const starts = useCallback(
+    (p: Page[]) => pageStarts(p, pageSize, r.now.current.cols),
+    [r, pageSize],
+  );
 
   /**
    * Runs a change of what is drawn, keeping the first tile in view where it is (use-result-place.ts); a box or a
@@ -125,10 +132,12 @@ export function usePageReads(
   const keep = useCallback(
     (change: () => void, sync = false) => {
       const g = r.grid.current;
-      const drawn = r.now.current.pages.reduce((s, q) => s + kidsOf(q), 0);
-      if (g && drawn) {
+      const p = r.now.current.pages;
+      const at = starts(p);
+      const drawn = at[at.length - 1] + kidsOf(p[p.length - 1]);
+      if (g) {
         const i = anchorAt(
-          firstInView(g.children, 0, drawn, covered()),
+          firstInView(g.children, at[0], drawn, covered()),
           drawn,
           innerHeight,
           (j) => g.children[j].getBoundingClientRect().top,
@@ -140,7 +149,7 @@ export function usePageReads(
       if (sync) change();
       else startTransition(change);
     },
-    [r, kidsOf],
+    [r, kidsOf, starts],
   );
 
   /** Puts a change in now, or once scrolling stops when it is above the reader; one per `key`. */
@@ -208,27 +217,43 @@ export function usePageReads(
     [load],
   );
 
-  /** The pages before `n`, at most ABOVE of them, as boxes. */
-  const before = (n: number) => boxesBefore<Tile>(n, r.block.current);
+  /** The pages before `n`, at most ABOVE of them, not read yet. */
+  const before = (n: number) => boxesBefore<Tile>(n);
 
-  /** The estimated height of a page from the tiles drawn: its rows at the measured row pitch. */
+  /**
+   * The grid's columns, and from the tiles drawn its row pitch and a tile's height, which size the boxes standing
+   * for pages not read and tiles not drawn yet.
+   */
   const measure = () => {
     const g = r.grid.current;
-    const kids = g?.querySelectorAll("[data-item]");
-    if (!g || !kids?.length) return;
+    if (!g) return;
     const style = getComputedStyle(g);
     const n = style.gridTemplateColumns.split(" ").length;
+    setCols(n);
+    const kids = g.querySelectorAll("[data-item]");
+    if (!kids.length) return;
     const gap = Number.parseFloat(style.rowGap) || 0;
     const a = kids[0].getBoundingClientRect();
     const pitch = kids[n]
       ? kids[n].getBoundingClientRect().top - a.top
       : a.height + gap;
-    r.block.current = pageBlock(pageSize, n, pitch, gap);
-    // the height of a box standing for a tile not drawn yet (PageTiles)
+    // a box for one row of tiles is a tile's height (PageTiles, a page's lead and tail); a page's whole rows add a
+    // pitch for each row after the first (result-pages.tsx PageBoxes)
     g.style.setProperty("--_tile-h", `${pitch - gap}px`);
+    g.style.setProperty("--_pitch", `${pitch}px`);
   };
 
-  return { kidsOf, keep, above, load, loadNext, loadInto, before, measure };
+  return {
+    kidsOf,
+    starts,
+    keep,
+    above,
+    load,
+    loadNext,
+    loadInto,
+    before,
+    measure,
+  };
 }
 
 export type PageReads = ReturnType<typeof usePageReads>;
