@@ -26,7 +26,7 @@
    in rem, so it grows with the text it holds room for, and per language: each holds that language's longest common
    line, "Page 12 · 201,637 items • Clear all" (12.3rem in zh, 13.0 in en, 13.4 in ko, 14.9 in ja), and the gap. */
 .filter-row {
-  --readout-reserve: 12.75rem;
+  --readout-reserve: 13rem;
   row-gap: var(--spacing-1-5);
 }
 :root:lang(en) .filter-row {
