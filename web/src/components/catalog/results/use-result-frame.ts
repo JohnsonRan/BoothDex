@@ -233,9 +233,7 @@ export function useResultFrame(
       r.width.current = g.clientWidth;
       setMask(undefined);
       keep(() => {
-        measure();
-        const tile = g.querySelector("[data-item]");
-        const height = tile?.getBoundingClientRect().height ?? 0;
+        const height = measure();
         setPages((cur) => resized(cur, height));
       });
     };

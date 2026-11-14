@@ -15,6 +15,7 @@ import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { SearchResponse } from "@/lib/api-types";
 import { type Filters, searchQuery } from "@/lib/catalog";
+import { columnCount } from "@/lib/grid";
 import { anchorAt, firstBelow } from "@/lib/result-frame";
 import {
   boxesBefore,
@@ -215,29 +216,35 @@ export function usePageReads(
   const before = (n: number) => boxesBefore<Tile>(n);
 
   /**
-   * The grid's columns, and from the tiles drawn its row pitch and a tile's height, which size the boxes standing
-   * for pages not read and tiles not drawn yet.
+   * The grid's columns, and from a tile drawn its height and the row pitch, which size the boxes standing for pages
+   * not read and tiles not drawn yet; returns the tile's height. Read before the grid is drawn for new columns, the
+   * height is the old layout's, so the results measure again once it is (result-pages.tsx).
    */
   const measure = () => {
     const g = r.grid.current;
-    if (!g) return;
+    if (!g) return 0;
     const style = getComputedStyle(g);
-    const n = style.gridTemplateColumns.split(" ").length;
-    setCols(n);
-    const kids = g.querySelectorAll<HTMLElement>("[data-item]");
-    if (!kids.length) return;
+    // a page's box drawn for more columns spans past the last one and adds implicit columns, tiles flowing into
+    // them: held at 0px, they are left out (lib/grid.ts columnCount); drawn for the right columns, there are none
+    g.style.gridAutoColumns = "0px";
+    setCols(columnCount(style.gridTemplateColumns));
+    const tile = g.querySelector<HTMLElement>("[data-item]");
+    if (!tile) return 0;
     // the column lib/deep-start.ts gave the server's first tile goes: the pages put above it in the same commit
     // (use-result-place.ts) hold it there, and a later change of columns moves it with them
-    kids[0].style.gridColumn = "";
-    const gap = Number.parseFloat(style.rowGap) || 0;
-    const a = kids[0].getBoundingClientRect();
-    const pitch = kids[n]
-      ? kids[n].getBoundingClientRect().top - a.top
-      : a.height + gap;
-    // a box for one row of tiles is a tile's height (PageTiles, a page's lead and tail); a page's whole rows add a
-    // pitch for each row after the first (result-pages.tsx PageBoxes)
-    g.style.setProperty("--_tile-h", `${pitch - gap}px`);
-    g.style.setProperty("--_pitch", `${pitch}px`);
+    tile.style.gridColumn = "";
+    // a row is a tile's height, a box for one row too (PageTiles, a page's lead and tail); a page's whole rows add
+    // a pitch, the height and the gap, for each row after the first (result-pages.tsx PageBoxes). The height is
+    // its content's: a tile sharing a row with a box is stretched to the box, which would keep a wrong height
+    const h =
+      (tile.lastElementChild as Element).getBoundingClientRect().bottom -
+      tile.getBoundingClientRect().top;
+    g.style.setProperty("--_tile-h", `${h}px`);
+    g.style.setProperty(
+      "--_pitch",
+      `${h + (Number.parseFloat(style.rowGap) || 0)}px`,
+    );
+    return h;
   };
 
   return {

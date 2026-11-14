@@ -141,6 +141,13 @@ export function ResultPages({
     setCols,
   });
   const { keep } = reads;
+  // the grid measured as the results mount, before the pages go above (use-result-place.ts), and on new columns,
+  // which a resize first measures on the layout drawn for the old ones (use-result-frame.ts): again on theirs,
+  // before the place is kept, so the change of the boxes' heights is kept out of view too
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a change of columns
+  useLayoutEffect(() => {
+    reads.measure();
+  }, [cols]);
   useResultPlace(r, reads, {
     page,
     total,

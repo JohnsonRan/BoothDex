@@ -16,6 +16,9 @@
 // The line is band-edge.ts covered(): the band's sticky top plus its height, its strip shrunk; the top is the top bar's
 // height (less the strip's shrink), which the AppShell sets on its root only once it hydrates, so this sets it
 // first, as AppShell does. The results then start at that line, where the band's bottom edge meets them.
+// React in development reports both styles, the column and the AppShell's height, as attributes that did not match
+// at hydration. It patches neither and production React does not compare them: both are meant to stay until the
+// AppShell and the results take over.
 
 import { PAGE_SIZE } from "./server-data";
 
