@@ -165,4 +165,3 @@ to the file it decides.
 
 | Question | Source | Raised |
 | --- | --- | --- |
-| Should the reduce-motion switch follow the account like the other settings? The API refuses a preference it does not know (`validate_preferences` in `crates/api/src/account/profile.rs`), so it would need a `motion` key there (`system` or `reduce`) and the name in `web/src/lib/preferences.ts`; until then it is kept in this browser only | the reduce-motion switch, 2026-11-15 | 2026-11-15 |

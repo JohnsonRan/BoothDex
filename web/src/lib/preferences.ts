@@ -5,16 +5,16 @@
 import { api } from "./api";
 import { parseSettings, type Settings } from "./settings-core";
 
-/** The account's preference names for the settings fields (the API calls item text "language"). Reduced motion
- *  stays in this browser: the API refuses a preference it does not know (crates/api/src/account/profile.rs). */
+/** The account's preference names for the settings fields (the API calls item text "language"). */
 const NAMES = {
   ui: "ui",
   content: "language",
   currency: "currency",
   theme: "theme",
   black: "black",
+  motion: "motion",
   filters: "filters",
-} as const satisfies Record<Exclude<keyof Settings, "motion">, string>;
+} as const satisfies Record<keyof Settings, string>;
 
 let signedIn = false;
 
