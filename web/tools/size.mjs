@@ -77,5 +77,8 @@ console.table(rows);
 const over = Object.entries(rows).filter(([, r]) => r.bytes > r.budget);
 if (over.length) {
   console.error(`over budget: ${over.map(([k]) => k).join(", ")}`);
+  console.error(
+    "find what grew with tools/size-diff.mjs (its header says how) before proposing a raise",
+  );
   process.exit(1);
 }

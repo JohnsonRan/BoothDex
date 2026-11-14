@@ -1,6 +1,7 @@
-// Shared parts of the browser checks (loading-layout.cjs, motion.cjs): Playwright, the slow-API proxy
-// (slow-api.mjs) and the page geometry. Lab only: needs Playwright and a `next start` server whose run-time
-// API_ORIGIN is the proxy. PLAYWRIGHT_CORE and CHROME point at a local Playwright and Chromium.
+// Shared parts of the browser checks (loading-layout.cjs, motion.cjs, nav.cjs): Playwright, the slow-API proxy
+// (slow-api.mjs) and the page geometry. Lab only: needs Playwright and a `next start` server with API_ORIGIN set to
+// the proxy both at `next build` (the browser's /api rewrite is fixed then, next.config.ts) and at `next start` (the
+// server's own reads). PLAYWRIGHT_CORE and CHROME point at a local Playwright and Chromium.
 const { readdirSync } = require("node:fs");
 
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || "playwright-core");
