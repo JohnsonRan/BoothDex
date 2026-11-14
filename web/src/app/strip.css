@@ -182,20 +182,9 @@
 [data-morph] .strip-name {
   animation-name: strip-name;
 }
-[data-chips] .strip-thumb {
-  translate: calc(var(--chip-dx) - var(--_face-in))
-    calc(var(--strip-dy) - var(--_face-in));
-  scale: var(--strip-scale);
-}
-[data-chips] :is(.strip-card, .strip-caption) {
-  opacity: 0;
-}
 /* the selected chip's hidden caption as wide as its semibold name */
 [data-chips] .strip-tile[data-selected] .strip-caption {
   font-weight: var(--font-weight-semibold);
-}
-[data-chips] :is(.strip-face, .strip-name) {
-  opacity: 1;
 }
 .strip-surface {
   position: absolute;
@@ -285,15 +274,19 @@
   inset: 0;
   opacity: 1;
 }
+/* shrunk all the way, and the chips laid out, the strip is drawn as the morph ends */
+[data-chips] .strip-thumb,
 [data-shrink="all"]:not([data-strip-open]) .strip-thumb {
   translate: calc(var(--chip-dx) - var(--_face-in))
     calc(var(--strip-dy) - var(--_face-in));
   scale: var(--strip-scale);
 }
+[data-chips] :is(.strip-card, .strip-caption),
 [data-shrink="all"]:not([data-strip-open])
   :is(.strip-card, .strip-caption, .strip-label) {
   opacity: 0;
 }
+[data-chips] :is(.strip-face, .strip-name),
 [data-shrink="all"]:not([data-strip-open]) :is(.strip-face, .strip-name) {
   opacity: 1;
 }
