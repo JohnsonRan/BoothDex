@@ -86,12 +86,13 @@ section that checks it) or both. A rule without a row is checked in review again
 | crates/AGENTS.md#sensitive-values | | `REVIEW.md`, "Checking against the rules", Sensitive data |
 | crates/AGENTS.md: Verification | `cargo test --workspace -- --include-ignored` (against PostgreSQL in CI) | |
 
-Lab checks, run by hand and not part of a gate: `web/tools/motion.cjs`, `web/tools/loading-layout.cjs`
-and `bun run check:size` in `web/`; `scripts/bench/run.sh`. The two browser checks run once on `/`, which arrives
-in one paint, and once on a URL with `q`, which streams its results behind silhouettes; the second needs
-`LAB_AI_OFF=1`, an API on this machine started with `AI_BASE_URL` at a closed port (`http://127.0.0.1:9`), so
-the search embeds nothing, and `slow-api.mjs` pointed at that API; the proxy refuses a search with `q` to any
-other upstream.
+Lab checks, run by hand and not part of a gate: `web/tools/motion.cjs`, `web/tools/loading-layout.cjs`,
+`web/tools/nav.cjs` and `bun run check:size` in `web/`; `scripts/bench/run.sh`. The two loading checks run once on
+`/`, which arrives in one paint, and once on a URL with `q`, which streams its results behind silhouettes; the
+second, and every run of `nav.cjs`, needs `LAB_AI_OFF=1`, an API on this machine started with `AI_BASE_URL` at a
+closed port (`http://127.0.0.1:9`), so the search embeds nothing, and `slow-api.mjs` pointed at that API; the proxy
+refuses a search with `q` to any other upstream. Build and start the site with `API_ORIGIN` set to the proxy:
+`next build` fixes the browser's `/api` rewrite.
 
 ## Exceptions
 
@@ -160,3 +161,4 @@ to the file it decides.
 
 | Question | Source | Raised |
 | --- | --- | --- |
+| Should a return to the results keep each tile in its column? A page whose tiles are not loaded is a box of whole rows (`pageBlock` in `web/src/lib/result-pages.ts`), and 100 results a page do not fill whole rows at 6 columns (1440 px). So Back from another page, or a reload, at results page 3 brings back page 3's first tile at the same height but in column 1 instead of column 3, and the two tiles of page 2 that led its row are gone. A deep start moves page 3's tiles 2 columns along when page 2's tiles arrive. Keeping columns means either padding each page to whole rows (a gap at every page end) or offsetting a page's first tile by its index modulo the column count | `web/tools/nav.cjs` step 5, 2026-11-14 | 2026-11-14 |

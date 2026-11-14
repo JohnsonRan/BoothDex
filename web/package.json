@@ -11,6 +11,7 @@
     "check:size": "node tools/size.mjs",
     "check:layout": "node tools/loading-layout.cjs",
     "check:motion": "node tools/motion.cjs",
+    "check:nav": "node tools/nav.cjs",
     "lab:slow-api": "node tools/slow-api.mjs",
     "format": "biome format --write"
   },
