@@ -16,6 +16,7 @@ use sqlx::PgPool;
 use tokio::sync::Semaphore;
 
 use crate::error::Refusal;
+use crate::limit::Check;
 use crate::{ApiError, AppState};
 
 const FLUSH_EVERY: Duration = Duration::from_secs(10);

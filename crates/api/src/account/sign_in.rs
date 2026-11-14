@@ -11,6 +11,7 @@ use sqlx::PgPool;
 use super::password::{hash_password, log_attempt, log_failure, valid_password, verify_password};
 use super::session::start_session;
 use crate::error::Refusal;
+use crate::limit::Check;
 use crate::{ApiError, AppState};
 
 fn valid_username(u: &str) -> bool {

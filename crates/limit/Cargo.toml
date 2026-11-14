@@ -1,0 +1,10 @@
+[package]
+name = "boothdex-limit"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# tokio: ConnectInfo, the peer address the extractor reads
+axum = { version = "0.8", default-features = false, features = ["tokio"] }

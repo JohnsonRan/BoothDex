@@ -1,5 +1,6 @@
 //! Handler tests without a database: per-route rate limits, the search permits, and the bodies of refusals.
 
+use crate::limit::Check;
 use crate::state::test_state;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

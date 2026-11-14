@@ -63,7 +63,7 @@ async function apiReady(): Promise<boolean> {
 }
 
 /** The visitor's request headers a per-visitor API call carries: the cookie (the session) and the address headers
- * the front proxy set, so the API's per-IP rate limits (crates/api/src/limit.rs, client_ip) count the visitor,
+ * the front proxy set, so the API's per-IP rate limits (client_ip in crates/limit/src/lib.rs) count the visitor,
  * not this server, which every visitor's request would otherwise share. */
 const VISITOR_HEADERS = [
   "cookie",

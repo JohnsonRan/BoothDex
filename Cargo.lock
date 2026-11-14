@@ -65,6 +65,7 @@ dependencies = [
  "argon2",
  "axum",
  "boothdex-core",
+ "boothdex-limit",
  "chrono",
  "futures-util",
  "getrandom 0.4.3",
@@ -407,6 +408,13 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tokio",
+]
+
+[[package]]
+name = "boothdex-limit"
+version = "0.1.0"
+dependencies = [
+ "axum",
 ]
 
 [[package]]

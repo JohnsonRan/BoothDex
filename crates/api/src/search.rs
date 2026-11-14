@@ -9,6 +9,7 @@ use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse, Response};
 
 use crate::error::Refusal;
+use crate::limit::Check;
 use crate::params::Params;
 use crate::search_request::{SearchRequest, View, query_without, without_groups};
 use crate::{ApiError, AppState, account, catalog, db, limit};

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse, Response};
 
+use crate::limit::Check;
 use crate::params::Params;
 use crate::search_request::{SearchRequest, Sort};
 use crate::{ApiError, AppState, db, limit};
