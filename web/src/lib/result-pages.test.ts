@@ -16,6 +16,7 @@ import {
   resultsQuery,
   SNAPSHOT,
   type Snapshot,
+  withAbove,
   withFailed,
   withInto,
   withNext,
@@ -159,6 +160,14 @@ test("boxesBefore puts at most ABOVE pages before n, from page 1", () => {
   const deep = boxesBefore(60);
   expect(deep.length).toBe(40);
   expect([deep[0].n, deep[39].n]).toEqual([20, 59]);
+});
+
+test("withAbove puts the pages before the first one up once, however often it runs", () => {
+  const p: Page<T>[] = [{ n: 3, tiles: tiles(1) }];
+  const once = withAbove(p, 3);
+  expect(once.map((q) => q.n)).toEqual([1, 2, 3]);
+  expect(withAbove(once, 3)).toBe(once);
+  expect(withAbove(p, 1)).toBe(p);
 });
 
 test("withRest adds the unseen tiles to the partial page only, drawn gradually", () => {

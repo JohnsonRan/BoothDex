@@ -68,3 +68,12 @@
     transition: none;
   }
 }
+
+/* The frame around the results (frame/site-frame.tsx AppShell, its main, catalog/home-screen.tsx LayoutContent) does
+   not clip: Chromium takes a window scroll out of a layout shift only for an element with no overflow: clip above
+   it, so each page put above the reader with the window scrolled by its height (catalog/results/use-result-place.ts)
+   counted as a shift of everything in view, 0.49 for a start at ?page=3 at 1440x900. */
+.astryx-app-shell:has([data-band-content]):not(#\#):not(#\#),
+.astryx-layout-content:has([data-band-content]):not(#\#):not(#\#) {
+  overflow: visible;
+}

@@ -18,7 +18,6 @@ import { type Filters, searchQuery } from "@/lib/catalog";
 import { columnCount } from "@/lib/grid";
 import { anchorAt, firstBelow } from "@/lib/result-frame";
 import {
-  boxesBefore,
   type Dir,
   pageStarts,
   type Page as ResultPage,
@@ -52,6 +51,8 @@ export function useResultRefs(pages: Page[]) {
   const nearTop = useRef(false);
   const busy = useRef(false);
   const anchor = useRef<{ el: Element; at: number } | null>(null);
+  /** the anchor (anchorNow) where the last frame drew it: a new width reflows the grid before any script sees it */
+  const seen = useRef<{ el: Element; top: number } | null>(null);
   const scrolling = useRef(false);
   /** changes above the reader made while scrolling, put in once scrolling stops */
   const held = useRef(new Map<string, () => void>());
@@ -69,6 +70,7 @@ export function useResultRefs(pages: Page[]) {
     nearTop,
     busy,
     anchor,
+    seen,
     scrolling,
     held,
     restoring,
@@ -121,30 +123,34 @@ export function usePageReads(
   );
 
   /**
-   * Runs a change of what is drawn, keeping the first tile in view where it is (use-result-place.ts); a box or a
-   * silhouette in view above it may be what the change replaces. With none in view, what stays above is kept.
+   * The first tile in view and its top in the viewport; a box or a silhouette in view above it may stand in for
+   * it, as what a change replaces. With none in view, what stays above.
    */
+  const anchorNow = useCallback(() => {
+    const g = r.grid.current;
+    if (!g) return null;
+    const at = starts(r.now.current.pages);
+    const drawn = at[at.length - 1];
+    const i = anchorAt(
+      firstInView(g.children, at[0], drawn, covered()),
+      drawn,
+      innerHeight,
+      (j) => g.children[j].getBoundingClientRect().top,
+      (j) => !!(g.children[j] as HTMLElement).dataset.item,
+    );
+    const el = g.children[i];
+    return { el, top: el.getBoundingClientRect().top };
+  }, [r, starts]);
+
+  /** Runs a change of what is drawn, keeping the anchor (anchorNow) where it is (use-result-place.ts). */
   const keep = useCallback(
     (change: () => void, sync = false) => {
-      const g = r.grid.current;
-      const p = r.now.current.pages;
-      const at = starts(p);
-      const drawn = at[at.length - 1];
-      if (g) {
-        const i = anchorAt(
-          firstInView(g.children, at[0], drawn, covered()),
-          drawn,
-          innerHeight,
-          (j) => g.children[j].getBoundingClientRect().top,
-          (j) => !!(g.children[j] as HTMLElement).dataset.item,
-        );
-        const el = g.children[i];
-        r.anchor.current = { el, at: el.getBoundingClientRect().top + scrollY };
-      }
+      const a = anchorNow();
+      if (a) r.anchor.current = { el: a.el, at: a.top + scrollY };
       if (sync) change();
       else startTransition(change);
     },
-    [r, starts],
+    [r, anchorNow],
   );
 
   /** Puts a change in now, or once scrolling stops when it is above the reader; one per `key`. */
@@ -212,9 +218,6 @@ export function usePageReads(
     [load],
   );
 
-  /** The pages before `n`, at most ABOVE of them, not read yet. */
-  const before = (n: number) => boxesBefore<Tile>(n);
-
   /**
    * The grid's columns, and from a tile drawn its height and the row pitch, which size the boxes standing for pages
    * not read and tiles not drawn yet; returns the tile's height. Read before the grid is drawn for new columns, the
@@ -249,12 +252,12 @@ export function usePageReads(
 
   return {
     starts,
+    anchorNow,
     keep,
     above,
     load,
     loadNext,
     loadInto,
-    before,
     measure,
   };
 }

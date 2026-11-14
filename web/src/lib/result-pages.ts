@@ -170,6 +170,13 @@ export function boxesBefore<T>(n: number): Page<T>[] {
   }));
 }
 
+/**
+ * The pages before page `first` put above it while it leads `pages`, else `pages` as they are: run twice (React
+ * Strict Mode runs a mount effect twice in development), it puts them up once.
+ */
+export const withAbove = <T>(pages: Page<T>[], first: number) =>
+  pages[0].n === first ? [...boxesBefore<T>(first), ...pages] : pages;
+
 /** The rest of partial page `n` read: the tiles not `seen` go after the server's, drawn a few a frame. */
 export const withRest = <T extends { id: number }>(
   pages: Page<T>[],
