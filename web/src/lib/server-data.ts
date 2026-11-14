@@ -4,6 +4,7 @@
 import { cacheLife } from "next/cache";
 import { cookies, headers } from "next/headers";
 import type { ItemResponse, SearchResponse } from "./api-types";
+import { ASTRYX_GAPS } from "./astryx-gaps";
 import {
   type Avatar,
   type Category,
@@ -181,9 +182,14 @@ const CATALOGUES = {
   ko: () => import("@astryxdesign/core/locales/ko-KR.generated.js"),
 };
 
-/** The component library's own strings (pagination, close buttons) in the interface language; English is built in. */
+/**
+ * The component library's own strings (pagination, close buttons) in the interface language; English is built in.
+ * The strings the library ships in English only come from ASTRYX_GAPS, under the library's own.
+ */
 export async function componentCatalogue(
   ui: Settings["ui"],
 ): Promise<Record<string, string> | undefined> {
-  return ui === "en" ? undefined : { ...(await CATALOGUES[ui]()).default };
+  return ui === "en"
+    ? undefined
+    : { ...ASTRYX_GAPS[ui], ...(await CATALOGUES[ui]()).default };
 }

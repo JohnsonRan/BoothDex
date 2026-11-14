@@ -12,13 +12,15 @@ const [
   delay = "2500",
 ] = process.argv.slice(2);
 const ENTRANCE = ["page-enter", "row-enter"];
-// A filter change as a visitor makes it: the toolbar's sort menu, switched between Trending and Newest. Opening the
-// menu is separate from picking the item, so a timed refresh starts at the pick. A text search's sort menu has
-// neither, so these steps need a URL without `q`.
+// A filter change as a visitor makes it: the toolbar's sort menu, switched between its default (Trending, or
+// Relevance on a text search) and Newest. Opening the menu is separate from picking the item, so a timed refresh
+// starts at the pick.
 const openSort = async (p) => {
-  const button = p.getByRole("button", { name: /^(Trending|Newest)$/ });
-  const next =
-    (await button.textContent()).trim() === "Trending" ? "Newest" : "Trending";
+  const button = p.getByRole("button", {
+    name: /^(Trending|Relevance|Newest)$/,
+  });
+  const first = streams(url) ? "Relevance" : "Trending";
+  const next = (await button.textContent()).trim() === first ? "Newest" : first;
   await button.click();
   const item = p.getByRole("menuitemradio", { name: next });
   await item.waitFor();
@@ -124,10 +126,19 @@ const changeSort = async (p) => (await openSort(p))();
     await lab(proxy, { delay: 0 });
     await p.goto(url, { waitUntil: "load" });
     await p.waitForTimeout(1500);
-    check(
-      (await entrances(p)).length === 0,
-      `${tag}: fast first load animates nothing (${(await entrances(p)).length} entrance animations)`,
-    );
+    // a text search's results are a boundary React reveals at least 300 ms after the frame, so even a fast answer
+    // replaces silhouettes the visitor saw, and enters (arrival.tsx); any other page comes in its first paint
+    const fast = await entrances(p);
+    if (reduced || !streams(url))
+      check(
+        fast.length === 0,
+        `${tag}: fast first load animates nothing (${fast.length} entrance animations)`,
+      );
+    else
+      check(
+        fast.some((a) => a.id === "row-enter"),
+        `${tag}: fast first load enters once after its silhouettes (${fast.length} entrance animations)`,
+      );
 
     await lab(proxy, { delay });
     await p.goto(url, { waitUntil: "commit" });
@@ -267,7 +278,14 @@ const changeSort = async (p) => (await openSort(p))();
           await p.evaluate(() =>
             document
               .getAnimations()
-              .filter((a) => a.playState === "running")
+              // a hidden element's animation draws nothing (Tokenizer keeps its idle Spinner mounted and hidden)
+              .filter(
+                (a) =>
+                  a.playState === "running" &&
+                  a.effect?.target?.checkVisibility({
+                    visibilityProperty: true,
+                  }) !== false,
+              )
               .map((a) => a.animationName ?? a.id),
           ),
         );
