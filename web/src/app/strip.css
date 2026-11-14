@@ -252,18 +252,18 @@
     animation-delay: calc(var(--strip-p, 0) * -1s);
   }
 }
+/* not only under `data-morph`: the buttons' fade runs before the band sets it */
 @media (prefers-reduced-motion: reduce) {
-  [data-morph]
-    :is(
-      .strip-thumb,
-      .strip-face,
-      .strip-card,
-      .strip-label,
-      .strip-caption,
-      .strip-name,
-      .strip-surface,
-      [data-strip] [popover]
-    ) {
+  :is(
+    .strip-thumb,
+    .strip-face,
+    .strip-card,
+    .strip-label,
+    .strip-caption,
+    .strip-name,
+    .strip-surface,
+    [data-strip] [popover]
+  ) {
     animation: none;
   }
 }

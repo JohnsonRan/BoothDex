@@ -288,6 +288,19 @@ const changeSort = async (p) => (await openSort(p))();
         samples.every((s) => s.length === 0),
         `${tag}: zero running animations at rest (${JSON.stringify(samples.flat().slice(0, 5))})`,
       );
+      // the strip as it stands before the band's script marks it (`data-morph`): the Carousel's buttons, drawn by
+      // then, keep their scroll fade (app/strip.css) and must not run it either
+      await p.goto(url, { waitUntil: "load" });
+      await p.waitForTimeout(1500);
+      await p.evaluate(() => {
+        for (const el of document.querySelectorAll("[data-morph]"))
+          el.removeAttribute("data-morph");
+      });
+      const early = await p.evaluate(RUNNING);
+      check(
+        early.length === 0,
+        `${tag}: the strip before the band's script runs nothing (${JSON.stringify(early)})`,
+      );
     }
     await ctx.close();
   }
