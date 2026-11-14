@@ -196,14 +196,20 @@ cargo build --release            # 初回ビルド時に IPADIC 辞書をダウ�
 # 指定しない場合は rav1e を使用します。nasm がある場合は --features imgproxy/asm を追加すると、エンコードが約 3 倍速くなります。
 (cd web && bun install)
 
-export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
+export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0
 target/release/api &             # :3000
 target/release/imgproxy &        # :3001
 target/release/worker run &
 (cd web && bun run dev)          # :3100 (/api と /img を上記サービスへ転送)
 ```
 
-アカウント `admin` を新規登録し、`http://localhost:3100/admin` を開いてから、数ページ分クロールして商品データを取得してください。
+`http://localhost:3100` でアカウント `admin` を新規登録し、`api` を停止してから、そのユーザー名を指定して再起動してください。API は `ADMIN_USERNAMES` に記載されたユーザー名の登録を拒否するため、アカウントを作成してから記載してください。
+
+```sh
+ADMIN_USERNAMES=admin target/release/api &   # :3000 (先に起動した api を停止してから)
+```
+
+`http://localhost:3100/admin` を開いてから、数ページ分クロールして商品データを取得してください。
 
 ```sh
 target/release/worker once incremental '{"max_pages": 3, "full": true}'

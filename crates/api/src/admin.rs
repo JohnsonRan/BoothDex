@@ -62,11 +62,15 @@ pub fn admin_names() -> Option<Vec<String>> {
     Some(list.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()).collect())
 }
 
-pub async fn apply_admin_env(pool: &PgPool) -> anyhow::Result<()> {
-    if let Some(names) = admin_names() {
-        sqlx::query("update users set is_admin = lower(username) = any($1)").bind(&names).execute(pool).await?;
-    }
-    Ok(())
+/// Makes exactly the accounts named in `names` admin, and returns the listed names that no account has.
+pub async fn apply_admin_names(pool: &PgPool, names: Option<&[String]>) -> anyhow::Result<Vec<String>> {
+    let Some(names) = names else { return Ok(Vec::new()) };
+    sqlx::query("update users set is_admin = lower(username) = any($1)").bind(names).execute(pool).await?;
+    let missing = sqlx::query_scalar("select n from unnest($1::text[]) n where not exists (select 1 from users where lower(username) = n)")
+        .bind(names)
+        .fetch_all(pool)
+        .await?;
+    Ok(missing)
 }
 
 /// The admin's username; every handler of `routes()` starts here.

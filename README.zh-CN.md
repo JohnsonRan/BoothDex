@@ -199,14 +199,20 @@ cargo build --release            # 首次构建会下载 IPADIC 词典；若网�
 # 不加时使用 rav1e；已安装 nasm 时可加上 --features imgproxy/asm，编码速度约为原来的三倍。
 (cd web && bun install)
 
-export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
+export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0
 target/release/api &             # :3000
 target/release/imgproxy &        # :3001
 target/release/worker run &
 (cd web && bun run dev)          # :3100，将 /api 与 /img 转发至上述服务
 ```
 
-注册账户 `admin`，打开 `http://localhost:3100/admin`，再抓取几页数据即可开始调试：
+在 `http://localhost:3100` 注册账户 `admin`，停止 `api`，再带上该用户名重新启动。API 拒绝注册 `ADMIN_USERNAMES` 中列出的用户名，因此请在账户创建后再将其写入：
+
+```sh
+ADMIN_USERNAMES=admin target/release/api &   # :3000，先停止之前的 api
+```
+
+打开 `http://localhost:3100/admin`，再抓取几页数据即可开始调试：
 
 ```sh
 target/release/worker once incremental '{"max_pages": 3, "full": true}'

@@ -52,10 +52,10 @@ use snapshot::{Lookup, Snapshot};
 use snapshot::{build_snapshot, catalog_version, reloader};
 use state::AppState;
 
-async fn build_state(pool: PgPool) -> Result<AppState> {
+async fn build_state(pool: PgPool, admin_names: Option<Vec<String>>) -> Result<AppState> {
     let version = catalog_version(&pool).await?;
     let snap = build_snapshot(&pool, version).await?;
-    AppState::new(
+    let state = AppState::new(
         pool,
         snap,
         Default::default(),
@@ -63,7 +63,8 @@ async fn build_state(pool: PgPool) -> Result<AppState> {
         std::env::var("IMGPROXY_URL").ok().or_else(|| Some("http://127.0.0.1:3001".into())),
         account::dummy_hash(),
         Some(std::time::Duration::from_secs(10)),
-    )
+    )?;
+    Ok(AppState { admin_names, ..state })
 }
 
 /// Answers every request with 503 while the catalogue loads (~20 s), so the site can say "starting" instead of
@@ -139,10 +140,14 @@ async fn main() -> Result<()> {
         .connect(&std::env::var("DATABASE_URL")?)
         .await?;
     boothdex_core::MIGRATOR.run(&pool).await?;
-    admin::apply_admin_env(&pool).await?;
+    let admin_names = admin::admin_names();
+    for name in admin::apply_admin_names(&pool, admin_names.as_deref()).await? {
+        // registration refuses a listed name, so a typo or a name listed before its account exists stays unused
+        eprintln!("warn: ADMIN_USERNAMES lists {name}, which no account has; unlist it, register it, then list it again");
+    }
     // AI configured through environment variables: translate the taxonomy on first start
     admin::queue_localize_if_needed(&pool, &boothdex_core::settings::ai(&pool).await?).await?;
-    let state = Arc::new(build_state(pool).await?);
+    let state = Arc::new(build_state(pool, admin_names).await?);
     tokio::spawn(reloader(state.clone()));
     tokio::spawn(gallery::flush_views(state.clone()));
 

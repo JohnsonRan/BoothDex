@@ -227,14 +227,21 @@ cargo build --release            # first build downloads the IPADIC dictionary; 
 # Without it the encoder is rav1e; with nasm installed, --features imgproxy/asm makes that about three times faster.
 (cd web && bun install)
 
-export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
+export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0
 target/release/api &             # :3000
 target/release/imgproxy &        # :3001
 target/release/worker run &
 (cd web && bun run dev)          # :3100, proxies /api and /img to the services above
 ```
 
-Register the account `admin`, open `http://localhost:3100/admin`, and crawl a few pages to get items:
+Register the account `admin` at `http://localhost:3100`, stop `api`, and start it again with the name listed. The API
+refuses to register a name that `ADMIN_USERNAMES` lists, so list it only after the account exists:
+
+```sh
+ADMIN_USERNAMES=admin target/release/api &   # :3000, after the first api has stopped
+```
+
+Open `http://localhost:3100/admin` and crawl a few pages to get items:
 
 ```sh
 target/release/worker once incremental '{"max_pages": 3, "full": true}'
