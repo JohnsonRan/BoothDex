@@ -30,16 +30,7 @@ const SETTLE_MS = 200;
 
 export function useResultFrame(
   r: ResultRefs,
-  {
-    kidsOf,
-    starts,
-    keep,
-    above,
-    loadNext,
-    loadInto,
-    before,
-    measure,
-  }: PageReads,
+  { starts, keep, above, loadNext, loadInto, before, measure }: PageReads,
   {
     page,
     key,
@@ -130,11 +121,11 @@ export function useResultFrame(
       const i = p.findIndex((q) => q.n === shown);
       if (!g || i < 0 || r.restoring.current) return false;
       if (resultsQuery(location.search) !== own) return true;
-      const from = starts(p)[i];
+      const at = starts(p);
       const edge = covered();
-      const el = g.children[
-        firstInView(g.children, from, from + kidsOf(p[i]), edge)
-      ] as HTMLElement | undefined;
+      const el = g.children[firstInView(g.children, at[i], at[i + 1], edge)] as
+        | HTMLElement
+        | undefined;
       const id = Number(el?.dataset.item);
       if (!el || !id) return false;
       const snap: Snapshot = {
@@ -173,8 +164,8 @@ export function useResultFrame(
       const kids = g.children;
       const at = starts(p);
       const h = innerHeight;
-      const tops = at.map((s) => kids[s].getBoundingClientRect().top);
-      const lastKid = kids[at[at.length - 1] + kidsOf(p[p.length - 1]) - 1];
+      const tops = p.map((_, j) => kids[at[j]].getBoundingClientRect().top);
+      const lastKid = kids[at[p.length] - 1];
       const bottoms = [
         ...tops.slice(1),
         lastKid?.getBoundingClientRect().bottom ?? 0,

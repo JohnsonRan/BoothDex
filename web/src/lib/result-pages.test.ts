@@ -135,7 +135,7 @@ test("kidsOf counts the tiles, a notice, a page of silhouettes near view, else i
   expect(kidsOf({ n: 3, tiles: [] }, 100, 5)).toBe(1);
 });
 
-test("pageStarts runs each page's children on from the last, after the first page's offset", () => {
+test("pageStarts runs each page's children on from the last, after the first page's offset, to their end", () => {
   const p: Page<T>[] = [
     { n: 1, tiles: [] },
     { n: 2, tiles: [], near: true },
@@ -143,11 +143,11 @@ test("pageStarts runs each page's children on from the last, after the first pag
     { n: 4, tiles: [] },
   ];
   // page 1 at 4 columns of 10: 2 rows and a tail of 2
-  expect(pageStarts(p, 10, 4)).toEqual([0, 2, 12, 15]);
-  expect(pageStarts(p, 10, 5)).toEqual([0, 1, 11, 14]);
+  expect(pageStarts(p, 10, 4)).toEqual([0, 2, 12, 15, 17]);
+  expect(pageStarts(p, 10, 5)).toEqual([0, 1, 11, 14, 15]);
   // page 3 first: 20 % 6 = 2 cells before it, one child
-  expect(pageStarts(p.slice(2), 10, 6)).toEqual([1, 4]);
-  expect(pageStarts(p.slice(2), 10, 5)).toEqual([0, 3]);
+  expect(pageStarts(p.slice(2), 10, 6)).toEqual([1, 4, 6]);
+  expect(pageStarts(p.slice(2), 10, 5)).toEqual([0, 3, 4]);
 });
 
 test("boxesBefore puts at most ABOVE pages before n, from page 1", () => {

@@ -147,18 +147,18 @@ export function kidsOf<T>(q: Page<T>, pageSize: number, cols: number) {
   return [lead, rows, tail].filter(Boolean).length;
 }
 
-/** The index of each page's first grid child, after the child offsetting the first page (leadOffset) when there is one. */
+/**
+ * The index of each page's first grid child, after the child offsetting the first page (leadOffset) when there is
+ * one, and last the index past the last page's children.
+ */
 export function pageStarts<T>(
   pages: Page<T>[],
   pageSize: number,
   cols: number,
 ) {
-  let at = Number(leadOffset(pages[0].n, pageSize, cols) > 0);
-  return pages.map((q) => {
-    const s = at;
-    at += kidsOf(q, pageSize, cols);
-    return s;
-  });
+  const at = [Number(leadOffset(pages[0].n, pageSize, cols) > 0)];
+  for (const q of pages) at.push(at[at.length - 1] + kidsOf(q, pageSize, cols));
+  return at;
 }
 
 /** The pages before `n`, at most ABOVE of them, not read yet. */

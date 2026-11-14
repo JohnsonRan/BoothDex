@@ -19,7 +19,6 @@ import { anchorAt, firstBelow } from "@/lib/result-frame";
 import {
   boxesBefore,
   type Dir,
-  kidsOf as kidsOfPage,
   pageStarts,
   type Page as ResultPage,
   type Snapshot,
@@ -114,12 +113,7 @@ export function usePageReads(
       `/api/search?${searchQuery(filters, n, pageSize)}&fields=card${lexical ? "&sem=0" : ""}`,
     [filters, pageSize, lexical],
   );
-  /** the grid children a page draws, at the columns last drawn */
-  const kidsOf = useCallback(
-    (q: Page) => kidsOfPage(q, pageSize, r.now.current.cols),
-    [r, pageSize],
-  );
-  /** the index of each page's first grid child, at the columns last drawn */
+  /** the index of each page's first grid child and past the last page's, at the columns last drawn */
   const starts = useCallback(
     (p: Page[]) => pageStarts(p, pageSize, r.now.current.cols),
     [r, pageSize],
@@ -134,7 +128,7 @@ export function usePageReads(
       const g = r.grid.current;
       const p = r.now.current.pages;
       const at = starts(p);
-      const drawn = at[at.length - 1] + kidsOf(p[p.length - 1]);
+      const drawn = at[at.length - 1];
       if (g) {
         const i = anchorAt(
           firstInView(g.children, at[0], drawn, covered()),
@@ -149,7 +143,7 @@ export function usePageReads(
       if (sync) change();
       else startTransition(change);
     },
-    [r, kidsOf, starts],
+    [r, starts],
   );
 
   /** Puts a change in now, or once scrolling stops when it is above the reader; one per `key`. */
@@ -247,7 +241,6 @@ export function usePageReads(
   };
 
   return {
-    kidsOf,
     starts,
     keep,
     above,
