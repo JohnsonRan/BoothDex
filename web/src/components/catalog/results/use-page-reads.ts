@@ -230,8 +230,11 @@ export function usePageReads(
     const style = getComputedStyle(g);
     const n = style.gridTemplateColumns.split(" ").length;
     setCols(n);
-    const kids = g.querySelectorAll("[data-item]");
+    const kids = g.querySelectorAll<HTMLElement>("[data-item]");
     if (!kids.length) return;
+    // the column lib/deep-start.ts gave the server's first tile goes: the pages put above it in the same commit
+    // (use-result-place.ts) hold it there, and a later change of columns moves it with them
+    kids[0].style.gridColumn = "";
     const gap = Number.parseFloat(style.rowGap) || 0;
     const a = kids[0].getBoundingClientRect();
     const pitch = kids[n]
