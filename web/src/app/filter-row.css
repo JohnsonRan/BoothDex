@@ -22,11 +22,21 @@
    the width it holds back for the readout, paid as padding, which the overflow measurement subtracts. The readout
    sits beside the slot, pulled back over the reserve so it draws against the last clause, and spans the reserve
    less the gap before it, so its text never changes what the slot is given. Its text sits at the reserve's end,
-   against the end cluster, as the template's readout does at desktop widths (the count's box below). The reserve is in rem, so it grows
-   with the text it holds room for. */
+   against the end cluster, as the template's readout does at desktop widths (the count's box below). The reserve is
+   in rem, so it grows with the text it holds room for, and per language: each holds that language's longest common
+   line, "Page 12 · 201,637 items • Clear all" (12.3rem in zh, 13.0 in en, 13.4 in ko, 14.9 in ja), and the gap. */
 .filter-row {
-  --readout-reserve: 11.5rem;
+  --readout-reserve: 12.75rem;
   row-gap: var(--spacing-1-5);
+}
+:root:lang(en) .filter-row {
+  --readout-reserve: 13.5rem;
+}
+:root:lang(ko) .filter-row {
+  --readout-reserve: 14rem;
+}
+:root:lang(ja) .filter-row {
+  --readout-reserve: 15.5rem;
 }
 .filter-slot {
   display: flex;
@@ -70,10 +80,11 @@
 }
 
 /* A phone (owner's request; the template keeps one line): where the row cannot hold the search, the trigger and the
-   reserve (7.5 + 0.5 + 3 + 11.5 rem, inside the toolbar's own 2 x 1.5 rem inset), the readout takes a line of its
+   longest reserve (7.5 + 0.5 + 3 + 15.5 rem, ja's, inside the toolbar's own 2 x 1.5 rem inset; a container query
+   cannot read the variable), the readout takes a line of its
    own under the row and the slot keeps just the trigger, so the search and "+N" stay as they were. Decided by the
    toolbar's width, not by the readout's text, so the count arriving never moves the row. */
-@container toolbar (width < 25.5rem) {
+@container toolbar (width < 29.5rem) {
   .filter-toolbar .filter-row {
     flex-wrap: wrap;
   }
