@@ -1,16 +1,17 @@
 // Home page: the table-filter template's header (page.tsx:4339-4475: progress bar, title row, toolbar row of
 // filter row and end cluster), its toolbar row the filter band that stays under the top bar (band.tsx), over the
 // avatar strip and a uniform card grid with a real empty state. Everything
-// here renders on the server; the controls it places are client components. The frame (title, controls) streams
-// first; the count and the results follow when the search answers, Skeleton silhouettes holding their places
-// (loading.tsx), and enter once if the visitor saw those (arrival.tsx).
+// here renders on the server; the controls it places are client components. The page comes in one paint with its
+// count and results; a text search, which may wait for the AI provider, streams the frame first and the count and
+// the results after it, Skeleton silhouettes holding their places (loading.tsx, Pending below), and they enter once
+// if the visitor saw those (arrival.tsx).
 
 import { Layout, LayoutContent, LayoutHeader } from "@astryxdesign/core/Layout";
 import { Section } from "@astryxdesign/core/Section";
 import { HStack } from "@astryxdesign/core/Stack";
 import { Heading } from "@astryxdesign/core/Text";
 import { headers } from "next/headers";
-import { Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 import { RecentCount, RecentResults } from "@/components/account/recent-view";
 import { ViewActions } from "@/components/account/view-actions";
 import { FilterBand } from "@/components/catalog/band/band";
@@ -111,6 +112,24 @@ export async function HomeScreen({
   );
 }
 
+/**
+ * The count and the results behind a boundary of their own, with their silhouettes, only when the search can be
+ * slow. React reveals each boundary it streams at least 300 ms after the previous one, so a page of three showed
+ * its first tiles about 600 ms after the frame, and Lighthouse's simulated LCP counted every script loaded
+ * meanwhile. Without a boundary they come with the frame in one paint.
+ */
+function Pending({
+  slow,
+  fallback,
+  children,
+}: {
+  slow: boolean;
+  fallback: ReactNode;
+  children: ReactNode;
+}) {
+  return slow ? <Suspense fallback={fallback}>{children}</Suspense> : children;
+}
+
 /** Asks for the opened item's main image from the first HTML (item-preload.tsx). */
 async function OpenedItemImage({ id }: { id: number }) {
   const src = await itemHero(id);
@@ -167,6 +186,8 @@ async function Catalog({
   const t = translator(settings.ui);
   // started here, awaited by the count and the results: the frame does not wait for it
   const recent = filters.view === "recent";
+  // a text search may embed the query through the AI provider first; anything else answers in milliseconds
+  const slow = !!filters.q && !recent;
   // nothing is searched for the recent view: the browser reads it (account/recent.tsx)
   const outcome: Promise<SearchOutcome> = recent
     ? Promise.resolve({ state: "error" })
@@ -281,19 +302,20 @@ async function Catalog({
                   facets={facets}
                   names={names}
                   count={
-                    <Suspense fallback={<CountSilhouette />}>
+                    <Pending slow={slow} fallback={<CountSilhouette />}>
                       <ResultCount
                         outcome={outcome}
                         settings={settings}
                         hasQuery={!!filters.q}
                       />
-                    </Suspense>
+                    </Pending>
                   }
                 />
               )
             }
           >
-            <Suspense
+            <Pending
+              slow={slow}
               fallback={<ResultsSilhouette label={t("list.loading")} />}
             >
               {recent ? (
@@ -308,7 +330,7 @@ async function Catalog({
                   noSemantic={noSemantic}
                 />
               )}
-            </Suspense>
+            </Pending>
             {page > 1 && !recent && (
               <script
                 // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input

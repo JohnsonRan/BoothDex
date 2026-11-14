@@ -87,7 +87,10 @@ section that checks it) or both. A rule without a row is checked in review again
 | crates/AGENTS.md: Verification | `cargo test --workspace -- --include-ignored` (against PostgreSQL in CI) | |
 
 Lab checks, run by hand and not part of a gate: `web/tools/motion.cjs`, `web/tools/loading-layout.cjs`
-and `bun run check:size` in `web/`; `scripts/bench/run.sh`.
+and `bun run check:size` in `web/`; `scripts/bench/run.sh`. The two browser checks run once on `/`, which arrives
+in one paint, and once on a URL with `q`, which streams its results behind silhouettes; the second needs
+`LAB_AI_OFF=1` and an API started with `AI_BASE_URL` at a closed port (`http://127.0.0.1:9`), so the search embeds
+nothing.
 
 ## Exceptions
 
@@ -141,6 +144,8 @@ after a release.
 
 | Option | Source | Why it waits |
 | --- | --- | --- |
+| Fix the text-search page's loading frame at 390 px: the search field's box moves (x 28 to 57 px, width 0 to 113 px) when the results replace the silhouettes, and the count button and "Clear all" shift slightly (CLS 0.0001 to 0.0004) | `loading-layout.cjs` on `/?q=dress`, 2026-11-14 | Seen the same before and after the change that painted `/` in one paint; the lab could not load a URL with `q` until then, so it was never checked |
+| Keep a text search's fast first load from animating: on `/?q=dress` with no delay, 16 entrance animations run, because React reveals the streamed results at least 300 ms after the frame, so the visitor saw the silhouettes | `motion.cjs` on `/?q=dress`, 2026-11-14 | Same before and after that change; `motion.cjs` also stops at its sort toggle on a text search, whose sort menu has no Trending or Newest, so its later steps need another control there |
 | Fill in the component library's strings that its zh-CN, ja-JP and ko-KR catalogues lack (312 of the English keys in 0.7.16, about 300 already in 0.7.15), at least the ones this site renders: `numberInput.invalidNumber` in the admin run dialog, `multiSelector.selectedCount`, `tokenizer.*`, `inputClearButton.tooltip` | Astryx 0.7.16 upgrade, 2026-11-14 | The gap is upstream and predates the upgrade; those strings show in English. `componentCatalogue` (`web/src/lib/server-data.ts`) can merge our own entries, but which keys the site reaches needs a sweep, and the wording needs the zh, ja and ko style rules |
 | Keep an ordinary misspelt word from becoming a model filter: "chifon dress" reads as the model Chiffon when no title, tag, author name or description has "chifon" | review of PR #58, 2026-11-14 | Following the text typo retry, a word the catalogue does not know is taken as the one model it misspells; how often such a word meant something else is unknown until `split_names` is run over a sample of real queries |
 | Make "Clear" on the empty results page also drop the shop and avatar clauses, and show it when only those are set: `FILTER_RESET` keeps them and `activeFilterCount` does not count them, while the new per-clause buttons do offer them | building the empty-result suggestions, 2026-11-13 | Existing behaviour, kept on purpose (owner, 2026-11-13); changing what "Clear" means touches the filter row and the saved views as well |

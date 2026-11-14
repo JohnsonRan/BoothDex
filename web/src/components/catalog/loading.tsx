@@ -1,7 +1,8 @@
 "use client";
-// Loading states of the home page. The real frame (title, search, avatar strip, toolbar) streams first; these
-// hold the places of what waits for the search, the result count and the grid, so nothing moves when the
-// results replace them (`tools/loading-layout.cjs` checks this). Marked PLACEHOLDER: what replaces them enters.
+// Loading states of a text search on the home page (home-screen.tsx, Pending; other pages come in one paint). The
+// real frame (title, search, avatar strip, toolbar) streams first; these hold the places of what waits for the
+// search, the result count and the grid, so nothing moves when the results replace them (`tools/loading-layout.cjs`
+// checks this, given a URL with `q`). Marked PLACEHOLDER: what replaces them enters.
 // A client module only so the RSC payload carries one reference instead of every Skeleton of the grid.
 
 import { Grid } from "@astryxdesign/core/Grid";

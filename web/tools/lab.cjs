@@ -21,13 +21,15 @@ const refused = [];
 /**
  * Lets a request through only when it goes to a loopback host and cannot write or spend anything: no other host
  * (a check never sends test traffic to a real upstream), no item gallery (it counts a view and may read Booth), no
- * search with `q=` (it embeds the query through the AI provider).
+ * search with `q=` (it embeds the query through the AI provider) unless LAB_AI_OFF=1 says the API under test runs with
+ * AI_BASE_URL at a closed port, where such a search embeds nothing and matches words only.
  */
 const allowed = (raw) => {
   const u = new URL(raw);
   if (u.protocol === "data:" || u.protocol === "blob:") return true;
   if (!["127.0.0.1", "localhost"].includes(u.hostname)) return false;
   if (/^\/api\/items\/\d+\/gallery$/.test(u.pathname)) return false;
+  if (process.env.LAB_AI_OFF === "1") return true;
   return !(u.pathname === "/api/search" && u.searchParams.has("q"));
 };
 
@@ -214,7 +216,21 @@ async function scrollToPage(p, n) {
   }
 }
 
+/**
+ * Whether the page streams its count and results behind silhouettes: only a text search does
+ * (home-screen.tsx, Pending); any other page arrives with them in one paint. A URL with `q` needs LAB_AI_OFF=1.
+ */
+const streams = (url) => {
+  const q = new URL(url).searchParams.get("q");
+  if (q && process.env.LAB_AI_OFF !== "1")
+    throw new Error(
+      "a URL with q needs LAB_AI_OFF=1 and an API with AI_BASE_URL at a closed port",
+    );
+  return !!q;
+};
+
 module.exports = {
+  streams,
   launch,
   refused,
   lab,
