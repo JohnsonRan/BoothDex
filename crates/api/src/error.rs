@@ -47,6 +47,10 @@ pub(crate) enum Refusal {
     NoSuchSchedule,
     BadSchedule,
     BadAiSettings,
+    /// a stored key goes only to the base URL it was entered for
+    AiKeyRequired,
+    /// AI_API_KEY is set and AI_BASE_URL is not: only the server environment may move that key
+    AiBaseUrlLocked,
     AiNotConfigured,
     /// answered with what the provider said, for the admin who runs that connection
     ProviderFailed,
@@ -87,6 +91,8 @@ impl Refusal {
                 S::BAD_REQUEST,
                 "Base URL must start with http(s)://; model ≤ 100 chars; key ≤ 500 chars; reasoning effort: none, minimal, low, medium, high or xhigh",
             ),
+            Self::AiKeyRequired => (S::BAD_REQUEST, "Enter the API key again to change the base URL"),
+            Self::AiBaseUrlLocked => (S::CONFLICT, "The server environment sets AI_API_KEY; set AI_BASE_URL there to change the base URL"),
             Self::AiNotConfigured => (S::BAD_REQUEST, "Set the base URL and API key first"),
             Self::ProviderFailed => (S::BAD_GATEWAY, "The AI provider failed."),
         }
