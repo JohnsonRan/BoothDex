@@ -248,7 +248,7 @@ target/release/worker once incremental '{"max_pages": 3, "full": true}'
 ```
 
 - **Mock AI provider**: run `bun scripts/mock-ai.ts` and set the AI base URL to `http://127.0.0.1:3555/v1` in
-  `/admin` to test enrichment and embeddings without an API key.
+  `/admin`, with any API key in the same save, to test enrichment and embeddings without a real key.
 
 Tests and checks:
 

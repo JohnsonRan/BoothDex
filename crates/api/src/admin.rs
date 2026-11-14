@@ -81,6 +81,8 @@ async fn require_admin(s: &AppState, headers: &HeaderMap) -> Result<String, ApiE
 }
 
 #[cfg(test)]
+mod ai_key;
+#[cfg(test)]
 mod authz;
 mod trends;
 mod users;
@@ -150,15 +152,25 @@ async fn overview(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<
 /// Server-sent events: the overview every 2 s (the worker's progress writes are throttled to the same cadence).
 async fn stream(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
     require_admin(&s, &headers).await?;
-    let events = futures_util::stream::unfold((s, true), |(s, first)| async move {
+    let events = futures_util::stream::unfold((s, headers, true), |(s, headers, first)| async move {
         if !first {
             tokio::time::sleep(Duration::from_secs(2)).await;
+            // The session can end or lose admin while the stream is open. A failed check also ends it (never "still
+            // admin"); the client reconnects and is answered by the check at the top.
+            match require_admin(&s, &headers).await {
+                Ok(_) => {}
+                Err(ApiError::Internal(cause)) => {
+                    eprintln!("error: admin stream ended, the session check failed: {cause:#}");
+                    return None;
+                }
+                Err(_) => return None,
+            }
         }
         let ev = match overview_json(&s).await {
             Ok(v) => Event::default().event("overview").data(v.to_string()),
             Err(e) => Event::default().event("error").data(format!("{e:#}")),
         };
-        Some((Ok::<_, Infallible>(ev), (s, false)))
+        Some((Ok::<_, Infallible>(ev), (s, headers, false)))
     });
     // no-transform stops intermediaries (Next.js dev proxy, CDNs) from gzipping and therefore buffering the stream
     Ok((
@@ -288,7 +300,7 @@ async fn reload(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Re
 struct AiSettings {
     base_url: Option<String>,
     model: Option<String>,
-    /// empty or missing keeps the stored key
+    /// empty or missing keeps the stored key, unless the base URL moves (`key_follows_url`)
     api_key: Option<String>,
     reasoning_effort: Option<String>,
     /// empty clears it (semantic search off)
@@ -306,8 +318,9 @@ fn public_ai(c: &AiConfig) -> Value {
     json!({
         "base_url": c.base_url, "model": c.model, "reasoning_effort": c.reasoning_effort, "embed_model": c.embed_model,
         "api_key_set": c.api_key.is_some(), "api_key_hint": c.api_key.as_deref().map(key_hint),
-        // fields set by AI_* environment variables can't be edited in the console
-        "from_env": { "base_url": c.base_url_from_env, "model": c.model_from_env, "api_key": c.api_key_from_env,
+        // fields set by AI_* environment variables can't be edited in the console; a key from the environment
+        // locks the base URL too (`key_follows_url`)
+        "from_env": { "base_url": c.base_url_from_env || c.api_key_from_env, "model": c.model_from_env, "api_key": c.api_key_from_env,
                       "reasoning_effort": c.reasoning_effort_from_env, "embed_model": c.embed_model_from_env },
     })
 }
@@ -338,6 +351,26 @@ async fn put_registration(State(s): State<Arc<AppState>>, headers: HeaderMap, Js
 
 async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<AiSettings>) -> Result<Response, ApiError> {
     require_admin(&s, &headers).await?;
+    let config = save_ai(&s, b, |k| std::env::var(k).ok()).await?;
+    Ok(Json(public_ai(&config)).into_response())
+}
+
+/// A key is sent only to the base URL it was entered for. Moving the effective base URL while a key is set needs the
+/// key again in the same save; a key from the environment can only be moved there (AI_BASE_URL).
+fn key_follows_url(before: &AiConfig, after: &AiConfig, key_entered: bool) -> Result<(), Refusal> {
+    if after.base_url == before.base_url {
+        Ok(())
+    } else if after.api_key_from_env {
+        Err(Refusal::AiBaseUrlLocked)
+    } else if before.api_key.is_some() && !key_entered {
+        Err(Refusal::AiKeyRequired)
+    } else {
+        Ok(())
+    }
+}
+
+/// `env` is injected for testability, as in `settings::resolve`.
+async fn save_ai(s: &AppState, b: AiSettings, env: impl Fn(&str) -> Option<String>) -> Result<AiConfig, ApiError> {
     let url_ok = b.base_url.as_deref().is_none_or(|u| u.len() <= 300 && (u.starts_with("https://") || u.starts_with("http://")));
     let effort = b.reasoning_effort.as_deref().map(settings::reasoning_effort);
     let storable = [&b.base_url, &b.model, &b.embed_model, &b.api_key].iter().all(|f| f.as_deref().is_none_or(crate::error::storable));
@@ -346,7 +379,10 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
     }
     let _guard = s.ai_save.lock().await;
     let mut v = settings::stored_ai(&s.pool).await?;
-    if let Some(u) = b.base_url {
+    let before = settings::resolve(&v, &env);
+    // A URL that AI_BASE_URL hides is not stored: the key would follow it, unseen, once AI_BASE_URL is removed.
+    // The form shows that field read-only and sends the environment's value, so the save goes on without it.
+    if let Some(u) = b.base_url.filter(|_| !before.base_url_from_env) {
         v["base_url"] = json!(u.trim().trim_end_matches('/'));
     }
     if let Some(m) = b.model {
@@ -358,17 +394,24 @@ async fn put_ai(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Jso
     if let Some(Some(e)) = effort {
         v["reasoning_effort"] = json!(e);
     }
-    if let Some(k) = b.api_key.filter(|k| !k.trim().is_empty()) {
+    let key = b.api_key.filter(|k| !k.trim().is_empty());
+    let key_entered = key.is_some();
+    if let Some(k) = key {
         v["api_key"] = json!(k.trim());
     }
+    // a key entered while AI_BASE_URL is set was entered for that URL, and stays with it once AI_BASE_URL is removed
+    if key_entered && before.base_url_from_env {
+        v["base_url"] = json!(before.base_url);
+    }
+    let config = settings::resolve(&v, &env);
+    key_follows_url(&before, &config, key_entered)?;
     sqlx::query("insert into app_settings (key, value) values ('ai', $1) on conflict (key) do update set value = excluded.value, updated_at = now()")
         .bind(&v)
         .execute(&s.pool)
         .await?;
-    let config = settings::resolve(&v, |k| std::env::var(k).ok());
     s.ai.store(Some(Arc::new(config.clone())));
     queue_localize_if_needed(&s.pool, &config).await?;
-    Ok(Json(public_ai(&config)).into_response())
+    Ok(config)
 }
 
 /// Once the provider is fully configured, translate the taxonomy into Chinese if that hasn't happened yet.
@@ -554,6 +597,49 @@ mod tests {
         let stalest: chrono::DateTime<chrono::Utc> = sqlx::query_scalar("select min(scraped_at) from items where status = 'ok'")
             .fetch_one(&pool).await.unwrap();
         assert_eq!(data["stalest_scrape"].as_str().unwrap().parse::<chrono::DateTime<chrono::Utc>>().unwrap(), stalest);
+    }
+
+    /// An open stream stops once its session is signed out or its account stops being an admin.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn the_stream_ends_when_its_session_stops_being_an_admin(pool: sqlx::PgPool) {
+        use crate::account;
+
+        for revoke in ["delete from sessions where user_id = $1", "update users set is_admin = false where id = $1"] {
+            sqlx::query("delete from users").execute(&pool).await.unwrap();
+            let boss: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash, is_admin) values ('boss', 'boss@example.test', 'Boss', 'x', true) returning id")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+                .bind(account::token_hash("tok-boss"))
+                .bind(boss)
+                .execute(&pool)
+                .await
+                .unwrap();
+            let app = super::routes().with_state(account::test_state(pool.clone()));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}/api/admin/stream", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+            let mut response = reqwest::Client::new().get(url).header("cookie", "session=tok-boss").send().await.unwrap();
+            assert_eq!(response.status().as_u16(), 200);
+            let first = response.chunk().await.unwrap().expect("the first event is immediate");
+            assert!(String::from_utf8_lossy(&first).contains("event: overview"), "{first:?}");
+
+            sqlx::query(revoke).bind(boss).execute(&pool).await.unwrap();
+            let rest = tokio::time::timeout(std::time::Duration::from_secs(6), async {
+                let mut seen = String::new();
+                while let Some(chunk) = response.chunk().await.unwrap() {
+                    seen.push_str(&String::from_utf8_lossy(&chunk));
+                }
+                seen
+            })
+            .await
+            .expect("the stream ends once the session is no longer an admin's");
+            assert!(!rest.contains("event:"), "{revoke}: {rest}");
+            server.abort();
+        }
     }
 
     #[test]

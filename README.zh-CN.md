@@ -218,7 +218,7 @@ ADMIN_USERNAMES=admin target/release/api &   # :3000，先停止之前的 api
 target/release/worker once incremental '{"max_pages": 3, "full": true}'
 ```
 
-- **模拟 AI 服务**：没有 API 密钥时，运行 `bun scripts/mock-ai.ts` 并在管理后台将服务地址设为 `http://127.0.0.1:3555/v1` 即可联调 AI 任务。
+- **模拟 AI 服务**：没有 API 密钥时，运行 `bun scripts/mock-ai.ts` 并在管理后台将服务地址设为 `http://127.0.0.1:3555/v1`，同时填入任意 API 密钥一起保存，即可联调 AI 任务。
 
 运行测试与静态检查：
 

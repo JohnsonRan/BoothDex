@@ -215,7 +215,7 @@ ADMIN_USERNAMES=admin target/release/api &   # :3000 (先に起動した api を
 target/release/worker once incremental '{"max_pages": 3, "full": true}'
 ```
 
-- **モック AI プロバイダー**: API キーがない場合でも、`bun scripts/mock-ai.ts` を起動して管理画面の AI 接続先に `http://127.0.0.1:3555/v1` を指定すると AI ジョブの動作を確認できます。
+- **モック AI プロバイダー**: API キーがない場合でも、`bun scripts/mock-ai.ts` を起動して管理画面の AI 接続先に `http://127.0.0.1:3555/v1` を指定し、任意の API キーと一緒に保存すると AI ジョブの動作を確認できます。
 
 テストと静的解析:
 
