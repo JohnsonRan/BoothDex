@@ -1,7 +1,8 @@
 "use client";
 // The OpenAI-compatible provider for the AI jobs (master ai-settings-card.tsx). The key is write-only: the API
-// returns only a hint. A field the server environment sets is read-only here. Saving a new key over a saved
-// one asks first. Test connection reports success as a toast; a missing model (a warning) and a broken embedding
+// returns only a hint. A field the server environment sets is read-only here; a key from the environment
+// locks the API URL as well. The API refuses a new API URL unless the same save carries the key. Saving a new
+// key over a saved one asks first. Test connection reports success as a toast; a missing model (a warning) and a broken embedding
 // model (an error) stay as Banners under the buttons, since each needs a change in the form.
 
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";

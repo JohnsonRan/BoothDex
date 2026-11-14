@@ -135,6 +135,9 @@ export const adminJa: AdminDict = {
   "error.jobBusy": "この種類のジョブはすでに待機中または実行中です",
   "error.jobIdle": "このジョブは待機中でも実行中でもありません",
   "error.aiUnset": "先に API URL と API キーを設定してください",
+  "error.aiKeyRequired": "API URL を変更するには API キーを再入力してください",
+  "error.aiUrlLocked":
+    "API キーはサーバーの環境変数で設定済みのため、ここでは API URL を変更できません。サーバーで AI_BASE_URL を設定してください",
   "error.provider": "プロバイダーに接続できないか、リクエストが拒否されました",
   "error.noUser": "このユーザーは見つかりません",
   "error.adminDisable":

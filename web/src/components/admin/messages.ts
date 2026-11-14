@@ -38,6 +38,8 @@ const ADMIN_ERRORS: ApiErrors<AdminKey> = {
     job_already_active: "error.jobBusy",
     job_not_active: "error.jobIdle",
     ai_not_configured: "error.aiUnset",
+    ai_key_required: "error.aiKeyRequired",
+    ai_base_url_locked: "error.aiUrlLocked",
     no_such_user: "error.noUser",
     admin_cannot_be_disabled: "error.adminDisable",
   },
