@@ -1,6 +1,6 @@
 # Deploying to a Linux server
 
-Everything runs in containers: PostgreSQL 17 (`pgvector`), the three Rust services (`api`, `worker`, `imgproxy`) and the Next.js site (`web`). Only `web` publishes a host port (`WEB_LISTEN`, default `3100`) and forwards `/api/*` and `/img/*` over the internal Compose network. Put your own TLS reverse proxy or tunnel (Caddy, nginx, Cloudflare Tunnel) in front of it.
+Everything runs in containers: PostgreSQL 17 (`pgvector`), the three Rust services (`api`, `worker`, `imgproxy`) and the Next.js site (`web`). Only `web` publishes a host port (`WEB_LISTEN`, default `127.0.0.1:3100`) and forwards `/api/*` and `/img/*` over the internal Compose network. Put your own TLS reverse proxy or tunnel (Caddy, nginx, Cloudflare Tunnel) in front of it.
 
 ```mermaid
 flowchart LR
@@ -32,7 +32,7 @@ flowchart LR
   api -. "query embed" .-> ai
 ```
 
-`imgproxy` fetches only from `booth.pximg.net`, `asset.booth.pm` and `factory.pixiv.net`, over https, and follows no redirect off the host. It ignores `HTTP_PROXY`, `HTTPS_PROXY` and the system proxy settings, and connects only to public addresses: when DNS answers with only private, loopback or other special-purpose addresses, the request fails, the client gets a 502, and the log names the host. NAT64 addresses (`64:ff9b::/96`) count as special-purpose, so the container needs IPv4 or native IPv6 egress.
+`imgproxy` fetches only from `booth.pximg.net`, `asset.booth.pm` and `factory.pixiv.net`, over https, and follows no redirect off the host. It ignores `HTTP_PROXY`, `HTTPS_PROXY` and the system proxy settings, and connects only to public addresses: when DNS answers with only private, loopback or other special-purpose addresses, the request fails, the client gets a 502, and the log names the host. NAT64 addresses (`64:ff9b::/96`) count as special-purpose, so the container needs IPv4 or native IPv6 egress. `imgproxy` holds at most 200 MiB of uncached upstream images in memory at once, counting each by its declared size (25 MiB when it declares none), and answers a request that finds no room within 10 s with a 503 and `Retry-After: 10`, but it bounds neither the number of upstream requests nor any one client: set a rate limit for `/img/*` in the front proxy or CDN.
 
 `postgres`, `api`, `worker` and `imgproxy` publish no host ports; run maintenance commands through `docker compose exec` (for example `docker compose exec postgres psql -U catalogue catalogue`). `podman compose` works with the same commands.
 
@@ -117,13 +117,13 @@ $EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, CONTACT_EMAIL, an
 
 | Variable | Used by | Notes |
 |---|---|---|
-| `WEB_LISTEN` | `web` | Host `[address:]port` for the site; set `127.0.0.1:3100` when the reverse proxy runs on the same host |
+| `WEB_LISTEN` | `web` | Host `[address:]port` for the site. Default `127.0.0.1:3100`: only a reverse proxy or tunnel on the same host reaches it. Set a bare port such as `3100` (all interfaces) only when the proxy runs on another machine, and restrict that port to the proxy with a firewall |
 | `SITE_URL` | `api`, `web` | Public HTTP(S) origin without a path, e.g. `https://boothdex.example.com`; used in RSS links, canonical/share URLs, `robots.txt` and `sitemap.xml`. Read at runtime, so changing domains needs no image rebuild |
 | `OPERATOR_NAME` | `web` | Who runs the site, as named in `/privacy` and `/terms`; defaults to the `SITE_URL` host |
 | `CONTACT_EMAIL` | `web` | Contact address shown in `/privacy` and `/terms` for data, account deletion and takedown requests. Set it before opening registration; without it the pages show a placeholder |
 | `COOKIE_SECURE` | `api` | `1` (default): session cookies over HTTPS only. Set `0` only while testing over plain `http://` |
 | `POSTGRES_PASSWORD` | `postgres`, `api`, `worker` | Long random secret, e.g. `openssl rand -base64 32` |
-| `ADMIN_USERNAMES` | `api` | Comma-separated usernames synced at every `api` start (unlisted accounts lose admin) |
+| `ADMIN_USERNAMES` | `api` | Comma-separated usernames synced at every `api` start (unlisted accounts lose admin). A listed name cannot be registered, so register the account first; `api` logs a `warn:` line for each listed name that has no account |
 | `ARCHIVE_IMAGES_DIR` | `imgproxy` | `/srv/boothdex/images` when using a data bundle; leave empty without a bundle (uses an empty volume) |
 | `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | `imgproxy` | Transcoded AVIF cache budget (`10240` MB disk / `256` MB RAM by default) |
 | `BOOTHDEX_TAG` | `api`, `worker`, `imgproxy`, `web` | Image tag on `ghcr.io`: `latest` (default, tracks `master`) or `sha-<commit>`, the first 7 characters of the commit an image was built from |
@@ -149,7 +149,7 @@ docker compose logs -f api                # wait for "listening on"
 
 Then complete onboarding:
 
-1. Open the site (via your reverse proxy, or `http://<server>:3100` with `COOKIE_SECURE=0` for a quick check) and register your account.
+1. Open the site (via your reverse proxy, or, for a quick check without one, `http://<server>:3100` with `WEB_LISTEN=3100` and `COOKIE_SECURE=0`; set both back afterwards) and register your account.
 2. Add that username to `ADMIN_USERNAMES` in `.env`, then run `docker compose up -d api`.
 3. Open `/admin`: verify `worker` shows as running. The hourly incremental crawl, the daily full sweep (03:00 JST) and the daily `details` pass (fetches missing galleries) are enabled by default.
 4. Configure the AI provider in `/admin` (and click **Test**) or via `AI_*` in `.env`. A key is sent only to the base URL it was saved with: to change the URL in `/admin`, enter the key again in the same save.
@@ -195,7 +195,7 @@ Set an embeddings model in `/admin` (or `AI_EMBED_MODEL`), served by the same Op
 
 ## 5. Putting a proxy in front
 
-Forward all traffic for your domain to `WEB_LISTEN`. Example with Caddy on the same host (`WEB_LISTEN=127.0.0.1:3100`):
+Forward all traffic for your domain to `WEB_LISTEN`. Example with Caddy on the same host (the default `WEB_LISTEN=127.0.0.1:3100`):
 
 ```caddyfile
 boothdex.example.com {
@@ -209,7 +209,7 @@ boothdex.example.com {
 - **Server-sent events (`/api/admin/stream`)**: Disable response buffering so `/admin` updates live (`flush_interval -1` in Caddy, `proxy_buffering off;` in nginx).
 - **Compression**: Next.js (`web`) enables gzip by default, and `api` compresses responses while excluding SSE. SSE responses carry `Cache-Control: no-transform` to avoid intermediary gzip buffering; front proxies can compress unencoded responses (`encode zstd gzip` in Caddy, `gzip on;` in nginx).
 - **Content Security Policy**: `web` sends `Content-Security-Policy: img-src 'self' data:` on its pages, so the browser refuses an image from any other host, including one a proxy injects. A policy your proxy adds does not replace it: the browser enforces both.
-- **Host firewall & rate limiting**: Docker bypasses `ufw` when publishing `0.0.0.0:3100`, and `api`'s public read endpoints and account changes key their per-IP rate limits on `X-Forwarded-For` / `CF-Connecting-IP` from the front proxy. The front proxy must set or append `X-Forwarded-For` to the verified client IP (Caddy's `reverse_proxy` does this automatically; nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`); configuring only `X-Real-IP` without sanitizing incoming `X-Forwarded-For` allows visitors to forge their rate-limit identity. The address the rate limits key on is printed in the sign-in log. It is also stored with each new session and shown in Settings, under devices, and in the admin user view. When that address is internal (loopback, private or link-local), the session stores no address. A proxy that does not set `X-Forwarded-For` therefore also lets a visitor falsify the sign-in log and the stored session address. Bind `WEB_LISTEN=127.0.0.1:3100` whenever the proxy or tunnel runs on the same machine so visitors cannot bypass the proxy.
+- **Host firewall & rate limiting**: Docker bypasses `ufw` when publishing `0.0.0.0:3100`, and `api`'s public read endpoints and account changes key their per-IP rate limits on `X-Forwarded-For` / `CF-Connecting-IP` from the front proxy. The front proxy must set or append `X-Forwarded-For` to the verified client IP (Caddy's `reverse_proxy` does this automatically; nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`); configuring only `X-Real-IP` without sanitizing incoming `X-Forwarded-For` allows visitors to forge their rate-limit identity. The address the rate limits key on is printed in the sign-in log. It is also stored with each new session and shown in Settings, under devices, and in the admin user view. When that address is internal (loopback, private or link-local), the session stores no address. A proxy that does not set `X-Forwarded-For` therefore also lets a visitor falsify the sign-in log and the stored session address. Keep the default `WEB_LISTEN=127.0.0.1:3100` whenever the proxy or tunnel runs on the same machine so visitors cannot bypass the proxy; with a bare port, allow only the proxy's address to reach it.
 - **Cloudflare**: `/img/*` responses carry `Cache-Control: public, max-age=31536000, immutable` and are cached automatically. `/api/items` (item records, the item card's first request) carries `Cache-Control: public, max-age=43200` (12 hours), but Cloudflare caches JSON only through a Cache Rule: add one for *URI Path equals `/api/items`* with **Eligible for cache** and Edge TTL **Use cache-control header if present**, leaving the cache key's query string in. The catalogue lookups (`/api/avatars`, `/api/authors`, `/api/tags`, `/api/booth-tags`, `/api/categories`) carry `Cache-Control: public, max-age=300`: browsers keep them without a rule, and the same Cache Rule may list them as well. Cache no other `/api/` path: `/api/items/{id}/gallery` counts a view on every request, and the account endpoints answer per visitor. Keep **Rocket Loader** and HTML minification off so Next.js hydration is not broken.
 
 ## 6. Operations
@@ -225,6 +225,8 @@ boothdex.example.com {
 | Backup database | `docker compose exec -T postgres pg_dump -U catalogue -Fc catalogue > backup-$(date +%F).dump` (schedule daily, keep off-server) |
 | Backup archived images | Copy `/srv/boothdex/images` once (changes only if you archive newly delisted items) |
 | Restore database | `docker compose stop api worker && docker compose exec -T postgres pg_restore -U catalogue -d catalogue --clean --if-exists --no-owner --role=catalogue < backup.dump && docker compose start api worker` |
+
+An `.env` copied from `.env.example` before the default became `127.0.0.1:3100` sets `WEB_LISTEN=3100`, which publishes the site on all interfaces. Change it to `WEB_LISTEN=127.0.0.1:3100` unless the proxy runs on another machine, then run `docker compose up -d web`.
 
 An update applies its new database migrations when `api` and `worker` start, each migration in its own transaction. CI applies a pull request's migrations to the public data bundle (`.github/workflows/migrations.yml`). The bundle holds no rows of the account tables (`users`, `sessions`, `favourites`, `item_stats` and others), so migrations of those tables are tested on an empty database only.
 
@@ -242,7 +244,7 @@ Safe to lose (rebuilt automatically): `imgcache` (re-fetched from BOOTH on deman
 ## 7. Go-live checklist
 
 - [ ] `.env` configured; `POSTGRES_PASSWORD` is a random secret (not `dev`)
-- [ ] `WEB_LISTEN` bound to `127.0.0.1:3100` behind your TLS proxy, with `COOKIE_SECURE=1`
+- [ ] `WEB_LISTEN` left at `127.0.0.1:3100` behind your TLS proxy (or its port firewalled to the proxy), with `COOKIE_SECURE=1`
 - [ ] `ADMIN_USERNAMES` lists only your account
 - [ ] `https://<domain>/api/categories` returns JSON; `/img/v/<sha1>.webp` serves an archived image (if using a bundle)
 - [ ] `/robots.txt` points to `/sitemap.xml` on your public domain; the sitemap lists the homepage, `/privacy` and `/terms`. Submit it to your search engine's webmaster tools. Search/filter/item-modal URLs use `noindex`; `/admin` and `/api/` are excluded from crawling (not an access-control mechanism)

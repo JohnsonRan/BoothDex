@@ -73,21 +73,26 @@ pub(crate) async fn register(
         return Err(Refusal::PasswordTooShort.into());
     }
     let hash = hash_password(b.password).await?;
-    // listed in ADMIN_USERNAMES: admin right away, not only after the next api restart
-    let is_admin = crate::admin::admin_names().is_some_and(|n| n.contains(&b.username.to_lowercase()));
-    let id: i64 = match sqlx::query_scalar("insert into users (username, email, display_name, password_hash, is_admin) values ($1, $2, $3, $4, $5) returning id")
-        .bind(&b.username)
-        .bind(b.email.trim())
-        .bind(b.display_name.trim())
-        .bind(hash)
-        .bind(is_admin)
-        .fetch_one(&s.pool)
-        .await
+    // ADMIN_USERNAMES makes an account admin by its name: a listed name with no account would make whoever registers it
+    // an admin. The insert itself skips a listed name, so it is refused after the hash and the same statement as a
+    // taken name, and the answer does not tell which names are listed.
+    let listed = s.admin_names.as_ref().is_some_and(|n| n.contains(&b.username.to_lowercase()));
+    let id: Option<i64> = match sqlx::query_scalar(
+        "insert into users (username, email, display_name, password_hash) select $1, $2, $3, $4 where not $5 returning id",
+    )
+    .bind(&b.username)
+    .bind(b.email.trim())
+    .bind(b.display_name.trim())
+    .bind(hash)
+    .bind(listed)
+    .fetch_optional(&s.pool)
+    .await
     {
         Ok(id) => id,
-        Err(e) if is_unique_violation(&e) => return Err(Refusal::NameTaken.into()),
+        Err(e) if is_unique_violation(&e) => None,
         Err(e) => return Err(e.into()),
     };
+    let Some(id) = id else { return Err(Refusal::NameTaken.into()) };
     let cookie = start_session(&s.pool, id, b.keep, &headers, ip, None).await?.expect("session insert on register");
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({ "ok": true }))).into_response())
 }
@@ -206,6 +211,35 @@ mod tests {
         assert!(!registration_open(&pool).await.unwrap());
         assert_eq!(status(sign_up("bob").await), StatusCode::FORBIDDEN);
         assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from users").fetch_one(&pool).await.unwrap(), 1);
+    }
+
+    /// A name in ADMIN_USERNAMES that no account has cannot be registered: whoever took it would be admin at once or
+    /// after the next start. The refusal reads like a taken name, so it does not tell which names are listed.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn a_listed_admin_name_cannot_be_registered(pool: PgPool) {
+        sqlx::query("insert into users (username, email, display_name, password_hash) values ('boss', 'boss@example.test', 'Boss', 'x')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let admins = vec!["boss".to_owned(), "ghost".to_owned()];
+        // built the way `main` builds it, which hands the list to registration
+        crate::install_tls();
+        let state = Arc::new(crate::build_state(pool.clone(), Some(admins.clone())).await.unwrap());
+        let sign_up = |username: &str, email: &str| {
+            let form = Register { display_name: "A".into(), username: username.into(), email: email.into(), password: "0123456789".into(), keep: false };
+            register(State(state.clone()), crate::limit::ClientIp([198, 51, 100, 20].into()), HeaderMap::new(), Json(form))
+        };
+        let accounts = || sqlx::query_as::<_, (String, bool)>("select username, is_admin from users order by username").fetch_all(&pool);
+        let taken = (StatusCode::CONFLICT, json!({ "ok": false, "code": "name_taken", "error": "Username or email is already taken." }));
+
+        assert_eq!(answer(sign_up("ann", "boss@example.test").await).await, taken);
+        assert_eq!(answer(sign_up("Ghost", "ghost@example.test").await).await, taken);
+        assert_eq!(answer(sign_up("carl", "carl@example.test").await).await, (StatusCode::OK, json!({ "ok": true })));
+        assert_eq!(accounts().await.unwrap(), [("boss".into(), false), ("carl".into(), false)]);
+
+        assert_eq!(crate::admin::apply_admin_names(&pool, Some(&admins)).await.unwrap(), ["ghost"]);
+        assert_eq!(accounts().await.unwrap(), [("boss".into(), true), ("carl".into(), false)]);
     }
 
     /// An account made before registration refused non-ASCII emails still signs in by its email.

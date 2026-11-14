@@ -23,7 +23,7 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 ## 快速开始
 
 完整配置、反向代理示例及备份方案请参阅[部署指南](docs/DEPLOY.md)。生产环境通过 Docker 或 Podman Compose 运行
-PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端，仅对外暴露单一端口（`WEB_LISTEN`，默认 `3100`）供反向代理接入；建议使用 **6 GB 及以上内存**的 Linux 服务器（推荐 8 GB，或 4 GB 配合 Swap）。
+PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端，仅对外暴露单一端口（`WEB_LISTEN`，默认 `127.0.0.1:3100`）供反向代理接入；建议使用 **6 GB 及以上内存**的 Linux 服务器（推荐 8 GB，或 4 GB 配合 Swap）。
 
 ```mermaid
 flowchart LR
@@ -199,14 +199,20 @@ cargo build --release            # 首次构建会下载 IPADIC 词典；若网�
 # 不加时使用 rav1e；已安装 nasm 时可加上 --features imgproxy/asm，编码速度约为原来的三倍。
 (cd web && bun install)
 
-export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
+export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0
 target/release/api &             # :3000
 target/release/imgproxy &        # :3001
 target/release/worker run &
 (cd web && bun run dev)          # :3100，将 /api 与 /img 转发至上述服务
 ```
 
-注册账户 `admin`，打开 `http://localhost:3100/admin`，再抓取几页数据即可开始调试：
+在 `http://localhost:3100` 注册账户 `admin`，停止 `api`，再带上该用户名重新启动。API 拒绝注册 `ADMIN_USERNAMES` 中列出的用户名，因此请在账户创建后再将其写入：
+
+```sh
+ADMIN_USERNAMES=admin target/release/api &   # :3000，先停止之前的 api
+```
+
+打开 `http://localhost:3100/admin`，再抓取几页数据即可开始调试：
 
 ```sh
 target/release/worker once incremental '{"max_pages": 3, "full": true}'

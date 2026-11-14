@@ -20,6 +20,7 @@ use crate::limit::RateLimited;
 pub(crate) enum Refusal {
     SignInRequired,
     AdminsOnly,
+    CrossSiteRequest,
     BadCredentials,
     TooManyAttempts,
     AccountDisabled,
@@ -62,6 +63,7 @@ impl Refusal {
         match self {
             Self::SignInRequired => (S::UNAUTHORIZED, "Sign in required"),
             Self::AdminsOnly => (S::FORBIDDEN, "Admins only"),
+            Self::CrossSiteRequest => (S::FORBIDDEN, "Requests from another site can't change anything."),
             Self::BadCredentials => (S::UNAUTHORIZED, "Incorrect username or password."),
             Self::TooManyAttempts => (S::TOO_MANY_REQUESTS, "Too many attempts. Try again later."),
             Self::AccountDisabled => (S::FORBIDDEN, "This account is disabled."),
