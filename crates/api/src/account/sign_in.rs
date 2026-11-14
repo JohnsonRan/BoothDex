@@ -74,22 +74,25 @@ pub(crate) async fn register(
     }
     let hash = hash_password(b.password).await?;
     // ADMIN_USERNAMES makes an account admin by its name: a listed name with no account would make whoever registers it
-    // an admin. Refused after the hash, like a taken name, so the answer does not tell which names are listed.
-    if s.admin_names.as_ref().is_some_and(|n| n.contains(&b.username.to_lowercase())) {
-        return Err(Refusal::NameTaken.into());
-    }
-    let id: i64 = match sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ($1, $2, $3, $4) returning id")
-        .bind(&b.username)
-        .bind(b.email.trim())
-        .bind(b.display_name.trim())
-        .bind(hash)
-        .fetch_one(&s.pool)
-        .await
+    // an admin. The insert itself skips a listed name, so it is refused after the hash and the same statement as a
+    // taken name, and the answer does not tell which names are listed.
+    let listed = s.admin_names.as_ref().is_some_and(|n| n.contains(&b.username.to_lowercase()));
+    let id: Option<i64> = match sqlx::query_scalar(
+        "insert into users (username, email, display_name, password_hash) select $1, $2, $3, $4 where not $5 returning id",
+    )
+    .bind(&b.username)
+    .bind(b.email.trim())
+    .bind(b.display_name.trim())
+    .bind(hash)
+    .bind(listed)
+    .fetch_optional(&s.pool)
+    .await
     {
         Ok(id) => id,
-        Err(e) if is_unique_violation(&e) => return Err(Refusal::NameTaken.into()),
+        Err(e) if is_unique_violation(&e) => None,
         Err(e) => return Err(e.into()),
     };
+    let Some(id) = id else { return Err(Refusal::NameTaken.into()) };
     let cookie = start_session(&s.pool, id, b.keep, &headers, ip, None).await?.expect("session insert on register");
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({ "ok": true }))).into_response())
 }
