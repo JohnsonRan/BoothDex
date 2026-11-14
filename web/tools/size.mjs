@@ -30,8 +30,11 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // modules the frame and the filter rail use (HTML 50,696, JS 497,886, CSS 49,895 with the API; 0.7.8 read HTML
 // 48,677 on the same data): HTML to 51,500, JS to 498,000, CSS to 50,000 (owner, 2026-11-13). The chunks the
 // page preloads, counted from then on (three, the filter rail's among them): the same code read JS 495,444 without them
-// and 520,593 with them, and 520,618 with the rail handle's value text: JS to 521,000 (owner, 2026-11-13).
-const BUDGET = { html: 51_500, js: 521_000, css: 50_000 };
+// and 520,593 with them, and 520,618 with the rail handle's value text: JS to 521,000 (owner, 2026-11-13). Astryx
+// 0.7.16 (JS 520,914 to 523,999, CSS 49,901 to 50,561 on the same host; the layer, menu and tooltip fixes and the
+// forced-colors edges) and the refresh bar's code loaded after the page (JS 521,999): JS to 522,500, CSS to
+// 50,750 (owner, 2026-11-14).
+const BUDGET = { html: 51_500, js: 522_500, css: 50_750 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
