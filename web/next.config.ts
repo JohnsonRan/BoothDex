@@ -10,8 +10,15 @@ const IMG_ORIGIN = process.env.IMG_ORIGIN ?? "http://127.0.0.1:3001";
 
 // Every remote image reaches the browser through /img (imgUrl and imageSrc in lib/catalog.ts), so the browser refuses
 // an image from any other host. data: carries the silhouettes drawn in CSS (components/catalog/silhouette.tsx).
-// The download's blob: URL is a link target, which img-src does not govern. Scripts and styles are not restricted.
-const CONTENT_SECURITY_POLICY = "img-src 'self' data:";
+// The download's blob: URL is a link target, which img-src does not govern. The site uses no plugin content and no
+// <base>, and no page of it is meant to be framed. Scripts and styles are not restricted: without 'unsafe-inline'
+// they need a nonce per request, which would turn the prerendered pages dynamic.
+const CONTENT_SECURITY_POLICY = [
+  "img-src 'self' data:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
 
 // Social platforms cache a share image by its URL, so SHARE_IMAGE in lib/seo.ts links /og.png with a hash of the
 // files that draw and size it; a changed picture gets a new URL. The fonts are the ones the route reads. next/og
