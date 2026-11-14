@@ -20,6 +20,10 @@ export type Theme = (typeof THEMES)[number];
 /** Pure black: in dark mode the page's backgrounds turn black (globals.css). */
 const BLACK = ["off", "on"] as const;
 type Black = (typeof BLACK)[number];
+/** Reduce motion: "reduce" stills the site's motion whatever the system says (lib/motion.ts); "system" follows the
+ *  system's setting, so turning the switch off never brings motion back to a system that asks for less. */
+const MOTIONS = ["system", "reduce"] as const;
+type Motion = (typeof MOTIONS)[number];
 /** Where the filters sit on a wide screen: a rail left of the results (catalog/filter/filter-rail.tsx, the default), or
  *  the toolbar's row. A compact surface always has the row. The row was "top" while it was the default, so a
  *  stored "top" was mostly never chosen: it reads as the rail now (owner). */
@@ -46,6 +50,7 @@ export type Settings = {
   currency: Currency;
   theme: Theme;
   black: Black;
+  motion: Motion;
   filters: FilterPlace;
 };
 
@@ -56,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   currency: "JPY",
   theme: "system",
   black: "off",
+  motion: "system",
   filters: "side",
 };
 
@@ -115,6 +121,7 @@ export function parseSettings(
     currency: pick(v.currency, CURRENCIES) ?? DEFAULT_SETTINGS.currency,
     theme: pick(v.theme, THEMES) ?? DEFAULT_SETTINGS.theme,
     black: pick(v.black, BLACK) ?? DEFAULT_SETTINGS.black,
+    motion: pick(v.motion, MOTIONS) ?? DEFAULT_SETTINGS.motion,
     filters: pick(v.filters, FILTER_PLACES) ?? DEFAULT_SETTINGS.filters,
   };
 }

@@ -59,6 +59,15 @@ test("item text that follows the interface language is sent to the account as su
   ]);
 });
 
+test("reduced motion stays in this browser: alone it sends nothing, beside another change it is left out", () => {
+  expect(
+    sentWhileSignedIn(() => {
+      savePreferences({ motion: "reduce" });
+      savePreferences({ motion: "system", black: "on" });
+    }),
+  ).toEqual([["/api/account/preferences", "PUT", '{"black":"on"}']]);
+});
+
 test("an account's item text that follows the interface language reaches another browser", () => {
   const current = { ...DEFAULT_SETTINGS, content: "en" as const };
   expect(accountPatch({ language: "ui" }, current)).toEqual({ content: "ui" });

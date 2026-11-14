@@ -25,6 +25,7 @@ import {
   Rss,
   Shapes,
   ShieldCheck,
+  Sparkles,
   Type,
 } from "lucide-react";
 import { glyph } from "./icons";
@@ -39,7 +40,8 @@ registerIcons({
   "site:devices": <MonitorSmartphone {...glyph} />,
   "site:password": <KeyRound {...glyph} />,
   "site:itemText": <Type {...glyph} />,
-  // the filters' place (settings/panels.tsx)
+  // reduced motion and the filters' place (settings/panels.tsx)
+  "site:motion": <Sparkles {...glyph} />,
   "site:filterRow": <PanelTop {...glyph} />,
   "site:currency": <Coins {...glyph} />,
   "site:code": <Code {...glyph} />,

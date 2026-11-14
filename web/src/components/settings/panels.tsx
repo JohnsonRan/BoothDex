@@ -147,6 +147,19 @@ function AppearancePanel() {
         }
       />
       <SettingsRow
+        title={t("settings.motion")}
+        icon="site:motion"
+        description={t("settings.motionDesc")}
+        control={
+          <Switch
+            label={t("settings.motion")}
+            isLabelHidden
+            value={settings.motion === "reduce"}
+            onChange={(on) => update({ motion: on ? "reduce" : "system" })}
+          />
+        }
+      />
+      <SettingsRow
         title={t("settings.filters")}
         icon="site:filterRow"
         description={t("settings.filtersDesc")}

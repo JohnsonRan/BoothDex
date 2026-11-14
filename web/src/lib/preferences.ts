@@ -5,7 +5,8 @@
 import { api } from "./api";
 import { parseSettings, type Settings } from "./settings-core";
 
-/** The account's preference names for the settings fields (the API calls item text "language"). */
+/** The account's preference names for the settings fields (the API calls item text "language"). Reduced motion
+ *  stays in this browser: the API refuses a preference it does not know (crates/api/src/account/profile.rs). */
 const NAMES = {
   ui: "ui",
   content: "language",
@@ -13,7 +14,7 @@ const NAMES = {
   theme: "theme",
   black: "black",
   filters: "filters",
-} as const satisfies Record<keyof Settings, string>;
+} as const satisfies Record<Exclude<keyof Settings, "motion">, string>;
 
 let signedIn = false;
 
@@ -30,11 +31,12 @@ function send(json: Record<string, string>) {
 
 /** Sends changed settings to the account; item text that follows the interface language is sent as "ui". */
 export function savePreferences(patch: Partial<Settings>) {
-  send(
-    Object.fromEntries(
-      Object.entries(patch).map(([k, v]) => [NAMES[k as keyof Settings], v]),
+  const json = Object.fromEntries(
+    Object.entries(patch).flatMap(([k, v]) =>
+      k in NAMES ? [[NAMES[k as keyof typeof NAMES], v]] : [],
     ),
   );
+  if (Object.keys(json).length) send(json);
 }
 
 /** Sends "my avatar" (the avatar-fit view's pick) to the account. */

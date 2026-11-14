@@ -101,6 +101,8 @@ docker compose pull && docker compose up -d
 - The interface is built on Meta's [Astryx](https://github.com/meta/astryx) design system.
 - Choose light, dark or system mode, and pure black for dark mode. The choice follows your account when you are
   signed in.
+- Reduce motion reduces the site's animations whatever the system says; off, the site follows the system's setting.
+  It is kept in this browser only.
 - Chinese, English, Japanese and Korean; item titles in the original language or translated; currency
   conversion; a layout that works on phones.
 

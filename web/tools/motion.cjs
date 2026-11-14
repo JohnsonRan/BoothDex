@@ -1,6 +1,8 @@
 // Motion check (modelled on doona apps/lite/scripts/motion.cjs): a first screen that comes with the first paint
 // never animates; with the search held back by the slow-API proxy the arriving results enter once; a filter
-// change, scrolling into the next page and Back from an item never replay it; under reduced motion nothing runs at all. Refresh timing
+// change, scrolling into the next page and Back from an item never replay it; under reduced motion nothing runs at all,
+// and with the settings' reduced-motion switch on (cookie, no system setting) none of the site's motion runs; the
+// switch marks the page live and a reload has the mark before the body parses. Refresh timing
 // (lib/use-delayed): a refresh answered in under 150 ms shows no indicator and fades nothing in; a slow one shows
 // the indicator from 150 ms, keeps it at least 300 ms, and fades the new results in once.
 //   node tools/motion.cjs <page url> <proxy url> [delay ms=2500]
@@ -27,9 +29,10 @@ const RUNNING = () =>
 // A filter change as a visitor makes it: the toolbar's sort menu, switched between its default (Trending, or
 // Relevance on a text search) and Newest. Opening the menu is separate from picking the item, so a timed refresh
 // starts at the pick.
+const SORTS = /^(Trending|Relevance|Newest)$/;
 const openSort = async (p) => {
   const button = p.getByRole("button", {
-    name: /^(Trending|Relevance|Newest)$/,
+    name: SORTS,
   });
   const first = streams(url) ? "Relevance" : "Trending";
   const next = (await button.textContent()).trim() === first ? "Newest" : first;
@@ -39,6 +42,29 @@ const openSort = async (p) => {
   return () => item.click();
 };
 const changeSort = async (p) => (await openSort(p))();
+// the settings cookie with reduced motion switched on (settings-core.ts `motion`)
+const SWITCHED_ON = encodeURIComponent(JSON.stringify({ motion: "reduce" }));
+// the site's own motion (lib/motion.ts ids, app/strip.css keyframes); anything else running is a component's
+const SITE = /^(page-enter|row-enter|swap-in|strip-)/;
+// what runs on screen as a click opens something: sampled at once and twice more within its entrance. A dialog
+// body's edge fade (globals.css `body-fade`) is not counted: a mask that follows the body's scroll, nothing moves
+const opening = async (p, click) => {
+  await p.evaluate(() => {
+    window.__anims = [];
+  });
+  await click();
+  const seen = [];
+  for (let i = 0; i < 3; i++) {
+    seen.push(...(await p.evaluate(RUNNING)));
+    await p.waitForTimeout(40);
+  }
+  const ids = await p.evaluate(() => window.__anims.map((a) => a.id));
+  return [...new Set([...seen, ...ids])].filter((r) => r !== "body-fade");
+};
+const stripToggle = (p, name) => () =>
+  p.getByRole("button", { name, exact: true }).click();
+const settings = (p) => () =>
+  p.getByRole("button", { name: "Settings", exact: true }).first().click();
 
 (async () => {
   const browser = await launch();
@@ -124,16 +150,21 @@ const changeSort = async (p) => (await openSort(p))();
   await lab(proxy, { delay: 0, fail: 0, cache: 0 });
   await fetch(url);
 
-  for (const reduced of [false, true]) {
+  // "switch": the settings' reduced-motion switch, from the cookie, on a system that asks for motion
+  for (const tag of ["motion", "reduced", "switch"]) {
+    const reduced = tag !== "motion";
     const ctx = await browser.newContext({
       viewport: { width: 1440, height: 900 },
       // the check names buttons and messages by their English text
       locale: "en-US",
-      reducedMotion: reduced ? "reduce" : "no-preference",
+      reducedMotion: tag === "reduced" ? "reduce" : "no-preference",
     });
+    if (tag === "switch")
+      await ctx.addCookies([
+        { name: "settings", value: SWITCHED_ON, url: new URL(url).origin },
+      ]);
     const p = await ctx.newPage();
     await p.addInitScript(RECORDER);
-    const tag = reduced ? "reduced" : "motion";
 
     await lab(proxy, { delay: 0 });
     await p.goto(url, { waitUntil: "load" });
@@ -288,10 +319,13 @@ const changeSort = async (p) => (await openSort(p))();
         samples.every((s) => s.length === 0),
         `${tag}: zero running animations at rest (${JSON.stringify(samples.flat().slice(0, 5))})`,
       );
-      // the strip as it stands before the band's script marks it (`data-morph`): the Carousel's buttons, drawn by
-      // then, keep their scroll fade (app/strip.css) and must not run it either
+      // the strip folded by hand, the sort menu and the settings dialog opened. The system's setting stills
+      // everything; the switch stills the site's own motion, while Astryx's layer entrances follow only the
+      // system (REQUIREMENTS.md, Deferred options)
       await p.goto(url, { waitUntil: "load" });
       await p.waitForTimeout(1500);
+      // the strip as it stands before the band's script marks it (`data-morph`): the Carousel's buttons, drawn by
+      // then, keep their scroll fade (app/strip.css) and must not run it either
       await p.evaluate(() => {
         for (const el of document.querySelectorAll("[data-morph]"))
           el.removeAttribute("data-morph");
@@ -300,6 +334,93 @@ const changeSort = async (p) => (await openSort(p))();
       check(
         early.length === 0,
         `${tag}: the strip before the band's script runs nothing (${JSON.stringify(early)})`,
+      );
+      await p.reload({ waitUntil: "load" });
+      await p.waitForTimeout(1500);
+      for (const [what, click] of [
+        ["strip fold", stripToggle(p, "Collapse avatars")],
+        ["sort menu", () => p.getByRole("button", { name: SORTS }).click()],
+        ["settings dialog", settings(p)],
+      ]) {
+        const runs = await opening(p, click);
+        const own = runs.filter((r) => SITE.test(r));
+        check(
+          tag === "reduced" ? runs.length === 0 : own.length === 0,
+          `${tag}: ${what} opens without the site's motion (${JSON.stringify(own)}; components: ${JSON.stringify(runs.filter((r) => !SITE.test(r)))})`,
+        );
+        await p.keyboard.press("Escape");
+        await p.waitForTimeout(400);
+      }
+    } else {
+      // the switch in the settings dialog marks the page at once, and a reload has the mark before the body parses
+      await p.goto(url, { waitUntil: "load" });
+      await settings(p)();
+      await p.getByText("Appearance", { exact: true }).first().click();
+      const toggle = p.getByRole("switch", { name: "Reduce motion" });
+      // <html>'s mark in the click's task; Astryx's on <body> with the render that follows
+      const marks = async () => {
+        const now = await p.evaluate(
+          () => document.documentElement.dataset.motion ?? "",
+        );
+        await p.waitForTimeout(300);
+        return [
+          now,
+          await p.evaluate(() =>
+            document.body.hasAttribute("data-astryx-reduced-motion"),
+          ),
+        ];
+      };
+      await toggle.click();
+      const on = await marks();
+      await p.keyboard.press("Escape");
+      await p.waitForTimeout(400);
+      const fold = await opening(p, stripToggle(p, "Collapse avatars"));
+      check(
+        on[0] === "reduce" && on[1] && !fold.some((r) => SITE.test(r)),
+        `${tag}: the switch turned on marks the page live ${JSON.stringify(on)}; the strip then folds without motion (${JSON.stringify(fold)})`,
+      );
+      await p.addInitScript(() => {
+        new MutationObserver((_, o) => {
+          if (!document.body) return;
+          window.__motionAtBody = document.documentElement.dataset.motion;
+          o.disconnect();
+        }).observe(document, { childList: true, subtree: true });
+      });
+      await p.reload({ waitUntil: "load" });
+      const atBody = await p.evaluate(() => window.__motionAtBody);
+      await settings(p)();
+      await p.getByText("Appearance", { exact: true }).first().click();
+      await toggle.click();
+      const off = await marks();
+      check(
+        atBody === "reduce" && off[0] === "" && !off[1],
+        `${tag}: a reload marks the page before the body (${atBody}); turned off, the marks go ${JSON.stringify(off)}`,
+      );
+      // turned on while the strip folds, the switch cancels the turn (lib/motion.ts cancelOnReducedMotion)
+      await p.keyboard.press("Escape");
+      await p.goto(url, { waitUntil: "load" });
+      await p.waitForTimeout(1500);
+      const [during, after] = await p.evaluate(() => {
+        const turns = () =>
+          document
+            .getAnimations()
+            .filter((a) => a.id === "strip-turn" && a.playState === "running")
+            .length;
+        document.querySelector('[aria-label="Collapse avatars"]').click();
+        return new Promise((done) =>
+          requestAnimationFrame(() => {
+            const running = turns();
+            document.documentElement.dataset.motion = "reduce";
+            setTimeout(() => {
+              done([running, turns()]);
+              delete document.documentElement.dataset.motion;
+            });
+          }),
+        );
+      });
+      check(
+        during > 0 && after === 0,
+        `${tag}: switched on mid-turn, the turn stops (${during} running, then ${after})`,
       );
     }
     await ctx.close();

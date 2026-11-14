@@ -38,7 +38,8 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 7. Appearance: System (default), Light, Dark from the settings cookie; a head script sets `data-theme` and
    `lang` before first paint, and the root `Theme` gets the same mode from the server. The theme is neutral, the
    only one (owner, 2026-11-13: the six other Astryx themes were removed). Pure black (a `Switch` under the colour
-   mode) applies in dark mode only; the same script marks it as `data-black`.
+   mode) applies in dark mode only; the same script marks it as `data-black`. Reduce motion (a `Switch` below it,
+   kept in this browser only) is marked as `data-motion="reduce"`; off, the system's setting still applies.
 8. This file lists every surface before it is built.
 9. Astryx is MIT: `web/THIRD-PARTY-NOTICES.md` names each adapted template and carries the licence.
 
@@ -73,7 +74,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms; sign-in only, without the tabs, while registration is closed) | checkpoint 1 |
 | Account menu | TopNav end, signed in | ghost `IconButton` with the user-circle glyph (template `shell-side-nav` account row, page.tsx:180), tooltip the display name; `DropdownMenu` with a header (display name, email) and two groups: favourites, recently viewed / settings, admin console (admins only), sign out | track D |
 | Language, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio group (interface language only); currency as a ghost DropdownMenu button of the same height | checkpoint 1 |
-| Settings (appearance, language, currency, item text, devices) | TopNav end, account menu | page `settings-dialog` (appearance: colour mode cards, pure black `Switch`); synced to the account when signed in; item text defaults to the interface language; signed in, an Account group with Devices: the account's sessions as the card's rows, a secondary Sign out on each but this device, which carries a `Token`; and Your data: the template's "Delete my account" row (page.tsx:1953-1958, destructive sm `Button`) opening block `DialogFormDialog` with the password field, Cancel and a destructive Delete account | track D |
+| Settings (appearance, language, currency, item text, devices) | TopNav end, account menu | page `settings-dialog` (appearance: colour mode cards, pure black and reduce motion `Switch`es); synced to the account when signed in; item text defaults to the interface language; signed in, an Account group with Devices: the account's sessions as the card's rows, a secondary Sign out on each but this device, which carries a `Token`; and Your data: the template's "Delete my account" row (page.tsx:1953-1958, destructive sm `Button`) opening block `DialogFormDialog` with the password field, Cancel and a destructive Delete account | track D |
 | Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid; recently viewed is read in the browser) | track D |
 | Privacy policy, terms of use | `/privacy`, `/terms`; Settings > About rows; the register form's consent line (page `login-card` terms line, page.tsx:196-209) | page `documentation-technical` in the site frame: a reading column (`contentWidth` 960, page inset 6), `Heading level={1}` with a supporting "Last updated" line, then per section a `Divider` and a level-2 `Heading` over body `Text` paragraphs and disc `List`s; the cookie list a compact `Table`. The template's outline panel, phone selector, assistant card and code blocks are not used. Texts are server-only (`lib/legal-<lang>.ts`), the operator and contact from `OPERATOR_NAME` / `CONTACT_EMAIL` at runtime; inline links are underlined (neutral's accent is the text colour). From Settings > About and the register form the same body opens in a dialog over them (block `DialogScrollingContent` without its footer, 960 px wide, settings' height cap; "Last updated" as the `DialogHeader` subtitle, block `DialogWithSubtitle`); the body is one client component (`legal-body.tsx`) for both, and the dialog gets its texts as plain data from a server action, never as elements (a route's client manifest need not list the components they name); the terms' privacy link switches the dialog, a modified click opens the page | track G |
 | Admin frame | `/admin/*` | page `shell-side-nav` (collapsible, resizable `SideNav`, two titled groups, footer: back to site, language, colour mode; phone drawer from `AppShell`) | track F |
@@ -234,7 +235,10 @@ Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@ast
   - `.astryx-app-shell` and `.astryx-app-shell-header` (`lib/deep-start.ts`): the deep start sets the shell's
     header height variable on the shell before it hydrates (above).
   - `.astryx-skeleton` (`silhouette.tsx` `silhouetteMask`, `app/catalog.css` image skeletons): the boxes' mask is
-    measured from a silhouette's Skeletons, and a painted image's Skeleton is dropped.
+    measured from a silhouette's Skeletons, and a painted image's Skeleton is dropped; under the reduce-motion
+    switch its pulse stops.
+  - `data-astryx-reduced-motion`, core's private reduced-motion mark (`components/providers.tsx`): on `<body>`
+    while the reduce-motion switch is on, so core's animator reduces its motion as under the system's setting.
   - The Carousel's top-layer `[popover]` (its prev/next buttons) under `[data-strip]` (`app/strip.css`
     `strip-*`): faded and hidden as the strip shrinks.
   - The Carousel's scroll area `:scope > [role="group"]` (`avatar-strip.tsx`): the vertical wheel scrolls it by

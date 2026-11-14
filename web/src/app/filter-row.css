@@ -240,8 +240,11 @@
 .filter-search .astryx-tokenizer > span:has(.astryx-token) {
   max-width: none;
 }
-@media (prefers-reduced-motion: reduce) {
-  .filter-search {
+.filter-search {
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0s;
+  }
+  :where(:root[data-motion="reduce"]) & {
     transition-duration: 0s;
   }
 }

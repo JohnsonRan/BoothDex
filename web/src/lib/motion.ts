@@ -38,7 +38,10 @@ export const PLACEHOLDER = { "data-placeholder": "" } as const;
 
 const QUERY = "(prefers-reduced-motion: reduce)";
 
-export const prefersReducedMotion = () => matchMedia(QUERY).matches;
+/** The system's setting, or the settings' switch (`data-motion` on <html>: layout.tsx, providers.tsx). */
+export const prefersReducedMotion = () =>
+  document.documentElement.dataset.motion === "reduce" ||
+  matchMedia(QUERY).matches;
 
 /** Cancels `running` (each jumps to its end) now and whenever reduced motion turns on; returns the cleanup. */
 export function cancelOnReducedMotion(running: Animation[]): () => void {
@@ -46,10 +49,15 @@ export function cancelOnReducedMotion(running: Animation[]): () => void {
   const cancel = () => {
     for (const a of running) a.cancel();
   };
-  const onChange = () => list.matches && cancel();
+  const onChange = () => prefersReducedMotion() && cancel();
   list.addEventListener("change", onChange);
+  const switched = new MutationObserver(onChange);
+  switched.observe(document.documentElement, {
+    attributeFilter: ["data-motion"],
+  });
   return () => {
     list.removeEventListener("change", onChange);
+    switched.disconnect();
     cancel();
   };
 }

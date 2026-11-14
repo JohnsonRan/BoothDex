@@ -8,6 +8,13 @@
   );
 }
 
+/* The reduce-motion switch (data-motion, lib/motion.ts) stills the Skeleton's pulse, which core stops under the
+   system's setting only. */
+:where(:root[data-motion="reduce"])
+  .astryx-skeleton:not(#\#):not(#\#):not(#\#):not(#\#) {
+  animation-name: none;
+}
+
 /* An image over a Skeleton that can paint (catalog/silhouette.tsx SKELETON_PAINTED): the Skeleton under it goes,
    and with it its running animation, a compositor layer per image. Core's rules carry up to four :not(#\#). */
 [data-skeleton]:has(> img[data-painted])
@@ -63,8 +70,12 @@
     opacity: 1;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .tile-second {
+/* reduced motion: the system's, or the settings' switch (data-motion, lib/motion.ts), here and in every such rule */
+.tile-second {
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+  :where(:root[data-motion="reduce"]) & {
     transition: none;
   }
 }
