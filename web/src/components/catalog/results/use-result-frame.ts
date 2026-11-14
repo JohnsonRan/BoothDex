@@ -115,6 +115,9 @@ export function useResultFrame(
     let up = false;
     let shown = page;
     let saved = true;
+    // the window's scroll as the last resize left it: until it moves, a drag keeps the same tile in place
+    let sizedY = Number.NaN;
+    let rewatch = 0;
     // the address these results answer; once a navigation changes it, they no longer write to it
     const own = resultsQuery(location.search);
     const save = () => {
@@ -151,8 +154,13 @@ export function useResultFrame(
       const g = r.grid.current;
       const { pages: p } = r.now.current;
       if (!g) return;
-      // the place a new width keeps (sized below)
-      r.seen.current = anchorNow();
+      // the place a new width keeps (sized below), taken only at the width the pages were drawn for (during a
+      // drag the next width is laid out before this frame runs), and not again until the window moves: after a
+      // change of columns another tile can be first in view, and following it would let the place drift a row
+      if (g.clientWidth === r.width.current && scrollY !== sizedY) {
+        r.seen.current = anchorNow();
+        sizedY = Number.NaN;
+      }
       const first = p[0].n;
       if (up && r.nearTop.current && first > 1)
         above(
@@ -228,26 +236,40 @@ export function useResultFrame(
     // the place kept is the one the last frame drew (`seen`). The boxes take the columns, the pitch and a tile's
     // height laid out at the new width in one commit before the paint: drawn later, a frame of boxes sized for the
     // old columns would move every tile but the anchor. The tile then goes back to its top in the viewport, not
-    // in the document: a document grown shorter has already pulled the window up.
+    // in the document: a document grown shorter has already pulled the window up. A return being restored is
+    // left to its own scrolling (use-result-place.ts position). A change still waiting in a transition keeps the
+    // tile in view at the new width, as its anchor taken at the old one no longer holds.
     const sized = new ResizeObserver(() => {
       const g = r.grid.current;
       if (!g || g.clientWidth === r.width.current) return;
       r.width.current = g.clientWidth;
+      // watched again from the next frame: the grid, which the commit below resizes (and a rail drag's next
+      // step flushSync puts in), would end the observer's loop with an error
+      sized.disconnect();
+      rewatch = requestAnimationFrame(watch);
       const a = r.seen.current;
+      const pending = r.anchor.current;
+      r.anchor.current = null;
       flushSync(() => {
         setMask(undefined);
         const height = measure();
         setPages((cur) => resized(cur, height));
       });
+      if (r.restoring.current) return;
       if (a?.el.isConnected)
         scrollBy(0, a.el.getBoundingClientRect().top - a.top);
+      sizedY = scrollY;
+      const now = pending && anchorNow();
+      if (now) r.anchor.current = { el: now.el, at: now.top + scrollY };
     });
     r.tick.current = schedule;
     addEventListener("scroll", onScroll, { passive: true });
     addEventListener("wheel", onWheel, { passive: true });
-    sized.observe(r.grid.current as HTMLDivElement);
+    const watch = () => sized.observe(r.grid.current as HTMLDivElement);
+    watch();
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(rewatch);
       clearTimeout(settle);
       showInView(undefined);
       r.tick.current = () => {};
