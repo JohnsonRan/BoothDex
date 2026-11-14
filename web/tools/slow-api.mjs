@@ -13,6 +13,7 @@ import https from "node:https";
 const port = Number(process.argv[2] ?? 3298);
 const upstream = new URL(process.argv[3] ?? "https://boothdex.dev");
 // a local lab API (http://127.0.0.1:3400) is plain http
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const client = upstream.protocol === "http:" ? http : https;
 const agent = new client.Agent({ keepAlive: true, maxSockets: 32 });
 const lab = { delay: 0, fail: false, cache: false };
@@ -39,6 +40,16 @@ http
       return res.end();
     }
     const search = url.pathname === "/api/search";
+    // a search with `q` embeds the query through the upstream's AI provider: only a lab API on this machine, which
+    // the lab starts with AI_BASE_URL at a closed port, may get one (lab.cjs LAB_AI_OFF)
+    if (
+      search &&
+      url.searchParams.has("q") &&
+      !LOOPBACK.has(upstream.hostname)
+    ) {
+      res.writeHead(403);
+      return res.end();
+    }
     const kept = search && lab.cache && answers.get(req.url);
     if (kept && !lab.fail) {
       res.writeHead(200, kept.headers);

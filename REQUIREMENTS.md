@@ -89,8 +89,9 @@ section that checks it) or both. A rule without a row is checked in review again
 Lab checks, run by hand and not part of a gate: `web/tools/motion.cjs`, `web/tools/loading-layout.cjs`
 and `bun run check:size` in `web/`; `scripts/bench/run.sh`. The two browser checks run once on `/`, which arrives
 in one paint, and once on a URL with `q`, which streams its results behind silhouettes; the second needs
-`LAB_AI_OFF=1` and an API started with `AI_BASE_URL` at a closed port (`http://127.0.0.1:9`), so the search embeds
-nothing.
+`LAB_AI_OFF=1`, an API on this machine started with `AI_BASE_URL` at a closed port (`http://127.0.0.1:9`), so
+the search embeds nothing, and `slow-api.mjs` pointed at that API; the proxy refuses a search with `q` to any
+other upstream.
 
 ## Exceptions
 
