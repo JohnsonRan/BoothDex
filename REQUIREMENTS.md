@@ -92,7 +92,9 @@ Lab checks, run by hand and not part of a gate: `web/tools/motion.cjs`, `web/too
 second, and every run of `nav.cjs`, needs `LAB_AI_OFF=1`, an API on this machine started with `AI_BASE_URL` at a
 closed port (`http://127.0.0.1:9`), so the search embeds nothing, and `slow-api.mjs` pointed at that API; the proxy
 refuses a search with `q` to any other upstream. Build and start the site with `API_ORIGIN` set to the proxy:
-`next build` fixes the browser's `/api` rewrite.
+`next build` fixes the browser's `/api` rewrite. When `check:size` reads over budget, `web/tools/size-diff.mjs`
+compares two `next analyze` snapshots by package and source directory, to find what grew before a raise is
+proposed.
 
 ## Exceptions
 
