@@ -13,6 +13,7 @@ const {
   GEOMETRY,
   compare,
   scrollToPage,
+  streams,
 } = require("./lab.cjs");
 
 const [
@@ -67,9 +68,12 @@ const settle = (p) =>
     await p.waitForTimeout(500);
     const ready = await p.evaluate(GEOMETRY);
     const tiles = Object.keys(ready).filter((k) => /^tile\d+$/.test(k)).length;
-    if (!loading.placeholder) {
+    // a text search shows silhouettes while it waits; any other page arrives whole in its first paint
+    if (streams(url) !== !!loading.placeholder) {
       failed = true;
-      console.log(`${width}x${height}: FAIL no loading silhouette seen`);
+      console.log(
+        `${width}x${height}: FAIL ${loading.placeholder ? "a silhouette on a page that should arrive whole" : "no loading silhouette seen"}`,
+      );
     }
     report(
       `${width}x${height} first load`,

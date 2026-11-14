@@ -41,8 +41,8 @@ meanwhile.
 | `bun test` in `web/` | 15 s | 103 tests in 3 s (2026-11-11, development host, load not recorded) | review |
 | Slowest test package | 16 s | `api` unit tests: 12.1 s, 15.4 s, 12.4 s (2026-11-11, GitHub-hosted ubuntu-latest, load not recorded) | review |
 | Home page first load, gzip -9: HTML | 51,500 B | 50,696 B over 3 reads, against 48,674 to 48,677 B for 0.7.8 on the same data (2026-11-13, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
-| Home page first load, gzip -9: JS | 521,000 B | 520,618 B over 3 reads, the preloaded chunks included (2026-11-13, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
-| Home page first load, gzip -9: CSS | 50,000 B | 49,895 B over 3 reads (2026-11-13, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
+| Home page first load, gzip -9: JS | 522,500 B | 521,999 B over 3 reads with Astryx 0.7.16, the preloaded chunks included, against 520,914 B for 0.7.15 on the same host (2026-11-14, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
+| Home page first load, gzip -9: CSS | 50,750 B | 50,561 B over 3 reads with Astryx 0.7.16, against 49,901 B for 0.7.15 on the same host (2026-11-14, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Source file size, p90 of this repository (pass bar) | 274 lines | 274 lines: nearest-rank p90 of the 272 tracked `.rs`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.css`, `.sql`, `.sh` and `.py` files (2026-11-12, `wc -l`) | review |
 | Commit subject length | 72 characters | a setting, not measured | review (no commit hook) |
 
@@ -87,7 +87,11 @@ section that checks it) or both. A rule without a row is checked in review again
 | crates/AGENTS.md: Verification | `cargo test --workspace -- --include-ignored` (against PostgreSQL in CI) | |
 
 Lab checks, run by hand and not part of a gate: `web/tools/motion.cjs`, `web/tools/loading-layout.cjs`
-and `bun run check:size` in `web/`; `scripts/bench/run.sh`.
+and `bun run check:size` in `web/`; `scripts/bench/run.sh`. The two browser checks run once on `/`, which arrives
+in one paint, and once on a URL with `q`, which streams its results behind silhouettes; the second needs
+`LAB_AI_OFF=1`, an API on this machine started with `AI_BASE_URL` at a closed port (`http://127.0.0.1:9`), so
+the search embeds nothing, and `slow-api.mjs` pointed at that API; the proxy refuses a search with `q` to any
+other upstream.
 
 ## Exceptions
 
@@ -141,6 +145,9 @@ after a release.
 
 | Option | Source | Why it waits |
 | --- | --- | --- |
+| Keep the readout clear of the filter row's clauses where both are long: with the filters in the row (Settings) and enough clauses to fill a 1440 px row, a long page-2+ line grows under the "+N" trigger. Measured on `?adult=include&asup=all&range=year&page=12` (201,637 items): the line is 14.9rem in ja, 13.4 in ko, 13.0 in en and 12.3 in zh against an 11.5rem reserve; ja overlaps the trigger by 7 px and ko by 10 px, en and zh clear it | readout fix, 2026-11-14 | A reserve that holds every locale's line (about 15.5rem) takes 64 px from the clauses on every page for a rare case; a per-locale reserve also needs a per-locale phone breakpoint (the container query adds the reserve). The search latency left the line on the owner's ruling, which cleared the common case |
+| Keep a text search's fast first load from animating: on `/?q=dress` with no delay, 16 entrance animations run, because React reveals the streamed results at least 300 ms after the frame, so the visitor saw the silhouettes | `motion.cjs` on `/?q=dress`, 2026-11-14 | Same before and after that change; `motion.cjs` also stops at its sort toggle on a text search, whose sort menu has no Trending or Newest, so its later steps need another control there |
+| Fill in the component library's strings that its zh-CN, ja-JP and ko-KR catalogues lack (312 of the English keys in 0.7.16, about 300 already in 0.7.15), at least the ones this site renders: `numberInput.invalidNumber` in the admin run dialog, `multiSelector.selectedCount`, `tokenizer.*`, `inputClearButton.tooltip` | Astryx 0.7.16 upgrade, 2026-11-14 | The gap is upstream and predates the upgrade; those strings show in English. `componentCatalogue` (`web/src/lib/server-data.ts`) can merge our own entries, but which keys the site reaches needs a sweep, and the wording needs the zh, ja and ko style rules |
 | Keep an ordinary misspelt word from becoming a model filter: "chifon dress" reads as the model Chiffon when no title, tag, author name or description has "chifon" | review of PR #58, 2026-11-14 | Following the text typo retry, a word the catalogue does not know is taken as the one model it misspells; how often such a word meant something else is unknown until `split_names` is run over a sample of real queries |
 | Make "Clear" on the empty results page also drop the shop and avatar clauses, and show it when only those are set: `FILTER_RESET` keeps them and `activeFilterCount` does not count them, while the new per-clause buttons do offer them | building the empty-result suggestions, 2026-11-13 | Existing behaviour, kept on purpose (owner, 2026-11-13); changing what "Clear" means touches the filter row and the saved views as well |
 | Cache search results in the API, keyed by the query and the snapshot version, and cache or precompute the card payloads `db::load_items` builds | search performance review, 2026-11-13 | Measured on the development host (master build, 216,179 items, idle, two runs): the API spends 4 to 13 ms per search, of which the search 0.5 to 8.8 ms and the card load 1.3 to 2.0 ms. A cache saves those milliseconds per hit and adds invalidation and memory; the first search of an uncached query is dominated by the embedding provider (median 0.7 s), and the process and `query_embeddings` caches already keep its answers. Kept as deferred (owner, 2026-11-13) |

@@ -125,9 +125,9 @@ export function SearchTrace({
         </VStack>
       }
     >
-      {/* the latency stays on the trigger, so the time shows without opening the trace */}
+      {/* the count alone: the readout's reserve holds it, the page cue and "Clear all"; the time is in the trace */}
       <Link type="supporting" color="secondary">
-        {count} · {ms(totalMs)}
+        {count}
       </Link>
     </Popover>
   );

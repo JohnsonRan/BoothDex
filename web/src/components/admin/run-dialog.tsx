@@ -31,6 +31,18 @@ export function RunDialog({
   const t = useAdminT();
   const [params, setParams] = useState<Record<string, number | boolean>>({});
   const [busy, setBusy] = useState(false);
+  // fields whose typed text the NumberInput rejected: the text stays on screen while `params` keeps the last
+  // accepted value, so Queue stays disabled until each is fixed or cleared. The field reports at blur, which a
+  // press on Queue (or a Tab to it) causes first, so the button is disabled before that press lands.
+  const [rejected, setRejected] = useState<ReadonlySet<string>>(new Set());
+  const reject = (name: string, isRejected: boolean) =>
+    setRejected((prev) => {
+      if (prev.has(name) === isRejected) return prev;
+      const next = new Set(prev);
+      if (isRejected) next.add(name);
+      else next.delete(name);
+      return next;
+    });
   const set = (name: string, v: number | boolean | null | undefined) =>
     setParams(({ [name]: _, ...rest }) =>
       v == null || v === false ? rest : { ...rest, [name]: v },
@@ -76,6 +88,7 @@ export function RunDialog({
                     isIntegerOnly
                     value={(params[p.name] as number | undefined) ?? null}
                     onChange={(v) => set(p.name, v)}
+                    onEntryErrorChange={(e) => reject(p.name, e !== null)}
                   />
                 ),
               )}
@@ -94,6 +107,7 @@ export function RunDialog({
                 label={t("run.submit")}
                 variant="primary"
                 isLoading={busy}
+                isDisabled={rejected.size > 0}
                 onClick={submit}
               />
             </HStack>

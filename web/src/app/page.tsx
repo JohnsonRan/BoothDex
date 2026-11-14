@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { HomeScreen } from "@/components/catalog/home-screen";
 import { homeMetadata } from "@/lib/seo";
 
@@ -15,11 +14,8 @@ export async function generateMetadata({
   return homeMetadata(Object.keys(await searchParams).length > 0);
 }
 
-// Settings (cookie) and the search (URL) are per request, so the screen streams in behind one boundary.
+// Settings (cookie) and the search (URL) are per request, and the metadata already holds the <head> for them, so
+// the screen renders with the document rather than behind a boundary that React would reveal 300 ms later.
 export default function Home({ searchParams }: PageProps<"/">) {
-  return (
-    <Suspense>
-      <HomeScreen searchParams={searchParams} />
-    </Suspense>
-  );
+  return <HomeScreen searchParams={searchParams} />;
 }

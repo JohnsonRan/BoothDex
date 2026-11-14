@@ -4,7 +4,7 @@
 // (lib/use-delayed): a refresh answered in under 150 ms shows no indicator and fades nothing in; a slow one shows
 // the indicator from 150 ms, keeps it at least 300 ms, and fades the new results in once.
 //   node tools/motion.cjs <page url> <proxy url> [delay ms=2500]
-const { launch, lab, RECORDER, scrollToPage } = require("./lab.cjs");
+const { launch, lab, RECORDER, scrollToPage, streams } = require("./lab.cjs");
 
 const [
   url = "http://127.0.0.1:3203/",
@@ -13,8 +13,8 @@ const [
 ] = process.argv.slice(2);
 const ENTRANCE = ["page-enter", "row-enter"];
 // A filter change as a visitor makes it: the toolbar's sort menu, switched between Trending and Newest. Opening the
-// menu is separate from picking the item, so a timed refresh starts at the pick. A sort is a search with no `q`
-// (the lab guard refuses one with `q`, which would embed it through the AI provider).
+// menu is separate from picking the item, so a timed refresh starts at the pick. A text search's sort menu has
+// neither, so these steps need a URL without `q`.
 const openSort = async (p) => {
   const button = p.getByRole("button", { name: /^(Trending|Newest)$/ });
   const next =
@@ -155,10 +155,16 @@ const changeSort = async (p) => (await openSort(p))();
         first.length === 0 && anyRunning.length === 0,
         `${tag}: slow load runs nothing (${first.length} entrances, running ${JSON.stringify(anyRunning.slice(0, 5))})`,
       );
-    else
+    else if (streams(url))
       check(
         running > 0 && rows > 0 && sections > 0,
         `${tag}: slow load enters once: ${sections} sections, ${rows} rows, ${running} running after arrival`,
+      );
+    // without a text search the results come with the frame's first paint: nothing was seen to enter
+    else
+      check(
+        first.length === 0,
+        `${tag}: slow load arrives whole, nothing enters (${first.length} entrances)`,
       );
     await p.waitForTimeout(1200);
 
