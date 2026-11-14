@@ -48,9 +48,20 @@ export function LanguageButton(props: Partial<DropdownMenuTriggerProps>) {
 /** The currency menu's button: the current code alone, a ghost button of the icon buttons' size beside them
  *  (template shell-top-nav, end actions); its name and the menu rows give symbol and full name. Prices other
  *  than yen are converted (≈) on the server. */
+// one per interface language: constructing Intl.DisplayNames is costly, and every currency button renders it
+const currencyNames = new Map<string, Intl.DisplayNames>();
+const namesFor = (locale: string) => {
+  let names = currencyNames.get(locale);
+  if (!names) {
+    names = new Intl.DisplayNames(locale, { type: "currency" });
+    currencyNames.set(locale, names);
+  }
+  return names;
+};
+
 export function useCurrencyButton() {
   const { t, ui, settings } = useUi();
-  const names = new Intl.DisplayNames(LOCALES[ui], { type: "currency" });
+  const names = namesFor(LOCALES[ui]);
   const code = settings.currency;
   const label = t("nav.currency", { name: names.of(code) ?? code, c: code });
   return {
