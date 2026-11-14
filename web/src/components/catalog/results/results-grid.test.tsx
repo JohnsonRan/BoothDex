@@ -111,9 +111,7 @@ test("a tile's badges sit on its cover, and its second image waits for a pointer
   expect(cover.indexOf("Quest")).toBeGreaterThan(-1);
   expect(cover.indexOf("Quest")).toBeLessThan(cover.indexOf("<h4"));
   const second = html.match(/<img [^>]*class="tile-second"[^>]*>/)?.[0] ?? "";
-  expect(second).toContain(
-    'data-second="/img/b/300x300_a2_g5/u/i/1/second.jpg?format=avif"',
-  );
+  expect(second).toContain('data-second="second.jpg?format=avif"');
   expect(second).not.toMatch(/ src=/);
 });
 

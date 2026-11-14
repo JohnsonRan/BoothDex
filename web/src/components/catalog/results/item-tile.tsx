@@ -48,8 +48,16 @@ export type Tile = {
   price: string;
   /** NEW first, then up to two feature tags */
   marks: string[];
-  /** the second image, shown while a pointer rests on the tile ("" when the item has none) */
+  /**
+   * the second image, shown while a pointer rests on the tile ("" when the item has none): relative to the cover's
+   * address when it sits beside it, as it does for an item's own images, so the shared path is not sent twice
+   */
   second: string;
+};
+
+const besideCover = (cover: string, second: string) => {
+  const dir = cover.slice(0, cover.lastIndexOf("/") + 1);
+  return dir && second.startsWith(dir) ? second.slice(dir.length) : second;
 };
 
 export const tileOf = (
@@ -68,7 +76,7 @@ export const tileOf = (
     ...(isNew(item) ? ["NEW"] : []),
     ...item.features.slice(0, 2).map((f) => FEATURES[f as Feature] ?? f),
   ],
-  second: imgUrl(item, 1),
+  second: besideCover(imgUrl(item, 0), imgUrl(item, 1)),
 });
 
 // Template product-gallery's Grid (page.tsx:148-149), with master's density (owner: 「太大了。為什麼一頁只有4張圖了」):
@@ -138,12 +146,7 @@ export function ItemTile({
             decoding="async"
           />
           {tile.second && (
-            <img
-              className="tile-second"
-              data-second={tile.second}
-              alt=""
-              decoding="async"
-            />
+            <img className="tile-second" data-second={tile.second} alt="" />
           )}
           {tile.marks.length > 0 && (
             <HStack gap={1} wrap="wrap" className="tile-marks">

@@ -145,7 +145,14 @@ export function ItemHost({
       const img = e.target
         .closest("[data-item]")
         ?.querySelector<HTMLImageElement>("img[data-second]:not([src])");
-      if (img?.dataset.second) img.src = img.dataset.second;
+      const cover = img?.parentElement?.querySelector<HTMLImageElement>(
+        "img:not([data-second])",
+      );
+      // the address is relative to the cover's (item-tile.tsx besideCover)
+      if (!img?.dataset.second || !cover) return;
+      // set here rather than in each tile's markup, which carries only what the first paint needs
+      img.decoding = "async";
+      img.src = new URL(img.dataset.second, cover.src).href;
     };
     document.addEventListener("pointerover", onOver, { passive: true });
     return () => document.removeEventListener("pointerover", onOver);
