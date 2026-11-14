@@ -7,7 +7,6 @@
 // apps/lite UI rules, Phase 1d of the rewrite).
 
 import { Button } from "@astryxdesign/core/Button";
-import { ProgressBar } from "@astryxdesign/core/ProgressBar";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { VStack } from "@astryxdesign/core/Stack";
 import dynamic from "next/dynamic";
@@ -24,7 +23,13 @@ import { useRefresh } from "@/components/catalog/filter/filter-url";
 import { FailedResults } from "@/components/catalog/results/result-states";
 import { useUi } from "@/components/providers";
 import { useApiRecovery } from "@/lib/client-data";
+import { Lazy, lazySurface, preloadWhenIdle } from "@/lib/lazy";
 import { cancelOnReducedMotion, swapIn } from "@/lib/motion";
+
+// shown only after a refresh has waited 150 ms, so its code loads after the page
+const ProgressBar = lazySurface(() =>
+  import("@astryxdesign/core/ProgressBar").then((m) => m.ProgressBar),
+);
 
 // shown only after a refresh fails, so its code loads then
 const Banner = dynamic(
@@ -42,13 +47,15 @@ const Banner = dynamic(
 export function RefreshProgress() {
   const { t } = useUi();
   const { shown } = useRefresh();
+  useEffect(() => preloadWhenIdle(ProgressBar.preload), []);
   return (
     <VStack
       data-refresh={shown ? "shown" : "idle"}
       style={{ display: "contents" }}
     >
       {shown && (
-        <ProgressBar
+        <Lazy
+          surface={ProgressBar}
           label={t("list.loading")}
           isLabelHidden
           isIndeterminate
