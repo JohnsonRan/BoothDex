@@ -119,14 +119,21 @@ export function Providers({
   }, [fromServer, messages, look, router]);
 
   // the bar follows the mode the page opened in (a pinned one, from the head script or the server) and then the
-  // system's mode while that is followed
+  // system's mode while that is followed. Read when the browser is idle: the computed colour makes it style the
+  // whole page at once, which during hydration it would do again for the next frame
   const mode = look.theme;
   useEffect(() => {
-    showChrome();
-    if (mode !== "system") return;
+    const idle =
+      "requestIdleCallback" in window
+        ? requestIdleCallback(showChrome, { timeout: 2000 })
+        : setTimeout(showChrome, 200);
     const dark = matchMedia("(prefers-color-scheme: dark)");
-    dark.addEventListener("change", showChrome);
-    return () => dark.removeEventListener("change", showChrome);
+    if (mode === "system") dark.addEventListener("change", showChrome);
+    return () => {
+      if ("cancelIdleCallback" in window) cancelIdleCallback(idle as number);
+      else clearTimeout(idle);
+      dark.removeEventListener("change", showChrome);
+    };
   }, [mode]);
 
   // the language the page is rendered in, also when it came from Accept-Language rather than the cookie
