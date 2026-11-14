@@ -3,6 +3,7 @@
 // up for boxes, near ones drawn again, and the page in view read. The decisions are lib/result-frame.ts.
 
 import { type Dispatch, type SetStateAction, useEffect } from "react";
+import { flushSync } from "react-dom";
 import { covered } from "@/components/catalog/band/band-edge";
 import { framePages, pageToRead } from "@/lib/result-frame";
 import {
@@ -31,7 +32,7 @@ const SETTLE_MS = 200;
 
 export function useResultFrame(
   r: ResultRefs,
-  { starts, keep, above, loadNext, loadInto, measure }: PageReads,
+  { starts, anchorNow, keep, above, loadNext, loadInto, measure }: PageReads,
   {
     page,
     key,
@@ -150,6 +151,8 @@ export function useResultFrame(
       const g = r.grid.current;
       const { pages: p } = r.now.current;
       if (!g) return;
+      // the place a new width keeps (sized below)
+      r.seen.current = anchorNow();
       const first = p[0].n;
       if (up && r.nearTop.current && first > 1)
         above(
@@ -221,22 +224,28 @@ export function useResultFrame(
       up = true;
       schedule();
     };
-    // a new width reflows the rows: the boxes take the columns, the pitch and a tile's height laid out at it,
-    // measured after the place is taken, so their change of height is kept out of view too
-    const onResize = () => {
+    // A new width (the window's, or the filter rail dragged) has reflowed the rows before any script sees it, so
+    // the place kept is the one the last frame drew (`seen`). The boxes take the columns, the pitch and a tile's
+    // height laid out at the new width in one commit before the paint: drawn later, a frame of boxes sized for the
+    // old columns would move every tile but the anchor. The tile then goes back to its top in the viewport, not
+    // in the document: a document grown shorter has already pulled the window up.
+    const sized = new ResizeObserver(() => {
       const g = r.grid.current;
       if (!g || g.clientWidth === r.width.current) return;
       r.width.current = g.clientWidth;
-      setMask(undefined);
-      keep(() => {
+      const a = r.seen.current;
+      flushSync(() => {
+        setMask(undefined);
         const height = measure();
         setPages((cur) => resized(cur, height));
       });
-    };
+      if (a?.el.isConnected)
+        scrollBy(0, a.el.getBoundingClientRect().top - a.top);
+    });
     r.tick.current = schedule;
     addEventListener("scroll", onScroll, { passive: true });
     addEventListener("wheel", onWheel, { passive: true });
-    addEventListener("resize", onResize);
+    sized.observe(r.grid.current as HTMLDivElement);
     return () => {
       cancelAnimationFrame(frame);
       clearTimeout(settle);
@@ -244,7 +253,7 @@ export function useResultFrame(
       r.tick.current = () => {};
       removeEventListener("scroll", onScroll);
       removeEventListener("wheel", onWheel);
-      removeEventListener("resize", onResize);
+      sized.disconnect();
     };
   }, []);
 }
