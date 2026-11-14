@@ -9,7 +9,9 @@ use crate::public_dns::PublicOnly;
 
 /// Booth's own resize variants; anything else 403s upstream anyway. "orig" = original upload.
 pub(crate) const SIZES: &[&str] = &["48x48", "72x72_a2_g5", "300x300_a2_g5", "620x620", "orig"];
-const MAX_UPSTREAM_BYTES: usize = 25 * 1024 * 1024;
+pub(crate) const MAX_UPSTREAM_BYTES: usize = 25 * 1024 * 1024;
+/// The longest one upstream request may take, redirects included.
+pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn is_uuid(s: &str) -> bool {
     s.len() == 36 && s.char_indices().all(|(i, c)| if [8, 13, 18, 23].contains(&i) { c == '-' } else { c.is_ascii_hexdigit() && !c.is_ascii_uppercase() })
@@ -69,18 +71,20 @@ fn follow_redirect(previous: &[Url], to: &Url) -> bool {
 
 /// The one client for every upstream host: it follows only the redirects `follow_redirect` accepts, and connects only
 /// to the public addresses `PublicOnly` resolves. A refused redirect comes back as the 3xx response, which
-/// `fetch_upstream` fails. It uses no proxy: a proxy from the environment or the system settings would resolve the
+/// `open_upstream` fails. It uses no proxy: a proxy from the environment or the system settings would resolve the
 /// host itself, past `PublicOnly`.
 pub(crate) fn upstream_client() -> reqwest::Result<reqwest::Client> {
     // reqwest is built with `rustls-no-provider`, so building a client panics until a provider is installed
     rustls::crypto::ring::default_provider().install_default().ok();
     let policy = Policy::custom(|a| if follow_redirect(a.previous(), a.url()) { a.follow() } else { a.stop() });
-    reqwest::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).dns_resolver(PublicOnly).no_proxy().build()
+    reqwest::Client::builder().timeout(UPSTREAM_TIMEOUT).redirect(policy).dns_resolver(PublicOnly).no_proxy().build()
 }
 
-pub(crate) async fn fetch_upstream(client: &reqwest::Client, url: &str) -> Result<Option<Vec<u8>>> {
+/// The upstream response for `url` with its headers read and its body not yet, or None for a 404. A response that
+/// declares more than MAX_UPSTREAM_BYTES is refused here.
+pub(crate) async fn open_upstream(client: &reqwest::Client, url: &str) -> Result<Option<reqwest::Response>> {
     // one retry: transient connect errors were seen right after startup
-    let mut resp = match client.get(url).send().await {
+    let resp = match client.get(url).send().await {
         Ok(r) => r,
         Err(_) => {
             tokio::time::sleep(Duration::from_millis(300)).await;
@@ -98,14 +102,25 @@ pub(crate) async fn fetch_upstream(client: &reqwest::Client, url: &str) -> Resul
     if resp.content_length().is_some_and(|n| n as usize > MAX_UPSTREAM_BYTES) {
         bail!("upstream too large: {url}");
     }
+    Ok(Some(resp))
+}
+
+/// The most bytes the body of a response from `open_upstream` may have: its declared length, or MAX_UPSTREAM_BYTES
+/// when it declares none.
+pub(crate) fn body_bound(resp: &reqwest::Response) -> usize {
+    resp.content_length().map_or(MAX_UPSTREAM_BYTES, |n| n as usize)
+}
+
+/// The body of `resp`, refused once it passes `bound` bytes, so it never outgrows the memory reserved for it.
+pub(crate) async fn read_body(mut resp: reqwest::Response, bound: usize) -> Result<Vec<u8>> {
     let mut body = Vec::new();
     while let Some(chunk) = resp.chunk().await? {
         body.extend_from_slice(&chunk);
-        if body.len() > MAX_UPSTREAM_BYTES {
-            bail!("upstream too large: {url}");
+        if body.len() > bound {
+            bail!("upstream too large: {}", resp.url());
         }
     }
-    Ok(Some(body))
+    Ok(body)
 }
 
 #[cfg(test)]
@@ -180,6 +195,13 @@ mod tests {
         assert!(follow_redirect(&requested(9), &hop(10)));
         assert!(!follow_redirect(&requested(10), &hop(11)));
         assert!(!follow_redirect(&requested(0), &Url::parse("https://evil.example/").unwrap()));
+    }
+
+    /// The whole body for `url`, as a cache miss reads it without the memory reservation.
+    async fn fetch_upstream(client: &reqwest::Client, url: &str) -> Result<Option<Vec<u8>>> {
+        let Some(resp) = open_upstream(client, url).await? else { return Ok(None) };
+        let bound = body_bound(&resp);
+        read_body(resp, bound).await.map(Some)
     }
 
     async fn serve_on_loopback(app: axum::Router) -> u16 {

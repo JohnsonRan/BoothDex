@@ -20,7 +20,7 @@ BoothDex は、[BOOTH](https://booth.pm) で販売されている VRChat 向け�
 
 ## はじめに
 
-詳細な構築手順、リバースプロキシの設定例、バックアップ運用については [デプロイガイド](docs/DEPLOY.md) (英語) を参照してください。Docker または Podman Compose を使用して PostgreSQL 17 (`pgvector`)、3 つの Rust サービス、Next.js サイトを起動し、TLS リバースプロキシ向けに単一ポート (`WEB_LISTEN`、既定値 `3100`) のみを公開します。**6 GB 以上のメモリ**を備えた Linux サーバーが必要です (8 GB 推奨、スワップ併用時は 4 GB から動作可能)。
+詳細な構築手順、リバースプロキシの設定例、バックアップ運用については [デプロイガイド](docs/DEPLOY.md) (英語) を参照してください。Docker または Podman Compose を使用して PostgreSQL 17 (`pgvector`)、3 つの Rust サービス、Next.js サイトを起動し、TLS リバースプロキシ向けに単一ポート (`WEB_LISTEN`、既定値 `127.0.0.1:3100`) のみを公開します。**6 GB 以上のメモリ**を備えた Linux サーバーが必要です (8 GB 推奨、スワップ併用時は 4 GB から動作可能)。
 
 ```mermaid
 flowchart LR
@@ -196,20 +196,26 @@ cargo build --release            # 初回ビルド時に IPADIC 辞書をダウ�
 # 指定しない場合は rav1e を使用します。nasm がある場合は --features imgproxy/asm を追加すると、エンコードが約 3 倍速くなります。
 (cd web && bun install)
 
-export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0 ADMIN_USERNAMES=admin
+export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/catalogue COOKIE_SECURE=0
 target/release/api &             # :3000
 target/release/imgproxy &        # :3001
 target/release/worker run &
 (cd web && bun run dev)          # :3100 (/api と /img を上記サービスへ転送)
 ```
 
-アカウント `admin` を新規登録し、`http://localhost:3100/admin` を開いてから、数ページ分クロールして商品データを取得してください。
+`http://localhost:3100` でアカウント `admin` を新規登録し、`api` を停止してから、そのユーザー名を指定して再起動してください。API は `ADMIN_USERNAMES` に記載されたユーザー名の登録を拒否するため、アカウントを作成してから記載してください。
+
+```sh
+ADMIN_USERNAMES=admin target/release/api &   # :3000 (先に起動した api を停止してから)
+```
+
+`http://localhost:3100/admin` を開いてから、数ページ分クロールして商品データを取得してください。
 
 ```sh
 target/release/worker once incremental '{"max_pages": 3, "full": true}'
 ```
 
-- **モック AI プロバイダー**: API キーがない場合でも、`bun scripts/mock-ai.ts` を起動して管理画面の AI 接続先に `http://127.0.0.1:3555/v1` を指定すると AI ジョブの動作を確認できます。
+- **モック AI プロバイダー**: API キーがない場合でも、`bun scripts/mock-ai.ts` を起動して管理画面の AI 接続先に `http://127.0.0.1:3555/v1` を指定し、任意の API キーと一緒に保存すると AI ジョブの動作を確認できます。
 
 テストと静的解析:
 

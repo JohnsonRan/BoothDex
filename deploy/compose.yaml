@@ -95,8 +95,8 @@ services:
       SITE_URL: ${SITE_URL:?set SITE_URL in .env}
       OPERATOR_NAME: ${OPERATOR_NAME:-}
       CONTACT_EMAIL: ${CONTACT_EMAIL:-}
-    # "[address:]port" on the host; e.g. 127.0.0.1:3100 when a reverse proxy on the same host is the only client
-    ports: ["${WEB_LISTEN:-3100}:3100"]
+    # "[address:]port" on the host; loopback by default, for a reverse proxy on the same host. A bare port publishes on all interfaces.
+    ports: ["${WEB_LISTEN:-127.0.0.1:3100}:3100"]
     logging: *logging
 
 volumes:

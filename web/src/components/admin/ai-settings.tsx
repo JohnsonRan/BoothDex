@@ -1,7 +1,8 @@
 "use client";
 // The OpenAI-compatible provider for the AI jobs (master ai-settings-card.tsx). The key is write-only: the API
-// returns only a hint. A field the server environment sets is read-only here. Saving a new key over a saved
-// one asks first. Test connection reports success as a toast; a missing model (a warning) and a broken embedding
+// returns only a hint. A field the server environment sets is read-only here; a key from the environment
+// locks the API URL as well. The API refuses a new API URL unless the same save carries the key. Saving a new
+// key over a saved one asks first. Test connection reports success as a toast; a missing model (a warning) and a broken embedding
 // model (an error) stay as Banners under the buttons, since each needs a change in the form.
 
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
@@ -21,6 +22,11 @@ import { type Ai, EFFORTS } from "./types";
 
 type Field = "base_url" | "model" | "embed_model";
 const MODEL_CHOICES = 12;
+// A field the server environment sets keeps isReadOnly (focusable, selectable, full contrast) and gets the muted surface.
+const locked = (on?: boolean) =>
+  on
+    ? { controlStyle: { backgroundColor: "var(--color-background-muted)" } }
+    : {};
 
 export function AiSettings() {
   const t = useAdminT();
@@ -98,6 +104,7 @@ export function AiSettings() {
       label={t(label)}
       description={env[field] ? t("ai.env") : desc && t(desc)}
       isReadOnly={env[field]}
+      {...locked(env[field])}
       value={form[field]}
       onChange={(v) => setForm((f) => ({ ...f, [field]: v }))}
     />
@@ -131,6 +138,7 @@ export function AiSettings() {
         label={t("ai.effort")}
         description={env.reasoning_effort ? t("ai.env") : t("ai.effortDesc")}
         isReadOnly={env.reasoning_effort}
+        {...locked(env.reasoning_effort)}
         value={effort}
         options={EFFORTS.map((e) => ({ value: e, label: t(`effort.${e}`) }))}
         onChange={setEffort}
@@ -148,6 +156,7 @@ export function AiSettings() {
               : t("ai.keyNone")
         }
         isReadOnly={env.api_key}
+        {...locked(env.api_key)}
         value={key}
         onChange={setKey}
       />

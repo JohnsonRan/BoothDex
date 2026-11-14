@@ -128,6 +128,9 @@ export const adminZh = {
   "error.jobBusy": "该类任务已在排队或运行",
   "error.jobIdle": "该任务未在排队或运行",
   "error.aiUnset": "请先设置 API 地址和 API 密钥",
+  "error.aiKeyRequired": "更改 API 地址时请重新输入 API 密钥",
+  "error.aiUrlLocked":
+    "API 密钥由服务器环境变量设置，此处不能修改 API 地址，请在服务器上设置 AI_BASE_URL",
   "error.provider": "无法连接服务商，或服务商拒绝了请求",
   "error.noUser": "找不到这个用户",
   "error.adminDisable": "管理员由服务器的 ADMIN_USERNAMES 决定，不能在这里禁用",

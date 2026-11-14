@@ -136,6 +136,9 @@ export const adminEn: AdminDict = {
   "error.jobBusy": "A job of this kind is already queued or running",
   "error.jobIdle": "This job is not queued or running",
   "error.aiUnset": "Set the API URL and API key first",
+  "error.aiKeyRequired": "Enter the API key again to change the API URL",
+  "error.aiUrlLocked":
+    "The server environment sets the API key, so the API URL can't be changed here. Set AI_BASE_URL on the server",
   "error.provider": "The provider couldn't be reached or refused the request",
   "error.noUser": "No such user",
   "error.adminDisable":
