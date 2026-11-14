@@ -1,7 +1,7 @@
 // The parts of the home page that wait for the search: the result count in the filter row's readout (after the page
 // in view, from page 2 on), with the readout's "Clear all" so the two arrive together, and the results region. Both
-// read the same pending search, each behind its own Suspense boundary (home-screen.tsx), so the frame around them is
-// painted first.
+// read the same pending search. They come with the frame; for a text search each is behind its own Suspense
+// boundary (home-screen.tsx, Pending), so the frame around them is painted first.
 
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";

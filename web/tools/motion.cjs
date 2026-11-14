@@ -13,8 +13,8 @@ const [
 ] = process.argv.slice(2);
 const ENTRANCE = ["page-enter", "row-enter"];
 // A filter change as a visitor makes it: the toolbar's sort menu, switched between Trending and Newest. Opening the
-// menu is separate from picking the item, so a timed refresh starts at the pick. A sort is a search with no `q`
-// (the lab guard refuses one with `q`, which would embed it through the AI provider).
+// menu is separate from picking the item, so a timed refresh starts at the pick. A text search's sort menu has
+// neither, so these steps need a URL without `q`.
 const openSort = async (p) => {
   const button = p.getByRole("button", { name: /^(Trending|Newest)$/ });
   const next =

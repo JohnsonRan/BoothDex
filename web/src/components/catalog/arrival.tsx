@@ -1,9 +1,9 @@
 "use client";
-// The page's entrance. The server streams the frame first and the results when the API answers; a slow answer
-// paints a Skeleton silhouette first (marked PLACEHOLDER). Whatever replaces a silhouette the visitor saw then
-// enters once (lib/motion). Content that came with the first paint never moves: the LCP cover and the title
-// are painted at full opacity. Filtering, sorting, paging and refreshes keep the observer disconnected, so
-// they never replay it.
+// The page's entrance. The results come with the frame; for a text search the server streams the frame first and
+// the results when the API answers, and a slow answer paints a Skeleton silhouette first (marked PLACEHOLDER).
+// Whatever replaces a silhouette the visitor saw then enters once (lib/motion). Content that came with the first
+// paint never moves: the LCP cover and the title are painted at full opacity. Filtering, sorting, paging and
+// refreshes keep the observer disconnected, so they never replay it.
 
 import { VStack } from "@astryxdesign/core/Stack";
 import { type ReactNode, useEffect, useRef } from "react";

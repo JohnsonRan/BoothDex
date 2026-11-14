@@ -1,11 +1,12 @@
 // A start past page 1 opens where it settles: scrolled past the title and the avatar strip, the results right under
-// the filter band, from the first paint. The band, the strip and the results stream as boundaries React reveals
-// later (in an animation frame or a timer of its own), so this inline script (catalog/home-screen.tsx, rendered
-// with them and run as it is parsed, while still hidden) watches the document and scrolls at each reveal, in the
-// task that made it and so before it paints, until the first tiles are in. A reveal moves a whole region into
-// place, the main region with it, so only the body sees it. The reader's own scrolling, the results hydrating (they
-// set history.scrollRestoration to manual and keep the place from there, use-result-place.ts), or 10 s ends it: a
-// stream stalled longer than that is left where it is rather than moved under a reader who may be reading it.
+// the filter band, from the first paint. On a text search the results stream as boundaries React reveals later (in
+// an animation frame or a timer of its own; otherwise they are in place already and it stops at once), so this
+// inline script (catalog/home-screen.tsx, rendered with them and run as it is parsed, while still hidden) watches
+// the document and scrolls at each reveal, in the task that made it and so before it paints, until the first tiles
+// are in. A reveal moves a whole region into place, the main region with it, so only the body sees it. The
+// reader's own scrolling, the results hydrating (they set history.scrollRestoration to manual and keep the place
+// from there, use-result-place.ts), or 10 s ends it: a stream stalled longer than that is left where it is rather
+// than moved under a reader who may be reading it.
 // A reload, Back or Forward is the results' own restore and is left to it; a page restored from the back-forward
 // cache runs no script, and React never runs a script it renders on a client-side navigation. Anything missing
 // makes it do nothing.

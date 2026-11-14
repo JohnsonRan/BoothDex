@@ -113,10 +113,12 @@ export async function HomeScreen({
 }
 
 /**
- * The count and the results behind a boundary of their own, with their silhouettes, only when the search can be
+ * The count and the results inside a boundary of their own, with their silhouettes, only when the search can be
  * slow. React reveals each boundary it streams at least 300 ms after the previous one, so a page of three showed
  * its first tiles about 600 ms after the frame, and Lighthouse's simulated LCP counted every script loaded
- * meanwhile. Without a boundary they come with the frame in one paint.
+ * meanwhile; beside an empty boundary they come with the frame in one paint. The boundary is there either way:
+ * one first mounted by a client navigation (a query typed on a page without one) would show its silhouettes over
+ * the results it replaces, where a mounted one keeps them until the new ones are ready.
  */
 function Pending({
   slow,
@@ -127,7 +129,12 @@ function Pending({
   fallback: ReactNode;
   children: ReactNode;
 }) {
-  return slow ? <Suspense fallback={fallback}>{children}</Suspense> : children;
+  return (
+    <>
+      <Suspense fallback={fallback}>{slow && children}</Suspense>
+      {!slow && children}
+    </>
+  );
 }
 
 /** Asks for the opened item's main image from the first HTML (item-preload.tsx). */
