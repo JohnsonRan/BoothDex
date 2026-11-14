@@ -376,7 +376,9 @@ async fn save_ai(s: &AppState, b: AiSettings, env: impl Fn(&str) -> Option<Strin
     let _guard = s.ai_save.lock().await;
     let mut v = settings::stored_ai(&s.pool).await?;
     let before = settings::resolve(&v, &env);
-    if let Some(u) = b.base_url {
+    // A URL that AI_BASE_URL hides is not stored: the key would follow it, unseen, once AI_BASE_URL is removed.
+    // The form shows that field read-only and sends the environment's value, so the save goes on without it.
+    if let Some(u) = b.base_url.filter(|_| !before.base_url_from_env) {
         v["base_url"] = json!(u.trim().trim_end_matches('/'));
     }
     if let Some(m) = b.model {
@@ -392,6 +394,10 @@ async fn save_ai(s: &AppState, b: AiSettings, env: impl Fn(&str) -> Option<Strin
     let key_entered = key.is_some();
     if let Some(k) = key {
         v["api_key"] = json!(k.trim());
+    }
+    // a key entered while AI_BASE_URL is set was entered for that URL, and stays with it once AI_BASE_URL is removed
+    if key_entered && before.base_url_from_env {
+        v["base_url"] = json!(before.base_url);
     }
     let config = settings::resolve(&v, &env);
     key_follows_url(&before, &config, key_entered)?;

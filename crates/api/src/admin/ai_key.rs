@@ -122,7 +122,7 @@ async fn a_key_from_the_environment_pins_the_base_url(pool: PgPool) {
     let row = stored(&pool).await;
     assert_eq!((row["base_url"].as_str(), row["model"].as_str(), row.get("api_key")), (Some("https://a.example/v1"), Some("m2"), None));
 
-    // with AI_BASE_URL beside it, the stored URL is not used, so saving one moves nothing
+    // with AI_BASE_URL beside it, the save goes on but the URL it names is not stored
     let both = |k: &str| match k {
         "AI_API_KEY" => Some("sk-env".to_owned()),
         "AI_BASE_URL" => Some("https://env.example/v1".to_owned()),
@@ -132,8 +132,38 @@ async fn a_key_from_the_environment_pins_the_base_url(pool: PgPool) {
     let config = boothdex_core::settings::resolve(&stored(&pool).await, both);
     assert_eq!(config.base_url.as_deref(), Some("https://env.example/v1"));
     assert_eq!(super::public_ai(&config)["from_env"]["base_url"], true);
+    assert_eq!(stored(&pool).await["base_url"], "https://a.example/v1");
     // without a key in the environment the URL field stays editable
     assert_eq!(super::public_ai(&boothdex_core::settings::resolve(&stored(&pool).await, NO_ENV))["from_env"]["base_url"], false);
+}
+
+/// A URL saved while AI_BASE_URL overrides it would receive the stored key, unseen, once AI_BASE_URL is removed.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_url_hidden_by_ai_base_url_is_not_stored(pool: PgPool) {
+    sqlx::query("insert into app_settings (key, value) values ('ai', $1)")
+        .bind(json!({ "base_url": "https://a.example/v1", "api_key": "sk-a", "model": "m" }))
+        .execute(&pool)
+        .await
+        .unwrap();
+    let env_url = |k: &str| (k == "AI_BASE_URL").then(|| "https://env.example/v1".to_owned());
+    let state = account::test_state(pool.clone());
+    // the form sends the environment's value; the other fields of the save are still stored
+    for url in ["https://env.example/v1", "https://evil.example/v1"] {
+        let mut b = ai(Some(url), None);
+        b.model = Some(format!("m-{url}"));
+        let config = save_ai(&state, b, env_url).await.ok().unwrap();
+        assert_eq!(config.base_url.as_deref(), Some("https://env.example/v1"), "{url}");
+        let row = stored(&pool).await;
+        assert_eq!((row["base_url"].as_str(), row["model"].as_str()), (Some("https://a.example/v1"), Some(format!("m-{url}").as_str())), "{url}");
+    }
+    // once AI_BASE_URL is removed, the stored key goes to the URL it was entered for
+    let after = boothdex_core::settings::resolve(&stored(&pool).await, NO_ENV);
+    assert_eq!((after.base_url.as_deref(), after.api_key.as_deref()), (Some("https://a.example/v1"), Some("sk-a")));
+    // a key entered under AI_BASE_URL was entered for the environment's URL, whatever URL the save names
+    save_ai(&state, ai(Some("https://evil.example/v1"), Some("sk-env-url")), env_url).await.ok().unwrap();
+    let after = boothdex_core::settings::resolve(&stored(&pool).await, NO_ENV);
+    assert_eq!((after.base_url.as_deref(), after.api_key.as_deref()), (Some("https://env.example/v1"), Some("sk-env-url")));
 }
 
 /// A loopback stand-in for a provider: answers `/models` and records the Authorization header of every request.
