@@ -117,6 +117,7 @@ export function useResultFrame(
     let saved = true;
     // the window's scroll as the last resize left it: until it moves, a drag keeps the same tile in place
     let sizedY = Number.NaN;
+    let rewatch = 0;
     // the address these results answer; once a navigation changes it, they no longer write to it
     const own = resultsQuery(location.search);
     const save = () => {
@@ -242,6 +243,10 @@ export function useResultFrame(
       const g = r.grid.current;
       if (!g || g.clientWidth === r.width.current) return;
       r.width.current = g.clientWidth;
+      // watched again from the next frame: the grid, which the commit below resizes (and a rail drag's next
+      // step flushSync puts in), would end the observer's loop with an error
+      sized.disconnect();
+      rewatch = requestAnimationFrame(watch);
       const a = r.seen.current;
       const pending = r.anchor.current;
       r.anchor.current = null;
@@ -260,9 +265,11 @@ export function useResultFrame(
     r.tick.current = schedule;
     addEventListener("scroll", onScroll, { passive: true });
     addEventListener("wheel", onWheel, { passive: true });
-    sized.observe(r.grid.current as HTMLDivElement);
+    const watch = () => sized.observe(r.grid.current as HTMLDivElement);
+    watch();
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(rewatch);
       clearTimeout(settle);
       showInView(undefined);
       r.tick.current = () => {};
