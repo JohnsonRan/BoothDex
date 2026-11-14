@@ -33,9 +33,8 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // and 520,593 with them, and 520,618 with the rail handle's value text: JS to 521,000 (owner, 2026-11-13). Astryx
 // 0.7.16 (JS 520,914 to 523,999, CSS 49,901 to 50,561 on the same host; the layer, menu and tooltip fixes and the
 // forced-colors edges) and the refresh bar's code loaded after the page (JS 521,999): JS to 522,500, CSS to
-// 50,750 (owner, 2026-11-14). The tiles' badges on the cover and the second image's address in each server tile
-// (HTML 51,653 over 3 reads, with the zh, ja and ko component strings in the page): HTML to 52,000 (owner, 2026-11-14).
-const BUDGET = { html: 52_000, js: 522_500, css: 50_750 };
+// 50,750 (owner, 2026-11-14).
+const BUDGET = { html: 51_500, js: 522_500, css: 50_750 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {
