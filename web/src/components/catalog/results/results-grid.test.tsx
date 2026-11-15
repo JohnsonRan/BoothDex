@@ -167,3 +167,13 @@ test("a model read from a misspelt word offers the words as typed, keeping the o
   expect(note(true)).toContain("Search instead for &quot;chifon dress&quot;");
   expect(note(false)).not.toContain("<a ");
 });
+
+test("a tile without a cover shows the no-image state, not a Skeleton that stays", () => {
+  const html = render([{ ...item, booth_images: [] }, item]);
+  const covers = [
+    ...html.matchAll(/<span data-skeleton=""[\s\S]*?<img [^>]*>/g),
+  ];
+  expect(covers[0]?.[0]).toMatch(/<img [^>]*data-failed=""/);
+  expect(covers[0]?.[0]).not.toMatch(/ src=/);
+  expect(covers[1]?.[0]).not.toContain("data-failed");
+});
