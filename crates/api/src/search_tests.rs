@@ -76,11 +76,14 @@ async fn check_semantic_search(pool: PgPool) {
     let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
     let state = app(pool, catalog, Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 2)]));
     let shinano = |w: &str| json!([{ "kind": "model", "slug": "shinano", "words": [w] }]);
-    // a misspelt model name is read as the model, and the site is told a typo was allowed
+    // a misspelt model name is read as the model, and the site is told a typo was allowed; typo=0 takes the words
+    // as typed, while a name spelt right still counts
     for (query, expected, semantic, recognized, typo) in [
         ("q=silky%20strands", vec![1, 3], "used", json!([]), false),
         ("q=Shinano%20silky%20strands", vec![1], "used", shinano("Shinano"), false),
         ("q=Shinnano%20silky%20strands", vec![1], "used", shinano("Shinnano"), true),
+        ("q=Shinnano%20silky%20strands&typo=0", vec![], "unavailable", json!([]), false),
+        ("q=Shinano%20silky%20strands&typo=0", vec![1], "used", shinano("Shinano"), false),
         ("q=silky%20strands&sem=0", vec![], "skipped", json!([]), false),
     ] {
         let response = search(State(state.clone()), limit::ClientIp("203.0.113.20".parse().unwrap()), HeaderMap::new(), RawQuery(Some(query.into())))
@@ -89,7 +92,7 @@ async fn check_semantic_search(pool: PgPool) {
         let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
         assert_eq!(body["semantic"], semantic, "{body}");
         assert_eq!(body["recognized"], recognized, "{body}");
-        assert_eq!(body["typoTolerant"], typo, "{body}");
+        assert_eq!((&body["typoTolerant"], &body["nameTypo"]), (&json!(typo), &json!(typo)), "{body}");
         let ids: Vec<i64> = body["items"].as_array().unwrap().iter().map(|item| item["id"].as_i64().unwrap()).collect();
         assert_eq!(ids, expected, "query {query}");
         assert_eq!(body["count"], expected.len());

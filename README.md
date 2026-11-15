@@ -275,7 +275,8 @@ booth_images/media at most 2; default response unchanged; fetch full records via
 `without=` (groups of filter names, `+` between groups and `,` within one, at most 8, such as
 `without=sc+pmin,pmax`) makes a search that finds nothing also return `widerCounts`: what it finds without each
 group, in order. `typoTolerant` is true when the query's words matched nothing as typed and the typo retry
-found the results, or when a misspelt word was read as an avatar.
+found the results, or when a misspelt word was read as an avatar. `nameTypo` is true when a misspelt word
+was read as an avatar; `typo=0` reads no word as a misspelt avatar, while a name spelt right still counts.
 
 ## Acknowledgments
 

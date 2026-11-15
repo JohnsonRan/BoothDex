@@ -42,6 +42,8 @@ pub(crate) struct SearchResponse {
     /// the query's words matched nothing as typed, so its word matches allow one typo per long word; or a word was
     /// read as the model whose name it misspells
     typo_tolerant: bool,
+    /// a word was read as the model whose name it misspells; `typo=0` asks for the words as typed
+    name_typo: bool,
 }
 
 /// Query words the search took as a model (matching what fits it) or a smart category (matching what is in it):
@@ -155,7 +157,9 @@ pub(crate) async fn search(
     // embedding, so "shinano short hair" adds short hair that fits Shinano, not other Shinano items
     let q = req.q.as_deref().unwrap_or_default();
     let snap = s.snap();
-    let (meaning, named, name_typo) = snap.avatars.split_names(q, |w| snap.catalog.knows_word(w));
+    // typo=0 (the site's "search instead for"): every word counts as known, so none is read as a misspelt model
+    let typos = p.get("typo").as_deref() != Some("0");
+    let (meaning, named, name_typo) = snap.avatars.split_names(q, |w| !typos || snap.catalog.knows_word(w));
     drop(snap);
     let models: Vec<String> = named.iter().map(|(slug, _)| slug.clone()).collect();
     trace.step("prepare");
@@ -213,6 +217,7 @@ pub(crate) async fn search(
         timing: Timing { search_ms, total_ms: t0.elapsed().as_secs_f64() * 1e3 },
         wider_counts,
         typo_tolerant: r.typo || name_typo,
+        name_typo,
     })
     .into_response())
 }
