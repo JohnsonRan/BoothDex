@@ -145,3 +145,13 @@ test("before the session is read, favourite buttons are unpressed and no cover i
   expect(html).toContain(`data-fav="2"`);
   expect(html).not.toContain("astryx-overlay");
 });
+
+test("a tile without a cover shows the no-image state, not a Skeleton that stays", () => {
+  const html = render([{ ...item, booth_images: [] }, item]);
+  const covers = [
+    ...html.matchAll(/<span data-skeleton=""[\s\S]*?<img [^>]*>/g),
+  ];
+  expect(covers[0]?.[0]).toMatch(/<img [^>]*data-failed=""/);
+  expect(covers[0]?.[0]).not.toMatch(/ src=/);
+  expect(covers[1]?.[0]).not.toContain("data-failed");
+});
