@@ -7,9 +7,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AccountProvider } from "@/components/account/session";
 import { Providers } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
+import { DEFAULT_FILTERS } from "@/lib/catalog";
 import { MESSAGES, translator } from "@/lib/dictionaries";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
 import { FIRST_TILES } from "./item-tile";
+import { TypoNote } from "./results";
 import { ResultsGrid } from "./results-grid";
 
 const item: ItemResponse = {
@@ -144,4 +146,24 @@ test("before the session is read, favourite buttons are unpressed and no cover i
   expect(html.match(/aria-pressed="false"/g)).toHaveLength(2);
   expect(html).toContain(`data-fav="2"`);
   expect(html).not.toContain("astryx-overlay");
+});
+
+test("a model read from a misspelt word offers the words as typed, keeping the other filters", () => {
+  const note = (nameTypo: boolean) =>
+    renderToStaticMarkup(
+      <AppRouterContext value={{} as AppRouterInstance}>
+        <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+          <TypoNote
+            nameTypo={nameTypo}
+            filters={{ ...DEFAULT_FILTERS, q: "chifon dress", free: true }}
+            t={translator("en")}
+          />
+        </Providers>
+      </AppRouterContext>,
+    );
+  expect(note(true)).toContain(
+    'href="?q=chifon%20dress&amp;typo=0&amp;free=1"',
+  );
+  expect(note(true)).toContain("Search instead for &quot;chifon dress&quot;");
+  expect(note(false)).not.toContain("<a ");
 });

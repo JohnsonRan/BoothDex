@@ -69,7 +69,8 @@ docker compose pull && docker compose up -d
   and katakana ("しなの" finds シナノ). A Latin query of up to three words that matches no text is tried again over
   titles, tags and author names, allowing one typo in each all-letter word of five or more letters ("shinnano" finds
   Shinano), and the results page says so. A word that no title, tag or author name has, one typo from the Latin name
-  of exactly one avatar, is read as that avatar ("shinnano short hair" searches like "shinano short hair").
+  of exactly one avatar, is read as that avatar ("shinnano short hair" searches like "shinano short hair"); the
+  results page then offers to search the words as typed.
   Optional semantic search finds items by meaning across languages ("哥特裙" finds ゴスロリ dresses) and merges both
   rankings.
 

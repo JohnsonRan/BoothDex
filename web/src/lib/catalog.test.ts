@@ -11,6 +11,7 @@ import {
   imgUrl,
   markTokens,
   parseFilters,
+  patched,
   priceOf,
   queryWords,
   searchQuery,
@@ -90,6 +91,21 @@ test("defaults are omitted and unknown values ignored", () => {
     ...DEFAULT_FILTERS,
     features: ["ma"],
   });
+});
+
+test("the words as typed (typo=0) round-trip with the query, and a new query drops them", () => {
+  const f = { ...DEFAULT_FILTERS, q: "chifon dress", noTypo: true };
+  expect(filtersToQuery(f)).toBe("q=chifon%20dress&typo=0");
+  expect(parseFilters("?q=chifon%20dress&typo=0")).toEqual(f);
+  expect(searchQuery(f, 2)).toBe(
+    "q=chifon%20dress&typo=0&sort=relevant&page=2&pageSize=30",
+  );
+  // without a query there is nothing to take as typed
+  expect(filtersToQuery({ ...DEFAULT_FILTERS, noTypo: true })).toBe("");
+  expect(patched(f, { tags: ["dress"] }).noTypo).toBe(true);
+  expect(patched(f, { q: "chifon dress" }).noTypo).toBe(true);
+  expect(patched(f, { q: "chifon skirt" }).noTypo).toBe(false);
+  expect(patched({ ...f, view: "recent" }, { q: "a" }).view).toBe("items");
 });
 
 test("text search ranks by relevance unless a sort is chosen", () => {

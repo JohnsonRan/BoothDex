@@ -123,6 +123,7 @@ export const zh = {
   "list.semanticUnavailable":
     "语义搜索暂时不可用，这次只按关键词查找。稍后再搜一次通常就会恢复。",
   "list.typoTolerant": "没有找到完全匹配的关键词，已按相近的拼写为你查找。",
+  "list.searchInstead": "按原词搜索“{q}”",
   "fav.add": "收藏",
   "fav.needSignIn": "登录后才能收藏",
   "fav.failed": "收藏失败",

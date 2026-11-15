@@ -3,6 +3,8 @@
 // read the same pending search. They come with the frame; for a text search each is behind its own Suspense
 // boundary (home-screen.tsx, Pending), so the frame around them is painted first.
 
+import { Center } from "@astryxdesign/core/Center";
+import { Link } from "@astryxdesign/core/Link";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
@@ -17,7 +19,12 @@ import { type Filters, filtersToQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
 import { drawnWith, pageQuery } from "@/lib/result-pages";
 import type { SearchOutcome } from "@/lib/server-data";
-import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
+import {
+  LOCALES,
+  type Rates,
+  type Settings,
+  type Translate,
+} from "@/lib/settings-core";
 import { FIRST_TILES, tileOf } from "./item-tile";
 import { PageInView } from "./page-in-view";
 import { ResultPages } from "./result-pages";
@@ -62,6 +69,31 @@ export async function ResultCount({
   );
 }
 
+/** The results allowed a typo; when a model was read from a misspelt word, the link searches the words as typed,
+ *  as Google's "Search instead for". */
+export function TypoNote({
+  nameTypo,
+  filters,
+  t,
+}: {
+  nameTypo: boolean;
+  filters: Filters;
+  t: Translate;
+}) {
+  if (!nameTypo) return <SemanticNote text={t("list.typoTolerant")} />;
+  // drawn here, not by SemanticNote (a client module), so the link adds no script to the page
+  return (
+    <Center>
+      <Text type="supporting">
+        {t("list.typoTolerant")}{" "}
+        <Link href={`?${filtersToQuery({ ...filters, noTypo: true })}`}>
+          {t("list.searchInstead", { q: filters.q })}
+        </Link>
+      </Text>
+    </Center>
+  );
+}
+
 export async function Results({
   outcome,
   rates,
@@ -103,7 +135,7 @@ export async function Results({
       <Swap>
         <VStack gap={6}>
           {result.typoTolerant && (
-            <SemanticNote text={t("list.typoTolerant")} />
+            <TypoNote nameTypo={result.nameTypo} filters={filters} t={t} />
           )}
           <ResultPages
             // a new search starts over, and so do new tile texts or prices (a language, item text or currency
