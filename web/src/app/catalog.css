@@ -15,11 +15,32 @@
   animation-name: none;
 }
 
-/* An image over a Skeleton that can paint (catalog/silhouette.tsx SKELETON_PAINTED): the Skeleton under it goes,
-   and with it its running animation, a compositor layer per image. Core's rules carry up to four :not(#\#). */
-[data-skeleton]:has(> img[data-painted])
+/* An image over a Skeleton that can paint or has failed (catalog/silhouette.tsx SKELETON_PAINTED): the Skeleton under
+   it goes, and with it its running animation, a compositor layer per image. Core's rules carry up to four :not(#\#). */
+[data-skeleton]:has(> img[data-painted], > img[data-failed])
   > .astryx-skeleton:not(#\#):not(#\#):not(#\#):not(#\#) {
   display: none;
+}
+/* An image that failed to load, or has no address, draws nothing in place of the browser's broken-image icon and
+   frame; transparent rather than hidden, so a screen reader still reads its alt text. Over a Skeleton its box shows
+   the no-image state: the muted surface with Lucide's image-off glyph in the secondary icon colour. A failed second
+   image (.tile-second) stays transparent under the pointer. */
+img[data-failed] {
+  opacity: 0;
+}
+[data-skeleton]:has(> img[data-failed]) {
+  background-color: var(--color-background-muted);
+}
+[data-skeleton]:has(> img[data-failed])::after {
+  content: "";
+  grid-area: 1 / 1;
+  place-self: center;
+  inline-size: var(--spacing-6);
+  block-size: var(--spacing-6);
+  background-color: var(--color-icon-secondary);
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 2l20 20M10.41 10.41a2 2 0 1 1-2.83-2.83M13.5 13.5 6 21M18 12l3 3M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59M21 15V5a2 2 0 0 0-2-2H9'/%3E%3C/svg%3E")
+    center / contain no-repeat;
 }
 
 /* A box standing in for tiles not drawn (catalog/results/result-pages.tsx): their silhouettes, painted through one mask
@@ -66,7 +87,7 @@
   .tile-second {
     transition: opacity var(--duration-fast) var(--ease-standard);
   }
-  [data-item]:hover .tile-second[src] {
+  [data-item]:hover .tile-second[src]:not([data-failed]) {
     opacity: 1;
   }
 }
