@@ -105,6 +105,15 @@ test("the words as typed (typo=0) round-trip with the query, and a new query dro
   expect(patched(f, { tags: ["dress"] }).noTypo).toBe(true);
   expect(patched(f, { q: "chifon dress" }).noTypo).toBe(true);
   expect(patched(f, { q: "chifon skirt" }).noTypo).toBe(false);
+  // a model picked out of the query leaves the other words as typed
+  const both = { ...f, q: "shinano chifon dress" };
+  const marks = [
+    { kind: "model" as const, slug: "shinano", words: ["shinano"] },
+  ];
+  const picked = patched(both, selectAvatar(both.q, "shinano", marks));
+  expect(filtersToQuery(picked)).toBe(
+    "q=chifon%20dress&typo=0&avatars=shinano",
+  );
   expect(patched({ ...f, view: "recent" }, { q: "a" }).view).toBe("items");
 });
 

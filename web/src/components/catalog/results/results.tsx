@@ -120,10 +120,14 @@ export async function Results({
     return (
       <KeepResults>
         <Swap>
-          <EmptyResults
-            // an API from before `widerCounts` leaves it out
-            wider={widerSearches(filters, names, t, result.widerCounts ?? [])}
-          />
+          <VStack gap={6}>
+            {/* a model misread from a typo can be what left nothing: the way back to the words as typed */}
+            {result.nameTypo && <TypoNote nameTypo filters={filters} t={t} />}
+            <EmptyResults
+              // an API from before `widerCounts` leaves it out
+              wider={widerSearches(filters, names, t, result.widerCounts ?? [])}
+            />
+          </VStack>
         </Swap>
       </KeepResults>
     );

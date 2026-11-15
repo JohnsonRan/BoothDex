@@ -239,11 +239,14 @@ export function filtersToQuery(f: Filters): string {
   return parts.join("&");
 }
 
-/** The filters after a change: a search, shop or avatar picked in the recent view leaves it, as on master; a new
- *  query reads misspelt model names again. */
+/** The filters after a change: a search, shop or avatar picked in the recent view leaves it, as on master; words
+ *  the visitor changed read misspelt model names again, while a model picked out of the query (selectAvatar) keeps
+ *  the rest as typed. */
 export function patched(f: Filters, patch: Partial<Filters>): Filters {
   const view = f.view === "recent" && !patch.view && { view: "items" as const };
-  const fresh = patch.q !== undefined && patch.q !== f.q && { noTypo: false };
+  const fresh = patch.q !== undefined &&
+    patch.q !== f.q &&
+    patch.avatar === undefined && { noTypo: false };
   return { ...f, ...view, ...fresh, ...patch };
 }
 
