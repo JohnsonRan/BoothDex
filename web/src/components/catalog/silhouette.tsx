@@ -129,7 +129,8 @@ export const THUMB_RADIUS = "calc(var(--radius-container) - var(--spacing-1))";
 /** An image filling and covering its box over a Skeleton, which shows until the image paints over it: no
  *  handler and no state, so server markup needs no script. `radius` rounds both. The image is positioned so it
  *  paints above the Skeleton, whose animation makes it a layer of its own; once the image can paint, the Skeleton
- *  goes (SKELETON_PAINTED). */
+ *  goes (SKELETON_PAINTED). An image that fails to load, or an empty `src` (no image, or one no proxy route
+ *  serves), shows the no-image state instead (app/catalog.css). */
 export function SkeletonImage({
   radius,
   alt = "",
@@ -151,7 +152,10 @@ export function SkeletonImage({
         // a new image is a new element: the old one's data-painted would hide the Skeleton while this one loads
         key={String(img.src)}
         alt={alt}
+        // no address loads nothing and fires no event, so the no-image state is in the markup
+        data-failed={img.src ? undefined : ""}
         {...img}
+        src={img.src || undefined}
         style={{
           gridArea: "1 / 1",
           position: "relative",
@@ -169,9 +173,11 @@ export function SkeletonImage({
  * Marks an image over a Skeleton once it is decoded and can paint, and the Skeleton under it is dropped
  * (app/catalog.css). A running Skeleton is a compositor layer, and so is every image over one: about 300 on a
  * screen of results, whose layerizing took most of every scrolled frame. One listener for the whole document, in
- * the head (app/layout.tsx) before any image; a load does not bubble, so it listens in the capture phase. An image
- * that fails to decode keeps its Skeleton.
+ * the head (app/layout.tsx) before any image; neither a load nor an error bubbles, so both listen in the capture
+ * phase. Any image that fails to load is marked `data-failed`, so it draws nothing in place of the browser's
+ * broken-image icon; a later load of the same element (a new `src`) clears the mark.
  */
 export const SKELETON_PAINTED = `;document.addEventListener("load",function(e){var t=e.target,p=t.parentNode;
-if(t.tagName!=="IMG"||!p||!p.hasAttribute||!p.hasAttribute("data-skeleton"))return;
-function f(){t.setAttribute("data-painted","")}t.decode?t.decode().then(f,function(){}):f()},true);`;
+if(t.tagName!=="IMG")return;t.removeAttribute("data-failed");if(!p||!p.hasAttribute||!p.hasAttribute("data-skeleton"))return;
+function f(){t.setAttribute("data-painted","")}t.decode?t.decode().then(f,function(){}):f()},true);
+document.addEventListener("error",function(e){var t=e.target;if(t.tagName==="IMG")t.setAttribute("data-failed","")},true);`;
