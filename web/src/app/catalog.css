@@ -22,10 +22,11 @@
   display: none;
 }
 /* An image that failed to load, or has no address, draws nothing in place of the browser's broken-image icon and
-   frame. Over a Skeleton its box shows the no-image state: the muted surface with Lucide's image-off glyph in the
-   secondary icon colour. */
+   frame; transparent rather than hidden, so a screen reader still reads its alt text. Over a Skeleton its box shows
+   the no-image state: the muted surface with Lucide's image-off glyph in the secondary icon colour. A failed second
+   image (.tile-second) stays transparent under the pointer. */
 img[data-failed] {
-  visibility: hidden;
+  opacity: 0;
 }
 [data-skeleton]:has(> img[data-failed]) {
   background-color: var(--color-background-muted);
@@ -86,7 +87,7 @@ img[data-failed] {
   .tile-second {
     transition: opacity var(--duration-fast) var(--ease-standard);
   }
-  [data-item]:hover .tile-second[src] {
+  [data-item]:hover .tile-second[src]:not([data-failed]) {
     opacity: 1;
   }
 }
