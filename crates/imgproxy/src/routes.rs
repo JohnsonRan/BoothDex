@@ -45,8 +45,14 @@ pub(crate) fn miss_limiter() -> RateLimiter {
 #[derive(Default)]
 pub(crate) struct Stats {
     requests: AtomicU64,
+    /// requests the cache's read answered, one that waited there for its key's fetch in flight included
+    hits: AtomicU64,
     /// cache misses that went to Booth (or failed trying)
     upstream: AtomicU64,
+    /// misses answered 429 by the client's miss limit; also counted in `errors`
+    limited: AtomicU64,
+    /// misses answered 503 for want of room in the body budget; also counted in `errors`
+    busy: AtomicU64,
     errors: AtomicU64,
     not_found: AtomicU64,
     bytes_out: AtomicU64,
@@ -165,9 +171,13 @@ async fn proxy(s: Arc<AppState>, ip: IpAddr, key: String, url: String, size: &st
     // A hit, or a request that joins a fetch of the same key in flight, never meets the limit. A cache read that
     // fails counts as a miss; get_or_fetch reads again and reports its own error.
     let result = match s.cache.get(&key).await {
-        Ok(Some(entry)) => Ok(entry),
+        Ok(Some(entry)) => {
+            s.stats.hits.fetch_add(1, Ordering::Relaxed);
+            Ok(entry)
+        }
         _ => {
             if let Err(retry_after) = s.misses.take(ip) {
+                s.stats.limited.fetch_add(1, Ordering::Relaxed);
                 s.stats.errors.fetch_add(1, Ordering::Relaxed);
                 let headers = [(header::RETRY_AFTER, retry_after.to_string()), (header::CACHE_CONTROL, "no-store".to_owned())];
                 return (StatusCode::TOO_MANY_REQUESTS, headers, "too many requests").into_response();
@@ -190,6 +200,7 @@ async fn proxy(s: Arc<AppState>, ip: IpAddr, key: String, url: String, size: &st
     };
     match result {
         Err(e) if e.downcast_ref::<Elapsed>().is_some() => {
+            s.stats.busy.fetch_add(1, Ordering::Relaxed);
             s.stats.errors.fetch_add(1, Ordering::Relaxed);
             eprintln!("{key}: busy, no room in the body budget within {:?}", s.fetch_wait);
             let retry_after = FETCH_WAIT.as_secs().to_string();
@@ -222,16 +233,26 @@ async fn archived(State(s): State<Arc<AppState>>, Path(name): Path<String>) -> R
     }
 }
 
-/// Counters since start, for the admin console.
-async fn stats(State(s): State<Arc<AppState>>) -> axum::Json<serde_json::Value> {
+/// Counters since start, for the admin console. Every request is a hit, a miss refused by the limit, the miss that
+/// fetched, or a miss that joined a fetch of its key started after its own cache read (`joined`, the remainder).
+/// `hit_rate` is hits over requests. A request whose cache read starts while its key's fetch is in flight waits
+/// inside that read and is a hit.
+fn counters(s: &AppState) -> serde_json::Value {
     let g = |a: &AtomicU64| a.load(Ordering::Relaxed);
-    let (req, up) = (g(&s.stats.requests), g(&s.stats.upstream));
-    axum::Json(serde_json::json!({
+    let (req, hits, up, limited) = (g(&s.stats.requests), g(&s.stats.hits), g(&s.stats.upstream), g(&s.stats.limited));
+    serde_json::json!({
         "reachable": true,
-        "requests": req, "upstream_fetches": up, "hit_rate": if req > 0 { 1.0 - up as f64 / req as f64 } else { 0.0 },
+        "requests": req, "hits": hits, "upstream_fetches": up, "limited": limited, "busy": g(&s.stats.busy),
+        // read one by one while requests run, so the remainder may dip below zero for a moment
+        "joined": req.saturating_sub(hits + up + limited),
+        "hit_rate": if req > 0 { hits as f64 / req as f64 } else { 0.0 },
         "errors": g(&s.stats.errors), "not_found": g(&s.stats.not_found), "bytes_out": g(&s.stats.bytes_out),
         "memory_cache_mb": s.mem_mb, "disk_cache_mb": s.disk_mb,
-    }))
+    })
+}
+
+async fn stats(State(s): State<Arc<AppState>>) -> axum::Json<serde_json::Value> {
+    axum::Json(counters(&s))
 }
 
 fn router(state: Arc<AppState>) -> Router {
@@ -345,6 +366,11 @@ mod tests {
             assert_eq!(miss_from(&s, a, &base, n).await.status(), StatusCode::OK, "a hit was limited");
         }
         assert_eq!(fetched.load(Ordering::Relaxed), 3);
+        // 7 requests: 3 fetches, 1 refused, 3 hits; the refused one is no hit
+        let c = counters(&s);
+        assert_eq!((c["requests"].as_u64(), c["hits"].as_u64(), c["limited"].as_u64()), (Some(7), Some(3), Some(1)));
+        assert_eq!(c["upstream_fetches"].as_u64(), Some(3));
+        assert_eq!(c["hit_rate"].as_f64(), Some(3.0 / 7.0));
     }
 
     /// Loopback only. The upstream holds its answer until released, so the three later requests for the same key
@@ -380,6 +406,24 @@ mod tests {
             assert_eq!(answer.status(), StatusCode::OK);
         }
         assert_eq!(fetched.load(Ordering::Relaxed), 1);
+        // the three that waited for the fetch in flight cost no upstream request: hits
+        let c = counters(&s);
+        assert_eq!((c["requests"].as_u64(), c["hits"].as_u64(), c["upstream_fetches"].as_u64()), (Some(4), Some(3), Some(1)));
+    }
+
+    /// Loopback only. Requests for one key that all read the cache before any fetch has started: one fetches, the
+    /// others join it, and none is a hit.
+    #[tokio::test]
+    async fn simultaneous_cold_reads_join_the_fetch_and_are_no_hits() {
+        let thumb = png(0);
+        let base = serve(Router::new().route("/{file}", get(move || std::future::ready(thumb.clone())))).await;
+        let s = test_state(BODY_BUDGET_KIB, FETCH_WAIT).await;
+        let (a, b, c) = tokio::join!(miss(&s, &base, 0), miss(&s, &base, 0), miss(&s, &base, 0));
+        assert!([a, b, c].iter().all(|r| r.status() == StatusCode::OK));
+        let c = counters(&s);
+        let n = |k: &str| c[k].as_u64();
+        assert_eq!((n("requests"), n("upstream_fetches"), n("joined"), n("hits")), (Some(3), Some(1), Some(2), Some(0)));
+        assert_eq!(c["hit_rate"].as_f64(), Some(0.0));
     }
 
     /// Nothing leaves the host: the upstream client goes through a proxy at a closed loopback port, so a miss the limit
@@ -444,6 +488,7 @@ mod tests {
         for _ in 0..2 {
             assert_eq!(next().await.status(), StatusCode::OK);
         }
+        assert_eq!(counters(&s)["busy"].as_u64(), Some(3));
         for n in 0..5 {
             assert_eq!(miss(&s, &base, n).await.status(), StatusCode::OK);
         }
