@@ -40,9 +40,9 @@ meanwhile.
 | Rust tests, not counting the build | 3 min | 109 tests in 4 s (2026-11-11, development host, load not recorded) | review |
 | `bun test` in `web/` | 15 s | 103 tests in 3 s (2026-11-11, development host, load not recorded) | review |
 | Slowest test package | 16 s | `api` unit tests: 12.1 s, 15.4 s, 12.4 s (2026-11-11, GitHub-hosted ubuntu-latest, load not recorded) | review |
-| Home page first load, gzip -9: HTML | 52,000 B | 51,604 to 51,605 B with the reduce-motion switch, against 51,506 to 51,508 B recorded before it, with live titles; the build ID Next writes into the HTML moves the same code by about 5 B (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
+| Home page first load, gzip -9: HTML | 52,000 B | 51,648 B over 3 reads with the no-image state's listener in the head script, against 51,604 to 51,605 B with the reduce-motion switch before it, with live titles; the build ID Next writes into the HTML moves the same code by about 5 B (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Home page first load, gzip -9: JS | 525,000 B | 524,871 B over 3 reads with the refresh bar's code back in the first load, against 522,819 B with it loaded when the page is idle (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
-| Home page first load, gzip -9: CSS | 51,500 B | 50,880 B with the reduce-motion switch, against 50,838 B recorded before it with the frame unclipped around the results (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
+| Home page first load, gzip -9: CSS | 51,500 B | 51,231 B over 3 reads with the no-image state, against 50,880 B with the reduce-motion switch before it (2026-11-15, local `next start` with the API, load not recorded) | `bun run check:size` in `web/` (lab) |
 | Source file size, p90 of this repository (pass bar) | 274 lines | 274 lines: nearest-rank p90 of the 272 tracked `.rs`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.css`, `.sql`, `.sh` and `.py` files (2026-11-12, `wc -l`) | review |
 | Commit subject length | 72 characters | a setting, not measured | review (no commit hook) |
 
