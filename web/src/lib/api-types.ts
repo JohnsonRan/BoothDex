@@ -47,7 +47,11 @@ widerCounts: Array<number>,
  * the query's words matched nothing as typed, so its word matches allow one typo per long word; or a word was
  * read as the model whose name it misspells
  */
-typoTolerant: boolean, };
+typoTolerant: boolean, 
+/**
+ * a word was read as the model whose name it misspells; `typo=0` asks for the words as typed
+ */
+nameTypo: boolean, };
 
 export type SemanticStatus = "used" | "off" | "unavailable" | "skipped";
 

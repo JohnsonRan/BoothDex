@@ -318,4 +318,25 @@ mod name_tests {
         assert_eq!(split("shinano shinnano bob", &[]), ("bob".into(), vec![("shinano".into(), vec!["shinano"])], false));
         assert!(split("shinnano shinano bob", &[]).2);
     }
+
+    /// Fixed samples of what a typo reading turns into, so a change to it shows up here (owner, 2026-11-15). The
+    /// site offers the words as typed (`typo=0`) when a model was read from a typo.
+    #[test]
+    fn typo_reading_samples() {
+        let entry = |slug: &str, name: &str| (vec![name.to_string(), slug.to_string()], json!({ "slug": slug }), 10u64);
+        let l = Lookup::new(vec![entry("chiffon", "Chiffon"), entry("shinano", "Shinano"), entry("karin", "Karin"), entry("karen", "Karen")]);
+        let split = |q, known: &[&str]| {
+            let (rest, names, typo) = l.split_names(q, |w| known.contains(&w));
+            (rest, names.into_iter().map(|(slug, words)| (slug, words.join(" "))).collect::<Vec<_>>(), typo)
+        };
+        let model = |slug: &str, words: &str| vec![(slug.to_string(), words.to_string())];
+        // an ordinary misspelt word becomes a model filter: "chifon" is in no title, so it reads as Chiffon
+        assert_eq!(split("chifon dress", &["dress"]), ("dress".into(), model("chiffon", "chifon"), true));
+        assert_eq!(split("shinnano", &[]), (String::new(), model("shinano", "shinnano"), true));
+        assert_eq!(split("Chiffon dress", &["dress"]), ("dress".into(), model("chiffon", "Chiffon"), false));
+        // a word the catalogue has is that word, not the model one typo away
+        assert_eq!(split("chifon dress", &["chifon", "dress"]), ("chifon dress".into(), vec![], false));
+        // one typo from both Karin and Karen
+        assert_eq!(split("karan skirt", &[]), ("karan skirt".into(), vec![], false));
+    }
 }

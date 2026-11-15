@@ -69,7 +69,8 @@ docker compose pull && docker compose up -d
   and katakana ("しなの" finds シナノ). A Latin query of up to three words that matches no text is tried again over
   titles, tags and author names, allowing one typo in each all-letter word of five or more letters ("shinnano" finds
   Shinano), and the results page says so. A word that no title, tag or author name has, one typo from the Latin name
-  of exactly one avatar, is read as that avatar ("shinnano short hair" searches like "shinano short hair").
+  of exactly one avatar, is read as that avatar ("shinnano short hair" searches like "shinano short hair"); the
+  results page then offers to search the words as typed.
   Optional semantic search finds items by meaning across languages ("哥特裙" finds ゴスロリ dresses) and merges both
   rankings.
 
@@ -275,7 +276,8 @@ booth_images/media at most 2; default response unchanged; fetch full records via
 `without=` (groups of filter names, `+` between groups and `,` within one, at most 8, such as
 `without=sc+pmin,pmax`) makes a search that finds nothing also return `widerCounts`: what it finds without each
 group, in order. `typoTolerant` is true when the query's words matched nothing as typed and the typo retry
-found the results, or when a misspelt word was read as an avatar.
+found the results, or when a misspelt word was read as an avatar. `nameTypo` is true when a misspelt word
+was read as an avatar; `typo=0` reads no word as a misspelt avatar, while a name spelt right still counts.
 
 ## Acknowledgments
 

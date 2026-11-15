@@ -5,11 +5,15 @@ import {
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AccountProvider } from "@/components/account/session";
+import { FilterUrlProvider } from "@/components/catalog/filter/filter-url";
 import { Providers } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
+import { DEFAULT_FILTERS } from "@/lib/catalog";
 import { MESSAGES, translator } from "@/lib/dictionaries";
+import type { SearchOutcome } from "@/lib/server-data";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
 import { FIRST_TILES } from "./item-tile";
+import { Results, TypoNote } from "./results";
 import { ResultsGrid } from "./results-grid";
 
 const item: ItemResponse = {
@@ -146,6 +150,28 @@ test("before the session is read, favourite buttons are unpressed and no cover i
   expect(html).not.toContain("astryx-overlay");
 });
 
+test("a model read from a misspelt word offers the words as typed, keeping the other filters", () => {
+  const note = (nameTypo: boolean) =>
+    renderToStaticMarkup(
+      <AppRouterContext value={{} as AppRouterInstance}>
+        <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+          <FilterUrlProvider filters={DEFAULT_FILTERS}>
+            <TypoNote
+              nameTypo={nameTypo}
+              filters={{ ...DEFAULT_FILTERS, q: "chifon dress", free: true }}
+              t={translator("en")}
+            />
+          </FilterUrlProvider>
+        </Providers>
+      </AppRouterContext>,
+    );
+  expect(note(true)).toContain(
+    'href="?q=chifon%20dress&amp;typo=0&amp;free=1"',
+  );
+  expect(note(true)).toContain("Search instead for &quot;chifon dress&quot;");
+  expect(note(false)).not.toContain("<a ");
+});
+
 test("a tile without a cover shows the no-image state, not a Skeleton that stays", () => {
   const html = render([{ ...item, booth_images: [] }, item]);
   const covers = [
@@ -154,4 +180,35 @@ test("a tile without a cover shows the no-image state, not a Skeleton that stays
   expect(covers[0]?.[0]).toMatch(/<img [^>]*data-failed=""/);
   expect(covers[0]?.[0]).not.toMatch(/ src=/);
   expect(covers[1]?.[0]).not.toContain("data-failed");
+});
+
+test("a model misread from a typo that left no results still offers the words as typed", async () => {
+  const filters = { ...DEFAULT_FILTERS, q: "chifon dress", free: true };
+  const empty = (nameTypo: boolean) =>
+    ({
+      state: "ok",
+      ms: 1,
+      result: { items: [], count: 0, nameTypo, typoTolerant: nameTypo },
+    }) as unknown as SearchOutcome;
+  const page = async (nameTypo: boolean) =>
+    renderToStaticMarkup(
+      <AppRouterContext value={{} as AppRouterInstance}>
+        <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+          <FilterUrlProvider filters={filters}>
+            {
+              await Results({
+                outcome: Promise.resolve(empty(nameTypo)),
+                rates: Promise.resolve({}),
+                settings: { ...DEFAULT_SETTINGS, ui: "en" },
+                filters,
+                names: { categories: [], avatars: [], tags: {} },
+                noSemantic: false,
+              })
+            }
+          </FilterUrlProvider>
+        </Providers>
+      </AppRouterContext>,
+    );
+  expect(await page(true)).toContain('href="?q=chifon%20dress&amp;typo=0');
+  expect(await page(false)).not.toContain("typo=0");
 });

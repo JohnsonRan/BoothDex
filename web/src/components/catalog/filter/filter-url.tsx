@@ -16,7 +16,12 @@ import {
 } from "react";
 import { changeTop } from "@/components/catalog/band/band-edge";
 import { fetchAccount } from "@/lib/api";
-import { DEFAULT_FILTERS, type Filters, filtersToQuery } from "@/lib/catalog";
+import {
+  DEFAULT_FILTERS,
+  type Filters,
+  filtersToQuery,
+  patched,
+} from "@/lib/catalog";
 import { saveAvatar } from "@/lib/preferences";
 import { useDelayed } from "@/lib/use-delayed";
 
@@ -103,10 +108,7 @@ export function FilterUrlProvider({
     return {
       filters: current,
       apply: (patch) => {
-        // a search, shop or avatar picked in the recent view leaves it, as on master
-        const view = current.view === "recent" &&
-          !patch.view && { view: "items" as const };
-        const next = { ...current, ...view, ...patch };
+        const next = patched(current, patch);
         go(filtersToQuery(next), next);
         if (patch.avatar !== undefined) {
           remember(patch.avatar);

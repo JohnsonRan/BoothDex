@@ -124,6 +124,8 @@ export type Filters = {
   /** items, avatar bodies (API v=avatars), the signed-in user's favourites, or recently viewed (site only) */
   view: "items" | "avatars" | "favourites" | "recent";
   q: string;
+  /** the query's words as typed (API typo=0): none is read as the model it misspells */
+  noTypo: boolean;
   avatar: string;
   sc: string;
   features: Feature[];
@@ -146,6 +148,7 @@ export type Filters = {
 export const DEFAULT_FILTERS: Filters = {
   view: "items",
   q: "",
+  noTypo: false,
   avatar: "",
   sc: "",
   features: [],
@@ -196,6 +199,7 @@ export function parseFilters(search: string): Filters {
     gender: gender === "female" || gender === "male" ? gender : "",
     asup: one("asup") === "all" ? "all" : "supported",
     q: one("q"),
+    noTypo: one("typo") === "0",
     avatar: raw.get("avatars")?.[0] ?? "",
     sc: raw.get("sc")?.[0] ?? "",
     features: (raw.get("if") ?? []).filter((f): f is Feature => f in FEATURES),
@@ -215,6 +219,7 @@ export function filtersToQuery(f: Filters): string {
   const enc = encodeURIComponent;
   if (f.view !== "items") parts.push(`v=${f.view}`);
   if (f.q) parts.push(`q=${enc(f.q)}`);
+  if (f.q && f.noTypo) parts.push("typo=0");
   if (f.avatar) parts.push(`avatars=${enc(f.avatar)}`);
   if (f.sc) parts.push(`sc=${enc(f.sc)}`);
   if (f.features.length) parts.push(`if=${f.features.map(enc).join("+")}`);
@@ -232,6 +237,17 @@ export function filtersToQuery(f: Filters): string {
   if (f.sort !== "trending") parts.push(`sort=${f.sort}`);
   if (f.dir !== "desc") parts.push(`dir=${f.dir}`);
   return parts.join("&");
+}
+
+/** The filters after a change: a search, shop or avatar picked in the recent view leaves it, as on master; words
+ *  the visitor changed read misspelt model names again, while a model picked out of the query (selectAvatar) keeps
+ *  the rest as typed. */
+export function patched(f: Filters, patch: Partial<Filters>): Filters {
+  const view = f.view === "recent" && !patch.view && { view: "items" as const };
+  const fresh = patch.q !== undefined &&
+    patch.q !== f.q &&
+    patch.avatar === undefined && { noTypo: false };
+  return { ...f, ...view, ...fresh, ...patch };
 }
 
 export function searchQuery(f: Filters, page: number, pageSize = 30) {
