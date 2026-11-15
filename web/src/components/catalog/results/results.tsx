@@ -4,7 +4,6 @@
 // boundary (home-screen.tsx, Pending), so the frame around them is painted first.
 
 import { Center } from "@astryxdesign/core/Center";
-import { Link } from "@astryxdesign/core/Link";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
@@ -28,7 +27,7 @@ import {
 import { FIRST_TILES, tileOf } from "./item-tile";
 import { PageInView } from "./page-in-view";
 import { ResultPages } from "./result-pages";
-import { EmptyResults, SemanticNote } from "./result-states";
+import { EmptyResults, SearchInstead, SemanticNote } from "./result-states";
 
 export async function ResultCount({
   outcome,
@@ -81,14 +80,15 @@ export function TypoNote({
   t: Translate;
 }) {
   if (!nameTypo) return <SemanticNote text={t("list.typoTolerant")} />;
-  // drawn here, not by SemanticNote (a client module), so the link adds no script to the page
+  // the text is drawn here; only the link, a filter change, needs the browser
   return (
     <Center>
       <Text type="supporting">
         {t("list.typoTolerant")}{" "}
-        <Link href={`?${filtersToQuery({ ...filters, noTypo: true })}`}>
-          {t("list.searchInstead", { q: filters.q })}
-        </Link>
+        <SearchInstead
+          href={`?${filtersToQuery({ ...filters, noTypo: true })}`}
+          label={t("list.searchInstead", { q: filters.q })}
+        />
       </Text>
     </Center>
   );

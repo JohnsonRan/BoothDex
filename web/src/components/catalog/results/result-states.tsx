@@ -6,6 +6,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Center } from "@astryxdesign/core/Center";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Icon } from "@astryxdesign/core/Icon";
+import { Link } from "@astryxdesign/core/Link";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
@@ -115,5 +116,30 @@ export function SemanticNote({ text }: { text: string }) {
     <Center>
       <Text type="supporting">{text}</Text>
     </Center>
+  );
+}
+
+/** The typo note's "search instead" link (results.tsx TypoNote): a plain click is a filter change, so the refresh
+ *  shows its bar and keeps the place as any other does; the address stays for a modified click or a new tab. */
+export function SearchInstead({
+  href,
+  label,
+}: {
+  href: string;
+  label: string;
+}) {
+  const { apply } = useFilterUrl();
+  return (
+    <Link
+      href={href}
+      onClick={(e) => {
+        if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+          return;
+        e.preventDefault();
+        apply({ noTypo: true });
+      }}
+    >
+      {label}
+    </Link>
   );
 }

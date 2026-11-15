@@ -155,11 +155,13 @@ test("a model read from a misspelt word offers the words as typed, keeping the o
     renderToStaticMarkup(
       <AppRouterContext value={{} as AppRouterInstance}>
         <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
-          <TypoNote
-            nameTypo={nameTypo}
-            filters={{ ...DEFAULT_FILTERS, q: "chifon dress", free: true }}
-            t={translator("en")}
-          />
+          <FilterUrlProvider filters={DEFAULT_FILTERS}>
+            <TypoNote
+              nameTypo={nameTypo}
+              filters={{ ...DEFAULT_FILTERS, q: "chifon dress", free: true }}
+              t={translator("en")}
+            />
+          </FilterUrlProvider>
         </Providers>
       </AppRouterContext>,
     );
