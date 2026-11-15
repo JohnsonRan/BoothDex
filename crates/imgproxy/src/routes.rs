@@ -45,7 +45,7 @@ pub(crate) fn miss_limiter() -> RateLimiter {
 #[derive(Default)]
 pub(crate) struct Stats {
     requests: AtomicU64,
-    /// requests the cache's read answered, a fetch of the same key in flight included
+    /// requests the cache's read answered, one that waited there for its key's fetch in flight included
     hits: AtomicU64,
     /// cache misses that went to Booth (or failed trying)
     upstream: AtomicU64,
@@ -233,16 +233,18 @@ async fn archived(State(s): State<Arc<AppState>>, Path(name): Path<String>) -> R
     }
 }
 
-/// Counters since start, for the admin console. `hit_rate` is hits over requests, so a miss the limit refused counts
-/// against it. A request for a key whose fetch is in flight waits for it inside the cache's read, so it counts as a
-/// hit: it costs no upstream request.
+/// Counters since start, for the admin console. Every request is a hit, a miss refused by the limit, the miss that
+/// fetched, or a miss that joined a fetch of its key started after its own cache read (`joined`, the remainder).
+/// `hit_rate` is hits over requests. A request whose cache read starts while its key's fetch is in flight waits
+/// inside that read and is a hit.
 fn counters(s: &AppState) -> serde_json::Value {
     let g = |a: &AtomicU64| a.load(Ordering::Relaxed);
-    let (req, hits) = (g(&s.stats.requests), g(&s.stats.hits));
+    let (req, hits, up, limited) = (g(&s.stats.requests), g(&s.stats.hits), g(&s.stats.upstream), g(&s.stats.limited));
     serde_json::json!({
         "reachable": true,
-        "requests": req, "hits": hits, "upstream_fetches": g(&s.stats.upstream),
-        "limited": g(&s.stats.limited), "busy": g(&s.stats.busy),
+        "requests": req, "hits": hits, "upstream_fetches": up, "limited": limited, "busy": g(&s.stats.busy),
+        // read one by one while requests run, so the remainder may dip below zero for a moment
+        "joined": req.saturating_sub(hits + up + limited),
         "hit_rate": if req > 0 { hits as f64 / req as f64 } else { 0.0 },
         "errors": g(&s.stats.errors), "not_found": g(&s.stats.not_found), "bytes_out": g(&s.stats.bytes_out),
         "memory_cache_mb": s.mem_mb, "disk_cache_mb": s.disk_mb,
@@ -407,6 +409,21 @@ mod tests {
         // the three that waited for the fetch in flight cost no upstream request: hits
         let c = counters(&s);
         assert_eq!((c["requests"].as_u64(), c["hits"].as_u64(), c["upstream_fetches"].as_u64()), (Some(4), Some(3), Some(1)));
+    }
+
+    /// Loopback only. Requests for one key that all read the cache before any fetch has started: one fetches, the
+    /// others join it, and none is a hit.
+    #[tokio::test]
+    async fn simultaneous_cold_reads_join_the_fetch_and_are_no_hits() {
+        let thumb = png(0);
+        let base = serve(Router::new().route("/{file}", get(move || std::future::ready(thumb.clone())))).await;
+        let s = test_state(BODY_BUDGET_KIB, FETCH_WAIT).await;
+        let (a, b, c) = tokio::join!(miss(&s, &base, 0), miss(&s, &base, 0), miss(&s, &base, 0));
+        assert!([a, b, c].iter().all(|r| r.status() == StatusCode::OK));
+        let c = counters(&s);
+        let n = |k: &str| c[k].as_u64();
+        assert_eq!((n("requests"), n("upstream_fetches"), n("joined"), n("hits")), (Some(3), Some(1), Some(2), Some(0)));
+        assert_eq!(c["hit_rate"].as_f64(), Some(0.0));
     }
 
     /// Nothing leaves the host: the upstream client goes through a proxy at a closed loopback port, so a miss the limit
