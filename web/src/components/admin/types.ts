@@ -175,3 +175,20 @@ export const RUN_PARAMS: Partial<Record<Kind, RunParam[]>> = {
   embed: [{ name: "batch", type: "count", fallback: 64 }],
   localize: [{ name: "force", type: "flag" }],
 };
+
+/** The Turnstile keys (admin/turnstile.rs `public`); the secret itself never leaves the server. */
+export type Turnstile = {
+  site_key: string | null;
+  secret_set: boolean;
+  secret_hint: string | null;
+  from_env: { site_key: boolean; secret: boolean };
+};
+
+/** A guestbook message as moderation sees it (admin/guestbook.rs), hidden ones included. */
+export type AdminGuestbookEntry = {
+  id: number;
+  nickname: string;
+  body: string;
+  created_at: string;
+  hidden_at: string | null;
+};

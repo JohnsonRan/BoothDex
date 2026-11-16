@@ -23,7 +23,7 @@ import { type Ai, EFFORTS } from "./types";
 type Field = "base_url" | "model" | "embed_model";
 const MODEL_CHOICES = 12;
 // A field the server environment sets keeps isReadOnly (focusable, selectable, full contrast) and gets the muted surface.
-const locked = (on?: boolean) =>
+export const locked = (on?: boolean) =>
   on
     ? { controlStyle: { backgroundColor: "var(--color-background-muted)" } }
     : {};

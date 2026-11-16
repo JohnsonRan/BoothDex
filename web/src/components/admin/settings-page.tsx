@@ -2,7 +2,7 @@
 // Settings, from the Astryx page template settings (@astryxdesign/cli assets/templates/pages/settings/page.tsx): one scrolling form of
 // sections, each a two-column Grid (:120-150) with the heading and supporting text on the left and the fields
 // with their own Save on the right, a Divider between sections. The template's 40 px gap parts the columns; when
-// a phone stacks them, the fields follow the description at the fields' own 16 px gap. With two sections the template's side list and
+// a phone stacks them, the fields follow the description at the fields' own 16 px gap. With three sections the template's side list and
 // search are not needed.
 
 import { Divider } from "@astryxdesign/core/Divider";
@@ -13,6 +13,7 @@ import { AiSettings } from "./ai-settings";
 import { useAdminT } from "./messages";
 import { PageFrame } from "./page-frame";
 import { Registration } from "./registration";
+import { TurnstileSettings } from "./turnstile-settings";
 
 function Section({
   title,
@@ -48,6 +49,10 @@ export function SettingsPage() {
       <Divider />
       <Section title={t("registration.title")} desc={t("registration.desc")}>
         <Registration />
+      </Section>
+      <Divider />
+      <Section title={t("turnstile.title")} desc={t("turnstile.desc")}>
+        <TurnstileSettings />
       </Section>
     </PageFrame>
   );

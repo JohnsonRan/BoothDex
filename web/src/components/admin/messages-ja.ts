@@ -7,6 +7,7 @@ export const adminJa: AdminDict = {
   "nav.overview": "概要",
   "nav.jobs": "クロール",
   "nav.users": "ユーザー",
+  "nav.guestbook": "ゲストブック",
   "nav.settings": "設定",
   "nav.site": "サイトに戻る",
   "gate.checking": "ログイン状態を確認中",
@@ -142,6 +143,10 @@ export const adminJa: AdminDict = {
   "error.noUser": "このユーザーは見つかりません",
   "error.adminDisable":
     "管理者はサーバーの ADMIN_USERNAMES で決まるため、ここでは無効にできません",
+  "error.turnstileKeys":
+    "キーは 1～200 文字の印刷可能な ASCII 文字で入力してください",
+  "error.turnstileUnset": "先にサイトキーとシークレットキーを保存してください",
+  "error.noEntry": "このメッセージはもう存在しません",
   "error.failed": "問題が発生しました。もう一度お試しください",
   "run.submit": "キューに追加",
   "param.full": "全ページを巡回",
@@ -244,4 +249,27 @@ export const adminJa: AdminDict = {
   "registration.open": "新規登録を許可",
   "registration.opened": "登録を受け付けています",
   "registration.closed": "登録を停止しました",
+  "turnstile.title": "認証",
+  "turnstile.desc":
+    "ゲストブックは Cloudflare Turnstile で訪問者を確認します。サイトキーとシークレットキーの両方を保存すると公開されます。",
+  "turnstile.siteKey": "サイトキー",
+  "turnstile.siteKeyDesc": "空にするとゲストブックは閉じます",
+  "turnstile.secret": "シークレットキー",
+  "turnstile.test": "シークレットキーをテスト",
+  "turnstile.testOk": "シークレットキーは有効です",
+  "turnstile.testFailed":
+    "Cloudflare がこのシークレットキーを拒否しました: {codes}",
+  "guestbook.empty": "メッセージはまだありません",
+  "guestbook.hiddenMark": "非表示",
+  "guestbook.hide": "非表示にする",
+  "guestbook.show": "再表示する",
+  "guestbook.hidden": "メッセージを非表示にしました",
+  "guestbook.shown": "メッセージを再表示しました",
+  "guestbook.delete": "削除",
+  "guestbook.deleteTitle": "{name} のメッセージを削除しますか?",
+  "guestbook.deleteDesc":
+    "削除すると元に戻せません。一時的に見えなくするだけなら、非表示にしてください。",
+  "guestbook.deleteAction": "メッセージを削除",
+  "guestbook.deleted": "メッセージを削除しました",
+  "guestbook.more": "さらに読み込む",
 };
