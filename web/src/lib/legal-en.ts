@@ -25,6 +25,7 @@ const texts: LegalTexts = {
               "Your IP address and browser details, which come with every request. They're used to deliver pages and to limit abusive traffic; the rate limits are kept in memory only.",
               "Sign-in attempts, successful or not, and failed checks of your current password: the IP address and, if the account exists, its username, written to the server log to detect password guessing and misuse.",
               "What you search for. When semantic search is on, the search text is sent to an AI provider to work out its meaning, with nothing that identifies you.",
+              "Guestbook messages: the nickname and message you enter are shown to every visitor, with the time you posted. The IP address you post from is written to the server log to stop abuse; it isn't stored with the message. Before you post, Cloudflare Turnstile checks that you're not an automated program, so Cloudflare receives your IP address and browser details.",
             ],
           },
           "When you create an account:",
@@ -111,6 +112,7 @@ const texts: LegalTexts = {
           {
             list: [
               "Hosting and network providers that run the servers and connections for this site.",
+              "Cloudflare, whose Turnstile checks that guestbook messages don't come from automated programs. It receives your IP address and browser details.",
               "The AI provider used for semantic search and item translation. It receives search text and public item information, never your account details.",
               "Authorities, when the law requires it.",
             ],
@@ -130,6 +132,7 @@ const texts: LegalTexts = {
               "Recently viewed items: the latest 500.",
               "Search text cached for semantic search: deleted after 90 days without use. It isn't linked to anyone.",
               "Server logs, including sign-in attempts: overwritten once they reach a small size limit.",
+              "Guestbook messages: until an admin deletes them.",
             ],
           },
         ],
@@ -140,6 +143,7 @@ const texts: LegalTexts = {
         body: [
           "You can change your settings at any time, and sign out other devices in Settings.",
           "You can delete your account at any time in Settings > Your data. This immediately removes its devices, favourites, saved searches and viewing history.",
+          "To have a guestbook message of yours deleted, contact {contact}.",
           "To get a copy of your data or correct it, or if you can't sign in to your account, contact {contact}.",
           "Depending on where you live (for example under the GDPR in the EU and UK, the APPI in Japan, PIPA in Korea or PIPL in China), you may have further rights, such as objecting to processing or complaining to a data protection authority.",
         ],
@@ -212,6 +216,7 @@ const texts: LegalTexts = {
             list: [
               "Don't attack the site or try to get around its rate limits or access controls.",
               "Don't scrape pages at a pace that burdens the site. Use the public API and RSS feeds within their limits instead.",
+              "Don't post ads, other people's personal information or unlawful content in the guestbook. Admins may hide or delete any message.",
               "Don't use the site to break the law or violate the rights of others.",
             ],
           },
