@@ -47,8 +47,8 @@ fn entries_are_trimmed_and_bounded() {
     assert!(matches!(validate("Ann", "4111 1111 1111 1111"), Err(Refusal::CardNumber)));
 }
 
-/// A stand-in for siteverify: the token "pass" passes for the guestbook, "elsewhere" passes for another form, and
-/// anything else fails.
+/// A stand-in for siteverify: the token "pass" passes for the guestbook, "elsewhere" for another form, "unnamed" for
+/// no form, "testing" as a testing secret answers (no action), and anything else fails.
 async fn siteverify_stand_in() -> String {
     let app = axum::Router::new().route(
         "/",
@@ -56,6 +56,8 @@ async fn siteverify_stand_in() -> String {
             Json(match b["response"].as_str() {
                 Some("pass") => json!({ "success": true, "action": "guestbook" }),
                 Some("elsewhere") => json!({ "success": true, "action": "sign-in" }),
+                Some("unnamed") => json!({ "success": true }),
+                Some("testing") => json!({ "success": true, "metadata": { "result_with_testing_key": true } }),
                 _ => json!({ "success": false, "error-codes": ["invalid-input-response"] }),
             })
         }),
@@ -115,7 +117,7 @@ async fn closed_until_both_keys_are_set(pool: PgPool) {
 async fn a_post_needs_a_passing_token_for_this_form(pool: PgPool) {
     open(&pool).await;
     let s = state(pool.clone()).await;
-    for (n, token) in [(1, ""), (2, "fail"), (3, "elsewhere")] {
+    for (n, token) in [(1, ""), (2, "fail"), (3, "elsewhere"), (6, "unnamed")] {
         let (status, body) = answer(post(State(s.clone()), ip(n), entry("Ann", "hi", token)).await).await;
         assert_eq!((status, body["code"].as_str()), (StatusCode::FORBIDDEN, Some("verification_failed")), "{token}");
     }
@@ -125,6 +127,8 @@ async fn a_post_needs_a_passing_token_for_this_form(pool: PgPool) {
     assert_eq!((status, body["code"].as_str()), (StatusCode::BAD_REQUEST, Some("bad_guestbook_entry")));
     assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from guestbook").fetch_one(&pool).await.unwrap(), 0);
 
+    // Cloudflare's testing secrets pass every token without naming the action, so a local run can post
+    assert_eq!(answer(post(State(s.clone()), ip(7), entry("Bob", "test", "testing")).await).await.0, StatusCode::OK);
     let (status, body) = answer(post(State(s.clone()), ip(5), entry(" Ann ", "hello", "pass")).await).await;
     assert_eq!((status, &body["nickname"], &body["body"]), (StatusCode::OK, &json!("Ann"), &json!("hello")));
     let shown = page(&s).await;

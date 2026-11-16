@@ -69,6 +69,15 @@ struct Siteverify {
     error_codes: Vec<String>,
     #[serde(default)]
     action: Option<String>,
+    #[serde(default)]
+    metadata: Metadata,
+}
+
+#[derive(Deserialize, Default)]
+struct Metadata {
+    /// set when one of Cloudflare's testing secrets answered; its answer names no action
+    #[serde(default)]
+    result_with_testing_key: bool,
 }
 
 /// What siteverify said of a token: Ok(true) when it passed for `action`, Ok(false) with its error codes otherwise.
@@ -85,8 +94,11 @@ pub(crate) async fn siteverify(
     }
     let r: Siteverify =
         s.http.post(&s.siteverify_url).json(&body).timeout(Duration::from_secs(5)).send().await?.error_for_status()?.json().await?;
-    // a token minted for another form's widget does not open this one
-    let passed = r.success && r.action.as_deref() == Some(action);
+    if r.metadata.result_with_testing_key {
+        eprintln!("warn: turnstile: a testing secret answered, which passes every visitor; set the real keys before going live");
+    }
+    // a token minted for another form's widget does not open this one; a testing secret's answer names no action
+    let passed = r.success && (r.action.as_deref() == Some(action) || r.metadata.result_with_testing_key);
     Ok((passed, r.error_codes))
 }
 
