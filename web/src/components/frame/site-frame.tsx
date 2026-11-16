@@ -2,7 +2,7 @@
 // The one page frame every route renders in, adapted from the Astryx page template shell-top-nav
 // (@astryxdesign/cli assets/templates/pages/shell-top-nav/page.tsx): AppShell + TopNav with the logo heading on the left and the end
 // actions on the right. BoothDex has no section navigation, so the template's centre mega menus are not used.
-// End actions: the language and currency menus, the colour mode and the account (Settings and Sign in, or the
+// End actions: the guestbook, the language and currency menus, the colour mode and the account (Settings and Sign in, or the
 // account menu); the site search is the home page's filter row (catalog/search/search-box.tsx). Pages put their own
 // Layout inside, so titles and content share the same left edge on every route.
 
@@ -13,6 +13,7 @@ import { Activity } from "react";
 import { Account } from "@/components/account/account-button";
 import { Favourites } from "@/components/account/favourites";
 import { AccountProvider } from "@/components/account/session";
+import { Guestbook } from "@/components/guestbook/guestbook-button";
 import { ItemHost } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
 import { prefersReducedMotion } from "@/lib/motion";
@@ -72,6 +73,7 @@ export function SiteFrame({
               }
               endContent={
                 <>
+                  <Guestbook />
                   <LanguageMenu />
                   <CurrencyMenu />
                   <ColorModeToggle />

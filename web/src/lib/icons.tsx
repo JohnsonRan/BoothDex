@@ -13,6 +13,7 @@ import {
   Heart,
   Languages,
   LayoutGrid,
+  MessagesSquare,
   Moon,
   Settings,
   Sun,
@@ -31,6 +32,7 @@ const SITE_ICONS = {
   "site:dark": <Moon {...glyph} />,
   "site:light": <Sun {...glyph} />,
   "site:clear": <Trash2 {...glyph} />,
+  "site:guestbook": <MessagesSquare {...glyph} />,
   "site:save": <BookmarkPlus {...glyph} />,
   "site:saved": <Bookmark {...glyph} />,
   // a pressed saved-views toggle (the template's BookmarkFilled)
