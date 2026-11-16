@@ -1,5 +1,6 @@
 //! Admin console API: overview metrics and daily trends, job queue control, schedules, catalogue reload, live SSE stream,
-//! user management (admin/users.rs) and site settings (AI provider, open registration).
+//! user management (admin/users.rs), guestbook moderation (admin/guestbook.rs) and site settings (AI provider, open
+//! registration, Turnstile keys).
 //! Access: users.is_admin. `ADMIN_USERNAMES` (comma-separated) sets exactly who is admin at startup.
 
 use std::convert::Infallible;
@@ -84,7 +85,9 @@ async fn require_admin(s: &AppState, headers: &HeaderMap) -> Result<String, ApiE
 mod ai_key;
 #[cfg(test)]
 mod authz;
+mod guestbook;
 mod trends;
+mod turnstile;
 mod users;
 
 async fn data_json(pool: &PgPool) -> Result<Value, sqlx::Error> {
@@ -330,6 +333,7 @@ async fn get_settings(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Res
     Ok(Json(json!({
         "ai": public_ai(&settings::ai(&s.pool).await?),
         "registration": { "open": account::registration_open(&s.pool).await? },
+        "turnstile": turnstile::public(&crate::turnstile::config(&s.pool).await?),
     }))
     .into_response())
 }
@@ -510,6 +514,10 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/admin/settings/registration", put(put_registration))
         .route("/api/admin/settings/ai", put(put_ai))
         .route("/api/admin/settings/ai/test", post(test_ai))
+        .route("/api/admin/settings/turnstile", put(turnstile::put))
+        .route("/api/admin/settings/turnstile/test", post(turnstile::test))
+        .route("/api/admin/guestbook", get(guestbook::list))
+        .route("/api/admin/guestbook/{id}", axum::routing::patch(guestbook::patch).delete(guestbook::delete))
         .route("/api/admin/overview", get(overview))
         .route("/api/admin/trends", get(trends::trends))
         .route("/api/admin/stream", get(stream))
