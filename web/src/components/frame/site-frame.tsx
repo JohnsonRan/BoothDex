@@ -18,6 +18,7 @@ import { ItemHost } from "@/components/item/item-host";
 import { useUi } from "@/components/providers";
 import { prefersReducedMotion } from "@/lib/motion";
 import type { Rates } from "@/lib/settings-core";
+import { BackToTop } from "./back-to-top";
 import { ColorModeToggle, CurrencyMenu, LanguageMenu } from "./header-controls";
 import { Logo } from "./logo";
 
@@ -89,6 +90,7 @@ export function SiteFrame({
         </AppShell>
       </ItemHost>
       <Favourites />
+      <BackToTop />
     </AccountProvider>
   );
 }
