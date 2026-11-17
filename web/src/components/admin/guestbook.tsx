@@ -15,6 +15,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { Timestamp } from "@astryxdesign/core/Timestamp";
 import { Token } from "@astryxdesign/core/Token";
 import { useCallback, useEffect, useState } from "react";
+import { MESSAGE_STYLE } from "@/components/guestbook/message-style";
 import { useToast } from "@/components/toasts";
 import { api } from "@/lib/api";
 import { errorText, useAdminT } from "./messages";
@@ -22,10 +23,6 @@ import { PageFrame } from "./page-frame";
 import type { AdminGuestbookEntry } from "./types";
 
 type Page = { entries: AdminGuestbookEntry[]; more: boolean };
-const MESSAGE_STYLE = {
-  whiteSpace: "pre-wrap",
-  overflowWrap: "anywhere",
-} as const;
 
 function Entries() {
   const t = useAdminT();

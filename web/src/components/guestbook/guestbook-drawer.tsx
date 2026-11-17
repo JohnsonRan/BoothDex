@@ -24,8 +24,9 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/toasts";
 import { api } from "@/lib/api";
 import type { GuestbookEntry, GuestbookPage } from "@/lib/api-types";
+import { MESSAGE_STYLE } from "./message-style";
 import { guestbookError, useGuestbookT } from "./messages";
-import { MESSAGE_STYLE, PostForm } from "./post-form";
+import { PostForm } from "./post-form";
 
 const SKELETON_ROWS = 3;
 /** one line of the given text type, the height a skeleton row's line takes */
@@ -48,12 +49,11 @@ function Entry({ entry }: { entry: GuestbookEntry }) {
   );
 }
 
-function Rows({ children }: { children: React.ReactNode[] }) {
+function Rows({ children }: { children: React.ReactElement[] }) {
   return (
     <VStack gap={4}>
       {children.map((row, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: each row already carries its own key inside
-        <Fragment key={i}>
+        <Fragment key={row.key}>
           {i > 0 && <Divider />}
           {row}
         </Fragment>

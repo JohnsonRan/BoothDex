@@ -22,16 +22,12 @@ import { useToast } from "@/components/toasts";
 import { api } from "@/lib/api";
 import type { GuestbookEntry } from "@/lib/api-types";
 import { useTurnstile } from "@/lib/turnstile";
+import { MESSAGE_STYLE } from "./message-style";
 import { guestbookError, useGuestbookT } from "./messages";
 import { BODY_MAX, bodyOk, NICKNAME_MAX, nicknameOk } from "./rules";
 
 /** the action the API checks the token for (crates/api/src/guestbook.rs ACTION) */
 const ACTION = "guestbook";
-
-export const MESSAGE_STYLE = {
-  whiteSpace: "pre-wrap",
-  overflowWrap: "anywhere",
-} as const;
 
 export function PostForm({
   siteKey,
