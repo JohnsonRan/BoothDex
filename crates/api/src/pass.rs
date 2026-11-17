@@ -70,11 +70,17 @@ fn range(ip: IpAddr) -> String {
     }
 }
 
+/// The signature as `issue` writes it: exactly 64 lower-case hex digits, so each pass has one spelling.
 fn unhex(s: &str) -> Option<Vec<u8>> {
-    if !s.len().is_multiple_of(2) {
+    let nibble = |b: u8| match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        _ => None,
+    };
+    if s.len() != 64 {
         return None;
     }
-    (0..s.len()).step_by(2).map(|i| s.get(i..i + 2).and_then(|b| u8::from_str_radix(b, 16).ok())).collect()
+    s.as_bytes().chunks(2).map(|pair| Some(nibble(pair[0])? << 4 | nibble(pair[1])?)).collect()
 }
 
 fn now() -> u64 {

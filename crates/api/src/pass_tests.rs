@@ -422,6 +422,15 @@ async fn only_a_passed_check_earns_a_pass(pool: PgPool) {
 }
 
 #[test]
+fn a_signature_has_one_spelling() {
+    let sig = "0123456789abcdef".repeat(4);
+    assert_eq!(unhex(&sig).map(|b| b.len()), Some(32));
+    for bad in [sig.to_uppercase(), format!("+{}", &sig[1..]), sig[2..].to_owned(), format!("{sig}00"), format!("{}g", &sig[1..])] {
+        assert_eq!(unhex(&bad), None, "{bad}");
+    }
+}
+
+#[test]
 fn a_pass_names_its_range() {
     let key = PassKey::new().unwrap();
     for (ip, range_text) in [
