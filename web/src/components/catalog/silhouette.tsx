@@ -130,10 +130,13 @@ export const THUMB_RADIUS = "calc(var(--radius-container) - var(--spacing-1))";
  *  handler and no state, so server markup needs no script. `radius` rounds both. The image is positioned so it
  *  paints above the Skeleton, whose animation makes it a layer of its own; once the image can paint, the Skeleton
  *  goes (SKELETON_PAINTED). An image that fails to load, or an empty `src` (no image, or one no proxy route
- *  serves), shows the no-image state instead (app/catalog.css). */
+ *  serves), shows the no-image state instead (app/catalog.css). `children` are layers after the image in the same
+ *  grid cell (a result tile's second image and badges), placed by their own CSS; the image stays the first <img>,
+ *  which is the one catalog.css reads for the painted and failed states. */
 export function SkeletonImage({
   radius,
   alt = "",
+  children,
   ...img
 }: Omit<ComponentProps<"img">, "style"> & { radius?: string }) {
   return (
@@ -165,6 +168,7 @@ export function SkeletonImage({
           display: "block",
         }}
       />
+      {children}
     </span>
   );
 }

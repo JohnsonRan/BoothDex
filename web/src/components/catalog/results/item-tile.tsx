@@ -137,14 +137,13 @@ export function ItemTile({
   const cover = (
     <Card padding={0}>
       <AspectRatio ratio={1}>
-        {/* one grid cell holding the cover, the second image over it and the badges at its lower edge */}
-        <span className="tile-cover">
-          <SkeletonImage
-            src={tile.cover}
-            loading={index < EAGER ? "eager" : "lazy"}
-            fetchPriority={index < HIGH ? "high" : undefined}
-            decoding="async"
-          />
+        {/* the cover's grid cell also holds the second image over it and the badges at its lower edge */}
+        <SkeletonImage
+          src={tile.cover}
+          loading={index < EAGER ? "eager" : "lazy"}
+          fetchPriority={index < HIGH ? "high" : undefined}
+          decoding="async"
+        >
           {tile.second && (
             <img className="tile-second" data-second={tile.second} alt="" />
           )}
@@ -159,7 +158,7 @@ export function ItemTile({
               ))}
             </HStack>
           )}
-        </span>
+        </SkeletonImage>
       </AspectRatio>
     </Card>
   );
@@ -189,16 +188,15 @@ export function ItemTile({
         </Heading>
         <HStack gap={1.5} vAlign="center">
           <ShopIcon src={tile.shopIcon} />
-          <StackItem size="fill">
-            <Text
-              type="body"
-              color="secondary"
-              maxLines={1}
-              hasTruncateTooltip={false}
-            >
-              {tile.shop}
-            </Text>
-          </StackItem>
+          {/* a flex item itself: its clipped overflow lets it shrink to the row, so it needs no StackItem */}
+          <Text
+            type="body"
+            color="secondary"
+            maxLines={1}
+            hasTruncateTooltip={false}
+          >
+            {tile.shop}
+          </Text>
         </HStack>
         {/* as tall as the favourite button, in the silhouette too */}
         <HStack gap={2} vAlign="center" minHeight="var(--size-element-sm)">

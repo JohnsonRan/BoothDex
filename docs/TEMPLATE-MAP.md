@@ -121,8 +121,8 @@ The rest are prop values, not style overrides:
   NEW is `variant="blue"` (as the Item With Media block's "New"), feature tags the default neutral. The Overlay
   Bottom Strip block places them with `Overlay`, but Overlay is a client component and ~70 of them (one per
   marked tile on the first page) raised median Lighthouse TBT from 1669 to 2969 ms (5 runs each), so the badges
-  share the cover's grid area in server markup instead (`app/catalog.css` `.tile-cover`). They sat under the
-  price until 2026-11-14, when the owner returned them to the cover for desktop use.
+  share the cover's grid area in its `SkeletonImage` in server markup instead (`app/catalog.css` `.tile-marks`).
+  They sat under the price until 2026-11-14, when the owner returned them to the cover for desktop use.
   `Badge` is not for counts only: `astryx component Badge`
   documents status labels and category tags (blocks `BadgeStatusLabels`, `BadgeCategoryTags`); the
   `astryx init` rule "Badge = counts only" is shorthand for "not for metadata".

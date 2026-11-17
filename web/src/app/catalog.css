@@ -16,8 +16,12 @@
 }
 
 /* An image over a Skeleton that can paint or has failed (catalog/silhouette.tsx SKELETON_PAINTED): the Skeleton under
-   it goes, and with it its running animation, a compositor layer per image. Core's rules carry up to four :not(#\#). */
-[data-skeleton]:has(> img[data-painted], > img[data-failed])
+   it goes, and with it its running animation, a compositor layer per image. Core's rules carry up to four :not(#\#).
+   The image is the cell's first <img>; a tile's second image after it (.tile-second) decides nothing here. */
+[data-skeleton]:has(
+    > img:first-of-type[data-painted],
+    > img:first-of-type[data-failed]
+  )
   > .astryx-skeleton:not(#\#):not(#\#):not(#\#):not(#\#) {
   display: none;
 }
@@ -28,10 +32,10 @@
 img[data-failed] {
   opacity: 0;
 }
-[data-skeleton]:has(> img[data-failed]) {
+[data-skeleton]:has(> img:first-of-type[data-failed]) {
   background-color: var(--color-background-muted);
 }
-[data-skeleton]:has(> img[data-failed])::after {
+[data-skeleton]:has(> img:first-of-type[data-failed])::after {
   content: "";
   grid-area: 1 / 1;
   place-self: center;
@@ -59,15 +63,11 @@ img[data-failed] {
 .item-acts .astryx-button > span > span:not(:has(svg)) {
   text-box: trim-both cap alphabetic;
 }
-/* A tile's cover cell (catalog/results/item-tile.tsx): the cover, the second image over it and the badges along
-   its lower edge share one grid area, so none of them is positioned. The second image has no address until a
-   pointer first rests on the tile (item/item-host.tsx), and shows only while one does. */
-.tile-cover {
-  display: grid;
-  width: 100%;
-  height: 100%;
-}
-.tile-cover > * {
+/* A tile's cover cell (catalog/results/item-tile.tsx): the second image and the badges along the lower edge share
+   the cover's grid area in its SkeletonImage, so none of them is positioned. The second image has no address until
+   a pointer first rests on the tile (item/item-host.tsx), and shows only while one does. */
+.tile-second,
+.tile-marks {
   grid-area: 1 / 1;
 }
 .tile-second {

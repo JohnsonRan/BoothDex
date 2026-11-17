@@ -111,7 +111,7 @@ test("a tile's badges sit on its cover, and its second image waits for a pointer
       ],
     },
   ]);
-  const cover = html.slice(html.indexOf('class="tile-cover"'));
+  const cover = html.slice(html.indexOf("data-skeleton"));
   expect(cover.indexOf("Quest")).toBeGreaterThan(-1);
   expect(cover.indexOf("Quest")).toBeLessThan(cover.indexOf("<h4"));
   const second = html.match(/<img [^>]*class="tile-second"[^>]*>/)?.[0] ?? "";
