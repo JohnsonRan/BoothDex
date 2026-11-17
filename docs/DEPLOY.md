@@ -36,6 +36,8 @@ flowchart LR
 
 `postgres`, `api`, `worker` and `imgproxy` publish no host ports; run maintenance commands through `docker compose exec` (for example `docker compose exec postgres psql -U catalogue catalogue`). `podman compose` works with the same commands.
 
+Run exactly one `api` container; do not scale it. Each `api` process keeps its own key for signing the stricter limits' `pass` cookie, its own copy of the AI and Turnstile settings and its own rate-limit buckets, so with two of them a pass issued by one is refused by the other, those settings saved through one do not reach the other until it restarts, and every per-address limit doubles.
+
 ## Deployment overview
 
 ```mermaid
