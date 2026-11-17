@@ -67,7 +67,8 @@ pub(super) async fn patch(
         println!("admin {who} {} guestbook entry {id}", if hidden { "hid" } else { "showed" });
     }
     if let Some(status) = b.status {
-        println!("admin {who} set guestbook entry {id} to {status:?}");
+        // the state as the API and the column name it
+        println!("admin {who} set guestbook entry {id} to {}", json!(status));
     }
     Ok(Json(json!({ "id": id, "hidden_at": hidden_at, "status": status })).into_response())
 }

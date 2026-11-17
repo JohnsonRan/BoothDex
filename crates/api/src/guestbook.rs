@@ -1,6 +1,7 @@
 //! The guestbook: anyone may post a message under a nickname after a Turnstile check. A message is final once posted
 //! (the site asks the author to confirm first); every visitor only reads. An admin hides or deletes messages, and
-//! closes one as completed or as not planned the way an issue is closed (admin/guestbook.rs). The client IP of a post is logged, never stored.
+//! closes one as completed or as not planned the way an issue is closed (admin/guestbook.rs). The client IP of a
+//! post is logged, never stored.
 
 use std::sync::Arc;
 

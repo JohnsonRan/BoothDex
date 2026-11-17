@@ -2,9 +2,10 @@
 // The guestbook, a Drawer from the end edge (Astryx DrawerForm: DrawerHeader with its close button, the body in
 // LayoutContent): the form on top, then the messages, newest first, 50 at a time with Load more under them, each
 // as a comment thread shows one (GitHub, YouTube): nickname, relative time with the full time on hover and focus,
-// the text as typed, and a mark on one an admin closed (completed or not planned, as a closed issue carries). Text is rendered as text only, never as HTML or links. The first page shows a skeleton of
-// its rows; a reopen reads the page again behind what is shown. While either Turnstile key is unset the API
-// answers no site key, and the form's place shows that the guestbook is not open yet.
+// the text as typed, and a mark on one an admin closed (completed or not planned, as a closed issue carries).
+// Text is rendered as text only, never as HTML or links. The first page shows a skeleton of its rows; a reopen
+// reads the page again behind what is shown. While either Turnstile key is unset the API answers no site key,
+// and the form's place shows that the guestbook is not open yet.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Divider } from "@astryxdesign/core/Divider";
