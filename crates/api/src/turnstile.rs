@@ -126,20 +126,40 @@ enum Verdict {
     Unjudged,
 }
 
-/// siteverify's error codes that say nothing of the token: the secret key is missing or wrong, or Cloudflare failed.
-const NOT_THE_TOKEN: [&str; 3] = ["missing-input-secret", "invalid-input-secret", "internal-error"];
+/// siteverify's error codes for a secret key that is missing or wrong: every visitor's check fails until an admin
+/// corrects it. With `INTERNAL_ERROR` they are the codes that say nothing of the token (the list is Cloudflare's,
+/// developers.cloudflare.com/turnstile/get-started/server-side-validation, "Error codes reference").
+const SECRET_REFUSED: [&str; 2] = ["missing-input-secret", "invalid-input-secret"];
+/// Cloudflare's own failure.
+const INTERNAL_ERROR: &str = "internal-error";
+/// The longest token Cloudflare issues (the same page, "Token characteristics").
+const TOKEN_MAX: usize = 2048;
 
 async fn verdict(s: &AppState, secret: &str, token: &str, ip: IpAddr, action: &str) -> Verdict {
+    // no widget made it, and the visitor chose its size: it is not sent on
+    if token.len() > TOKEN_MAX {
+        return Verdict::Refused;
+    }
     // the web container's or a LAN address tells Cloudflare nothing
     let ip = (!is_internal(ip)).then_some(ip);
     match siteverify(s, secret, token, ip, action).await {
         Ok((true, _)) => Verdict::Passed,
         // a wrong secret fails every visitor; anything else is one visitor's token
-        Ok((false, codes)) if codes.iter().any(|c| NOT_THE_TOKEN.contains(&c.as_str())) => {
-            eprintln!("error: turnstile: siteverify could not check a token ({}); check the secret key in the admin console", codes.join(", "));
+        Ok((false, codes)) if codes.iter().any(|c| SECRET_REFUSED.contains(&c.as_str())) => {
+            eprintln!("error: turnstile: siteverify refused the secret key; check it in the admin console");
+            Verdict::Unjudged
+        }
+        Ok((false, codes)) if codes.iter().any(|c| c == INTERNAL_ERROR) => {
+            eprintln!("warn: turnstile: siteverify answered an internal error");
             Verdict::Unjudged
         }
         Ok((false, _)) => Verdict::Refused,
+        // siteverify turned this request down, and the token is the one part of it a visitor writes: only a failure
+        // of siteverify's own, or not reaching it, leaves the token unjudged
+        Err(e) if e.downcast_ref::<reqwest::Error>().and_then(reqwest::Error::status).is_some_and(|status| status.is_client_error()) => {
+            eprintln!("warn: turnstile: siteverify refused the request: {e:#}");
+            Verdict::Refused
+        }
         Err(e) => {
             eprintln!("warn: turnstile: siteverify failed: {e:#}");
             Verdict::Unjudged

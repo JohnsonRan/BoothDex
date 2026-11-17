@@ -20,8 +20,9 @@ use crate::limit::ClientIp;
 const PASSWORD: &str = "0123456789";
 
 /// A stand-in for siteverify. The token "in" passes for sign-in and "up" for registration; "failing" is answered
-/// HTTP 500, "no-secret" as a wrong secret key is, "broken" as Cloudflare's own failure is; anything else, the empty
-/// token included, is a bad token.
+/// HTTP 500, "no-secret" as a wrong secret key is, "broken" as Cloudflare's own failure is, "turned-down" HTTP 400
+/// and "slow-down" HTTP 429; a token longer than Cloudflare issues would pass, to show it is never sent; anything
+/// else, the empty token included, is a bad token.
 async fn siteverify_stand_in() -> String {
     let app = axum::Router::new().route(
         "/",
@@ -31,6 +32,9 @@ async fn siteverify_stand_in() -> String {
                 Some("in") => json!({ "success": true, "action": SIGN_IN_ACTION }),
                 Some("up") => json!({ "success": true, "action": REGISTER_ACTION }),
                 Some("failing") => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+                Some("turned-down") => return Err(StatusCode::BAD_REQUEST),
+                Some("slow-down") => return Err(StatusCode::TOO_MANY_REQUESTS),
+                Some(long) if long.len() > 2048 => json!({ "success": true, "action": SIGN_IN_ACTION }),
                 Some("no-secret") => refused("invalid-input-secret"),
                 Some("broken") => refused("internal-error"),
                 Some("") => refused("missing-input-response"),
@@ -124,8 +128,10 @@ async fn a_bad_token_is_refused_before_the_account_is_looked_at(pool: PgPool) {
     assert_eq!(sign_up(&s, 1, "ann", "").await, OK);
     settings(&pool, checked()).await;
 
-    // no token, a wrong one, and one made for the other form
-    for (n, token) in [(2, ""), (3, "nope"), (4, "up")] {
+    // no token, a wrong one, one made for the other form, a request siteverify turns down, and a token too long to
+    // be a widget's
+    let long = "x".repeat(2049);
+    for (n, token) in [(2, ""), (3, "nope"), (4, "up"), (5, "turned-down"), (6, "slow-down"), (7, &*long)] {
         assert_eq!(sign_in(&s, n, PASSWORD, token).await, refused(), "{token}");
         assert_eq!(sign_up(&s, n + 10, "bob", if token == "up" { "in" } else { token }).await, refused(), "{token}");
     }
@@ -142,8 +148,11 @@ async fn a_bad_token_is_refused_before_the_account_is_looked_at(pool: PgPool) {
 
     assert_eq!(sign_in(&s, 61, PASSWORD, "in").await, OK);
     assert_eq!(sign_up(&s, 62, "bob", "up").await, OK);
-    // a passed check does not stand in for the password
-    assert_eq!(sign_in(&s, 63, "wrong-password", "in").await, (StatusCode::UNAUTHORIZED, Some("bad_credentials".into())));
+    // a passed check does not stand in for the password, and its failures count against the account
+    for n in 0..MAX_FAILURES as u8 {
+        assert_eq!(sign_in(&s, 70 + n, "wrong-password", "in").await, (StatusCode::UNAUTHORIZED, Some("bad_credentials".into())));
+    }
+    assert!(s.throttle.blocked("ann"));
 }
 
 /// The way out of a check that cannot be made: siteverify failing, refusing the secret key or not answering lets the
