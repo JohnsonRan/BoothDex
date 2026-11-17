@@ -21,7 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import { MESSAGE_STYLE } from "@/components/guestbook/message-style";
 import { CLOSED_COLOR } from "@/components/guestbook/status";
 import { useToast } from "@/components/toasts";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import type { GuestbookStatus } from "@/lib/api-types";
 import { errorText, useAdminT } from "./messages";
 import { PageFrame } from "./page-frame";
@@ -50,6 +50,14 @@ function Entries() {
     try {
       await fn();
     } catch (e) {
+      // another admin deleted the message: drop its row, or every retry fails the same way
+      if (e instanceof ApiError && e.code === "no_such_entry") {
+        const id = Number.parseInt(key, 10);
+        setPage(
+          (p) => p && { ...p, entries: p.entries.filter((x) => x.id !== id) },
+        );
+        setDeleting(undefined);
+      }
       toast({ type: "error", body: errorText(t, e) });
     } finally {
       setBusy(undefined);
