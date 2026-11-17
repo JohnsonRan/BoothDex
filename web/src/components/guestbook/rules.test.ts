@@ -17,6 +17,23 @@ test("the form takes what the server's validate takes", () => {
   expect(bodyOk("lone\rreturn")).toBe(false);
   expect(bodyOk(`${"a".repeat(BODY_MAX)}\n`)).toBe(true);
   expect(bodyOk("a".repeat(BODY_MAX + 1))).toBe(false);
+  // invisible characters are refused; an emoji's joiners and variation selectors are kept, but not on their own
+  expect(nicknameOk("👨\u200d👩\u200d👧")).toBe(true);
+  expect(bodyOk("❤\ufe0f")).toBe(true);
+  for (const c of [
+    "\u200b",
+    "\u200c",
+    "\u202e",
+    "\u2066",
+    "\ufeff",
+    "\u3164",
+    "\u00ad",
+  ]) {
+    expect(nicknameOk(`A${c}nn`)).toBe(false);
+    expect(bodyOk(`h${c}i`)).toBe(false);
+  }
+  expect(nicknameOk("\u200d")).toBe(false);
+  expect(bodyOk("\ufe0f \u200d")).toBe(false);
 });
 
 test("a closed guestbook's 503 is read by its code, not as the site starting", () => {

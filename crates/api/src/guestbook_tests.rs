@@ -47,6 +47,20 @@ fn entries_are_trimmed_and_bounded() {
     assert!(matches!(validate("Ann", "4111 1111 1111 1111"), Err(Refusal::CardNumber)));
 }
 
+#[test]
+fn nothing_invisible_is_taken() {
+    // an emoji family keeps its zero-width joiners and a heart its variation selector
+    assert!(validate("👨\u{200D}👩\u{200D}👧", "❤\u{FE0F}").is_ok());
+    for c in INVISIBLE.iter().flat_map(|(a, b)| *a..=*b) {
+        assert!(matches!(validate(&format!("A{c}nn"), "hi"), Err(Refusal::BadGuestbookEntry)), "{:04X}", c as u32);
+        assert!(matches!(validate("Ann", &format!("h{c}i")), Err(Refusal::BadGuestbookEntry)), "{:04X}", c as u32);
+    }
+    for blank in ["\u{200D}", "\u{FE0F}", "\u{200D} \u{FE0F}"] {
+        assert!(matches!(validate(blank, "hi"), Err(Refusal::BadGuestbookEntry)), "{blank:?}");
+        assert!(matches!(validate("Ann", blank), Err(Refusal::BadGuestbookEntry)), "{blank:?}");
+    }
+}
+
 /// A stand-in for siteverify: the token "pass" passes for the guestbook, "elsewhere" for another form, "unnamed" for
 /// no form, "testing" as a testing secret answers (no action), and anything else fails.
 async fn siteverify_stand_in() -> String {

@@ -102,15 +102,43 @@ fn luhn(digits: &[char]) -> bool {
     sum.is_multiple_of(10)
 }
 
+/// Characters that show nothing or reorder the text around them: zero-width spaces and joiners but the emoji joiner,
+/// direction marks and overrides, the soft hyphen, the BOM, and the Hangul and Braille blanks. A nickname or message
+/// holding one is refused, so no entry reads blank or reversed. `web/src/components/guestbook/rules.ts` holds the
+/// same list.
+const INVISIBLE: &[(char, char)] = &[
+    ('\u{00AD}', '\u{00AD}'),
+    ('\u{115F}', '\u{1160}'),
+    ('\u{180E}', '\u{180E}'),
+    ('\u{200B}', '\u{200C}'),
+    ('\u{200E}', '\u{200F}'),
+    ('\u{202A}', '\u{202E}'),
+    ('\u{2060}', '\u{2064}'),
+    ('\u{2066}', '\u{2069}'),
+    ('\u{2800}', '\u{2800}'),
+    ('\u{3164}', '\u{3164}'),
+    ('\u{FEFF}', '\u{FEFF}'),
+    ('\u{FFA0}', '\u{FFA0}'),
+];
+
+fn invisible(c: char) -> bool {
+    INVISIBLE.iter().any(|(a, b)| (*a..=*b).contains(&c))
+}
+
+/// Text made only of what an emoji keeps, the zero-width joiner (U+200D) and variation selectors, shows nothing.
+fn blank(s: &str) -> bool {
+    s.chars().all(|c| c.is_whitespace() || c == '\u{200D}' || ('\u{FE00}'..='\u{FE0F}').contains(&c))
+}
+
 /// The trimmed nickname and message, or the refusal they deserve. A line break and a tab are the only control
 /// characters a message keeps; a nickname keeps none.
 fn validate(nickname: &str, body: &str) -> Result<(String, String), Refusal> {
     let nickname = nickname.trim();
     let body = body.replace("\r\n", "\n");
     let body = body.trim();
-    let sized = |s: &str, max: usize| (1..=max).contains(&s.chars().count());
-    if !sized(nickname, NICKNAME_MAX)
-        || !sized(body, BODY_MAX)
+    let shown = |s: &str, max: usize| (1..=max).contains(&s.chars().count()) && !blank(s) && !s.chars().any(invisible);
+    if !shown(nickname, NICKNAME_MAX)
+        || !shown(body, BODY_MAX)
         || nickname.chars().any(char::is_control)
         || body.chars().any(|c| c.is_control() && c != '\n' && c != '\t')
     {

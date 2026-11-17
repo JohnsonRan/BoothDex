@@ -6,8 +6,10 @@ export const guestbookEn: GuestbookDict = {
   nickname: "Nickname",
   body: "Message",
   count: "{n}/{max}",
-  nicknameRule: "Your nickname must be 1 to {max} characters.",
-  bodyRule: "Your message must be 1 to {max} characters.",
+  nicknameRule:
+    "Your nickname must be 1 to {max} characters, with no invisible characters.",
+  bodyRule:
+    "Your message must be 1 to {max} characters, with no invisible characters.",
   post: "Post",
   confirmTitle: "Post this message?",
   confirmDesc: "You can't change it after you post it.",

@@ -6,8 +6,10 @@ export const guestbookJa: GuestbookDict = {
   nickname: "ニックネーム",
   body: "メッセージ",
   count: "{n}/{max}",
-  nicknameRule: "ニックネームは 1～{max} 文字で入力してください。",
-  bodyRule: "メッセージは 1～{max} 文字で入力してください。",
+  nicknameRule:
+    "ニックネームは見えない文字を含めず、1～{max} 文字で入力してください。",
+  bodyRule:
+    "メッセージは見えない文字を含めず、1～{max} 文字で入力してください。",
   post: "投稿",
   confirmTitle: "このメッセージを投稿しますか?",
   confirmDesc: "投稿後は変更できません。",
