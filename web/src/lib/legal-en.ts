@@ -35,7 +35,7 @@ const texts: LegalTexts = {
               "Your username, display name and email address.",
               "Your password, stored only as an Argon2 hash that can't be turned back into the password.",
               "Your settings (such as language, currency, appearance and avatar), favourites, saved searches and recently viewed items (the latest 500).",
-              "For each device you sign in on: when you signed in, the browser (user agent) and the IP address, so you can tell your devices apart in Settings. The time of your last sign-in is also recorded.",
+              "For each device you sign in on: when you signed in, the browser (user agent), the IP address, and whether that sign-in or registration passed a Cloudflare Turnstile check. The first three let you tell your devices apart in Settings; while the site asks for the check, a device that passed keeps the usual limits. The time of your last sign-in is also recorded.",
             ],
           },
         ],

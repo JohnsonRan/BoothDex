@@ -92,7 +92,7 @@ pub async fn gallery(
     tier: crate::limit::Tier,
     Path(id): Path<i64>,
 ) -> Result<Response, ApiError> {
-    s.limits.gallery.check(ip, &tier)?;
+    s.limits.gallery.check(ip, &tier).await?;
     if s.snap().catalog.docs_for(&[id]).is_empty() {
         return Err(Refusal::UnknownItem.into());
     }

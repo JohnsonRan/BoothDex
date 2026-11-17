@@ -19,7 +19,7 @@ pub(crate) async fn items_by_id(
     RawQuery(q): RawQuery,
 ) -> Result<Response, ApiError> {
     let ids = item_ids(q.as_deref().unwrap_or(""));
-    if ids.len() == 1 { s.limits.item.check(ip, &tier) } else { s.limits.items.check(ip) }?;
+    if ids.len() == 1 { s.limits.item.check(ip, &tier).await } else { s.limits.items.check(ip) }?;
     if ids.is_empty() {
         return Ok(Json(json!({ "items": [] })).into_response());
     }

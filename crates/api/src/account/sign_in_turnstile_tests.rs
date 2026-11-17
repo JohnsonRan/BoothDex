@@ -100,6 +100,11 @@ fn refused() -> (StatusCode, Option<String>) {
 
 const OK: (StatusCode, Option<String>) = (StatusCode::OK, None);
 
+/// Whether each session's sign-in or registration passed the check, oldest first.
+async fn passed(pool: &PgPool) -> Vec<bool> {
+    sqlx::query_scalar("select turnstile_passed from sessions order by id").fetch_all(pool).await.unwrap()
+}
+
 /// Keys set for the guestbook change nothing here until the switch is on, and the switch does nothing without both.
 #[sqlx::test(migrations = "../core/migrations")]
 #[ignore = "requires PostgreSQL with pgvector"]
@@ -153,6 +158,8 @@ async fn a_bad_token_is_refused_before_the_account_is_looked_at(pool: PgPool) {
         assert_eq!(sign_in(&s, 70 + n, "wrong-password", "in").await, (StatusCode::UNAUTHORIZED, Some("bad_credentials".into())));
     }
     assert!(s.throttle.blocked("ann"));
+    // the registration before the switch, then the sign-in and the registration that passed
+    assert_eq!(passed(&pool).await, [false, true, true]);
 }
 
 /// The way out of a check that cannot be made: siteverify failing, refusing the secret key or not answering lets the
@@ -176,4 +183,6 @@ async fn a_check_that_cannot_be_made_lets_the_request_through(pool: PgPool) {
     let s = state(pool.clone(), unreachable).await;
     assert_eq!(sign_in(&s, 40, PASSWORD, "").await, OK);
     assert_eq!(sign_in(&s, 41, "wrong-password", "").await, (StatusCode::UNAUTHORIZED, Some("bad_credentials".into())));
+    // none of these sessions passed a check, so none gets today's rate limits (pass.rs)
+    assert_eq!(passed(&pool).await, [false; 8]);
 }

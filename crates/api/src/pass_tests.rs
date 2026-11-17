@@ -57,9 +57,10 @@ const TIERED: [(&str, usize, usize); 6] = [
 /// Routes that keep one bucket whatever the switch: the multi-item read and the feed, burst 3 each.
 const UNTIERED: [&str; 2] = ["/api/items?ids=1+2", "/api/rss"];
 
-/// A stand-in for siteverify that counts the tokens it is asked about. "pass" passes for this form and "guestbook"
-/// for another; "failing" is answered HTTP 500, "no-secret" as a wrong secret key is and "broken" as Cloudflare's own
-/// failure is; a token longer than Cloudflare issues would pass, to show it is never sent; anything else is refused.
+/// A stand-in for siteverify that counts the tokens it is asked about. "pass" passes for this form, "guestbook" for
+/// another and "in" for sign-in; "failing" is answered HTTP 500, "no-secret" as a wrong secret key is and "broken" as
+/// Cloudflare's own failure is; a token longer than Cloudflare issues would pass, to show it is never sent; anything
+/// else is refused.
 async fn siteverify_stand_in() -> (String, Arc<AtomicUsize>) {
     let asked = Arc::new(AtomicUsize::new(0));
     let count = asked.clone();
@@ -71,6 +72,7 @@ async fn siteverify_stand_in() -> (String, Arc<AtomicUsize>) {
             Ok(Json(match b["response"].as_str() {
                 Some("pass") => json!({ "success": true, "action": ACTION }),
                 Some("guestbook") => json!({ "success": true, "action": "guestbook" }),
+                Some("in") => json!({ "success": true, "action": "sign-in" }),
                 Some("failing") => return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
                 Some("no-secret") => refused("invalid-input-secret"),
                 Some("broken") => refused("internal-error"),
@@ -94,6 +96,11 @@ struct Site {
 
 /// The API with `settings` stored as the Turnstile row before it first reads them, served on a local port.
 async fn site(pool: &PgPool, settings: Value) -> Site {
+    site_with(pool, settings, limits()).await
+}
+
+/// `site` with buckets of the test's own.
+async fn site_with(pool: &PgPool, settings: Value, limits: Limits) -> Site {
     sqlx::query("insert into app_settings (key, value) values ('turnstile', $1) on conflict (key) do update set value = excluded.value")
         .bind(settings)
         .execute(pool)
@@ -101,7 +108,7 @@ async fn site(pool: &PgPool, settings: Value) -> Site {
         .unwrap();
     let (siteverify_url, asked) = siteverify_stand_in().await;
     let state = Arc::try_unwrap(account::test_state(pool.clone())).ok().unwrap();
-    let state = Arc::new(AppState { siteverify_url, limits: limits(), ..state });
+    let state = Arc::new(AppState { siteverify_url, limits, ..state });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let app = crate::app(state.clone());
@@ -145,6 +152,16 @@ impl Site {
         request.send().await.unwrap()
     }
 
+    /// The refusal of one request with `headers`, and its `Retry-After` in seconds.
+    async fn refusal(&self, path: &str, headers: &[(&str, &str)]) -> (Refused, u64) {
+        let r = self.send(path, headers).await;
+        assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS, "{path}");
+        let wait = r.headers()["retry-after"].to_str().unwrap().parse().unwrap();
+        let body: Value = r.json().await.unwrap();
+        let text = |field: &str| body[field].as_str().map(str::to_owned);
+        (Refused { code: text("code"), site_key: text("site_key"), retry_after: true }, wait)
+    }
+
     /// `count` with the request's headers as given.
     async fn count_with(&self, path: &str, headers: &[(&str, &str)]) -> (usize, Refused) {
         for passed in 0..60 {
@@ -172,6 +189,14 @@ impl Site {
         let (status, cookie) = (r.status(), r.headers().get("set-cookie").map(|v| v.to_str().unwrap().to_owned()));
         let body: Value = r.json().await.unwrap();
         (status, body["code"].as_str().map(str::to_owned), cookie)
+    }
+
+    /// The session cookie that signing in as `a` from `ip` sets, with `token` as the widget's.
+    async fn sign_in(&self, token: &str, ip: &str) -> String {
+        let form = json!({ "login": "a", "password": PASSWORD, "token": token });
+        let r = self.http.post(format!("{}/api/account/login", self.base)).header("x-forwarded-for", ip).json(&form).send().await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK, "{token}");
+        r.headers()["set-cookie"].to_str().unwrap().split(';').next().unwrap().to_owned()
     }
 
     /// A pass for `ip`, earned through the endpoint.
@@ -253,6 +278,104 @@ async fn a_pass_gives_todays_numbers_and_never_more(pool: PgPool) {
         assert_eq!(site.count("/api/search", ip, None).await, (2, offered()));
         let pass = site.pass(ip).await;
         assert_eq!(site.count("/api/search", ip, Some(&pass)).await, (2, PLAIN));
+    });
+}
+
+const PASSWORD: &str = "0123456789";
+
+fn checked_sign_in() -> Value {
+    let mut settings = strict();
+    settings["auth"] = json!(true);
+    settings
+}
+
+/// A session gives today's numbers only while sign-in is Turnstile-checked too, and only if its own sign-in passed
+/// that check. A sign-in let through because siteverify failed, a session from before the check was recorded (the
+/// column's default), an expired or unknown session, or any session while sign-in is unchecked counts as none; a pass
+/// still counts beside any session.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_session_counts_only_if_its_sign_in_passed_the_check(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        let user: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', $1) returning id")
+            .bind(account::hash_password(PASSWORD.into()).await.ok().unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        for (token, expiry) in [("tok-live", "1 day"), ("tok-old", "-1 day")] {
+            sqlx::query("insert into sessions (token_hash, user_id, expires_at, turnstile_passed) values ($1, $2, now() + $3::interval, true)")
+                .bind(account::token_hash(token))
+                .bind(user)
+                .bind(expiry)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        // as a session from before the column reads
+        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+            .bind(account::token_hash("tok-before"))
+            .bind(user)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let live = "settings=y; session=tok-live";
+
+        // today's numbers; once today's bucket is empty the session is not read, so the refusal offers the check as it
+        // does to any session cookie
+        let site = site(&pool, checked_sign_in()).await;
+        for (i, (path, _, base)) in TIERED.into_iter().enumerate() {
+            assert_eq!(site.count(path, &format!("203.0.113.{i}"), Some(live)).await, (base, offered()), "{path}");
+        }
+        let passed = site.sign_in("in", "198.51.100.30").await;
+        assert_eq!(site.count("/api/search", "203.0.113.19", Some(&passed)).await, (4, offered()));
+        let unjudged = site.sign_in("failing", "198.51.100.31").await;
+        for (n, cookie) in [&*unjudged, "session=tok-before", "session=tok-old", "session=tok-none"].into_iter().enumerate() {
+            assert_eq!(site.count("/api/search", &format!("203.0.113.{}", 20 + n), Some(cookie)).await, (2, offered()), "{cookie}");
+        }
+
+        let site = self::site(&pool, strict()).await;
+        assert_eq!(site.count("/api/search", "198.51.100.1", Some(live)).await, (2, offered()));
+        let pass = site.pass("198.51.100.2").await;
+        assert_eq!(site.count("/api/search", "198.51.100.2", Some(&format!("{live}; {pass}"))).await, (4, PLAIN));
+    });
+}
+
+/// A made-up session cookie is read only while today's bucket admits the request: past the strict burst each refusal
+/// draws from today's bucket first, so the reads per address stop at today's numbers. Either refusal offers the check.
+/// A request without a session cookie draws from today's bucket only while the strict one admits it.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_session_cookie_costs_reads_only_within_todays_numbers(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        // today's bucket refills ten times slower than the strict one, so a refusal's wait names the bucket that answered
+        let limits = Limits { search: Tiered::new((SLOW, 2.0), (SLOW / 10.0, 4.0)), ..limits() };
+        let site = site_with(&pool, checked_sign_in(), limits).await;
+        let made_up = [("x-forwarded-for", "203.0.113.40"), ("cookie", "session=tok-none")];
+        // today's bucket (4) counts the 2 the strict bucket admits and the next 2 strict refusals; each of these reads
+        // the session, finds none, and gets the strict bucket's wait
+        assert_eq!(site.count_with("/api/search", &made_up).await, (2, offered()));
+        let (refused, wait) = site.refusal("/api/search", &made_up).await;
+        assert!(refused == offered() && wait < 2_000, "{refused:?} {wait}");
+        // without a cookie the strict refusal draws from nothing, however often it is asked
+        for _ in 0..6 {
+            assert_eq!(site.count("/api/search", "203.0.113.41", None).await.1, offered());
+        }
+        // today's bucket now refuses before any read, still offering the check, with its own longer wait
+        let (refused, wait) = site.refusal("/api/search", &made_up).await;
+        assert!(refused == offered() && wait > 5_000, "{refused:?} {wait}");
+    });
+}
+
+/// A session the API cannot read counts as none: the strict bucket's refusal stands, rather than a 500.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_session_that_cannot_be_read_counts_as_none(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        let site = site(&pool, checked_sign_in()).await;
+        assert_eq!(site.count("/api/search", "203.0.113.1", None).await, (2, offered()));
+        // the settings are already read, so the session lookup is the first read after this
+        site.state.pool.close().await;
+        assert_eq!(site.count("/api/search", "203.0.113.1", Some("session=tok-any")).await, (0, offered()));
     });
 }
 

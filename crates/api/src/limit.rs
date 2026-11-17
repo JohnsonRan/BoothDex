@@ -94,14 +94,23 @@ pub enum Tier {
     /// today's numbers: the admin's switch for stricter limits is off (or a Turnstile key is unset), or the request
     /// carries a valid pass
     Base,
-    /// a visitor without a pass while the switch is on; a refusal offers the check these settings name
-    Strict(Arc<TurnstileConfig>),
+    /// a visitor without a pass while the switch is on; a refusal offers the check `config` names. `session` is the
+    /// request's session cookie while sign-in is Turnstile-checked too, read only when `strict` refuses
+    Strict { config: Arc<TurnstileConfig>, session: Option<crate::pass::Session> },
 }
 
 /// Two per-address buckets for one group of routes: `base` holds today's numbers and counts every request, so no
 /// address gets more than today's numbers, with or without a pass; `strict` counts, and refuses first, the requests
 /// without a pass while the switch is on. A pass therefore draws from `base` alone: drawing from `strict` too would
-/// refuse a visitor who has just passed until `strict` refilled.
+/// refuse a visitor who has just passed until `strict` refilled. A request with a session cookie draws from `strict`
+/// while `strict` admits it, as any request without a pass does. Once `strict` refuses, it draws from `base` first and
+/// only then reads the session: a request `strict` admits costs no database read, the reads per address are bounded
+/// by today's numbers however many made-up cookies arrive, and `base` counts each request once. A session whose
+/// sign-in passed a Turnstile check is then admitted; any other is refused with the check offered, and that request
+/// stays counted in `base`. When `base` refuses such a request it offers the check too, as `strict` would have, with
+/// the longer of the two waits: without a pass the request goes through only once both buckets have refilled. The
+/// session is not read then, so a checked session is offered the check as well; passing it changes nothing, since a
+/// pass draws from `base` too. A strict refusal without a session cookie draws from nothing.
 pub struct Tiered {
     pub strict: RateLimiter,
     pub base: RateLimiter,
@@ -113,12 +122,17 @@ impl Tiered {
         Self { strict: RateLimiter::new(strict.0, strict.1, 8192), base: RateLimiter::new(base.0, base.1, 8192) }
     }
 
-    pub fn check(&self, ip: IpAddr, tier: &Tier) -> Result<(), RateLimited> {
+    pub async fn check(&self, ip: IpAddr, tier: &Tier) -> Result<(), RateLimited> {
         if own_server(ip) {
             return Ok(());
         }
-        if let Tier::Strict(config) = tier {
-            self.strict.take(ip).map_err(|retry_after| RateLimited { retry_after, offer: config.site_key.clone() })?;
+        if let Tier::Strict { config, session } = tier
+            && let Err(retry_after) = self.strict.take(ip)
+        {
+            let offer = |after| RateLimited { retry_after: after, offer: config.site_key.clone() };
+            let Some(session) = session else { return Err(offer(retry_after)) };
+            self.base.take(ip).map_err(|base_after| offer(retry_after.max(base_after)))?;
+            return if session.checked().await { Ok(()) } else { Err(offer(retry_after)) };
         }
         self.base.check(ip)
     }

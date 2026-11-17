@@ -45,9 +45,9 @@ async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
     assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, crate::limit::Tier::Base, RawQuery(Some("q=dress".into()))).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
     for _ in 0..2 {
-        assert!(state.limits.lookup.check(ip_of(ip).await.0, &crate::limit::Tier::Base).is_ok());
+        assert!(state.limits.lookup.check(ip_of(ip).await.0, &crate::limit::Tier::Base).await.is_ok());
     }
-    assert!(state.limits.lookup.check(ip_of(ip).await.0, &crate::limit::Tier::Base).is_err());
+    assert!(state.limits.lookup.check(ip_of(ip).await.0, &crate::limit::Tier::Base).await.is_err());
 
     for _ in 0..2 {
         assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::OK);

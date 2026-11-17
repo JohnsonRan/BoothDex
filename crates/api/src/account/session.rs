@@ -20,20 +20,22 @@ pub(crate) fn secure_flag() -> &'static str {
     if std::env::var("COOKIE_SECURE").as_deref() == Ok("0") { "" } else { "; Secure" }
 }
 
-/// Inserts the session ($1-$5) and stamps the account's last sign-in.
-const INSERT_SESSION: &str = "with s as (insert into sessions (token_hash, user_id, expires_at, user_agent, ip) values ($1, $2, now() + $3, $4, $5) returning user_id)
+/// Inserts the session ($1-$6) and stamps the account's last sign-in.
+const INSERT_SESSION: &str = "with s as (insert into sessions (token_hash, user_id, expires_at, user_agent, ip, turnstile_passed) values ($1, $2, now() + $3, $4, $5, $6) returning user_id)
      update users set last_sign_in_at = now() from s where users.id = s.user_id";
 
 /// Creates a session row and returns the Set-Cookie value.
 /// If `verified_hash` is Some, the session is only inserted if the user's current password hash matches it and the
 /// account isn't disabled, preventing an in-flight login from creating a session after a concurrent reset or disable.
 /// `ip` is the limiter's client IP; an internal one (web's container or a LAN address) is stored as NULL.
+/// `turnstile_passed` records whether the sign-in passed a Turnstile check (turnstile.rs `require_for_account`).
 pub(super) async fn start_session(
     pool: &PgPool,
     user_id: i64,
     keep: bool,
     headers: &HeaderMap,
     ip: IpAddr,
+    turnstile_passed: bool,
     verified_hash: Option<&str>,
 ) -> Result<Option<String>, ApiError> {
     let mut raw = [0u8; 32];
@@ -66,6 +68,7 @@ pub(super) async fn start_session(
                 .bind(ttl)
                 .bind(ua)
                 .bind(ip)
+                .bind(turnstile_passed)
                 .execute(&mut *tx)
                 .await?;
 
@@ -78,6 +81,7 @@ pub(super) async fn start_session(
                 .bind(ttl)
                 .bind(ua)
                 .bind(ip)
+                .bind(turnstile_passed)
                 .execute(pool)
                 .await?;
         }

@@ -195,15 +195,17 @@ pub(crate) async fn require(s: &AppState, token: &str, ip: IpAddr, action: &str)
 /// request is refused when Cloudflare judges `token` bad, and let through, with an error in the log, when
 /// siteverify cannot judge it. An empty token is sent to siteverify like any other: a visitor whose browser could
 /// not load the widget during a Cloudflare outage has none, and only siteverify's own silence lets it through.
-pub(crate) async fn require_for_account(s: &AppState, token: &str, ip: IpAddr, action: &str) -> Result<(), ApiError> {
+/// Answers whether the token passed: only then does the session the request makes count toward today's rate limits
+/// (pass.rs).
+pub(crate) async fn require_for_account(s: &AppState, token: &str, ip: IpAddr, action: &str) -> Result<bool, ApiError> {
     let config = config(&s.pool).await?;
-    let Some((_, secret)) = config.auth_keys() else { return Ok(()) };
+    let Some((_, secret)) = config.auth_keys() else { return Ok(false) };
     match verdict(s, secret, token, ip, action).await {
-        Verdict::Passed => Ok(()),
+        Verdict::Passed => Ok(true),
         Verdict::Refused => Err(Refusal::VerificationFailed.into()),
         Verdict::Unjudged => {
             eprintln!("error: turnstile: {action} from {ip} let through unchecked");
-            Ok(())
+            Ok(false)
         }
     }
 }

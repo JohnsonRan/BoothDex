@@ -95,6 +95,8 @@ docker compose pull && docker compose up -d
 - An admin can make sign-in and registration ask for the same Cloudflare Turnstile check.
 - An admin can give visitors who haven't passed that check stricter limits on search, the palette, item pages and
   the lookups. A visitor who reaches one is offered the check; passing it restores the usual limits for 10 minutes.
+  While sign-in and registration ask for the check, a visitor whose sign-in or registration passed it keeps the usual
+  limits.
 
 <details>
 <summary>An item's details open over the results</summary>
