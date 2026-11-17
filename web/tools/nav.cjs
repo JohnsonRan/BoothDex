@@ -1,7 +1,8 @@
 // Search and navigation check: drives the catalogue as a visitor does and checks that the address bar and the
 // screen agree at every step. At 1440x900:
 //   1. a word typed into the search field and sent with Enter goes to `q`, and the count narrows;
-//   2. a price filter goes to the address and narrows the count; taking it off restores both;
+//   2. a price filter goes to the address and narrows the count, and the browser does not read the page the server
+//      sent with it again; taking the filter off restores the address and the count;
 //   3. scrolling into results page 3 writes `page=3`;
 //   4. a tile opens its item as `item=<id>`; Back closes it and leaves the same tile at the same place;
 //   5. leaving for another page and coming Back returns to that tile at that place, as does a reload;
@@ -120,6 +121,12 @@ async function stablePlace(p) {
     viewport: { width: 1440, height: 900 },
   });
   const p = await context.newPage();
+  /** the browser's own searches, as it sent them */
+  const reads = [];
+  p.on("request", (r) => {
+    const u = new URL(r.url());
+    if (u.pathname === "/api/search") reads.push(u);
+  });
   await p.goto(origin, { waitUntil: "networkidle" });
   await ready(p);
   const all = await count(p);
@@ -155,6 +162,17 @@ async function stablePlace(p) {
     "a price filter writes free=1 and narrows the count",
     free > 0 && free < found,
     `${found} -> ${free}`,
+  );
+  // the server sent the whole page with the navigation: the rest of it is drawn without a read (results.tsx)
+  await ready(p);
+  const again = reads.filter(
+    (u) =>
+      u.searchParams.get("free") === "1" && u.searchParams.get("page") === "1",
+  ).length;
+  check(
+    "the filtered page is not read again by the browser",
+    again === 0,
+    `${again} reads`,
   );
   await radio("any").check({ force: true });
   await p.waitForURL((u) => !u.searchParams.has("free"), { timeout: 10000 });

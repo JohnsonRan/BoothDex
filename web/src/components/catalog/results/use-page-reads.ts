@@ -1,6 +1,7 @@
 // The results' reads and the changes they bring (result-pages.tsx): every change keeps the first tile in view
-// where it is, one above the reader waits for scrolling to stop, and a page is read at the end, into its box, or
-// the rest of the server's page. The results' state outside React lives in one object of refs, made once.
+// where it is, one above the reader waits for scrolling to stop, and a page is read at the end or into its box. The
+// rest of the server's page is drawn from what the server sent, or read when it sent only the first screen (a
+// document load). The results' state outside React lives in one object of refs, made once.
 
 import {
   type Dispatch,
@@ -206,10 +207,12 @@ export function usePageReads(
     if (!last) return;
     if (last.partial) {
       const seen = new Set(last.tiles.map((i) => i.id));
-      load(last.n, (p, fresh) => withRest(p, last.n, fresh, seen), "next");
+      const { rest } = last;
+      if (rest) keep(() => setPages((p) => withRest(p, last.n, rest, seen)));
+      else load(last.n, (p, fresh) => withRest(p, last.n, fresh, seen), "next");
     } else if (last.n < total)
       load(last.n + 1, (p, fresh) => withNext(p, last.n, fresh), "next");
-  }, [r, load, total]);
+  }, [r, load, keep, setPages, total]);
 
   /** Reads page `n` into its box. */
   const loadInto = useCallback(
