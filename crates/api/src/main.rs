@@ -99,6 +99,7 @@ fn app(state: Arc<AppState>) -> Router {
         .merge(account::routes().route_layer(axum::middleware::from_fn_with_state(state.clone(), account_write_rate_limit)))
         .merge(admin::routes());
     routes
+        .layer(axum::middleware::from_fn_with_state(state.clone(), limit::warn_unforwarded))
         // outside the routes' rate limits: a refused write costs nothing and draws no token from the visitor's buckets
         .layer(axum::middleware::from_fn(account::refuse_cross_site_writes))
         // gzip would buffer the admin SSE stream

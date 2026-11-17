@@ -167,6 +167,7 @@ pub(crate) fn test_state() -> std::sync::Arc<super::AppState> {
                 account: super::limit::RateLimiter::new(2.0, 2.0, 64),
                 guestbook: super::limit::RateLimiter::new(3.0 / 600.0, 3.0, 64),
                 verify: super::limit::RateLimiter::new(1.0 / 60.0, 5.0, 64),
+                unforwarded_log: super::limit::RateLimiter::new(1.0 / 60.0, 1.0, 1),
             },
             "http://127.0.0.1:3000".into(),
             None,

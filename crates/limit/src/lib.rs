@@ -196,6 +196,22 @@ mod tests {
         assert_eq!(client_ip(&h, Some(ip("203.0.113.9"))), ip("203.0.113.9"));
     }
 
+    /// The API exempts an internal client IP from its per-address limits as the site's own server (api limit.rs
+    /// `own_server`): no header turns a public peer, plain or IPv4-mapped, into one.
+    #[test]
+    fn a_public_peer_is_never_internal() {
+        let mut h = HeaderMap::new();
+        h.insert("x-forwarded-for", "127.0.0.1, ::ffff:10.0.0.1".parse().unwrap());
+        h.insert("x-real-ip", "127.0.0.1".parse().unwrap());
+        h.insert("cf-connecting-ip", "::1".parse().unwrap());
+        for peer in ["203.0.113.9", "::ffff:203.0.113.9", "2001:db8::9"] {
+            let ip = client_ip(&h, Some(ip(peer)));
+            assert!(!is_internal(ip), "{peer} -> {ip}");
+        }
+        // web's container, its address in either form, is internal
+        assert!(is_internal(client_ip(&HeaderMap::new(), Some(ip("::ffff:172.18.0.3")))));
+    }
+
     #[test]
     fn reverse_proxy_uses_rightmost_public_hop_and_ignores_spoofed_headers() {
         let mut h = HeaderMap::new();

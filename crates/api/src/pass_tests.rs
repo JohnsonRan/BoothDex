@@ -128,19 +128,27 @@ fn offered() -> Refused {
 }
 
 impl Site {
-    /// `path` from the visitor at `ip` (the address the front proxy appends), with `cookie` if any.
-    async fn get(&self, path: &str, ip: &str, cookie: Option<&str>) -> reqwest::Response {
-        let mut request = self.http.get(format!("{}{path}", self.base)).header("x-forwarded-for", ip);
-        if let Some(cookie) = cookie {
-            request = request.header("cookie", cookie);
+    /// How many requests to `path` from the visitor at `ip` (the address the front proxy appends), with `cookie` if
+    /// any, pass before the first 429, and that refusal.
+    async fn count(&self, path: &str, ip: &str, cookie: Option<&str>) -> (usize, Refused) {
+        let mut headers = vec![("x-forwarded-for", ip)];
+        headers.extend(cookie.map(|c| ("cookie", c)));
+        self.count_with(path, &headers).await
+    }
+
+    /// A GET of `path` with the headers as given; the peer is always this machine's loopback, as `web` is.
+    async fn send(&self, path: &str, headers: &[(&str, &str)]) -> reqwest::Response {
+        let mut request = self.http.get(format!("{}{path}", self.base));
+        for (name, value) in headers {
+            request = request.header(*name, *value);
         }
         request.send().await.unwrap()
     }
 
-    /// How many requests to `path` pass before the first 429, and that refusal.
-    async fn count(&self, path: &str, ip: &str, cookie: Option<&str>) -> (usize, Refused) {
+    /// `count` with the request's headers as given.
+    async fn count_with(&self, path: &str, headers: &[(&str, &str)]) -> (usize, Refused) {
         for passed in 0..60 {
-            let r = self.get(path, ip, cookie).await;
+            let r = self.send(path, headers).await;
             if r.status() != StatusCode::TOO_MANY_REQUESTS {
                 assert!(r.status().is_success() || r.status() == StatusCode::NOT_FOUND, "{path}: {}", r.status());
                 continue;
@@ -245,6 +253,60 @@ async fn a_pass_gives_todays_numbers_and_never_more(pool: PgPool) {
         assert_eq!(site.count("/api/search", ip, None).await, (2, offered()));
         let pass = site.pass(ip).await;
         assert_eq!(site.count("/api/search", ip, Some(&pass)).await, (2, PLAIN));
+    });
+}
+
+/// The site's own server is never rate-limited (limit.rs `own_server`): a request the API attributes to an internal
+/// address passes every bucket, tiered or not, with the switch on or off. Internal addresses written into a request's
+/// headers make nothing internal: behind the front proxy the appended public address wins (a public peer's headers
+/// are never read: `a_public_peer_is_never_internal` in crates/limit).
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn the_sites_own_server_is_never_limited(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        for settings in [strict(), json!({})] {
+            let site = site(&pool, settings.clone()).await;
+            // web's own reads carry no visitor's headers; a hop list of internal addresses is still web's
+            for headers in [&[][..], &[("x-forwarded-for", "10.0.0.5, 172.18.0.3")][..]] {
+                for path in ["/api/tags", "/api/search", "/api/rss", "/api/items?ids=1+2"] {
+                    for _ in 0..20 {
+                        let r = site.send(path, headers).await;
+                        assert_ne!(r.status(), StatusCode::TOO_MANY_REQUESTS, "{settings} {path} {headers:?}");
+                    }
+                }
+            }
+        }
+
+        // what an outside request can write into its headers, after the front proxy appended its real address
+        let site = site(&pool, strict()).await;
+        let spoofed = |real: &'static str| {
+            [("x-forwarded-for", format!("127.0.0.1, ::ffff:127.0.0.1, 10.0.0.1, {real}")), ("x-real-ip", "127.0.0.1".into()), ("cf-connecting-ip", "::1".into())]
+        };
+        let as_refs = |h: &[(&'static str, String); 3]| h.iter().map(|(k, v)| (*k, v.clone())).collect::<Vec<_>>();
+        let headers = as_refs(&spoofed("203.0.113.9"));
+        let headers: Vec<(&str, &str)> = headers.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert_eq!(site.count_with("/api/palette?q=x", &headers).await, (3, offered()));
+        assert_eq!(site.count_with("/api/rss", &headers).await, (3, PLAIN));
+        // a public address in its IPv4-mapped IPv6 form is that public address
+        let mapped = as_refs(&spoofed("::ffff:198.51.100.9"));
+        let mapped: Vec<(&str, &str)> = mapped.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert_eq!(site.count_with("/api/tags", &mapped).await, (2, offered()));
+    });
+}
+
+/// A browser's request that reaches the API as the server's own (no forwarding header: a front proxy that sets none)
+/// is reported once a minute, so the operator learns that no visitor is limited; `web`'s own reads are not.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_browser_without_a_visitor_address_is_reported(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        let site = site(&pool, json!({})).await;
+        site.send("/api/health", &[("sec-fetch-mode", "cors")]).await;
+        site.send("/api/health", &[("x-forwarded-for", "203.0.113.9"), ("sec-fetch-site", "same-origin")]).await;
+        assert!(site.state.limits.unforwarded_log.take_global().is_ok(), "reported without cause");
+        let site = self::site(&pool, json!({})).await;
+        site.send("/api/health", &[("sec-fetch-site", "same-origin")]).await;
+        assert!(site.state.limits.unforwarded_log.take_global().is_err(), "not reported");
     });
 }
 

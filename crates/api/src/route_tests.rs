@@ -173,14 +173,20 @@ async fn account_writes_are_limited_per_visitor_and_reads_are_not() {
     let http = reqwest::Client::new();
     let status = |r: reqwest::RequestBuilder| async move { r.send().await.unwrap().status().as_u16() };
 
+    let visitor = |ip: &'static str| move |r: reqwest::RequestBuilder| r.header("x-forwarded-for", ip);
+    let (a, b) = (visitor("203.0.113.4"), visitor("203.0.113.5"));
     for _ in 0..2 {
+        assert_eq!(status(a(http.post(&url))).await, 200);
+    }
+    assert_eq!(status(a(http.post(&url))).await, 429);
+    for _ in 0..5 {
+        assert_eq!(status(a(http.get(&url))).await, 200);
+    }
+    assert_eq!(status(b(http.post(&url))).await, 200);
+    // the site's own server, with no visitor's address, is never limited
+    for _ in 0..5 {
         assert_eq!(status(http.post(&url)).await, 200);
     }
-    assert_eq!(status(http.post(&url)).await, 429);
-    for _ in 0..5 {
-        assert_eq!(status(http.get(&url)).await, 200);
-    }
-    assert_eq!(status(http.post(&url).header("x-forwarded-for", "203.0.113.5")).await, 200);
 }
 
 /// What a client reads without a session, and when the API itself fails: the status and the JSON body.

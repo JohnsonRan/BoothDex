@@ -40,8 +40,39 @@ impl IntoResponse for RateLimited {
     }
 }
 
-/// `RateLimiter::take` as the API's refusal. A trait because `RateLimited` must stay in this crate: `ApiError`'s
-/// blanket `From` for errors rules out a `From` for a type from another crate.
+/// Whether a request is the site's own server's, which no per-address bucket limits (owner, 2026-11-17: "我们永远不应该
+/// 对服务端自身请求进行任何限速吧"): its client IP is internal. `client_ip` (crates/limit) answers an internal address only
+/// for an internal peer whose request names no public address. A request from a public peer is that peer, whatever
+/// its headers say; behind the front proxy, which appends the visitor's address to X-Forwarded-For (docs/DEPLOY.md),
+/// the rightmost public hop wins, internal hops are skipped and X-Real-IP and CF-Connecting-IP are not read. So an
+/// outside request is never the server's own, and a read `web` makes for a visitor carries that visitor's headers
+/// (web lib/server-data.ts, `visitorHeaders`) and is limited as the visitor. What does reach here: `web`'s cached
+/// lookups, a LAN visitor, local development, and every visitor when the front proxy sets no forwarding header, the
+/// misconfiguration `warn_unforwarded` reports. Global caps (`embed_global`) and the embedding limit per address
+/// (`embed_ip`), which bound a paid upstream, are not exempt.
+pub fn own_server(ip: IpAddr) -> bool {
+    is_internal(ip)
+}
+
+/// Logs, at most once a minute, a browser's request that reached the API as the site's own server's: the front proxy
+/// sets no forwarding header, so no visitor is rate-limited. A browser marks its requests with `Sec-Fetch-Site` and
+/// the `/api` rewrite passes it on; `web`'s own reads (Node's fetch) carry none. Local development, with no front
+/// proxy, logs it as well.
+pub async fn warn_unforwarded(
+    axum::extract::State(s): axum::extract::State<std::sync::Arc<crate::AppState>>,
+    ClientIp(ip): ClientIp,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if own_server(ip) && req.headers().contains_key("sec-fetch-site") && s.limits.unforwarded_log.take_global().is_ok() {
+        eprintln!("warn: a browser's request reached api with no visitor address ({ip}): set X-Forwarded-For in the front proxy (docs/DEPLOY.md); until then no visitor is rate-limited");
+    }
+    next.run(req).await
+}
+
+/// `RateLimiter::take` as the API's refusal, passing the site's own server (`own_server`). A trait because
+/// `RateLimited` must stay in this crate: `ApiError`'s blanket `From` for errors rules out a `From` for a type from
+/// another crate.
 pub trait Check {
     /// Consumes one token or returns a lightweight HTTP-convertible rejection.
     fn check(&self, ip: IpAddr) -> Result<(), RateLimited>;
@@ -49,6 +80,9 @@ pub trait Check {
 
 impl Check for RateLimiter {
     fn check(&self, ip: IpAddr) -> Result<(), RateLimited> {
+        if own_server(ip) {
+            return Ok(());
+        }
         self.take(ip).map_err(RateLimited::after)
     }
 }
@@ -78,6 +112,9 @@ impl Tiered {
     }
 
     pub fn check(&self, ip: IpAddr, tier: &Tier) -> Result<(), RateLimited> {
+        if own_server(ip) {
+            return Ok(());
+        }
         if let Tier::Strict(config) = tier {
             self.strict.take(ip).map_err(|retry_after| RateLimited { retry_after, offer: config.site_key.clone() })?;
         }
@@ -118,6 +155,8 @@ pub struct Limits {
     /// one check per 10 minutes; the burst leaves room for a refused or expired token and a few visitors behind one
     /// address, and the refill holds an address to 60 siteverify requests an hour
     pub verify: RateLimiter,
+    /// `warn_unforwarded`: one line a minute for the whole API
+    pub unforwarded_log: RateLimiter,
 }
 
 impl Default for Limits {
@@ -137,6 +176,7 @@ impl Default for Limits {
             account: RateLimiter::new(2.0, 30.0, 8192),
             guestbook: RateLimiter::new(3.0 / 600.0, 3.0, 8192),
             verify: RateLimiter::new(1.0 / 60.0, 5.0, 8192),
+            unforwarded_log: RateLimiter::new(1.0 / 60.0, 1.0, 1),
         }
     }
 }
