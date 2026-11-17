@@ -25,7 +25,6 @@ export const guestbookKo: GuestbookDict = {
   failed: "메시지를 불러올 수 없어요",
   retry: "다시 시도",
   "error.entry": "닉네임은 1~24자, 메시지는 1~500자여야 해요.",
-  "error.card": "카드 번호를 지운 다음 다시 게시하세요.",
   "error.verification": "인증에 실패했어요. 다시 시도하세요.",
   "error.tooMany": "너무 자주 게시하고 있어요. 나중에 다시 시도하세요.",
   "error.failed": "문제가 발생했어요. 다시 시도하세요.",

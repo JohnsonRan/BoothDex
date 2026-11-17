@@ -46,62 +46,6 @@ pub fn routes() -> Router<Arc<AppState>> {
     Router::new().route("/api/guestbook", get(list).post(post))
 }
 
-/// Whether `t` holds a payment card number: 13 to 19 digits that pass the Luhn check, inside a run of digit groups
-/// joined by single spaces, hyphens or dots. The number may be any stretch of whole groups in the run, so a CVV or
-/// expiry written after it ("4111 1111 1111 1111 123") does not hide it. The same test as the database's
-/// `has_card_number`, the backstop.
-pub(crate) fn has_card_number(t: &str) -> bool {
-    let chars: Vec<char> = t.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        if !chars[i].is_ascii_digit() {
-            i += 1;
-            continue;
-        }
-        let mut groups = Vec::new();
-        let mut group = Vec::new();
-        loop {
-            if i < chars.len() && chars[i].is_ascii_digit() {
-                group.push(chars[i]);
-                i += 1;
-            } else if i + 1 < chars.len() && matches!(chars[i], ' ' | '-' | '.') && chars[i + 1].is_ascii_digit() {
-                groups.push(std::mem::take(&mut group));
-                i += 1;
-            } else {
-                break;
-            }
-        }
-        groups.push(group);
-        // a stretch stops growing past 19 digits, which keeps a 500-character message of short groups cheap
-        let card = (0..groups.len()).any(|a| {
-            groups[a..]
-                .iter()
-                .scan(Vec::new(), |digits, g| {
-                    digits.extend_from_slice(g);
-                    (digits.len() <= 19).then(|| digits.clone())
-                })
-                .any(|digits| digits.len() >= 13 && luhn(&digits))
-        });
-        if card {
-            return true;
-        }
-    }
-    false
-}
-
-fn luhn(digits: &[char]) -> bool {
-    let sum: u32 = digits
-        .iter()
-        .rev()
-        .enumerate()
-        .map(|(i, c)| {
-            let d = c.to_digit(10).unwrap_or(0);
-            if i % 2 == 1 { if d * 2 > 9 { d * 2 - 9 } else { d * 2 } } else { d }
-        })
-        .sum();
-    sum.is_multiple_of(10)
-}
-
 /// Characters that show nothing or reorder the text around them: zero-width spaces and joiners but the emoji joiner,
 /// direction marks and overrides, the soft hyphen, the BOM, and the Hangul and Braille blanks. A nickname or message
 /// holding one is refused, so no entry reads blank or reversed. `web/src/components/guestbook/rules.ts` holds the
@@ -143,9 +87,6 @@ fn validate(nickname: &str, body: &str) -> Result<(String, String), Refusal> {
         || body.chars().any(|c| c.is_control() && c != '\n' && c != '\t')
     {
         return Err(Refusal::BadGuestbookEntry);
-    }
-    if has_card_number(nickname) || has_card_number(body) {
-        return Err(Refusal::CardNumber);
     }
     Ok((nickname.to_owned(), body.to_owned()))
 }

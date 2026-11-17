@@ -28,7 +28,6 @@ export const guestbookEn: GuestbookDict = {
   retry: "Try again",
   "error.entry":
     "Your nickname must be 1 to 24 characters and your message 1 to 500 characters.",
-  "error.card": "Remove the card number, then post again.",
   "error.verification": "The verification didn't pass. Try again.",
   "error.tooMany": "You're posting too often. Try again later.",
   "error.failed": "Something went wrong. Try again.",

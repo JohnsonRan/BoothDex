@@ -107,6 +107,7 @@ export function PostForm({
       />
       <TextArea
         label={t("body")}
+        autoComplete="off"
         rows={5}
         maxLength={BODY_MAX}
         status={

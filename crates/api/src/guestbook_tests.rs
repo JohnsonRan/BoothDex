@@ -11,32 +11,6 @@ use super::*;
 use crate::account;
 use crate::limit::ClientIp;
 
-/// Each holds a card number; a CVV or expiry after it, or a dot between groups, does not hide it.
-const CARDS: &[&str] = &[
-    "4111111111111111",
-    "4111 1111 1111 1111",
-    "pay 4111-1111-1111-1111 now",
-    "５ 378282246310005",
-    "4111 1111 1111 1111 123",
-    "4111 1111 1111 1111 12/27",
-    "4111 1111 1111 1111 12 27",
-    "4111.1111.1111.1111",
-    "cvv 123 4111111111111111",
-];
-/// A failing Luhn sum, too few or too many digits, two separators in a row, or a date and a phone number.
-const NOT_CARDS: &[&str] =
-    &["4111111111111112", "411111111111", "41111111111111111111", "4111  1111 1111 1111", "2026-11-17 12:00", "2026.11.17", "电话 13800138000"];
-
-#[test]
-fn card_numbers_are_found_in_runs_of_digits() {
-    for card in CARDS {
-        assert!(has_card_number(card), "{card}");
-    }
-    for text in NOT_CARDS {
-        assert!(!has_card_number(text), "{text}");
-    }
-}
-
 #[test]
 fn entries_are_trimmed_and_bounded() {
     assert_eq!(validate("  Ann ", " hi\r\nthere\t ").unwrap(), ("Ann".into(), "hi\nthere".into()));
@@ -44,7 +18,6 @@ fn entries_are_trimmed_and_bounded() {
     for (nickname, body) in [(" ", "hi"), ("Ann", " "), (&*"名".repeat(NICKNAME_MAX + 1), "hi"), ("Ann", &*"字".repeat(BODY_MAX + 1)), ("A\nnn", "hi"), ("Ann", "h\0i"), ("Ann", "h\u{1b}i")] {
         assert!(matches!(validate(nickname, body), Err(Refusal::BadGuestbookEntry)), "{nickname:?} {body:?}");
     }
-    assert!(matches!(validate("Ann", "4111 1111 1111 1111"), Err(Refusal::CardNumber)));
 }
 
 #[test]
@@ -135,8 +108,6 @@ async fn a_post_needs_a_passing_token_for_this_form(pool: PgPool) {
         let (status, body) = answer(post(State(s.clone()), ip(n), entry("Ann", "hi", token)).await).await;
         assert_eq!((status, body["code"].as_str()), (StatusCode::FORBIDDEN, Some("verification_failed")), "{token}");
     }
-    let (status, body) = answer(post(State(s.clone()), ip(4), entry("Ann", "4111 1111 1111 1111", "pass")).await).await;
-    assert_eq!((status, body["code"].as_str()), (StatusCode::BAD_REQUEST, Some("card_number")));
     let (status, body) = answer(post(State(s.clone()), ip(4), entry("", "hi", "pass")).await).await;
     assert_eq!((status, body["code"].as_str()), (StatusCode::BAD_REQUEST, Some("bad_guestbook_entry")));
     assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from guestbook").fetch_one(&pool).await.unwrap(), 0);
@@ -163,23 +134,6 @@ async fn the_list_pages_and_leaves_out_hidden_messages(pool: PgPool) {
     assert_eq!((ids(&first)[..2].to_vec(), ids(&first).len(), &first["more"]), (vec![61, 59], 50, &json!(true)));
     let rest = answer(list(State(s.clone()), ip(200), Query(ListQuery { before: Some(10) })).await).await.1;
     assert_eq!((ids(&rest), &rest["more"]), ((1..10).rev().collect(), &json!(false)));
-}
-
-/// The database refuses a card number even when the API's check is skipped.
-#[sqlx::test(migrations = "../core/migrations")]
-#[ignore = "requires PostgreSQL with pgvector"]
-async fn the_database_refuses_a_card_number(pool: PgPool) {
-    let insert = |nickname: &'static str, body: &'static str| {
-        sqlx::query("insert into guestbook (nickname, body) values ($1, $2)").bind(nickname).bind(body).execute(&pool)
-    };
-    assert!(insert("Ann", "card 4111-1111-1111-1111").await.is_err());
-    assert!(insert("4111111111111111", "hi").await.is_err());
-    assert!(insert("Ann", "2026-11-17 12:00, 4111111111111112, 电话 13800138000").await.is_ok());
-    // the backstop agrees with the API on every case
-    for t in CARDS.iter().chain(NOT_CARDS) {
-        let sql: bool = sqlx::query_scalar("select has_card_number($1)").bind(t).fetch_one(&pool).await.unwrap();
-        assert_eq!(sql, has_card_number(t), "{t}");
-    }
 }
 
 /// Reading the list draws on the lookups' per-address bucket, so a loop cannot hold the pool.

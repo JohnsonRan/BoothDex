@@ -23,7 +23,6 @@ export const guestbookZh = {
   failed: "无法加载留言",
   retry: "重试",
   "error.entry": "昵称需为 1 到 24 个字符，留言需为 1 到 500 个字符",
-  "error.card": "留言里不能包含银行卡号，请删除后再发布",
   "error.verification": "人机验证未通过，请重试",
   "error.tooMany": "发布过于频繁，请稍后再试",
   "error.failed": "操作失败，请重试",

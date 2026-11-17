@@ -28,7 +28,6 @@ export const guestbookJa: GuestbookDict = {
   retry: "再試行",
   "error.entry":
     "ニックネームは 1～24 文字、メッセージは 1～500 文字で入力してください。",
-  "error.card": "カード番号を削除してから、もう一度投稿してください。",
   "error.verification": "認証に失敗しました。もう一度お試しください。",
   "error.tooMany": "投稿が多すぎます。しばらくしてからもう一度お試しください。",
   "error.failed": "問題が発生しました。もう一度お試しください。",

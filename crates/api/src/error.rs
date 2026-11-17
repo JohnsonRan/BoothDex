@@ -60,7 +60,6 @@ pub(crate) enum Refusal {
     VerificationFailed,
     BadTurnstileSettings,
     BadGuestbookEntry,
-    CardNumber,
     NoSuchEntry,
 }
 
@@ -108,7 +107,6 @@ impl Refusal {
             Self::VerificationFailed => (S::FORBIDDEN, "Verification failed. Try again."),
             Self::BadTurnstileSettings => (S::BAD_REQUEST, "Keys must be 1-200 printable ASCII characters."),
             Self::BadGuestbookEntry => (S::BAD_REQUEST, "Nickname must be 1-24 characters and message 1-500 characters."),
-            Self::CardNumber => (S::BAD_REQUEST, "Remove the card number, then post again."),
             Self::NoSuchEntry => (S::NOT_FOUND, "No such message"),
         }
     }

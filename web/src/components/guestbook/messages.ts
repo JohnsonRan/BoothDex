@@ -38,7 +38,6 @@ export function useGuestbookT(): GuestbookT {
 export const GUESTBOOK_ERRORS: ApiErrors<GuestbookKey> = {
   codes: {
     bad_guestbook_entry: "error.entry",
-    card_number: "error.card",
     verification_failed: "error.verification",
     verification_unavailable: "closed",
   },

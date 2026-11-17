@@ -43,8 +43,5 @@ test("a closed guestbook's 503 is read by its code, not as the site starting", (
   );
   expect(guestbookError(closed)).toBe("closed");
   expect(guestbookError(new ApiError(429, "x"))).toBe("error.tooMany");
-  expect(guestbookError(new ApiError(400, "x", "card_number"))).toBe(
-    "error.card",
-  );
   expect(guestbookError(new Error("offline"))).toBe("error.failed");
 });

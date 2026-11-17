@@ -1,6 +1,6 @@
 // The server's limits on a message (crates/api/src/guestbook.rs `validate`): trimmed, counted in Unicode scalar
 // values, free of control characters but a message's line breaks and tabs, and of invisible characters (`INVISIBLE`
-// there, the same list). A card number is left to the server.
+// there, the same list).
 
 export const NICKNAME_MAX = 24;
 export const BODY_MAX = 500;
