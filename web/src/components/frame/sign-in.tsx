@@ -313,3 +313,8 @@ export function SignInDialog({
     </>
   );
 }
+
+// the check that lifts the stricter rate limits (verification/pass-host.tsx) loads through this module: its dialog,
+// widget and strings are the ones these forms already load, and a lazy import of its own split a chunk of loaders
+// into every page's first load (1.5 KB gzip)
+export { default as PassDialog } from "@/components/verification/pass-dialog";

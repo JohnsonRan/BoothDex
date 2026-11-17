@@ -69,6 +69,7 @@ dependencies = [
  "chrono",
  "futures-util",
  "getrandom 0.4.3",
+ "hmac",
  "lindera",
  "lindera-tantivy",
  "mimalloc",

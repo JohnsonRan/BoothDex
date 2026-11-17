@@ -8,7 +8,8 @@ use sqlx::PgPool;
 
 use crate::search::{EMBED_CACHE_CAP, EmbedWatch};
 use crate::snapshot::Snapshot;
-use crate::{account, admin, gallery, limit};
+use crate::turnstile::TurnstileConfig;
+use crate::{account, admin, gallery, limit, pass, turnstile};
 
 pub(crate) struct AppState {
     pub(crate) pool: PgPool,
@@ -43,6 +44,12 @@ pub(crate) struct AppState {
     pub(crate) ai_save: tokio::sync::Mutex<()>,
     /// where Turnstile tokens are checked (`turnstile::SITEVERIFY_URL`; a local stand-in in tests)
     pub(crate) siteverify_url: String,
+    /// the Turnstile settings for the tiered rate limits, which read them on every request; see `turnstile_config`
+    pub(crate) turnstile: arc_swap::ArcSwapOption<TurnstileConfig>,
+    /// serializes Turnstile settings saves across database write and cache publication
+    pub(crate) turnstile_save: tokio::sync::Mutex<()>,
+    /// signs the passes of this process (pass.rs); a restart makes a new one
+    pub(crate) pass_key: pass::PassKey,
 }
 
 impl AppState {
@@ -83,7 +90,21 @@ impl AppState {
             ai: Default::default(),
             ai_save: tokio::sync::Mutex::new(()),
             siteverify_url: crate::turnstile::SITEVERIFY_URL.into(),
+            turnstile: Default::default(),
+            turnstile_save: tokio::sync::Mutex::new(()),
+            pass_key: pass::PassKey::new()?,
         })
+    }
+
+    /// The Turnstile settings, read from the database once. They change only through the admin endpoint in this
+    /// process, which stores the new value here; a lookup racing with it never overwrites that.
+    pub(crate) async fn turnstile_config(&self) -> Result<Arc<TurnstileConfig>, sqlx::Error> {
+        if let Some(c) = self.turnstile.load_full() {
+            return Ok(c);
+        }
+        let c = Arc::new(turnstile::config(&self.pool).await?);
+        self.turnstile.compare_and_swap(&None::<Arc<_>>, Some(c.clone()));
+        Ok(c)
     }
 
     /// AI settings, read from the database once. They only change through the admin endpoint in this process,
@@ -106,7 +127,7 @@ impl AppState {
             .await
             .ok()
             .and_then(std::result::Result::ok)
-            .ok_or(limit::RateLimited(2))
+            .ok_or(limit::RateLimited::after(2))
     }
 }
 
@@ -132,19 +153,21 @@ pub(crate) fn test_state() -> std::sync::Arc<super::AppState> {
             sqlx::postgres::PgPoolOptions::new().connect_lazy("postgres://localhost/unused").unwrap(),
             snap,
             super::limit::Limits {
-                search: super::limit::RateLimiter::new(2.0, 3.0, 64),
-                palette: super::limit::RateLimiter::new(5.0, 2.0, 64),
+                search: super::limit::Tiered::new((1.0, 1.0), (2.0, 3.0)),
+                palette: super::limit::Tiered::new((2.0, 1.0), (5.0, 2.0)),
                 rss: super::limit::RateLimiter::new(0.5, 2.0, 64),
                 items: super::limit::RateLimiter::new(1.0, 2.0, 64),
-                item: super::limit::RateLimiter::new(4.0, 2.0, 64),
-                gallery: super::limit::RateLimiter::new(1.0, 2.0, 64),
-                lookup: super::limit::RateLimiter::new(5.0, 2.0, 64),
+                item: super::limit::Tiered::new((1.0, 1.0), (4.0, 2.0)),
+                gallery: super::limit::Tiered::new((0.5, 1.0), (1.0, 2.0)),
+                lookup: super::limit::Tiered::new((2.0, 1.0), (5.0, 2.0)),
                 embed_ip: super::limit::RateLimiter::new(0.25, 8.0, 64),
                 embed_global: super::limit::RateLimiter::new(2.0, 20.0, 1),
                 auth: super::limit::RateLimiter::new(0.2, 5.0, 64),
                 auth_log: super::limit::RateLimiter::new(1.0 / 60.0, 1.0, 64),
                 account: super::limit::RateLimiter::new(2.0, 2.0, 64),
                 guestbook: super::limit::RateLimiter::new(3.0 / 600.0, 3.0, 64),
+                verify: super::limit::RateLimiter::new(1.0 / 60.0, 5.0, 64),
+                unforwarded_log: super::limit::RateLimiter::new(1.0 / 60.0, 1.0, 1),
             },
             "http://127.0.0.1:3000".into(),
             None,

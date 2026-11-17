@@ -22,7 +22,7 @@ async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
         let state = state.clone();
         async move {
             let ip = ip_of(xff).await;
-            super::search::search(State(state), ip, HeaderMap::new(), RawQuery(None))
+            super::search::search(State(state), ip, crate::limit::Tier::Base, HeaderMap::new(), RawQuery(None))
                 .await
                 .unwrap_or_else(axum::response::IntoResponse::into_response)
         }
@@ -40,14 +40,14 @@ async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
     // exhausting palette, lookups, rss, items and gallery on a fresh IP never starves /api/search
     let ip = "203.0.113.99";
     for _ in 0..2 {
-        assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.into_response().status(), StatusCode::OK);
+        assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, crate::limit::Tier::Base, RawQuery(Some("q=dress".into()))).await.into_response().status(), StatusCode::OK);
     }
-    assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, RawQuery(Some("q=dress".into()))).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(super::palette(State(state.clone()), ip_of(ip).await, crate::limit::Tier::Base, RawQuery(Some("q=dress".into()))).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
     for _ in 0..2 {
-        assert!(state.limits.lookup.check(ip_of(ip).await.0).is_ok());
+        assert!(state.limits.lookup.check(ip_of(ip).await.0, &crate::limit::Tier::Base).is_ok());
     }
-    assert!(state.limits.lookup.check(ip_of(ip).await.0).is_err());
+    assert!(state.limits.lookup.check(ip_of(ip).await.0, &crate::limit::Tier::Base).is_err());
 
     for _ in 0..2 {
         assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::OK);
@@ -55,15 +55,15 @@ async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
     assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
     for _ in 0..2 {
-        assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::OK);
+        assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, crate::limit::Tier::Base, RawQuery(None)).await.into_response().status(), StatusCode::OK);
     }
-    assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, crate::limit::Tier::Base, RawQuery(None)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
     use axum::extract::Path;
     for _ in 0..2 {
-        assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.into_response().status(), StatusCode::NOT_FOUND);
+        assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, crate::limit::Tier::Base, Path(999)).await.into_response().status(), StatusCode::NOT_FOUND);
     }
-    assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, Path(999)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(super::gallery::gallery(State(state.clone()), ip_of(ip).await, crate::limit::Tier::Base, Path(999)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
     // /api/search for that same IP still succeeds with its full burst intact
     for _ in 0..3 {
@@ -82,7 +82,7 @@ async fn search_cpu_timing_excludes_the_permit_queue() {
     let state = test_state();
     let held = state.search_permits.acquire_many(16).await.unwrap();
     let request = super::search::search(
-        State(state.clone()), super::limit::ClientIp("203.0.113.70".parse().unwrap()), HeaderMap::new(), RawQuery(None),
+        State(state.clone()), super::limit::ClientIp("203.0.113.70".parse().unwrap()), crate::limit::Tier::Base, HeaderMap::new(), RawQuery(None),
     );
     tokio::pin!(request);
     // Poll all the way to the exhausted semaphore before starting the controlled wait.
@@ -173,14 +173,20 @@ async fn account_writes_are_limited_per_visitor_and_reads_are_not() {
     let http = reqwest::Client::new();
     let status = |r: reqwest::RequestBuilder| async move { r.send().await.unwrap().status().as_u16() };
 
+    let visitor = |ip: &'static str| move |r: reqwest::RequestBuilder| r.header("x-forwarded-for", ip);
+    let (a, b) = (visitor("203.0.113.4"), visitor("203.0.113.5"));
     for _ in 0..2 {
+        assert_eq!(status(a(http.post(&url))).await, 200);
+    }
+    assert_eq!(status(a(http.post(&url))).await, 429);
+    for _ in 0..5 {
+        assert_eq!(status(a(http.get(&url))).await, 200);
+    }
+    assert_eq!(status(b(http.post(&url))).await, 200);
+    // the site's own server, with no visitor's address, is never limited
+    for _ in 0..5 {
         assert_eq!(status(http.post(&url)).await, 200);
     }
-    assert_eq!(status(http.post(&url)).await, 429);
-    for _ in 0..5 {
-        assert_eq!(status(http.get(&url)).await, 200);
-    }
-    assert_eq!(status(http.post(&url).header("x-forwarded-for", "203.0.113.5")).await, 200);
 }
 
 /// What a client reads without a session, and when the API itself fails: the status and the JSON body.
@@ -198,7 +204,7 @@ async fn missing_sessions_and_failures_keep_their_status_and_body() {
     }
 
     let ip = super::limit::ClientIp("203.0.113.60".parse().unwrap());
-    let favourites = super::search::search(State(test_state()), ip, HeaderMap::new(), RawQuery(Some("v=favourites".into()))).await;
+    let favourites = super::search::search(State(test_state()), ip, crate::limit::Tier::Base, HeaderMap::new(), RawQuery(Some("v=favourites".into()))).await;
     assert_eq!(answer(favourites).await, (StatusCode::UNAUTHORIZED, json!({ "ok": false, "code": "sign_in_required", "error": "Sign in required" })));
 
     // the cause goes to the log, never to the caller
@@ -219,8 +225,8 @@ async fn the_feed_the_palette_and_item_records_wait_for_a_search_permit() {
     let ip = super::limit::ClientIp("203.0.113.70".parse().unwrap());
     let answers = [
         super::rss_feed(State(state.clone()), ip, RawQuery(None)).await.into_response(),
-        super::palette(State(state.clone()), ip, RawQuery(Some("q=dress".into()))).await.into_response(),
-        super::items_by_id(State(state.clone()), ip, RawQuery(Some("ids=1".into()))).await.into_response(),
+        super::palette(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some("q=dress".into()))).await.into_response(),
+        super::items_by_id(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some("ids=1".into()))).await.into_response(),
     ];
     for r in answers {
         assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);

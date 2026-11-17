@@ -7,14 +7,18 @@ use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
 
-use crate::limit::Check;
 use crate::params::Params;
 use crate::search_request::{SearchRequest, Sort};
 use crate::{ApiError, AppState, db, limit};
 
 /// Ctrl+K: one query across items, avatars, authors, tags and categories.
-pub(crate) async fn palette(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
-    s.limits.palette.check(ip)?;
+pub(crate) async fn palette(
+    State(s): State<Arc<AppState>>,
+    limit::ClientIp(ip): limit::ClientIp,
+    tier: limit::Tier,
+    RawQuery(q): RawQuery,
+) -> Result<Response, ApiError> {
+    s.limits.palette.check(ip, &tier)?;
     let raw = q.unwrap_or_default();
     let user = SearchRequest::from(&Params::parse(&raw));
     let Some(text) = user.q else {

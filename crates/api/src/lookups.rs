@@ -8,7 +8,6 @@ use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse, Response};
 use serde_json::Value;
 
-use crate::limit::Check;
 use crate::params::Params;
 use crate::snapshot::{Lookup, Snapshot};
 use crate::{AppState, limit};
@@ -33,10 +32,11 @@ pub(crate) async fn categories(State(s): State<Arc<AppState>>) -> Response {
 pub(crate) async fn lookup_rate_limit(
     State(s): State<Arc<AppState>>,
     limit::ClientIp(ip): limit::ClientIp,
+    tier: limit::Tier,
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    if let Err(r) = s.limits.lookup.check(ip) {
+    if let Err(r) = s.limits.lookup.check(ip, &tier) {
         return r.into_response();
     }
     next.run(req).await

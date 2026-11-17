@@ -215,7 +215,12 @@ async function Catalog({
   const [avatars, categories, tags, railWidth] = await Promise.all([
     listAvatars().catch(() => []),
     listCategories().catch(() => []),
-    tagLabels([...filters.tags, ...filters.extags], settings.ui),
+    // a text search streams its results after the frame, so the frame does not wait for it (tagLabels)
+    tagLabels(
+      [...filters.tags, ...filters.extags],
+      settings.ui,
+      slow ? undefined : outcome,
+    ),
     readRailWidth(),
   ]);
   const avatar = avatars.find((a) => a.slug === filters.avatar);

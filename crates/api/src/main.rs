@@ -20,6 +20,7 @@ mod limit;
 mod lookups;
 mod palette;
 mod params;
+mod pass;
 mod rss;
 mod search;
 mod search_request;
@@ -91,11 +92,14 @@ fn app(state: Arc<AppState>) -> Router {
         .route("/api/palette", get(palette))
         .route("/api/items", get(items_by_id))
         .route("/api/items/{id}/gallery", get(gallery::gallery))
+        // public: a Turnstile check that lifts the stricter limits for a while
+        .route("/api/verify", axum::routing::post(pass::verify))
         .merge(lookups)
         .merge(guestbook::routes())
         .merge(account::routes().route_layer(axum::middleware::from_fn_with_state(state.clone(), account_write_rate_limit)))
         .merge(admin::routes());
     routes
+        .layer(axum::middleware::from_fn_with_state(state.clone(), limit::warn_unforwarded))
         // outside the routes' rate limits: a refused write costs nothing and draws no token from the visitor's buckets
         .layer(axum::middleware::from_fn(account::refuse_cross_site_writes))
         // gzip would buffer the admin SSE stream
@@ -189,6 +193,8 @@ async fn main() -> Result<()> {
     // AI configured through environment variables: translate the taxonomy on first start
     admin::queue_localize_if_needed(&pool, &boothdex_core::settings::ai(&pool).await?).await?;
     let state = Arc::new(build_state(pool, admin_names).await?);
+    // read here, so a database that fails later does not fail the first request of each tiered route
+    state.turnstile_config().await?;
     tokio::spawn(reloader(state.clone()));
     tokio::spawn(gallery::flush_views(state.clone()));
     let app = app(state.clone());

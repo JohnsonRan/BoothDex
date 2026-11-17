@@ -86,7 +86,7 @@ async fn check_semantic_search(pool: PgPool) {
         ("q=Shinano%20silky%20strands&typo=0", vec![1], "used", shinano("Shinano"), false),
         ("q=silky%20strands&sem=0", vec![], "skipped", json!([]), false),
     ] {
-        let response = search(State(state.clone()), limit::ClientIp("203.0.113.20".parse().unwrap()), HeaderMap::new(), RawQuery(Some(query.into())))
+        let response = search(State(state.clone()), limit::ClientIp("203.0.113.20".parse().unwrap()), crate::limit::Tier::Base, HeaderMap::new(), RawQuery(Some(query.into())))
             .await.unwrap_or_else(IntoResponse::into_response);
         assert_eq!(response.status(), StatusCode::OK);
         let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
@@ -101,7 +101,7 @@ async fn check_semantic_search(pool: PgPool) {
     // an empty search answers, in the same response, what it finds without each filter group; the meaning-based
     // matches of the request carry over (the provider at 127.0.0.1:9 never answers, the stored embedding does)
     let empty = "q=silky%20strands&avatars=shinano&pmin=100000&without=avatars+pmin";
-    let response = search(State(state.clone()), limit::ClientIp("203.0.113.21".parse().unwrap()), HeaderMap::new(), RawQuery(Some(empty.into())))
+    let response = search(State(state.clone()), limit::ClientIp("203.0.113.21".parse().unwrap()), crate::limit::Tier::Base, HeaderMap::new(), RawQuery(Some(empty.into())))
         .await
         .unwrap_or_else(IntoResponse::into_response);
     let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
@@ -133,7 +133,7 @@ async fn check_feed_and_palette(pool: PgPool) {
     assert_eq!(titles, ["Rock Band Tee", "Rock&amp;Roll Hoodie", "Plain Socks"]);
 
     // an `&` in the text stays part of it: both words must match, so the other "Rock" item is left out
-    let found = palette(State(state), ip, RawQuery(Some("q=Rock%26Roll".into()))).await.unwrap_or_else(IntoResponse::into_response);
+    let found = palette(State(state), ip, crate::limit::Tier::Base, RawQuery(Some("q=Rock%26Roll".into()))).await.unwrap_or_else(IntoResponse::into_response);
     let json: Value = serde_json::from_slice(&body(found).await).unwrap();
     assert_eq!(json["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>(), [1]);
 }
@@ -154,7 +154,7 @@ async fn check_palette_adult(pool: PgPool) {
     let state = app(pool.clone(), Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap(), Lookup::new(Vec::new()));
     let ip = limit::ClientIp("203.0.113.31".parse().unwrap());
     for (query, expected) in [("q=rock", vec![1]), ("q=rock&adult=adult_only", vec![2]), ("q=rock&adult=include", vec![1, 2])] {
-        let found = palette(State(state.clone()), ip, RawQuery(Some(query.into()))).await.unwrap_or_else(IntoResponse::into_response);
+        let found = palette(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some(query.into()))).await.unwrap_or_else(IntoResponse::into_response);
         let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
         let mut ids: Vec<i64> = json["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect();
         ids.sort();

@@ -93,6 +93,8 @@ docker compose pull && docker compose up -d
   Cloudflare Turnstile check. An admin opens it by setting the Turnstile keys, hides or deletes messages, and
   closes one as completed or as not planned, which every visitor sees on the message.
 - An admin can make sign-in and registration ask for the same Cloudflare Turnstile check.
+- An admin can give visitors who haven't passed that check stricter limits on search, the palette, item pages and
+  the lookups. A visitor who reaches one is offered the check; passing it restores the usual limits for 10 minutes.
 
 <details>
 <summary>An item's details open over the results</summary>

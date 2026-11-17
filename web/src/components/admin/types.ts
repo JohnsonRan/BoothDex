@@ -185,6 +185,7 @@ export type Turnstile = {
   from_env: { site_key: boolean; secret: boolean };
   /** the stored switch for sign-in and registration; it takes effect only while both keys are set */
   auth: boolean;
+  strict_limits: boolean;
 };
 
 /** A guestbook message as moderation sees it (admin/guestbook.rs), hidden ones included. */

@@ -26,6 +26,7 @@ const texts: LegalTexts = {
               "Sign-in attempts, successful or not, and failed checks of your current password: the IP address and, if the account exists, its username, written to the server log to detect password guessing and misuse.",
               "What you search for. When semantic search is on, the search text is sent to an AI provider to work out its meaning, with nothing that identifies you.",
               "Guestbook messages: the nickname and message you enter are shown to every visitor, with the time you posted. The IP address you post from is written to the server log to stop abuse; it isn't stored with the message. Before you post, Cloudflare Turnstile checks that you're not an automated program, so Cloudflare receives your IP address and browser details.",
+              "If you make many requests in a short time, the site may ask for a Cloudflare Turnstile check before it answers more. Passing it gives you the usual limits for 10 minutes; Cloudflare receives your IP address and browser details.",
             ],
           },
           "When you create an account:",
@@ -53,6 +54,12 @@ const texts: LegalTexts = {
                   "Cookie",
                   "Keeps you signed in. Scripts can't read it.",
                   "30 days, or until you sign out",
+                ],
+                [
+                  "pass",
+                  "Cookie",
+                  "Shows that you passed the verification the site asks for after many requests, so the usual limits apply. It holds your network's address range (the first three parts of an IPv4 address, or the first half of an IPv6 address) and an expiry. Scripts can't read it.",
+                  "10 minutes",
                 ],
                 [
                   "settings",
@@ -112,7 +119,7 @@ const texts: LegalTexts = {
           {
             list: [
               "Hosting and network providers that run the servers and connections for this site.",
-              "Cloudflare, whose Turnstile checks that guestbook messages and, when the site asks for it, sign-ins and registrations don't come from automated programs. It receives your IP address and browser details.",
+              "Cloudflare, whose Turnstile checks that guestbook messages, visitors who make many requests and, when the site asks for it, sign-ins and registrations don't come from automated programs. It receives your IP address and browser details.",
               "The AI provider used for semantic search and item translation. It receives search text and public item information, never your account details.",
               "Authorities, when the law requires it.",
             ],

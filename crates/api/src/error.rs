@@ -58,6 +58,9 @@ pub(crate) enum Refusal {
     /// a form behind Turnstile while either Turnstile key is unset
     VerificationUnavailable,
     VerificationFailed,
+    /// a 429 from the stricter limit of a visitor without a pass, with the site key of the check that lifts it
+    /// (limit.rs `RateLimited`, which answers it with `Retry-After`)
+    VerificationOffered,
     BadTurnstileSettings,
     BadGuestbookEntry,
     NoSuchEntry,
@@ -105,6 +108,7 @@ impl Refusal {
             Self::ProviderFailed => (S::BAD_GATEWAY, "The AI provider failed."),
             Self::VerificationUnavailable => (S::SERVICE_UNAVAILABLE, "This form isn't open yet."),
             Self::VerificationFailed => (S::FORBIDDEN, "Verification failed. Try again."),
+            Self::VerificationOffered => (S::TOO_MANY_REQUESTS, crate::limit::TOO_MANY),
             Self::BadTurnstileSettings => (S::BAD_REQUEST, "Keys must be 1-200 printable ASCII characters."),
             Self::BadGuestbookEntry => (S::BAD_REQUEST, "Nickname must be 1-24 characters and message 1-500 characters."),
             Self::NoSuchEntry => (S::NOT_FOUND, "No such message"),

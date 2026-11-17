@@ -12,6 +12,7 @@ futures-util = { version = "0.3", default-features = false }
 sysinfo = { version = "0.40", default-features = false, features = ["system", "disk"] }
 argon2 = "0.6"
 getrandom = "0.4"
+hmac = "0.13"
 sha2 = "0.11"
 axum = { version = "0.8", features = ["tokio", "http1", "json", "query"] }
 boothdex-core.workspace = true

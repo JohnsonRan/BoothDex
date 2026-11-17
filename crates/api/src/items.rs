@@ -11,10 +11,15 @@ use crate::limit::Check;
 use crate::{ApiError, AppState, db, limit};
 
 /// Full records by id (favourites list, palette picks, the item dialog): `/api/items?ids=1+2+3`, at most 100.
-pub(crate) async fn items_by_id(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
+/// One id is the item dialog's record, limited by tier; more are a list's, which is not.
+pub(crate) async fn items_by_id(
+    State(s): State<Arc<AppState>>,
+    limit::ClientIp(ip): limit::ClientIp,
+    tier: limit::Tier,
+    RawQuery(q): RawQuery,
+) -> Result<Response, ApiError> {
     let ids = item_ids(q.as_deref().unwrap_or(""));
-    let limit = if ids.len() == 1 { &s.limits.item } else { &s.limits.items };
-    limit.check(ip)?;
+    if ids.len() == 1 { s.limits.item.check(ip, &tier) } else { s.limits.items.check(ip) }?;
     if ids.is_empty() {
         return Ok(Json(json!({ "items": [] })).into_response());
     }

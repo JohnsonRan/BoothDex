@@ -6,6 +6,7 @@ import {
 import { renderToStaticMarkup } from "react-dom/server";
 import { AccountProvider } from "@/components/account/session";
 import { FilterUrlProvider } from "@/components/catalog/filter/filter-url";
+import { KeepResults } from "@/components/catalog/refresh";
 import { Providers } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
 import { DEFAULT_FILTERS } from "@/lib/catalog";
@@ -249,4 +250,21 @@ test("a client navigation's payload carries the whole page, a document's HTML on
   expect(loaded?.tiles).toHaveLength(FIRST_TILES);
   expect(loaded?.partial).toBe(true);
   expect(loaded?.rest).toBeUndefined();
+});
+
+test("a search the stricter limit refused offers the check from a navigation as from a document load", async () => {
+  const offer = { siteKey: "0x-site" };
+  for (const navigation of [true, false]) {
+    const shown = (await Results({
+      outcome: Promise.resolve({ state: "error", offer }),
+      rates: Promise.resolve({}),
+      settings: DEFAULT_SETTINGS,
+      filters: DEFAULT_FILTERS,
+      names: { categories: [], avatars: [], tags: {} },
+      noSemantic: false,
+      navigation,
+    })) as { type: unknown; props: Record<string, unknown> };
+    expect(shown.type).toBe(KeepResults);
+    expect(shown.props).toEqual({ failure: "error", offer });
+  }
 });

@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { ApiError, type ApiErrors, api, errorKey, fetchAccount } from "./api";
+import {
+  ApiError,
+  type ApiErrors,
+  api,
+  errorKey,
+  fetchAccount,
+  passCheck,
+} from "./api";
 
 test("fetchAccount shares startup requests, allows fresh bypass and starts anew once settled", async () => {
   const originalFetch = globalThis.fetch;
@@ -170,5 +177,68 @@ test("a refused call throws the API's status, code and message", async () => {
     ]);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("a 429 that offers the check opens it, and a passed check sends the request once more", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalOpen = passCheck.open;
+  const offered = () =>
+    Response.json(
+      {
+        ok: false,
+        code: "verification_offered",
+        error: "Too many requests. Try again shortly.",
+        site_key: "0x-site",
+      },
+      { status: 429, headers: { "retry-after": "1" } },
+    );
+  const plain = () =>
+    Response.json(
+      { ok: false, error: "Too many requests. Try again shortly." },
+      { status: 429 },
+    );
+  let answers: (() => Response)[] = [];
+  let sent = 0;
+  let asked: string[] = [];
+  let passes = true;
+  globalThis.fetch = (async () => {
+    sent++;
+    return (answers.shift() ?? (() => Response.json({ items: [] })))();
+  }) as unknown as typeof fetch;
+  passCheck.open = async (siteKey) => {
+    asked.push(siteKey);
+    return passes;
+  };
+  const refusal = async () => {
+    const e = (await api("/api/search").catch((e) => e)) as ApiError;
+    return [e.status, e.code];
+  };
+  const reset = (next: (() => Response)[], pass: boolean) => {
+    [sent, asked, answers, passes] = [0, [], next, pass];
+  };
+  try {
+    // passed: the request goes again and its answer is the call's
+    reset([offered], true);
+    expect(await api("/api/search")).toEqual({ items: [] });
+    expect([sent, asked]).toEqual([2, ["0x-site"]]);
+
+    // refused again after a pass: no second check, the refusal is thrown
+    reset([offered, offered], true);
+    expect(await refusal()).toEqual([429, "verification_offered"]);
+    expect([sent, asked.length]).toEqual([2, 1]);
+
+    // closed: thrown as it came, nothing sent again
+    reset([offered], false);
+    expect(await refusal()).toEqual([429, "verification_offered"]);
+    expect([sent, asked.length]).toEqual([1, 1]);
+
+    // a plain 429 never offers the check
+    reset([plain], true);
+    expect(await refusal()).toEqual([429, undefined]);
+    expect([sent, asked.length]).toEqual([1, 0]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    passCheck.open = originalOpen;
   }
 });

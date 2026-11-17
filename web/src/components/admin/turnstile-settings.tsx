@@ -3,8 +3,9 @@
 // key, the write-only secret showing only its hint, Save and Test. A field the server environment sets is
 // read-only with the same description. Test asks Cloudflare with the saved secret; a refusal stays as a Banner
 // with Cloudflare's codes, since it needs a change in the form. Under them, a Switch saved as soon as it is flipped
-// (as registration.tsx) makes sign-in and registration carry the widget; it is disabled, saying why, while either
-// key is unset, since the API checks nothing then.
+// (as registration.tsx) makes sign-in and registration carry the widget, and another gives visitors without a pass
+// the stricter rate limits (crates/api/src/pass.rs); both are disabled, saying why, while either key is unset, since
+// the API checks nothing then.
 
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -16,7 +17,7 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/components/toasts";
 import { api } from "@/lib/api";
 import { locked } from "./ai-settings";
-import { errorText, useAdminT } from "./messages";
+import { type AdminKey, errorText, useAdminT } from "./messages";
 import type { Turnstile } from "./types";
 
 export function TurnstileSettings() {
@@ -76,15 +77,15 @@ export function TurnstileSettings() {
       if (r.ok) toast({ body: t("turnstile.testOk") });
     });
   // only the switch is taken from the answer, so an unsaved edit of the site key stays in its field
-  const checkAuth = (auth: boolean) =>
+  const flip = (change: Partial<Turnstile>, done: AdminKey) =>
     run(async () => {
       setKeys(
         await api<Turnstile>("/api/admin/settings/turnstile", {
           method: "PUT",
-          json: { auth },
+          json: change,
         }),
       );
-      toast({ body: t(auth ? "turnstile.authOn" : "turnstile.authOff") });
+      toast({ body: t(done) });
     });
 
   if (!keys) return <Spinner label={t("turnstile.title")} />;
@@ -144,7 +145,23 @@ export function TurnstileSettings() {
         description={keysSet ? undefined : t("error.turnstileUnset")}
         value={keys.auth}
         isDisabled={busy || !keysSet}
-        onChange={checkAuth}
+        onChange={(auth) =>
+          flip({ auth }, auth ? "turnstile.authOn" : "turnstile.authOff")
+        }
+      />
+      <Switch
+        label={t("turnstile.strict")}
+        description={
+          keysSet ? t("turnstile.strictDesc") : t("error.turnstileUnset")
+        }
+        value={keys.strict_limits}
+        isDisabled={busy || !keysSet}
+        onChange={(strict_limits) =>
+          flip(
+            { strict_limits },
+            strict_limits ? "turnstile.strictOn" : "turnstile.strictOff",
+          )
+        }
       />
     </VStack>
   );
