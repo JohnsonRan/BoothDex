@@ -44,6 +44,7 @@ export const adminZh = {
   "tile.newSub": "按 Booth 发布时间",
   "tile.ai": "待 AI 处理",
   "tile.aiSub": "不会出现在模型适配和分类筛选里",
+  "tile.aiGivenUp": "其中 {n} 个 AI 已放弃，不会再自动处理",
   "tile.images": "缺 Booth 图片",
   "tile.imagesSub": "在售商品中没有 Booth 图片链接的",
   "tile.users": "用户",
@@ -72,6 +73,7 @@ export const adminZh = {
   "meter.workerSub": "内存 {rss} · 心跳",
   "jobs.tasks": "任务",
   "jobs.history": "历史",
+  "jobs.givenUp": "AI 已放弃",
   "kind.incremental": "增量抓取",
   "kind.incremental.desc":
     "翻 Booth 最新列表，收录新商品和图片链接，追上后自动停止",
@@ -274,4 +276,18 @@ export const adminZh = {
   "guestbook.deleteAction": "删除留言",
   "guestbook.deleted": "已删除留言",
   "guestbook.more": "加载更多",
+  "givenUp.desc":
+    "在售商品的 AI 处理失败 {n} 次后，之后的 AI 处理会跳过它。重试会把失败次数清零，并尽快运行 AI 处理。",
+  "givenUp.count": "共 {n} 个商品",
+  "givenUp.shown": "显示 {shown} 个，共 {n} 个",
+  "givenUp.failures": "失败 {n} 次",
+  "givenUp.retry": "重试",
+  "givenUp.retryAll": "全部重试",
+  "givenUp.retryAllTitle": "重试全部 {n} 个商品?",
+  "givenUp.retryAllDesc":
+    "AI 处理会再次调用 AI 服务商处理这些商品，每个商品最多再试 {attempts} 次。",
+  "givenUp.retried": "已清零 {n} 个商品的失败次数，下一次 AI 处理会重试它们",
+  "givenUp.retriedOne": "下一次 AI 处理会重试这个商品",
+  "givenUp.stale": "没有需要重试的商品，列表已刷新",
+  "givenUp.empty": "没有被 AI 放弃的商品",
 };

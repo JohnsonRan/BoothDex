@@ -1,6 +1,6 @@
 //! Admin console API: overview metrics and daily trends, job queue control, schedules, catalogue reload, live SSE stream,
-//! user management (admin/users.rs), guestbook moderation (admin/guestbook.rs) and site settings (AI provider, open
-//! registration, Turnstile keys).
+//! user management (admin/users.rs), guestbook moderation (admin/guestbook.rs), the items AI enrichment gave up on
+//! (admin/enrichment.rs) and site settings (AI provider, open registration, Turnstile keys).
 //! Access: users.is_admin. `ADMIN_USERNAMES` (comma-separated) sets exactly who is admin at startup.
 
 use std::convert::Infallible;
@@ -85,6 +85,7 @@ async fn require_admin(s: &AppState, headers: &HeaderMap) -> Result<String, ApiE
 mod ai_key;
 #[cfg(test)]
 mod authz;
+mod enrichment;
 mod guestbook;
 mod trends;
 mod turnstile;
@@ -92,12 +93,13 @@ mod users;
 
 async fn data_json(pool: &PgPool) -> Result<Value, sqlx::Error> {
     // booth_images.item_id is unique: one join checks image coverage without per-item index probes.
-    sqlx::query_scalar(
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select jsonb_build_object(
             'items', count(*),
             'listed', count(*) filter (where status = 'ok'),
             'delisted', count(*) filter (where status = 'delisted'),
             'needs_enrichment', count(*) filter (where needs_enrichment),
+            'enrich_given_up', count(*) filter (where {}),
             'published_24h', count(*) filter (where published_at > now() - interval '24 hours'),
             'refreshed_24h', count(*) filter (where scraped_at > now() - interval '24 hours'),
             'stalest_scrape', min(scraped_at) filter (where status = 'ok'),
@@ -107,7 +109,9 @@ async fn data_json(pool: &PgPool) -> Result<Value, sqlx::Error> {
             'saved_searches', (select count(*) from saved_searches),
             'db_bytes', pg_database_size(current_database()))
          from items left join booth_images b on b.item_id = items.id",
-    )
+        enrichment::GIVEN_UP
+    )))
+    .bind(boothdex_core::ENRICH_ATTEMPTS)
     .fetch_one(pool)
     .await
 }
@@ -518,6 +522,9 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/admin/settings/turnstile/test", post(turnstile::test))
         .route("/api/admin/guestbook", get(guestbook::list))
         .route("/api/admin/guestbook/{id}", axum::routing::patch(guestbook::patch).delete(guestbook::delete))
+        .route("/api/admin/enrichment", get(enrichment::list))
+        .route("/api/admin/enrichment/retry", post(enrichment::retry_all))
+        .route("/api/admin/enrichment/{id}/retry", post(enrichment::retry))
         .route("/api/admin/overview", get(overview))
         .route("/api/admin/trends", get(trends::trends))
         .route("/api/admin/stream", get(stream))
@@ -581,22 +588,22 @@ mod tests {
     #[ignore = "requires PostgreSQL with pgvector"]
     async fn overview_counts_items_once_and_only_listed_items_missing_images(pool: sqlx::PgPool) {
         let empty = super::data_json(&pool).await.unwrap();
-        for key in ["items", "listed", "delisted", "needs_enrichment", "published_24h", "refreshed_24h", "missing_images"] {
+        for key in ["items", "listed", "delisted", "needs_enrichment", "enrich_given_up", "published_24h", "refreshed_24h", "missing_images"] {
             assert_eq!(empty[key], 0, "empty {key}");
         }
         assert!(empty["stalest_scrape"].is_null());
         sqlx::raw_sql(
-            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, published_at, needs_enrichment) values
-               (1, 'with images', 'c', 'https://example.test', false, 'ok', now(), now(), true),
-               (2, 'without images', 'c', 'https://example.test', false, 'ok', now() - interval '2 days', now() - interval '2 days', false),
-               (3, 'empty gallery', 'c', 'https://example.test', false, 'ok', now(), null, false),
-               (4, 'delisted without images', 'c', 'https://example.test', false, 'delisted', now(), null, true),
-               (5, 'delisted with images', 'c', 'https://example.test', false, 'delisted', now(), null, false);
+            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, published_at, needs_enrichment, enrich_failures) values
+               (1, 'with images', 'c', 'https://example.test', false, 'ok', now(), now(), true, 3),
+               (2, 'without images', 'c', 'https://example.test', false, 'ok', now() - interval '2 days', now() - interval '2 days', false, 3),
+               (3, 'empty gallery', 'c', 'https://example.test', false, 'ok', now(), null, false, 0),
+               (4, 'delisted without images', 'c', 'https://example.test', false, 'delisted', now(), null, true, 3),
+               (5, 'delisted with images', 'c', 'https://example.test', false, 'delisted', now(), null, false, 0);
              insert into booth_images (item_id, images, complete) values (1, '{a,b,c}', true), (3, '{}', false), (5, '{d}', true), (999, '{orphan}', true);",
         ).execute(&pool).await.unwrap();
         let data = super::data_json(&pool).await.unwrap();
         for (key, count) in [
-            ("items", 5), ("listed", 3), ("delisted", 2), ("needs_enrichment", 2),
+            ("items", 5), ("listed", 3), ("delisted", 2), ("needs_enrichment", 2), ("enrich_given_up", 1),
             ("published_24h", 1), ("refreshed_24h", 4), ("missing_images", 1),
             ("users", 0), ("favourites", 0), ("saved_searches", 0),
         ] {

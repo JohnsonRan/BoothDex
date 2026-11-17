@@ -185,7 +185,7 @@ docker compose exec worker worker once incremental '{"max_pages": 5000, "full": 
 docker compose exec worker worker once incremental '{"max_pages": 5000, "full": true, "start_page": 1200}'
 ```
 
-The site is usable while the crawl runs (`api` reloads automatically as items arrive). Newly crawled items receive AI categories, avatar-fit links and 4-language title translations once `enrich` processes them (200 items per batch, chaining itself until the backlog is empty). Before enabling AI on a 200k-item backlog, check your provider's token pricing: pausing the schedule does not stop an already-running chain — cancel the active or queued `enrich` job in `/admin` to halt immediately.
+The site is usable while the crawl runs (`api` reloads automatically as items arrive). Newly crawled items receive AI categories, avatar-fit links and 4-language title translations once `enrich` processes them (200 items per batch, chaining itself until the backlog is empty). Before enabling AI on a 200k-item backlog, check your provider's token pricing: pausing the schedule does not stop an already-running chain — cancel the active or queued `enrich` job in `/admin` to halt immediately. `enrich` skips an item after it has failed on it 3 times (`items.enrich_failures`; a provider outage stops the batch without counting against any item), until a crawl finds its title or description changed, which sets the count back to 0. `/admin/jobs/given-up` lists those items, and its Retry or Retry all sets their count back to 0 and queues `enrich`; the overview's "Waiting for AI" tile says how many of its items were given up.
 
 ### Semantic search (optional)
 

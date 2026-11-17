@@ -47,6 +47,7 @@ export const adminEn: AdminDict = {
   "tile.newSub": "By Booth publish time",
   "tile.ai": "Waiting for AI",
   "tile.aiSub": "Not yet in avatar and category filters",
+  "tile.aiGivenUp": "{n} given up, no longer processed automatically",
   "tile.images": "Missing Booth images",
   "tile.imagesSub": "Listed items without Booth image links",
   "tile.users": "Users",
@@ -76,6 +77,7 @@ export const adminEn: AdminDict = {
   "meter.workerSub": "Memory {rss} · heartbeat",
   "jobs.tasks": "Tasks",
   "jobs.history": "History",
+  "jobs.givenUp": "AI gave up",
   "kind.incremental": "Incremental crawl",
   "kind.incremental.desc":
     "Walks Booth's newest listings, adds new items and image links, and stops once caught up",
@@ -289,4 +291,19 @@ export const adminEn: AdminDict = {
   "guestbook.deleteAction": "Delete message",
   "guestbook.deleted": "Message deleted",
   "guestbook.more": "Load more",
+  "givenUp.desc":
+    "After AI processing fails {n} times on a listed item, later runs skip it. Retry sets the failure count back to 0 and runs AI processing soon.",
+  "givenUp.count": "{n} items",
+  "givenUp.shown": "{shown} of {n} items",
+  "givenUp.failures": "Failed {n} times",
+  "givenUp.retry": "Retry",
+  "givenUp.retryAll": "Retry all",
+  "givenUp.retryAllTitle": "Retry all {n} items?",
+  "givenUp.retryAllDesc":
+    "AI processing calls the AI provider again for these items, up to {attempts} more times each.",
+  "givenUp.retried":
+    "Items reset: {n}. The next AI processing run retries them",
+  "givenUp.retriedOne": "The next AI processing run retries this item",
+  "givenUp.stale": "Nothing left to retry; the list is up to date",
+  "givenUp.empty": "AI processing hasn't given up on any item",
 };

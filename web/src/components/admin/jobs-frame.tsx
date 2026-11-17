@@ -1,12 +1,17 @@
 "use client";
-// The crawler's two pages share one title with a tab row of links (Tasks, History) in the header, as the
+// The crawler's pages share one title with a tab row of links (Tasks, History, the items AI processing gave up on)
+// in the header, as the
 // Astryx template detail-page lays out its tabs (@astryxdesign/cli assets/templates/pages/detail-page/page.tsx:252-260: size lg, full bleed).
 
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { useAdminT } from "./messages";
 import { PageFrame } from "./page-frame";
 
-const TABS = { tasks: "/admin/jobs", history: "/admin/jobs/history" } as const;
+const TABS = {
+  tasks: "/admin/jobs",
+  history: "/admin/jobs/history",
+  givenUp: "/admin/jobs/given-up",
+} as const;
 
 export function JobsFrame({
   tab,
@@ -27,6 +32,11 @@ export function JobsFrame({
             value={TABS.history}
             href={TABS.history}
             label={t("jobs.history")}
+          />
+          <Tab
+            value={TABS.givenUp}
+            href={TABS.givenUp}
+            label={t("jobs.givenUp")}
           />
         </TabList>
       }

@@ -55,6 +55,8 @@ export type Overview = {
     listed: number;
     delisted: number;
     needs_enrichment: number;
+    /** of those, listed items the worker stopped trying (`GivenUpItems.attempts` failures) */
+    enrich_given_up: number;
     published_24h: number;
     refreshed_24h: number;
     stalest_scrape: string | null;
@@ -196,4 +198,12 @@ export type AdminGuestbookEntry = {
   status: GuestbookStatus;
   created_at: string;
   hidden_at: string | null;
+};
+
+/** The items AI processing gave up on (admin/enrichment.rs `list`): the newest first, at most 100 of `total`. */
+export type GivenUpItems = {
+  /** failures after which the worker stops trying an item */
+  attempts: number;
+  total: number;
+  items: { id: number; title: string; author_name: string; failures: number }[];
 };

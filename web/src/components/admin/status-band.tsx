@@ -102,7 +102,13 @@ export function StatusBand({ trends }: { trends?: Trends }) {
       icon: "admin:ai",
       label: t("tile.ai"),
       value: n(d.needs_enrichment),
-      sub: t("tile.aiSub"),
+      // the count includes the items AI processing gave up on, which wait for an admin's retry, not the worker
+      ...(d.enrich_given_up > 0
+        ? {
+            sub: t("tile.aiGivenUp", { n: n(d.enrich_given_up) }),
+            href: "/admin/jobs/given-up",
+          }
+        : { sub: t("tile.aiSub") }),
       attention: d.needs_enrichment > 0 ? "warning" : undefined,
     },
     {
