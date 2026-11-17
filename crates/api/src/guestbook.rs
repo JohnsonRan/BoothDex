@@ -1,6 +1,6 @@
 //! The guestbook: anyone may post a message under a nickname after a Turnstile check. A message is final once posted
-//! (the site asks the author to confirm first); every visitor only reads. An admin hides or deletes messages
-//! (admin/guestbook.rs). The client IP of a post is logged, never stored.
+//! (the site asks the author to confirm first); every visitor only reads. An admin hides or deletes messages, and
+//! closes one as completed or as not planned the way an issue is closed (admin/guestbook.rs). The client IP of a post is logged, never stored.
 
 use std::sync::Arc;
 
@@ -20,12 +20,24 @@ const PAGE: i64 = 50;
 /// The action the site's widget names; a token for another form does not pass here.
 pub(crate) const ACTION: &str = "guestbook";
 
+/// Where a message stands, as an issue does: open, or closed by an admin as completed or as not planned.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, sqlx::Type)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "text", rename_all = "snake_case")]
+pub(crate) enum GuestbookStatus {
+    Open,
+    Completed,
+    NotPlanned,
+}
+
 #[derive(Serialize, sqlx::FromRow)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub(crate) struct GuestbookEntry {
     pub(crate) id: i64,
     pub(crate) nickname: String,
     pub(crate) body: String,
+    pub(crate) status: GuestbookStatus,
     #[cfg_attr(test, ts(type = "string"))]
     pub(crate) created_at: chrono::DateTime<chrono::Utc>,
 }
@@ -115,7 +127,7 @@ pub(crate) struct ListQuery {
 pub(crate) async fn list(State(s): State<Arc<AppState>>, ClientIp(ip): ClientIp, Query(q): Query<ListQuery>) -> Result<Response, ApiError> {
     s.limits.lookup.check(ip)?;
     let mut entries: Vec<GuestbookEntry> = sqlx::query_as(
-        "select id, nickname, body, created_at from guestbook
+        "select id, nickname, body, status, created_at from guestbook
          where hidden_at is null and ($1::bigint is null or id < $1) order by id desc limit $2",
     )
     .bind(q.before)
@@ -141,7 +153,7 @@ pub(crate) async fn post(State(s): State<Arc<AppState>>, ClientIp(ip): ClientIp,
     s.limits.guestbook.check(ip)?;
     turnstile::require(&s, &b.token, ip, ACTION).await?;
     let entry: GuestbookEntry =
-        sqlx::query_as("insert into guestbook (nickname, body) values ($1, $2) returning id, nickname, body, created_at")
+        sqlx::query_as("insert into guestbook (nickname, body) values ($1, $2) returning id, nickname, body, status, created_at")
             .bind(&nickname)
             .bind(&body)
             .fetch_one(&s.pool)

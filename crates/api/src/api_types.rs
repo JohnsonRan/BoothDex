@@ -31,6 +31,7 @@ fn generate() -> String {
         search::Timing::decl(&cfg),
         guestbook::GuestbookPage::decl(&cfg),
         guestbook::GuestbookEntry::decl(&cfg),
+        guestbook::GuestbookStatus::decl(&cfg),
         error::Refusal::decl(&cfg),
     ];
     let mut out = String::from(
