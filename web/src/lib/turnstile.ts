@@ -14,6 +14,7 @@ type RenderOptions = {
   sitekey: string;
   action: string;
   theme: "light" | "dark";
+  size: "flexible";
   language: string;
   callback: (token: string) => void;
   "expired-callback": () => void;
@@ -90,6 +91,8 @@ export function useTurnstile(siteKey: string, action: string) {
           sitekey: siteKey,
           action,
           theme: dark ? "dark" : "light",
+          // as wide as the form's fields, never under the widget's own 300 px
+          size: "flexible",
           language: TURNSTILE_LANGUAGES[ui],
           callback: take,
           "expired-callback": () => take(""),

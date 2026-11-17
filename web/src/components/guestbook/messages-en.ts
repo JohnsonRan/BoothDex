@@ -5,7 +5,6 @@ export const guestbookEn: GuestbookDict = {
   subtitle: "Messages are public and can't be changed after you post them.",
   nickname: "Nickname",
   body: "Message",
-  count: "{n}/{max}",
   nicknameRule:
     "Your nickname must be 1 to {max} characters, with no invisible characters.",
   bodyRule:

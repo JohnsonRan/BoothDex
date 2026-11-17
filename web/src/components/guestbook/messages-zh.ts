@@ -3,7 +3,6 @@ export const guestbookZh = {
   subtitle: "留言会公开显示，发布后不能修改。",
   nickname: "昵称",
   body: "留言",
-  count: "{n}/{max}",
   nicknameRule: "昵称需为 1 到 {max} 个字符，且不含不可见字符",
   bodyRule: "留言需为 1 到 {max} 个字符，且不含不可见字符",
   post: "发布",

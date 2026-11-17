@@ -5,7 +5,8 @@
 // the text as typed, and a mark on one an admin closed (completed or not planned, as a closed issue carries).
 // Text is rendered as text only, never as HTML or links. The first page shows a skeleton of its rows; a reopen
 // reads the page again behind what is shown. While either Turnstile key is unset the API answers no site key,
-// and the form's place shows that the guestbook is not open yet.
+// and the form's place shows that the guestbook is not open yet. A click outside closes it, as Escape does: the
+// form stays mounted while the drawer is closed, so a draft is there again on the next open.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Divider } from "@astryxdesign/core/Divider";
@@ -207,7 +208,7 @@ export function GuestbookDrawer({
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       label={t("title")}
-      purpose="form"
+      purpose="info"
       width={440}
     >
       <Layout
