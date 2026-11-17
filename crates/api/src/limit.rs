@@ -41,7 +41,7 @@ impl Check for RateLimiter {
 pub struct Limits {
     /// /api/search: 2 req/s, burst 30
     pub search: RateLimiter,
-    /// /api/palette: 5 req/s, burst 40 (matches 120 ms CommandPalette debounce)
+    /// /api/palette: 5 req/s, burst 40 (above the search field's 250 ms debounce, web search-suggest.tsx)
     pub palette: RateLimiter,
     /// /api/rss: 0.5 req/s, burst 20
     pub rss: RateLimiter,

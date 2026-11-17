@@ -49,8 +49,11 @@ const AVATAR_TOKEN = 16;
 
 /** 1 search row + /api/palette's 5 avatars, 8 items, 5 shops and 5 tags (crates/api/src/palette.rs `palette`) */
 const MAX_ROWS = 24;
-/** the quick search's debounce, which /api/palette's rate limit is set for (crates/api/src/limit.rs) */
-const DEBOUNCE_MS = 120;
+/**
+ * the quick search's debounce, which /api/palette's rate limit is set for (crates/api/src/limit.rs): longer than
+ * the 125 ms between keystrokes of brisk typing (8 a second), so a burst asks at its pauses, not at every key
+ */
+const DEBOUNCE_MS = 250;
 
 /**
  * Types `text` into the Typeahead's input as a person would: the component keeps the typed text to itself, so a
