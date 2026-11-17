@@ -117,7 +117,7 @@ async fn a_post_needs_a_passing_token_for_this_form(pool: PgPool) {
     // Cloudflare's testing secrets pass every token without naming the action, so a local run can post
     assert_eq!(answer(post(State(s.clone()), ip(7), entry("Bob", "test", "testing")).await).await.0, StatusCode::OK);
     let (status, body) = answer(post(State(s.clone()), ip(5), entry(" Ann ", "hello", "pass")).await).await;
-    assert_eq!((status, &body["nickname"], &body["body"]), (StatusCode::OK, &json!("Ann"), &json!("hello")));
+    assert_eq!((status, &body["nickname"], &body["body"], &body["status"]), (StatusCode::OK, &json!("Ann"), &json!("hello"), &json!("open")));
     let shown = page(&s).await;
     assert_eq!((&shown["entries"][0], shown["site_key"].as_str()), (&body, Some("0x-site")));
 }

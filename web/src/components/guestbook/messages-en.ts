@@ -26,6 +26,8 @@ export const guestbookEn: GuestbookDict = {
   closedDesc: "You can post here once an admin opens it.",
   failed: "Messages couldn't load",
   retry: "Try again",
+  "status.completed": "Completed",
+  "status.not_planned": "Not planned",
   "error.entry":
     "Your nickname must be 1 to 24 characters and your message 1 to 500 characters.",
   "error.verification": "The verification didn't pass. Try again.",

@@ -22,6 +22,8 @@ export const guestbookZh = {
   closedDesc: "管理员开放后，就可以在这里留言。",
   failed: "无法加载留言",
   retry: "重试",
+  "status.completed": "已完成",
+  "status.not_planned": "未计划",
   "error.entry": "昵称需为 1 到 24 个字符，留言需为 1 到 500 个字符",
   "error.verification": "人机验证未通过，请重试",
   "error.tooMany": "发布过于频繁，请稍后再试",

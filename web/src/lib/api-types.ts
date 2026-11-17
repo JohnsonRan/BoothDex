@@ -81,6 +81,8 @@ more: boolean,
  */
 site_key: string | null, };
 
-export type GuestbookEntry = { id: number, nickname: string, body: string, created_at: string, };
+export type GuestbookEntry = { id: number, nickname: string, body: string, status: GuestbookStatus, created_at: string, };
+
+export type GuestbookStatus = "open" | "completed" | "not_planned";
 
 export type Refusal = "sign_in_required" | "admins_only" | "cross_site_request" | "bad_credentials" | "too_many_attempts" | "account_disabled" | "registration_closed" | "display_name_required" | "bad_username" | "bad_email" | "password_too_short" | "name_taken" | "password_unchanged" | "wrong_current_password" | "wrong_password" | "admin_cannot_delete" | "bad_preferences" | "unknown_item" | "bad_saved_search" | "saved_search_limit" | "no_such_user" | "admin_cannot_be_disabled" | "no_such_job" | "bad_job" | "job_already_active" | "job_not_active" | "no_such_schedule" | "bad_schedule" | "bad_ai_settings" | "ai_key_required" | "ai_base_url_locked" | "ai_not_configured" | "provider_failed" | "verification_unavailable" | "verification_failed" | "bad_turnstile_settings" | "bad_guestbook_entry" | "no_such_entry";

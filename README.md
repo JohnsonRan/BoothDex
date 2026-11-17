@@ -90,7 +90,8 @@ docker compose pull && docker compose up -d
   saved views that you can rename and follow by RSS.
 - Change your display name and password in Settings; a new password signs your other devices out.
 - Leave a message in the guestbook from the top bar without an account: a nickname, up to 500 characters and a
-  Cloudflare Turnstile check. An admin opens it by setting the Turnstile keys, and hides or deletes messages.
+  Cloudflare Turnstile check. An admin opens it by setting the Turnstile keys, hides or deletes messages, and
+  closes one as completed or as not planned, which every visitor sees on the message.
 
 <details>
 <summary>An item's details open over the results</summary>
