@@ -92,6 +92,7 @@ docker compose pull && docker compose up -d
 - Leave a message in the guestbook from the top bar without an account: a nickname, up to 500 characters and a
   Cloudflare Turnstile check. An admin opens it by setting the Turnstile keys, hides or deletes messages, and
   closes one as completed or as not planned, which every visitor sees on the message.
+- An admin can make sign-in and registration ask for the same Cloudflare Turnstile check.
 
 <details>
 <summary>An item's details open over the results</summary>
