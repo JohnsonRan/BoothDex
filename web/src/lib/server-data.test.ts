@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { visitorHeaders } from "./server-data";
+import { passOffer, visitorHeaders } from "./server-data";
 
 test("visitorHeaders forwards the session and the visitor's address headers, and nothing else", () => {
   const from = new Headers({
@@ -23,4 +23,23 @@ test("visitorHeaders leaves out the headers a request did not carry", () => {
     "x-real-ip": "198.51.100.4",
   });
   expect(visitorHeaders(new Headers())).toEqual({});
+});
+
+test("a read refused by the stricter limit carries the check it offers; other failures carry none", async () => {
+  const failed = (status: number, body: unknown) =>
+    new Error(`/api/search: ${status}`, {
+      cause: Response.json(body, { status }),
+    });
+  const offered = {
+    ok: false,
+    code: "verification_offered",
+    error: "Too many requests. Try again shortly.",
+    site_key: "0x-site",
+  };
+  expect(await passOffer(failed(429, offered))).toEqual({ siteKey: "0x-site" });
+  expect(
+    await passOffer(failed(429, { ok: false, error: "Too many requests." })),
+  ).toBeUndefined();
+  expect(await passOffer(failed(500, offered))).toBeUndefined();
+  expect(await passOffer(new TypeError("fetch failed"))).toBeUndefined();
 });

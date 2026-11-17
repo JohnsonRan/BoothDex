@@ -249,6 +249,11 @@ export const adminZh = {
   "turnstile.auth": "登录和注册需要人机验证",
   "turnstile.authOn": "登录和注册现在需要人机验证",
   "turnstile.authOff": "登录和注册不再需要人机验证",
+  "turnstile.strict": "对未验证的访客收紧限制",
+  "turnstile.strictDesc":
+    "未通过人机验证的访客在搜索和查看商品时会更早受到限制；通过验证后 10 分钟内恢复常规限制",
+  "turnstile.strictOn": "未验证的访客现在受更严格的限制",
+  "turnstile.strictOff": "所有访客现在都按常规限制",
   "guestbook.empty": "还没有留言",
   "guestbook.hiddenMark": "已隐藏",
   "guestbook.hide": "隐藏",

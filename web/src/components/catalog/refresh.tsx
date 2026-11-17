@@ -23,6 +23,7 @@ import { useAccount } from "@/components/account/session";
 import { useRefresh } from "@/components/catalog/filter/filter-url";
 import { FailedResults } from "@/components/catalog/results/result-states";
 import { useUi } from "@/components/providers";
+import { type PassOffer, passCheck } from "@/lib/api";
 import { useApiRecovery } from "@/lib/client-data";
 import { cancelOnReducedMotion, swapIn } from "@/lib/motion";
 
@@ -90,15 +91,26 @@ export function Swap({ children }: { children: ReactNode }) {
 
 /**
  * The results region. `children` are the newest results; a failed load (`failure`) shows the last results
- * this page had with a Banner above them, or the full error state when there were none.
+ * this page had with a Banner above them, or the full error state when there were none. A load the stricter rate
+ * limit refused (`offer`) opens the check that lifts it, and reads the page again once it passes.
  */
 export function KeepResults({
   failure,
+  offer,
   children,
 }: {
   failure?: "error" | "starting";
+  offer?: PassOffer;
   children?: ReactNode;
 }) {
+  const router = useRouter();
+  // a new object with each server render, so a refusal after Retry offers the check again
+  useEffect(() => {
+    if (offer)
+      passCheck
+        .open(offer.siteKey)
+        .then((passed) => passed && router.refresh());
+  }, [offer, router]);
   const [kept, setKept] = useState(children);
   if (!failure && children !== kept) setKept(children);
   if (failure && !kept)

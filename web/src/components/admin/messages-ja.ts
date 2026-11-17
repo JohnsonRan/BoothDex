@@ -262,6 +262,11 @@ export const adminJa: AdminDict = {
   "turnstile.auth": "ログインと新規登録で認証を求める",
   "turnstile.authOn": "ログインと新規登録で認証を求めるようにしました",
   "turnstile.authOff": "ログインと新規登録で認証を求めないようにしました",
+  "turnstile.strict": "認証していない訪問者の制限を厳しくする",
+  "turnstile.strictDesc":
+    "認証していない訪問者は検索やアイテムの表示で早めに制限されます。認証すると 10 分間は通常の制限に戻ります",
+  "turnstile.strictOn": "認証していない訪問者の制限を厳しくしました",
+  "turnstile.strictOff": "すべての訪問者を通常の制限に戻しました",
   "guestbook.empty": "メッセージはまだありません",
   "guestbook.hiddenMark": "非表示",
   "guestbook.hide": "非表示にする",

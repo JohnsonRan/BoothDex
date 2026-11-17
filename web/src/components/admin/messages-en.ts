@@ -263,6 +263,11 @@ export const adminEn: AdminDict = {
   "turnstile.auth": "Sign-in and registration need verification",
   "turnstile.authOn": "Sign-in and registration now need verification",
   "turnstile.authOff": "Sign-in and registration no longer need verification",
+  "turnstile.strict": "Stricter limits for visitors who haven't verified",
+  "turnstile.strictDesc":
+    "Search and item pages slow down sooner for visitors without a pass; passing the verification restores the usual limits for 10 minutes",
+  "turnstile.strictOn": "Visitors who haven't verified now get stricter limits",
+  "turnstile.strictOff": "All visitors now get the usual limits",
   "guestbook.empty": "No messages yet",
   "guestbook.hiddenMark": "Hidden",
   "guestbook.hide": "Hide",

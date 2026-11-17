@@ -30,6 +30,7 @@ import {
   translate,
 } from "@/lib/settings-core";
 import { ToastHost } from "./toasts";
+import { PassHost } from "./verification/pass-host";
 
 type Ui = {
   ui: UiLang;
@@ -199,6 +200,7 @@ export function Providers({
             }}
           />
           <UiContext value={value}>
+            <PassHost />
             <ToastHost>{children}</ToastHost>
           </UiContext>
         </LinkProvider>

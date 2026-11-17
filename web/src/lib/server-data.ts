@@ -3,6 +3,7 @@
 // module out of client bundles.
 import { cacheLife } from "next/cache";
 import { cookies, headers } from "next/headers";
+import type { PassOffer } from "./api";
 import type { ItemResponse, SearchResponse } from "./api-types";
 import { ASTRYX_GAPS } from "./astryx-gaps";
 import {
@@ -29,7 +30,7 @@ const RATES_TIMEOUT_MS = 2000;
 
 async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_ORIGIN}${path}`, init);
-  if (!res.ok) throw new Error(`${path}: ${res.status}`);
+  if (!res.ok) throw new Error(`${path}: ${res.status}`, { cause: res });
   return res.json() as Promise<T>;
 }
 
@@ -49,11 +50,22 @@ export async function readRailWidth(): Promise<number> {
   return parseRailWidth((await cookies()).get(RAIL_COOKIE)?.value);
 }
 
-/** "starting": the API is still loading after a restart (503) or unreachable; "error": it is up but failed. */
+/** "starting": the API is still loading after a restart (503) or unreachable; "error": it is up but failed, or, with
+ *  `offer`, refused the visitor by the stricter limit, which a passed check lifts. */
 export type SearchOutcome =
   /** `ms`: this server's request, the API's time included (the search trace's total) */
   | { state: "ok"; result: SearchResponse; ms: number }
-  | { state: "starting" | "error" };
+  | { state: "starting" | "error"; offer?: PassOffer };
+
+/** The check a refused read offers (crates/api/src/limit.rs, `RateLimited`): the server cannot show it, the page can. */
+export async function passOffer(e: unknown): Promise<PassOffer | undefined> {
+  const res = e instanceof Error ? e.cause : undefined;
+  if (!(res instanceof Response) || res.status !== 429) return undefined;
+  const body = await res.json().catch(() => null);
+  return body?.code === "verification_offered"
+    ? { siteKey: body.site_key }
+    : undefined;
+}
 
 async function apiReady(): Promise<boolean> {
   return fetch(`${API_ORIGIN}/api/health`, { cache: "no-store" }).then(
@@ -101,7 +113,9 @@ export async function searchItems(
       { cache: "no-store", headers: forwarded },
     );
     return { state: "ok", result, ms: performance.now() - start };
-  } catch {
+  } catch (e) {
+    const offer = await passOffer(e);
+    if (offer) return { state: "error", offer };
     return { state: (await apiReady()) ? "error" : "starting" };
   }
 }

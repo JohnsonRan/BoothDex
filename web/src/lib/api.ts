@@ -43,9 +43,25 @@ export const apiReady = () =>
     () => false,
   );
 
-export async function api<T>(
+/** The check that lifts the stricter rate limits, set by components/verification/pass-host.tsx: true once it passed,
+ *  false when the visitor closed it (and before the host is mounted). */
+export const passCheck = {
+  open: (_siteKey: string) => Promise.resolve(false),
+};
+
+/** A server read refused by the stricter limit (lib/server-data.ts): the page offers the check (catalog/refresh.tsx). */
+export type PassOffer = { siteKey: string };
+
+type Init = RequestInit & { json?: unknown };
+
+export function api<T>(path: string, init?: Init): Promise<T> {
+  return send<T>(path, init, true);
+}
+
+async function send<T>(
   path: string,
-  init?: RequestInit & { json?: unknown },
+  init: Init | undefined,
+  offer: boolean,
 ): Promise<T> {
   const { json, ...rest } = init ?? {};
   const res = await fetch(path, {
@@ -60,8 +76,16 @@ export async function api<T>(
   const body = res.headers.get("content-type")?.includes("json")
     ? await res.json()
     : null;
-  if (!res.ok)
+  if (!res.ok) {
+    // the stricter limit of a visitor without a pass (crates/api/src/pass.rs): sent once more after a passed check
+    if (
+      offer &&
+      body?.code === "verification_offered" &&
+      (await passCheck.open(body.site_key))
+    )
+      return send<T>(path, init, false);
     throw new ApiError(res.status, body?.error ?? res.statusText, body?.code);
+  }
   return body as T;
 }
 

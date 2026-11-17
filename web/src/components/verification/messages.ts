@@ -1,5 +1,5 @@
-// The Turnstile strings of the forms that show the widget (the guestbook, sign-in and registration), loaded with
-// those forms rather than with the page: the site's own catalogue (lib/messages-*.ts) travels in every page's HTML.
+// The Turnstile strings of the forms that show the widget (the guestbook, sign-in and registration) and of the
+// check that lifts the stricter rate limits (pass-dialog.tsx), loaded with them rather than with the page: the site's own catalogue (lib/messages-*.ts) travels in every page's HTML.
 // The Chinese keys define VerificationKey.
 
 import { useMemo } from "react";
