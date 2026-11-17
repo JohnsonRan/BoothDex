@@ -73,3 +73,16 @@ test("a visitor whose search a rate limit refused gets the tags' names, and no l
   });
   expect(asked).toEqual(["long_hair", "cat_ears"]);
 });
+
+test("a text search's tag labels are read at once, without waiting for the search", async () => {
+  const asked: string[] = [];
+  const lookup = async (name: string) => {
+    asked.push(name);
+    return { name, display: name.toUpperCase() };
+  };
+  // no search handed over, as for a text search: nothing to wait for, even if that search is refused later
+  expect(await tagLabels(["long_hair"], "en", undefined, lookup)).toEqual({
+    long_hair: "LONG_HAIR",
+  });
+  expect(asked).toEqual(["long_hair"]);
+});

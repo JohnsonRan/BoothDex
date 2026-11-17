@@ -168,17 +168,19 @@ async function smartTag(name: string): Promise<SmartTag | null> {
 }
 
 /** Display names of the tags in a URL, in the interface language; a tag that cannot be read keeps its name. The
- *  lookups are the server's own and not rate-limited (crates/api/src/limit.rs `own_server`), so they wait for the
- *  visitor's `search` and are skipped when a rate limit refused it: a URL of 20 tags costs a refused visitor nothing. */
+ *  lookups are the server's own and not rate-limited (crates/api/src/limit.rs `own_server`). Given the visitor's
+ *  `search`, they wait for it and are skipped when a rate limit refused it. A text search passes none: the frame,
+ *  which needs these labels, must not wait while the query is embedded, so its lookups run at once even for a
+ *  refused visitor (owner, 2026-11-17, REQUIREMENTS.md "Intentional designs"). */
 export async function tagLabels(
   names: string[],
   ui: string,
-  search: Promise<SearchOutcome>,
+  search?: Promise<SearchOutcome>,
   lookup: (name: string) => Promise<SmartTag | null> = smartTag,
 ): Promise<Record<string, string>> {
   if (names.length === 0) return {};
-  const o = await search;
-  const refused = o.state !== "ok" && !!o.limited;
+  const o = search && (await search);
+  const refused = !!o && o.state !== "ok" && !!o.limited;
   const found = refused
     ? []
     : await Promise.all(names.map((n) => lookup(n).catch(() => null)));
