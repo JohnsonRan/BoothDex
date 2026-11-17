@@ -14,6 +14,7 @@ mod catalog;
 mod db;
 mod error;
 mod gallery;
+mod guestbook;
 mod items;
 mod limit;
 mod lookups;
@@ -25,6 +26,7 @@ mod search_request;
 mod snapshot;
 mod state;
 mod text;
+mod turnstile;
 
 #[cfg(test)]
 mod cross_site_tests;
@@ -90,6 +92,7 @@ fn app(state: Arc<AppState>) -> Router {
         .route("/api/items", get(items_by_id))
         .route("/api/items/{id}/gallery", get(gallery::gallery))
         .merge(lookups)
+        .merge(guestbook::routes())
         .merge(account::routes().route_layer(axum::middleware::from_fn_with_state(state.clone(), account_write_rate_limit)))
         .merge(admin::routes());
     routes

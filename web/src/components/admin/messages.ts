@@ -42,6 +42,9 @@ const ADMIN_ERRORS: ApiErrors<AdminKey> = {
     ai_base_url_locked: "error.aiUrlLocked",
     no_such_user: "error.noUser",
     admin_cannot_be_disabled: "error.adminDisable",
+    bad_turnstile_settings: "error.turnstileKeys",
+    verification_unavailable: "error.turnstileUnset",
+    no_such_entry: "error.noEntry",
   },
   statuses: {
     401: "gate.signInTitle",

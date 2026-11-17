@@ -14,7 +14,7 @@ use crate::limit::RateLimited;
 /// words in the visitor's language (web/src/lib/messages.ts, web/src/components/admin/messages.ts): the generated
 /// `Refusal` type of web/src/lib/api-types.ts fails the site's type check when a code it names is not listed here.
 /// The message is for other clients and for a browser still running a script that matched on it.
-#[derive(Clone, Copy, serde::Serialize)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Refusal {
@@ -55,6 +55,12 @@ pub(crate) enum Refusal {
     AiNotConfigured,
     /// answered with what the provider said, for the admin who runs that connection
     ProviderFailed,
+    /// a form behind Turnstile while either Turnstile key is unset
+    VerificationUnavailable,
+    VerificationFailed,
+    BadTurnstileSettings,
+    BadGuestbookEntry,
+    NoSuchEntry,
 }
 
 impl Refusal {
@@ -97,6 +103,11 @@ impl Refusal {
             Self::AiBaseUrlLocked => (S::CONFLICT, "The server environment sets AI_API_KEY; set AI_BASE_URL there to change the base URL"),
             Self::AiNotConfigured => (S::BAD_REQUEST, "Set the base URL and API key first"),
             Self::ProviderFailed => (S::BAD_GATEWAY, "The AI provider failed."),
+            Self::VerificationUnavailable => (S::SERVICE_UNAVAILABLE, "This form isn't open yet."),
+            Self::VerificationFailed => (S::FORBIDDEN, "Verification failed. Try again."),
+            Self::BadTurnstileSettings => (S::BAD_REQUEST, "Keys must be 1-200 printable ASCII characters."),
+            Self::BadGuestbookEntry => (S::BAD_REQUEST, "Nickname must be 1-24 characters and message 1-500 characters."),
+            Self::NoSuchEntry => (S::NOT_FOUND, "No such message"),
         }
     }
 

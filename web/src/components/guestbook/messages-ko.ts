@@ -1,0 +1,31 @@
+import type { GuestbookDict } from "./messages";
+
+export const guestbookKo: GuestbookDict = {
+  title: "방명록",
+  subtitle: "메시지는 공개되며 게시한 후에는 바꿀 수 없어요.",
+  nickname: "닉네임",
+  body: "메시지",
+  count: "{n}/{max}",
+  nicknameRule: "닉네임은 보이지 않는 문자 없이 1~{max}자여야 해요.",
+  bodyRule: "메시지는 보이지 않는 문자 없이 1~{max}자여야 해요.",
+  post: "게시",
+  confirmTitle: "이 메시지를 게시할까요?",
+  confirmDesc: "게시한 후에는 바꿀 수 없어요.",
+  confirm: "게시하기",
+  back: "뒤로",
+  posted: "메시지를 게시했어요",
+  verify: "먼저 인증을 완료하세요.",
+  verifyFailedLoad:
+    "인증을 불러올 수 없어요. 연결을 확인하거나 스크립트를 차단하는 확장 프로그램을 끈 다음 다시 시도하세요.",
+  more: "더 불러오기",
+  empty: "아직 메시지가 없어요",
+  emptyDesc: "첫 메시지를 남겨 보세요.",
+  closed: "방명록이 아직 열리지 않았어요",
+  closedDesc: "관리자가 열면 여기에 메시지를 남길 수 있어요.",
+  failed: "메시지를 불러올 수 없어요",
+  retry: "다시 시도",
+  "error.entry": "닉네임은 1~24자, 메시지는 1~500자여야 해요.",
+  "error.verification": "인증에 실패했어요. 다시 시도하세요.",
+  "error.tooMany": "너무 자주 게시하고 있어요. 나중에 다시 시도하세요.",
+  "error.failed": "문제가 발생했어요. 다시 시도하세요.",
+};

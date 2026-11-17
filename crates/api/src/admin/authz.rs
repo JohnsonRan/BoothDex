@@ -5,7 +5,7 @@ use crate::account;
 
 /// One body every admin payload accepts (serde skips the fields a payload lacks), so extraction succeeds and the
 /// handler's own check answers. A new payload with another required field answers 422 here until it is added.
-const BODY: &str = r#"{"kind": "x", "open": false, "username": "x", "disabled": false}"#;
+const BODY: &str = r#"{"kind": "x", "open": false, "username": "x", "disabled": false, "hidden": false}"#;
 
 /// Method and path of every route in `routes()`, with each path parameter set to 1. Panics on a route it cannot
 /// read, so a route written in another shape fails the test instead of going unchecked.

@@ -5,6 +5,7 @@ export const en: Dict = {
   "nav.signIn": "Sign in",
   "nav.filters": "Filters",
   "nav.account": "Account menu",
+  "nav.guestbook": "Guestbook",
   "title.all": "All items",
   "title.favourites": "My favourites",
   "title.recent": "Recently viewed",

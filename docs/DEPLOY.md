@@ -94,7 +94,7 @@ If you configure a different embeddings model, clear the bundled vectors once so
 
 | File | Contents | Size |
 |---|---|---|
-| `catalogue.dump` | PostgreSQL custom-format dump: all items, crawled BOOTH image links, taxonomy and schema. **No user accounts, sessions, favourites, viewed history, job history or AI settings.** | ~1.1 GB |
+| `catalogue.dump` | PostgreSQL custom-format dump: all items, crawled BOOTH image links, taxonomy and schema. **No user accounts, sessions, favourites, viewed history, job history, AI settings or guestbook messages.** | ~1.1 GB |
 | `images.tar` | Archived WebP images of delisted items (`images/<sha1>.webp`) no longer served by BOOTH | ~1 GB |
 | `SHA256SUMS` | SHA-256 checksums | — |
 
@@ -128,6 +128,7 @@ $EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, CONTACT_EMAIL, an
 | `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | `imgproxy` | Transcoded AVIF cache budget (`10240` MB disk / `256` MB RAM by default) |
 | `BOOTHDEX_TAG` | `api`, `worker`, `imgproxy`, `web` | Image tag on `ghcr.io`: `latest` (default, tracks `master`) or `sha-<commit>`, the first 7 characters of the commit an image was built from |
 | `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` / `AI_EMBED_MODEL` | `api`, `worker` | Optional; override and lock the `/admin` AI settings so API keys stay out of PostgreSQL. `AI_API_KEY` locks the base URL as well: set `AI_BASE_URL` beside it to change the address. While `AI_BASE_URL` is set, `/admin` stores no base URL of its own, and a key saved there is stored with the `AI_BASE_URL` value, which it keeps when `AI_BASE_URL` is removed |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | `api` | Optional; override and lock the `/admin` Turnstile settings, the keys of a Cloudflare Turnstile widget in managed mode. With either key unset in both places the guestbook shows that it is not open and refuses posts |
 
 Set automatically by `compose.yaml` (not needed in `.env`): `DATABASE_URL`, `PGPASSWORD` (passed separately so `/` `+` `=` in base64 passwords never break URL parsing), `IMGPROXY_URL` and `BIND`.
 

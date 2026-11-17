@@ -41,6 +41,8 @@ pub(crate) struct AppState {
     pub(crate) ai: arc_swap::ArcSwapOption<boothdex_core::settings::AiConfig>,
     /// serializes AI settings saves across database write and cache publication
     pub(crate) ai_save: tokio::sync::Mutex<()>,
+    /// where Turnstile tokens are checked (`turnstile::SITEVERIFY_URL`; a local stand-in in tests)
+    pub(crate) siteverify_url: String,
 }
 
 impl AppState {
@@ -80,6 +82,7 @@ impl AppState {
             embed_permits: Arc::new(tokio::sync::Semaphore::new(4)),
             ai: Default::default(),
             ai_save: tokio::sync::Mutex::new(()),
+            siteverify_url: crate::turnstile::SITEVERIFY_URL.into(),
         })
     }
 
@@ -141,6 +144,7 @@ pub(crate) fn test_state() -> std::sync::Arc<super::AppState> {
                 auth: super::limit::RateLimiter::new(0.2, 5.0, 64),
                 auth_log: super::limit::RateLimiter::new(1.0 / 60.0, 1.0, 64),
                 account: super::limit::RateLimiter::new(2.0, 2.0, 64),
+                guestbook: super::limit::RateLimiter::new(3.0 / 600.0, 3.0, 64),
             },
             "http://127.0.0.1:3000".into(),
             None,

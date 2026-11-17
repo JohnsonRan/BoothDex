@@ -30,6 +30,11 @@ const GROUPS: { title: AdminKey; links: NavLink[] }[] = [
       { href: "/admin", label: "nav.overview", icon: "admin:overview" },
       { href: "/admin/jobs", label: "nav.jobs", icon: "admin:jobs" },
       { href: "/admin/users", label: "nav.users", icon: "admin:users" },
+      {
+        href: "/admin/guestbook",
+        label: "nav.guestbook",
+        icon: "admin:guestbook",
+      },
     ],
   },
   {

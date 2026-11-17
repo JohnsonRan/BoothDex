@@ -51,7 +51,7 @@ pub struct Limits {
     pub item: RateLimiter,
     /// /api/items/{id}/gallery: 1 req/s, burst 20
     pub gallery: RateLimiter,
-    /// /api/{avatars,authors,tags,booth-tags,categories}: 5 req/s, burst 40
+    /// /api/{avatars,authors,tags,booth-tags,categories} and the guestbook list: 5 req/s, burst 40
     pub lookup: RateLimiter,
     /// uncached AI query embeddings: 15/min per IP (burst 8), 120/min global (burst 20)
     pub embed_ip: RateLimiter,
@@ -62,6 +62,8 @@ pub struct Limits {
     pub auth_log: RateLimiter,
     /// /api/account changes (favourites, viewed items, saved searches, settings): 2 req/s, burst 30
     pub account: RateLimiter,
+    /// guestbook posts: 3 per 10 minutes (0.005 req/s, burst 3)
+    pub guestbook: RateLimiter,
 }
 
 impl Default for Limits {
@@ -79,6 +81,7 @@ impl Default for Limits {
             auth: RateLimiter::new(0.2, 5.0, 8192),
             auth_log: RateLimiter::new(1.0 / 60.0, 1.0, 8192),
             account: RateLimiter::new(2.0, 30.0, 8192),
+            guestbook: RateLimiter::new(3.0 / 600.0, 3.0, 8192),
         }
     }
 }
