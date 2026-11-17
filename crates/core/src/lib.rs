@@ -4,6 +4,10 @@ pub mod embed;
 pub mod jobs;
 pub mod settings;
 
+/// AI enrichment gives up on an item after this many failed attempts (`items.enrich_failures`); the worker's queue skips
+/// it from then on, and the admin console lists it with a retry that sets the count back to 0.
+pub const ENRICH_ATTEMPTS: i16 = 3;
+
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 /// Tells the API the catalogue changed; it rebuilds its in-memory snapshot on the next reload check.
