@@ -128,7 +128,7 @@ export const adminJa: AdminDict = {
   "toast.interval": "実行間隔を更新しました",
   "toast.reload":
     "インデックスの再構築をリクエストしました。約 20 秒後に反映されます。",
-  "stop.title": "{kind}を停止しますか？",
+  "stop.title": "{kind}を停止しますか?",
   "stop.desc":
     "現在のステップが完了すると停止します。処理済みの内容は保持されます。",
   "run.title": "オプションを指定して実行：{kind}",
@@ -212,11 +212,11 @@ export const adminJa: AdminDict = {
   "ai.testOk": "接続成功、利用可能な AI モデル {n} 件",
   "ai.testNoModel": "入力した AI モデルがプロバイダーのモデル一覧にありません",
   "ai.testEmbed": "埋め込みモデルを利用できません：{error}",
-  "key.title": "API キーを置き換えますか？",
+  "key.title": "API キーを置き換えますか?",
   "key.desc": "保存済みのキーは新しいキーで上書きされ、元に戻せません。",
   "key.action": "置き換えて保存",
   "reset.submit": "パスワードをリセット",
-  "reset.confirmTitle": "{name}のパスワードをリセットしますか？",
+  "reset.confirmTitle": "{name}のパスワードをリセットしますか?",
   "reset.confirmDesc":
     "ユーザーはすべての端末からログアウトし、古いパスワードはすぐに無効になります。",
   "reset.result": "{name}の新しいパスワード",
@@ -245,7 +245,7 @@ export const adminJa: AdminDict = {
   "users.revoked": "その端末をログアウトしました",
   "users.disable": "アカウントを無効化",
   "users.enable": "アカウントを有効化",
-  "users.disableTitle": "{name}を無効にしますか？",
+  "users.disableTitle": "{name}を無効にしますか?",
   "users.disableDesc":
     "すべての端末からログアウトし、再度有効にするまでログインできなくなります。お気に入りなどのデータは保持されます。",
   "users.disabledToast": "{name}を無効にしました",
@@ -302,7 +302,7 @@ export const adminJa: AdminDict = {
   "givenUp.failures": "{n} 回失敗",
   "givenUp.retry": "再試行",
   "givenUp.retryAll": "すべて再試行",
-  "givenUp.retryAllTitle": "{n} 件の商品をすべて再試行しますか？",
+  "givenUp.retryAllTitle": "{n} 件の商品をすべて再試行しますか?",
   "givenUp.retryAllDesc":
     "AI 処理がこれらの商品について AI プロバイダーを再度呼び出します。各商品は最大 {attempts} 回まで再試行されます。",
   "givenUp.retried":

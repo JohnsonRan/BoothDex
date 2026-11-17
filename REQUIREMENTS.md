@@ -194,4 +194,3 @@ to the file it decides.
 
 | Question | Source | Raised |
 | --- | --- | --- |
-| Should Japanese interface text end a question with the full-width `？`? The site's own Japanese strings hold 5 full-width (`web/src/components/admin/messages-ja.ts`) and 2 ASCII `?` (`web/src/components/guestbook/messages-ja.ts` `confirmTitle`, and one in `admin/messages-ja.ts`), both ASCII ones added since PR #76 | review of PRs #76 to #84 | 2026-11-17 |
