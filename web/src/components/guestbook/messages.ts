@@ -38,7 +38,6 @@ export function useGuestbookT(): GuestbookT {
 export const GUESTBOOK_ERRORS: ApiErrors<GuestbookKey> = {
   codes: {
     bad_guestbook_entry: "error.entry",
-    verification_failed: "error.verification",
     verification_unavailable: "closed",
   },
   statuses: { 429: "error.tooMany" },

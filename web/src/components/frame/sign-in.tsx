@@ -10,6 +10,10 @@
 // dialog asks about each time it opens (the server refuses sign-up either way). Under the register button, the
 // template's terms line (page.tsx:196-209) links the terms and the privacy policy, which open in a dialog over this
 // one (legal-dialog.tsx), so the form stays as filled.
+// While the registration answer names a Turnstile site key, both forms carry the widget between the fields and the
+// button, for the action the API checks ("sign-in" or "register"); a submit waits for the visitor to pass, unless
+// the widget's script did not load, when the server decides (it lets a request through while Cloudflare is out of
+// reach). The widget is reset after every attempt, since Cloudflare takes each token once.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
@@ -19,13 +23,25 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
-import { useEffect, useState } from "react";
+import {
+  type Ref,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { useLegalDialog } from "@/components/legal/legal-dialog";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
+import {
+  useVerificationT,
+  verificationRefused,
+} from "@/components/verification/messages";
+import { VerificationField } from "@/components/verification/verification-field";
 import { api, errorKey } from "@/lib/api";
 import { API_ERRORS, type MessageKey } from "@/lib/messages";
 import { rich } from "@/lib/rich";
+import { type TurnstileState, useTurnstile } from "@/lib/turnstile";
 
 type Mode = "login" | "register";
 type Field = "login" | "password" | "display_name" | "username" | "email";
@@ -45,6 +61,24 @@ function problem(mode: Mode, field: Field, v: string): MessageKey | undefined {
   if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))
     return "account.emailInvalid";
   if (field === "password" && v.length < 10) return "account.passwordShort";
+}
+
+/** the actions the API checks the token for (crates/api/src/account/sign_in.rs) */
+const ACTION: Record<Mode, string> = { login: "sign-in", register: "register" };
+
+/** The widget for a site key; the dialog reads its state through `handle` when it submits. */
+function Verification({
+  siteKey,
+  action,
+  handle,
+}: {
+  siteKey: string;
+  action: string;
+  handle: Ref<TurnstileState>;
+}) {
+  const verification = useTurnstile(siteKey, action);
+  useImperativeHandle(handle, () => verification);
+  return <VerificationField verification={verification} />;
 }
 
 const INPUT: Record<
@@ -71,6 +105,7 @@ export function SignInDialog({
   gate?: { title: string; description: string };
 }) {
   const { t } = useUi();
+  const vt = useVerificationT();
   const toast = useToast();
   const legal = useLegalDialog();
   const [mode, setMode] = useState<Mode>("login");
@@ -78,25 +113,39 @@ export function SignInDialog({
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [canRegister, setCanRegister] = useState(true);
+  const [siteKey, setSiteKey] = useState<string | null>(null);
+  const verification = useRef<TurnstileState>(null);
   const value = (f: Field) => values[f] ?? "";
 
+  // the gate asks too, for the site key only: it never offers registration
   useEffect(() => {
-    if (!isOpen || gate) return;
-    api<{ open: boolean }>("/api/account/registration").then(
-      ({ open }) => {
+    if (!isOpen) return;
+    api<{ open: boolean; site_key: string | null }>(
+      "/api/account/registration",
+    ).then(
+      ({ open, site_key }) => {
+        setSiteKey(site_key);
         setCanRegister(open);
         if (!open) setMode("login");
       },
-      // unknown: keep offering it
-      () => setCanRegister(true),
+      // unknown: keep offering registration, without the widget
+      () => {
+        setSiteKey(null);
+        setCanRegister(true);
+      },
     );
-  }, [isOpen, gate]);
+  }, [isOpen]);
   const errorOf = (f: Field) =>
     checked ? problem(mode, f, value(f)) : undefined;
 
   const submit = async () => {
     setChecked(true);
     if (FIELDS[mode].some((f) => problem(mode, f, value(f)))) return;
+    const widget = verification.current;
+    if (widget && !widget.failed && !widget.token) {
+      toast({ type: "error", body: vt("required"), uniqueID: "auth" });
+      return;
+    }
     setBusy(true);
     try {
       await api(
@@ -106,6 +155,7 @@ export function SignInDialog({
           json: {
             ...Object.fromEntries(FIELDS[mode].map((f) => [f, value(f)])),
             keep: true,
+            token: widget?.token ?? "",
           },
         },
       );
@@ -116,10 +166,13 @@ export function SignInDialog({
     } catch (err) {
       toast({
         type: "error",
-        body: t(errorKey(err, API_ERRORS, "error.failed")),
+        body: verificationRefused(err)
+          ? vt("refused")
+          : t(errorKey(err, API_ERRORS, "error.failed")),
         uniqueID: "auth",
       });
     } finally {
+      widget?.reset();
       setBusy(false);
     }
   };
@@ -204,6 +257,13 @@ export function SignInDialog({
                         );
                       })}
                     </VStack>
+                    {siteKey && (
+                      <Verification
+                        siteKey={siteKey}
+                        action={ACTION[mode]}
+                        handle={verification}
+                      />
+                    )}
                     <HStack>
                       <Button
                         type="submit"

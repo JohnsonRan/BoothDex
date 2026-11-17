@@ -112,7 +112,7 @@ const texts: LegalTexts = {
           {
             list: [
               "Hosting and network providers that run the servers and connections for this site.",
-              "Cloudflare, whose Turnstile checks that guestbook messages don't come from automated programs. It receives your IP address and browser details.",
+              "Cloudflare, whose Turnstile checks that guestbook messages and, when the site asks for it, sign-ins and registrations don't come from automated programs. It receives your IP address and browser details.",
               "The AI provider used for semantic search and item translation. It receives search text and public item information, never your account details.",
               "Authorities, when the law requires it.",
             ],

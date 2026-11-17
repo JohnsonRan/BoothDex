@@ -14,9 +14,6 @@ export const guestbookKo: GuestbookDict = {
   confirm: "게시하기",
   back: "뒤로",
   posted: "메시지를 게시했어요",
-  verify: "먼저 인증을 완료하세요.",
-  verifyFailedLoad:
-    "인증을 불러올 수 없어요. 연결을 확인하거나 스크립트를 차단하는 확장 프로그램을 끈 다음 다시 시도하세요.",
   more: "더 불러오기",
   empty: "아직 메시지가 없어요",
   emptyDesc: "첫 메시지를 남겨 보세요.",
@@ -27,7 +24,6 @@ export const guestbookKo: GuestbookDict = {
   "status.completed": "완료됨",
   "status.not_planned": "계획되지 않음",
   "error.entry": "닉네임은 1~24자, 메시지는 1~500자여야 해요.",
-  "error.verification": "인증에 실패했어요. 다시 시도하세요.",
   "error.tooMany": "너무 자주 게시하고 있어요. 나중에 다시 시도하세요.",
   "error.failed": "문제가 발생했어요. 다시 시도하세요.",
 };

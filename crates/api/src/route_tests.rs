@@ -125,6 +125,7 @@ async fn auth_limiter_exhaustion_throttles_both_login_and_register() {
                 login: "testuser".into(),
                 password: "password12345".into(),
                 keep: false,
+                token: String::new(),
             }),
         ),
         (
@@ -135,6 +136,7 @@ async fn auth_limiter_exhaustion_throttles_both_login_and_register() {
                 display_name: "Test User".into(),
                 password: "password12345".into(),
                 keep: false,
+                token: String::new(),
             }),
         ),
     ];

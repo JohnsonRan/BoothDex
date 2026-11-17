@@ -16,9 +16,6 @@ export const guestbookJa: GuestbookDict = {
   confirm: "投稿する",
   back: "戻る",
   posted: "メッセージを投稿しました",
-  verify: "先に認証を完了してください。",
-  verifyFailedLoad:
-    "認証を読み込めませんでした。接続を確認するか、スクリプトをブロックする拡張機能をオフにしてから、もう一度お試しください。",
   more: "さらに読み込む",
   empty: "メッセージはまだありません",
   emptyDesc: "最初のメッセージを書いてみてください。",
@@ -30,7 +27,6 @@ export const guestbookJa: GuestbookDict = {
   "status.not_planned": "予定なし",
   "error.entry":
     "ニックネームは 1～24 文字、メッセージは 1～500 文字で入力してください。",
-  "error.verification": "認証に失敗しました。もう一度お試しください。",
   "error.tooMany": "投稿が多すぎます。しばらくしてからもう一度お試しください。",
   "error.failed": "問題が発生しました。もう一度お試しください。",
 };

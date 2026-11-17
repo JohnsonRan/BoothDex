@@ -259,6 +259,9 @@ export const adminJa: AdminDict = {
   "turnstile.testOk": "シークレットキーは有効です",
   "turnstile.testFailed":
     "Cloudflare がこのシークレットキーを拒否しました: {codes}",
+  "turnstile.auth": "ログインと新規登録で認証を求める",
+  "turnstile.authOn": "ログインと新規登録で認証を求めるようにしました",
+  "turnstile.authOff": "ログインと新規登録で認証を求めないようにしました",
   "guestbook.empty": "メッセージはまだありません",
   "guestbook.hiddenMark": "非表示",
   "guestbook.hide": "非表示にする",

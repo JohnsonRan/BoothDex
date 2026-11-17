@@ -4,7 +4,6 @@
 // (DialogWithSubtitle's header, the text in the content, Back and the action in the footer); only the confirm sends
 // it. The widget is reset after every attempt, since Cloudflare takes each token once.
 
-import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import {
@@ -19,6 +18,11 @@ import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useState } from "react";
 import { useToast } from "@/components/toasts";
+import {
+  useVerificationT,
+  verificationRefused,
+} from "@/components/verification/messages";
+import { VerificationField } from "@/components/verification/verification-field";
 import { api } from "@/lib/api";
 import type { GuestbookEntry } from "@/lib/api-types";
 import { useTurnstile } from "@/lib/turnstile";
@@ -37,6 +41,7 @@ export function PostForm({
   onPosted: (entry: GuestbookEntry) => void;
 }) {
   const t = useGuestbookT();
+  const vt = useVerificationT();
   const toast = useToast();
   const verification = useTurnstile(siteKey, ACTION);
   const [nickname, setNickname] = useState("");
@@ -51,7 +56,7 @@ export function PostForm({
     setChecked(true);
     if (!nicknameOk(nickname) || !bodyOk(body)) return;
     if (!verification.token) {
-      toast({ type: "error", body: t("verify"), uniqueID: "guestbook" });
+      toast({ type: "error", body: vt("required"), uniqueID: "guestbook" });
       return;
     }
     setConfirming(true);
@@ -72,7 +77,7 @@ export function PostForm({
       setConfirming(false);
       toast({
         type: "error",
-        body: t(guestbookError(e)),
+        body: verificationRefused(e) ? vt("refused") : t(guestbookError(e)),
         uniqueID: "guestbook",
       });
     } finally {
@@ -114,21 +119,7 @@ export function PostForm({
         value={body}
         onChange={setBody}
       />
-      {verification.failed ? (
-        <Banner
-          status="error"
-          title={t("verifyFailedLoad")}
-          endContent={
-            <Button
-              label={t("retry")}
-              variant="secondary"
-              onClick={verification.retry}
-            />
-          }
-        />
-      ) : (
-        <VStack ref={verification.ref} />
-      )}
+      <VerificationField verification={verification} />
       <HStack hAlign="end">
         <Button
           label={t("post")}

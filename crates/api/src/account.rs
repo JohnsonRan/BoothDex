@@ -225,7 +225,7 @@ mod tests {
         let state = test_state(pool.clone());
         let ip = crate::limit::ClientIp([203, 0, 113, 20].into());
         let refused = |status: StatusCode, code: &str, message: &str| (status, json!({ "ok": false, "code": code, "error": message }));
-        let sign_in = |name: &str| login(State(state.clone()), ip, HeaderMap::new(), Json(Login { login: name.into(), password: "0123456789".into(), keep: false }));
+        let sign_in = |name: &str| login(State(state.clone()), ip, HeaderMap::new(), Json(Login { login: name.into(), password: "0123456789".into(), keep: false, token: String::new() }));
 
         assert_eq!(answer(sign_in("nobody").await).await, refused(StatusCode::UNAUTHORIZED, "bad_credentials", "Incorrect username or password."));
         for _ in 0..MAX_FAILURES {
@@ -235,7 +235,7 @@ mod tests {
 
         // a sign-up form, from an address of its own: one address has five attempts
         let sign_up = |display_name: &str, username: &str, email: &str, password: &str| {
-            let form = Register { display_name: display_name.into(), username: username.into(), email: email.into(), password: password.into(), keep: false };
+            let form = Register { display_name: display_name.into(), username: username.into(), email: email.into(), password: password.into(), keep: false, token: String::new() };
             register(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 21].into()), HeaderMap::new(), Json(form))
         };
         let bad = |code: &str, message: &str| refused(StatusCode::BAD_REQUEST, code, message);
@@ -279,6 +279,7 @@ mod tests {
             login: "a\0".into(),
             password: "0123456789".into(),
             keep: false,
+            token: String::new(),
         }));
         assert_eq!(status(sign_in.await), StatusCode::UNAUTHORIZED);
         let sign_up = register(State(state.clone()), crate::limit::ClientIp([203, 0, 113, 31].into()), HeaderMap::new(), Json(Register {
@@ -287,6 +288,7 @@ mod tests {
             email: "ann@example.test".into(),
             password: "0123456789".into(),
             keep: false,
+            token: String::new(),
         }));
         assert_eq!(status(sign_up.await), StatusCode::BAD_REQUEST);
         let profile = serde_json::from_value(json!({ "display_name": "A\0" })).unwrap();
