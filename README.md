@@ -88,6 +88,8 @@ docker compose pull && docker compose up -d
 - An item opens in a dialog with the full BOOTH gallery, variations, title translations and image download.
 - Favourites, recently viewed items (marked "Viewed" in results), a remembered avatar, and saved searches as
   saved views that you can rename and follow by RSS.
+- A "Back to top" button appears at the bottom end after one screen of scrolling and returns to the top of the
+  page; it keeps the filters and results.
 - Change your display name and password in Settings; a new password signs your other devices out.
 - Leave a message in the guestbook from the top bar without an account: a nickname, up to 500 characters and a
   Cloudflare Turnstile check. An admin opens it by setting the Turnstile keys, hides or deletes messages, and

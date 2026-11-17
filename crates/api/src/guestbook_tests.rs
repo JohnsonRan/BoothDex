@@ -15,7 +15,7 @@ use crate::limit::ClientIp;
 fn entries_are_trimmed_and_bounded() {
     assert_eq!(validate("  Ann ", " hi\r\nthere\t ").unwrap(), ("Ann".into(), "hi\nthere".into()));
     assert!(validate(&"名".repeat(NICKNAME_MAX), &"字".repeat(BODY_MAX)).is_ok());
-    for (nickname, body) in [(" ", "hi"), ("Ann", " "), (&*"名".repeat(NICKNAME_MAX + 1), "hi"), ("Ann", &*"字".repeat(BODY_MAX + 1)), ("A\nnn", "hi"), ("Ann", "h\0i"), ("Ann", "h\u{1b}i")] {
+    for (nickname, body) in [(" ", "hi"), ("Ann", " "), (&*"名".repeat(NICKNAME_MAX + 1), "hi"), ("Ann", &*"字".repeat(BODY_MAX + 1)), ("A\nnn", "hi"), ("A\u{2028}nn", "hi"), ("A\u{2029}nn", "hi"), ("Ann", "h\0i"), ("Ann", "h\u{1b}i")] {
         assert!(matches!(validate(nickname, body), Err(Refusal::BadGuestbookEntry)), "{nickname:?} {body:?}");
     }
 }
@@ -24,6 +24,10 @@ fn entries_are_trimmed_and_bounded() {
 fn nothing_invisible_is_taken() {
     // an emoji family keeps its zero-width joiners, a heart its variation selector and a flag its tags
     assert!(validate("👨\u{200D}👩\u{200D}👧", "❤\u{FE0F} 🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}").is_ok());
+    // unassigned default-ignorables show nothing either, so a field made only of them would read blank
+    for c in ['\u{FFF0}', '\u{FFF8}', '\u{E0080}', '\u{E00FF}', '\u{E01F0}', '\u{E0FFF}'] {
+        assert!(matches!(validate(&c.to_string().repeat(5), "hi"), Err(Refusal::BadGuestbookEntry)), "{:04X}", c as u32);
+    }
     for c in INVISIBLE.iter().flat_map(|(a, b)| *a..=*b) {
         assert!(matches!(validate(&format!("A{c}nn"), "hi"), Err(Refusal::BadGuestbookEntry)), "{:04X}", c as u32);
         assert!(matches!(validate("Ann", &format!("h{c}i")), Err(Refusal::BadGuestbookEntry)), "{:04X}", c as u32);
@@ -95,10 +99,24 @@ async fn closed_until_both_keys_are_set(pool: PgPool) {
     let (status, body) = answer(post(State(s.clone()), ip(1), entry("Ann", "hi", "pass")).await).await;
     assert_eq!((status, body["code"].as_str()), (StatusCode::SERVICE_UNAVAILABLE, Some("verification_unavailable")));
     sqlx::query("insert into app_settings (key, value) values ('turnstile', '{\"site_key\": \"0x-site\"}')").execute(&pool).await.unwrap();
+    // a fresh API reads the row, as one does after a restart; the console's save updates a running one
+    let s = state(pool.clone()).await;
     assert_eq!(page(&s).await["site_key"], Value::Null);
     let (status, _) = answer(post(State(s.clone()), ip(1), entry("Ann", "hi", "pass")).await).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from guestbook").fetch_one(&pool).await.unwrap(), 0);
+}
+
+/// The list and the post read the API's copy of the settings, the one the rate limits and `/api/verify` read, so
+/// all of them change together when the console saves.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn the_guestbook_follows_the_apis_copy_of_the_settings(pool: PgPool) {
+    let s = state(pool.clone()).await;
+    let copy = crate::turnstile::resolve(&json!({ "site_key": "0x-site", "secret": "0x-secret" }), |_| None);
+    s.turnstile.store(Some(Arc::new(copy)));
+    assert_eq!(page(&s).await["site_key"], "0x-site");
+    assert_eq!(answer(post(State(s.clone()), ip(1), entry("Ann", "hi", "pass")).await).await.0, StatusCode::OK);
 }
 
 #[sqlx::test(migrations = "../core/migrations")]

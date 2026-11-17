@@ -4,8 +4,9 @@
 // read-only with the same description. Test asks Cloudflare with the saved secret; a refusal stays as a Banner
 // with Cloudflare's codes, since it needs a change in the form. Under them, a Switch saved as soon as it is flipped
 // (as registration.tsx) makes sign-in and registration carry the widget, and another gives visitors without a pass
-// the stricter rate limits (crates/api/src/pass.rs); both are disabled, saying why, while either key is unset, since
-// the API checks nothing then.
+// the stricter rate limits (crates/api/src/pass.rs); while either key is unset the API checks nothing, so an off
+// switch is disabled, saying why. An on switch stays operable: otherwise it would take effect, unasked, with the next
+// key saved, and a mistyped site key would lock sign-in.
 
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -144,7 +145,7 @@ export function TurnstileSettings() {
         label={t("turnstile.auth")}
         description={keysSet ? undefined : t("error.turnstileUnset")}
         value={keys.auth}
-        isDisabled={busy || !keysSet}
+        isDisabled={busy || (!keysSet && !keys.auth)}
         onChange={(auth) =>
           flip({ auth }, auth ? "turnstile.authOn" : "turnstile.authOff")
         }
@@ -155,7 +156,7 @@ export function TurnstileSettings() {
           keysSet ? t("turnstile.strictDesc") : t("error.turnstileUnset")
         }
         value={keys.strict_limits}
-        isDisabled={busy || !keysSet}
+        isDisabled={busy || (!keysSet && !keys.strict_limits)}
         onChange={(strict_limits) =>
           flip(
             { strict_limits },

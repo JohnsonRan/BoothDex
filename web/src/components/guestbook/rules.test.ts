@@ -13,6 +13,8 @@ test("the form takes what the server's validate takes", () => {
   // counted in scalar values, as Rust's chars(): an astral character is one
   expect(nicknameOk("😀".repeat(NICKNAME_MAX))).toBe(true);
   expect(nicknameOk("A\tB")).toBe(false);
+  expect(nicknameOk("A\u2028B")).toBe(false);
+  expect(nicknameOk("A\u2029B")).toBe(false);
   expect(bodyOk("line\r\nline\ttab")).toBe(true);
   expect(bodyOk("bell\u0007")).toBe(false);
   expect(bodyOk("lone\rreturn")).toBe(false);

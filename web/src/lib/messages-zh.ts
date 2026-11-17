@@ -4,6 +4,7 @@ export const zh = {
   "nav.filters": "筛选",
   "nav.account": "账号菜单",
   "nav.guestbook": "留言板",
+  "nav.top": "回到顶部",
   "title.all": "全部商品",
   "title.favourites": "我的收藏",
   "title.recent": "最近已看",

@@ -45,22 +45,36 @@ export const TURNSTILE_LANGUAGES: Record<UiLang, string> = {
  *  guestbook drawer on a phone) would clip its right edge. The compact widget is 150 px wide. */
 const FLEXIBLE_MIN = 300;
 
+/** How long the script may take before it counts as not loaded: a network that drops the request fires neither `load`
+ *  nor `error`, and the form would wait for a widget that never comes instead of letting the server decide. */
+export const LOAD_TIMEOUT_MS = 10_000;
+
 let loading: Promise<Turnstile> | undefined;
 
 /** The Turnstile API, its script added on the first call; a failed load is tried again on the next. */
 export function loadTurnstile(): Promise<Turnstile> {
   loading ??= new Promise<Turnstile>((resolve, reject) => {
+    // a script that arrived after its load timed out has already started Turnstile
+    if (window.turnstile) return resolve(window.turnstile);
     const script = document.createElement("script");
+    const fail = (why: string) => {
+      clearTimeout(timer);
+      script.onload = script.onerror = null;
+      script.remove();
+      reject(new Error(why));
+    };
+    const timer = setTimeout(
+      () => fail("Turnstile timed out"),
+      LOAD_TIMEOUT_MS,
+    );
     script.src = SCRIPT;
     script.async = true;
-    script.onload = () =>
-      window.turnstile
-        ? resolve(window.turnstile)
-        : reject(new Error("Turnstile did not start"));
-    script.onerror = () => {
-      script.remove();
-      reject(new Error("Turnstile did not load"));
+    script.onload = () => {
+      clearTimeout(timer);
+      if (window.turnstile) resolve(window.turnstile);
+      else reject(new Error("Turnstile did not start"));
     };
+    script.onerror = () => fail("Turnstile did not load");
     document.head.append(script);
   }).catch((e) => {
     loading = undefined;

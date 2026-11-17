@@ -6,6 +6,7 @@ export const ja: Dict = {
   "nav.filters": "絞り込み",
   "nav.account": "アカウントメニュー",
   "nav.guestbook": "ゲストブック",
+  "nav.top": "トップへ戻る",
   "title.all": "すべての商品",
   "title.favourites": "お気に入り",
   "title.recent": "最近見た商品",

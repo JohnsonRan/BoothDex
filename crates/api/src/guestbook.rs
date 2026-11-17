@@ -60,8 +60,9 @@ pub fn routes() -> Router<Arc<AppState>> {
 }
 
 /// Characters that show nothing or reorder the text around them: zero-width spaces and the non-joiner, direction
-/// marks, overrides and isolates, the soft hyphen, the BOM, the Hangul and Braille blanks, and the annotation, object
-/// and notation controls. A nickname or message holding one is refused, so no entry reads blank or reversed.
+/// marks, overrides and isolates, the soft hyphen, the BOM, the Hangul and Braille blanks, the annotation, object and
+/// notation controls, and the unassigned default-ignorable code points around the specials and in plane 14 outside
+/// `SHAPING`'s tags and selectors. A nickname or message holding one is refused, so no entry reads blank or reversed.
 /// `web/src/components/guestbook/rules.test.ts` reads this list and `SHAPING` and holds the form's copy to them.
 const INVISIBLE: &[(char, char)] = &[
     ('\u{00AD}', '\u{00AD}'),
@@ -76,9 +77,11 @@ const INVISIBLE: &[(char, char)] = &[
     ('\u{3164}', '\u{3164}'),
     ('\u{FEFF}', '\u{FEFF}'),
     ('\u{FFA0}', '\u{FFA0}'),
-    ('\u{FFF9}', '\u{FFFC}'),
+    ('\u{FFF0}', '\u{FFFC}'),
     ('\u{1BCA0}', '\u{1BCA3}'),
     ('\u{1D173}', '\u{1D17A}'),
+    ('\u{E0080}', '\u{E00FF}'),
+    ('\u{E01F0}', '\u{E0FFF}'),
 ];
 
 /// Characters that show nothing alone but shape the text beside them, so a field keeps them: the joiners of emoji
@@ -104,7 +107,8 @@ fn blank(s: &str) -> bool {
 }
 
 /// The trimmed nickname and message, or the refusal they deserve. A line break and a tab are the only control
-/// characters a message keeps; a nickname keeps none.
+/// characters a message keeps; a nickname keeps none, nor the line and paragraph separators, which break a line as a
+/// line feed does.
 fn validate(nickname: &str, body: &str) -> Result<(String, String), Refusal> {
     let nickname = nickname.trim();
     let body = body.replace("\r\n", "\n");
@@ -112,7 +116,7 @@ fn validate(nickname: &str, body: &str) -> Result<(String, String), Refusal> {
     let shown = |s: &str, max: usize| (1..=max).contains(&s.chars().count()) && !blank(s) && !s.chars().any(|c| within(INVISIBLE, c));
     if !shown(nickname, NICKNAME_MAX)
         || !shown(body, BODY_MAX)
-        || nickname.chars().any(char::is_control)
+        || nickname.chars().any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
         || body.chars().any(|c| c.is_control() && c != '\n' && c != '\t')
     {
         return Err(Refusal::BadGuestbookEntry);
@@ -137,7 +141,7 @@ pub(crate) async fn list(State(s): State<Arc<AppState>>, ClientIp(ip): ClientIp,
     .await?;
     let more = entries.len() as i64 > PAGE;
     entries.truncate(PAGE as usize);
-    let site_key = turnstile::config(&s.pool).await?.keys().map(|(site, _)| site.to_owned());
+    let site_key = s.turnstile_config().await?.keys().map(|(site, _)| site.to_owned());
     Ok(Json(GuestbookPage { entries, more, site_key }).into_response())
 }
 

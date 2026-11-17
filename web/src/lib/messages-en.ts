@@ -6,6 +6,7 @@ export const en: Dict = {
   "nav.filters": "Filters",
   "nav.account": "Account menu",
   "nav.guestbook": "Guestbook",
+  "nav.top": "Back to top",
   "title.all": "All items",
   "title.favourites": "My favourites",
   "title.recent": "Recently viewed",

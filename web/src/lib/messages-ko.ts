@@ -6,6 +6,7 @@ export const ko: Dict = {
   "nav.filters": "필터",
   "nav.account": "계정 메뉴",
   "nav.guestbook": "방명록",
+  "nav.top": "맨 위로",
   "title.all": "전체 상품",
   "title.favourites": "즐겨찾기",
   "title.recent": "최근 본 상품",
