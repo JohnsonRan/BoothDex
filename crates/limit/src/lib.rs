@@ -140,6 +140,11 @@ impl RateLimiter {
         }
     }
 
+    /// `(rate per second, burst)`, as given to `new`.
+    pub fn numbers(&self) -> (f64, f64) {
+        (self.rate, self.burst)
+    }
+
     /// Consumes one token or returns whole seconds until one refills (`Retry-After`).
     pub fn take(&self, ip: IpAddr) -> Result<(), u64> {
         self.take_at(ip, Instant::now())

@@ -35,7 +35,7 @@ use favourites::{add_favourite, list_favourites, remove_favourite};
 pub(crate) use password::{LoginThrottle, dummy_hash, hash_password};
 use profile::{change_password, delete_account, get_preferences, me, put_preferences, update_profile};
 use searches::{add_search, list_searches, remove_search, rename_search};
-pub(crate) use session::sessions_json;
+pub(crate) use session::{secure_flag, sessions_json};
 use session::{list_sessions, logout, remove_session};
 #[cfg(test)]
 pub(crate) use sign_in::{Login, Register};
@@ -55,13 +55,18 @@ pub(crate) fn token_hash(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
 }
 
-fn cookie_token(headers: &HeaderMap) -> Option<String> {
+/// The value of the request's first cookie called `name`.
+pub(crate) fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
-        .find_map(|kv| kv.trim().strip_prefix("session=").map(str::to_owned))
+        .find_map(|kv| kv.trim().strip_prefix(name)?.strip_prefix('=').map(str::to_owned))
+}
+
+fn cookie_token(headers: &HeaderMap) -> Option<String> {
+    cookie(headers, "session")
 }
 
 pub async fn current_user(pool: &PgPool, headers: &HeaderMap) -> Result<Option<User>, ApiError> {

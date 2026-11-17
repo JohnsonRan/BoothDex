@@ -7,6 +7,9 @@
 //! is on, and are let through when siteverify cannot judge a token, so a Cloudflare outage or a mistyped secret
 //! never keeps an admin out of the console that would fix it; the password, the per-account lockout and the
 //! per-address limit stand either way.
+//!
+//! A third switch makes the busiest public reads stricter for a visitor who has not passed a check (limit.rs
+//! `Tiered`); a passed check earns a pass that gives back today's numbers for a while (pass.rs).
 
 use std::net::IpAddr;
 use std::time::Duration;
@@ -30,6 +33,8 @@ pub(crate) struct TurnstileConfig {
     pub(crate) secret_from_env: bool,
     /// the admin's switch: sign-in and registration are checked too
     pub(crate) auth: bool,
+    /// the admin's switch: stricter limits for visitors without a pass
+    pub(crate) strict_limits: bool,
 }
 
 /// Prints whether a secret is set, never the secret: a `{:?}` in a log must not leak it.
@@ -41,6 +46,7 @@ impl std::fmt::Debug for TurnstileConfig {
             .field("site_key_from_env", &self.site_key_from_env)
             .field("secret_from_env", &self.secret_from_env)
             .field("auth", &self.auth)
+            .field("strict_limits", &self.strict_limits)
             .finish()
     }
 }
@@ -54,6 +60,12 @@ impl TurnstileConfig {
     /// Both keys while sign-in and registration are checked, or None: the switch does nothing without the keys.
     pub(crate) fn auth_keys(&self) -> Option<(&str, &str)> {
         self.keys().filter(|_| self.auth)
+    }
+
+    /// Both keys while visitors without a pass get the stricter limits, or None: without the keys nobody could earn a
+    /// pass, so the switch does nothing.
+    pub(crate) fn strict_keys(&self) -> Option<(&str, &str)> {
+        self.keys().filter(|_| self.strict_limits)
     }
 }
 
@@ -69,7 +81,8 @@ pub(crate) fn resolve(stored: &Value, env: impl Fn(&str) -> Option<String>) -> T
     };
     let (site_key, site_key_from_env) = pick("TURNSTILE_SITE_KEY", "site_key");
     let (secret, secret_from_env) = pick("TURNSTILE_SECRET_KEY", "secret");
-    TurnstileConfig { site_key, secret, site_key_from_env, secret_from_env, auth: stored["auth"].as_bool().unwrap_or(false) }
+    let on = |field: &str| stored[field].as_bool().unwrap_or(false);
+    TurnstileConfig { site_key, secret, site_key_from_env, secret_from_env, auth: on("auth"), strict_limits: on("strict_limits") }
 }
 
 pub(crate) async fn config(pool: &PgPool) -> Result<TurnstileConfig, sqlx::Error> {
@@ -118,7 +131,7 @@ pub(crate) async fn siteverify(
 
 /// What a check of one token came to.
 #[derive(Debug, PartialEq)]
-enum Verdict {
+pub(crate) enum Verdict {
     Passed,
     /// Cloudflare judged the token: missing, wrong, used, expired, or made for another form
     Refused,
@@ -135,7 +148,7 @@ const INTERNAL_ERROR: &str = "internal-error";
 /// The longest token Cloudflare issues (the same page, "Token characteristics").
 const TOKEN_MAX: usize = 2048;
 
-async fn verdict(s: &AppState, secret: &str, token: &str, ip: IpAddr, action: &str) -> Verdict {
+pub(crate) async fn verdict(s: &AppState, secret: &str, token: &str, ip: IpAddr, action: &str) -> Verdict {
     // no widget made it, and the visitor chose its size: it is not sent on
     if token.len() > TOKEN_MAX {
         return Verdict::Refused;
@@ -214,6 +227,11 @@ mod tests {
         let on = resolve(&json!({ "site_key": "0x-db", "secret": "0x-db-secret", "auth": true }), |_| None);
         assert_eq!(on.auth_keys(), Some(("0x-db", "0x-db-secret")));
         assert_eq!(resolve(&json!({ "site_key": "0x-db", "auth": true }), |_| None).auth_keys(), None);
+        // so is the switch for stricter limits, apart from the other one
+        assert_eq!((on.strict_limits, on.strict_keys()), (false, None));
+        let strict = resolve(&json!({ "site_key": "0x-db", "secret": "0x-db-secret", "strict_limits": true }), |_| None);
+        assert_eq!((strict.strict_keys(), strict.auth_keys()), (Some(("0x-db", "0x-db-secret")), None));
+        assert_eq!(resolve(&json!({ "secret": "0x-db-secret", "strict_limits": true }), |_| None).strict_keys(), None);
         // one key alone keeps the form closed
         assert_eq!(resolve(&json!({ "site_key": "0x-db" }), |_| None).keys(), None);
         assert_eq!(resolve(&json!({ "site_key": "", "secret": "s" }), |_| None).keys(), None);

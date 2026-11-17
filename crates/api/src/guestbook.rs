@@ -12,7 +12,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Refusal;
-use crate::limit::{Check, ClientIp};
+use crate::limit::{Check, ClientIp, Tier};
 use crate::{ApiError, AppState, turnstile};
 
 pub(crate) const NICKNAME_MAX: usize = 24;
@@ -125,8 +125,8 @@ pub(crate) struct ListQuery {
     before: Option<i64>,
 }
 
-pub(crate) async fn list(State(s): State<Arc<AppState>>, ClientIp(ip): ClientIp, Query(q): Query<ListQuery>) -> Result<Response, ApiError> {
-    s.limits.lookup.check(ip)?;
+pub(crate) async fn list(State(s): State<Arc<AppState>>, ClientIp(ip): ClientIp, tier: Tier, Query(q): Query<ListQuery>) -> Result<Response, ApiError> {
+    s.limits.lookup.check(ip, &tier)?;
     let mut entries: Vec<GuestbookEntry> = sqlx::query_as(
         "select id, nickname, body, status, created_at from guestbook
          where hidden_at is null and ($1::bigint is null or id < $1) order by id desc limit $2",

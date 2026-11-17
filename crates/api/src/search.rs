@@ -9,7 +9,6 @@ use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse, Response};
 
 use crate::error::Refusal;
-use crate::limit::Check;
 use crate::params::Params;
 use crate::search_request::{SearchRequest, View, query_without, without_groups};
 use crate::{ApiError, AppState, account, catalog, db, limit};
@@ -133,10 +132,11 @@ pub(crate) enum EmbedPlan {
 pub(crate) async fn search(
     State(s): State<Arc<AppState>>,
     limit::ClientIp(ip): limit::ClientIp,
+    tier: limit::Tier,
     headers: axum::http::HeaderMap,
     RawQuery(q): RawQuery,
 ) -> Result<Response, ApiError> {
-    s.limits.search.check(ip)?;
+    s.limits.search.check(ip, &tier)?;
     let t0 = Instant::now();
     let mut trace = Trace::default();
     trace.start();

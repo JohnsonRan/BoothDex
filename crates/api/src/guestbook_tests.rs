@@ -84,7 +84,7 @@ async fn answer(r: Result<Response, ApiError>) -> (StatusCode, Value) {
 }
 
 async fn page(s: &Arc<AppState>) -> Value {
-    answer(list(State(s.clone()), ip(200), Query(ListQuery { before: None })).await).await.1
+    answer(list(State(s.clone()), ip(200), crate::limit::Tier::Base, Query(ListQuery { before: None })).await).await.1
 }
 
 #[sqlx::test(migrations = "../core/migrations")]
@@ -134,7 +134,7 @@ async fn the_list_pages_and_leaves_out_hidden_messages(pool: PgPool) {
     let first = page(&s).await;
     let ids = |p: &Value| p["entries"].as_array().unwrap().iter().map(|e| e["id"].as_i64().unwrap()).collect::<Vec<_>>();
     assert_eq!((ids(&first)[..2].to_vec(), ids(&first).len(), &first["more"]), (vec![61, 59], 50, &json!(true)));
-    let rest = answer(list(State(s.clone()), ip(200), Query(ListQuery { before: Some(10) })).await).await.1;
+    let rest = answer(list(State(s.clone()), ip(200), crate::limit::Tier::Base, Query(ListQuery { before: Some(10) })).await).await.1;
     assert_eq!((ids(&rest), &rest["more"]), ((1..10).rev().collect(), &json!(false)));
 }
 
@@ -143,10 +143,10 @@ async fn the_list_pages_and_leaves_out_hidden_messages(pool: PgPool) {
 #[ignore = "requires PostgreSQL with pgvector"]
 async fn reading_the_list_is_rate_limited(pool: PgPool) {
     let s = state(pool).await;
-    while s.limits.lookup.check(ip(9).0).is_ok() {}
-    let (status, _) = answer(list(State(s.clone()), ip(9), Query(ListQuery { before: None })).await).await;
+    while s.limits.lookup.check(ip(9).0, &crate::limit::Tier::Base).is_ok() {}
+    let (status, _) = answer(list(State(s.clone()), ip(9), crate::limit::Tier::Base, Query(ListQuery { before: None })).await).await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
-    assert_eq!(answer(list(State(s.clone()), ip(10), Query(ListQuery { before: None })).await).await.0, StatusCode::OK);
+    assert_eq!(answer(list(State(s.clone()), ip(10), crate::limit::Tier::Base, Query(ListQuery { before: None })).await).await.0, StatusCode::OK);
 }
 
 #[sqlx::test(migrations = "../core/migrations")]

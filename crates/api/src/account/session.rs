@@ -16,7 +16,7 @@ const COOKIE: &str = "session";
 const KEEP_DAYS: i64 = 30;
 const SHORT_HOURS: i64 = 12;
 
-fn secure_flag() -> &'static str {
+pub(crate) fn secure_flag() -> &'static str {
     if std::env::var("COOKIE_SECURE").as_deref() == Ok("0") { "" } else { "; Secure" }
 }
 

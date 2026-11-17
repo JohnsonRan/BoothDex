@@ -16,7 +16,6 @@ use sqlx::PgPool;
 use tokio::sync::Semaphore;
 
 use crate::error::Refusal;
-use crate::limit::Check;
 use crate::{ApiError, AppState};
 
 const FLUSH_EVERY: Duration = Duration::from_secs(10);
@@ -90,9 +89,10 @@ impl Fetcher {
 pub async fn gallery(
     State(s): State<Arc<AppState>>,
     crate::limit::ClientIp(ip): crate::limit::ClientIp,
+    tier: crate::limit::Tier,
     Path(id): Path<i64>,
 ) -> Result<Response, ApiError> {
-    s.limits.gallery.check(ip)?;
+    s.limits.gallery.check(ip, &tier)?;
     if s.snap().catalog.docs_for(&[id]).is_empty() {
         return Err(Refusal::UnknownItem.into());
     }
