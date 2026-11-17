@@ -116,3 +116,5 @@ export function useTurnstile(siteKey: string, action: string) {
   };
   return { ref, token, failed, reset, retry };
 }
+
+export type TurnstileState = ReturnType<typeof useTurnstile>;

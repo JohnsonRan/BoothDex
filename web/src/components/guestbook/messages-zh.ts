@@ -12,9 +12,6 @@ export const guestbookZh = {
   confirm: "确认发布",
   back: "返回",
   posted: "留言已发布",
-  verify: "请先完成人机验证",
-  verifyFailedLoad:
-    "无法加载人机验证。请检查网络，或关闭拦截脚本的扩展后重试。",
   more: "加载更多",
   empty: "还没有留言",
   emptyDesc: "写下第一条留言吧。",
@@ -25,7 +22,6 @@ export const guestbookZh = {
   "status.completed": "已完成",
   "status.not_planned": "未计划",
   "error.entry": "昵称需为 1 到 24 个字符，留言需为 1 到 500 个字符",
-  "error.verification": "人机验证未通过，请重试",
   "error.tooMany": "发布过于频繁，请稍后再试",
   "error.failed": "操作失败，请重试",
 };

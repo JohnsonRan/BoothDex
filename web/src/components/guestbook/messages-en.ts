@@ -16,9 +16,6 @@ export const guestbookEn: GuestbookDict = {
   confirm: "Post message",
   back: "Back",
   posted: "Your message is posted",
-  verify: "Complete the verification first.",
-  verifyFailedLoad:
-    "The verification couldn't load. Check your connection or turn off extensions that block scripts, then try again.",
   more: "Load more",
   empty: "No messages yet",
   emptyDesc: "Write the first one.",
@@ -30,7 +27,6 @@ export const guestbookEn: GuestbookDict = {
   "status.not_planned": "Not planned",
   "error.entry":
     "Your nickname must be 1 to 24 characters and your message 1 to 500 characters.",
-  "error.verification": "The verification didn't pass. Try again.",
   "error.tooMany": "You're posting too often. Try again later.",
   "error.failed": "Something went wrong. Try again.",
 };

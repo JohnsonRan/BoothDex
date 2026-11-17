@@ -2,12 +2,15 @@
 // The Cloudflare Turnstile keys that open the guestbook, laid out as the AI settings (ai-settings.tsx): the site
 // key, the write-only secret showing only its hint, Save and Test. A field the server environment sets is
 // read-only with the same description. Test asks Cloudflare with the saved secret; a refusal stays as a Banner
-// with Cloudflare's codes, since it needs a change in the form.
+// with Cloudflare's codes, since it needs a change in the form. Under them, a Switch saved as soon as it is flipped
+// (as registration.tsx) makes sign-in and registration carry the widget; it is disabled, saying why, while either
+// key is unset, since the API checks nothing then.
 
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { HStack, VStack } from "@astryxdesign/core/Layout";
 import { Spinner } from "@astryxdesign/core/Spinner";
+import { Switch } from "@astryxdesign/core/Switch";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/toasts";
@@ -72,9 +75,21 @@ export function TurnstileSettings() {
       setRefused(r.ok ? null : r.codes);
       if (r.ok) toast({ body: t("turnstile.testOk") });
     });
+  // only the switch is taken from the answer, so an unsaved edit of the site key stays in its field
+  const checkAuth = (auth: boolean) =>
+    run(async () => {
+      setKeys(
+        await api<Turnstile>("/api/admin/settings/turnstile", {
+          method: "PUT",
+          json: { auth },
+        }),
+      );
+      toast({ body: t(auth ? "turnstile.authOn" : "turnstile.authOff") });
+    });
 
   if (!keys) return <Spinner label={t("turnstile.title")} />;
   const env = keys.from_env;
+  const keysSet = keys.secret_set && !!keys.site_key;
   return (
     <VStack gap={4}>
       <TextInput
@@ -112,7 +127,7 @@ export function TurnstileSettings() {
         <Button
           label={t("turnstile.test")}
           variant="secondary"
-          isDisabled={busy || !keys.secret_set || !keys.site_key}
+          isDisabled={busy || !keysSet}
           onClick={test}
         />
       </HStack>
@@ -124,6 +139,13 @@ export function TurnstileSettings() {
           })}
         />
       )}
+      <Switch
+        label={t("turnstile.auth")}
+        description={keysSet ? undefined : t("error.turnstileUnset")}
+        value={keys.auth}
+        isDisabled={busy || !keysSet}
+        onChange={checkAuth}
+      />
     </VStack>
   );
 }
