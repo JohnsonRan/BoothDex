@@ -13,6 +13,7 @@ import { MESSAGES, translator } from "@/lib/dictionaries";
 import type { SearchOutcome } from "@/lib/server-data";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
 import { FIRST_TILES } from "./item-tile";
+import { ResultPages } from "./result-pages";
 import { Results, TypoNote } from "./results";
 import { ResultsGrid } from "./results-grid";
 
@@ -203,6 +204,7 @@ test("a model misread from a typo that left no results still offers the words as
                 filters,
                 names: { categories: [], avatars: [], tags: {} },
                 noSemantic: false,
+                navigation: false,
               })
             }
           </FilterUrlProvider>
@@ -211,4 +213,40 @@ test("a model misread from a typo that left no results still offers the words as
     );
   expect(await page(true)).toContain('href="?q=chifon%20dress&amp;typo=0');
   expect(await page(false)).not.toContain("typo=0");
+});
+
+test("a client navigation's payload carries the whole page, a document's HTML only the first screen", async () => {
+  const items = Array.from({ length: 100 }, (_, i) => ({ ...item, id: i + 1 }));
+  const outcome = {
+    state: "ok",
+    ms: 1,
+    result: { items, count: 100, page: 1, totalPages: 1, pageSize: 100 },
+  } as unknown as SearchOutcome;
+  // the props the server hands the results grid, found in the element tree Results returns
+  const pagesProps = async (navigation: boolean) => {
+    const find = (node: unknown): Record<string, unknown> | undefined => {
+      if (Array.isArray(node)) return node.map(find).find(Boolean);
+      if (!node || typeof node !== "object" || !("props" in node)) return;
+      const el = node as { type: unknown; props: Record<string, unknown> };
+      return el.type === ResultPages ? el.props : find(el.props.children);
+    };
+    return find(
+      await Results({
+        outcome: Promise.resolve(outcome),
+        rates: Promise.resolve({}),
+        settings: DEFAULT_SETTINGS,
+        filters: DEFAULT_FILTERS,
+        names: { categories: [], avatars: [], tags: {} },
+        noSemantic: false,
+        navigation,
+      }),
+    );
+  };
+  const navigated = await pagesProps(true);
+  expect(navigated?.tiles).toHaveLength(FIRST_TILES);
+  expect(navigated?.rest).toHaveLength(100 - FIRST_TILES);
+  const loaded = await pagesProps(false);
+  expect(loaded?.tiles).toHaveLength(FIRST_TILES);
+  expect(loaded?.partial).toBe(true);
+  expect(loaded?.rest).toBeUndefined();
 });

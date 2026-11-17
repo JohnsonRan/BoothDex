@@ -1,7 +1,8 @@
 "use client";
 // The rest of a list the browser already has (the recent view), drawn once the placeholder after the first screen
 // of tiles comes within a screen or two of the viewport. They appear at once, without the entrance: they are drawn
-// below the first screen. The search results grow the same way, page by page (result-pages.tsx).
+// below the first screen. The search results grow the same way, page by page (result-pages.tsx), the rest of the
+// server's page read by the browser after a document load and sent with the page after a client navigation.
 
 import { useEffect, useRef, useState } from "react";
 import { TileSilhouette } from "@/components/catalog/silhouette";

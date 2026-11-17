@@ -101,6 +101,7 @@ export async function Results({
   filters,
   names,
   noSemantic,
+  navigation,
 }: {
   outcome: Promise<SearchOutcome>;
   rates: Promise<Rates>;
@@ -108,6 +109,8 @@ export async function Results({
   filters: Filters;
   names: ClauseNames;
   noSemantic: boolean;
+  /** rendered for a client navigation's payload, which becomes no HTML (home-screen.tsx) */
+  navigation: boolean;
 }) {
   const o = await outcome;
   if (o.state !== "ok") return <KeepResults failure={o.state} />;
@@ -132,6 +135,9 @@ export async function Results({
       </KeepResults>
     );
   const known = await rates;
+  // The HTML carries the first screen only, the browser reading the rest of the page itself (the size budget,
+  // REQUIREMENTS.md "Numbers"); a navigation's payload carries the whole page, so the page is searched once.
+  const tiles = result.items.map((item) => tileOf(item, settings, known, t));
   const href = (n: number) =>
     `?${pageQuery(filtersToQuery(filters), n, lexical)}`;
   return (
@@ -149,10 +155,9 @@ export async function Results({
             total={result.totalPages}
             count={result.count}
             pageSize={result.pageSize}
-            tiles={result.items
-              .slice(0, FIRST_TILES)
-              .map((item) => tileOf(item, settings, known, t))}
-            partial={result.items.length > FIRST_TILES}
+            tiles={tiles.slice(0, FIRST_TILES)}
+            partial={tiles.length > FIRST_TILES}
+            rest={navigation ? tiles.slice(FIRST_TILES) : undefined}
             filters={filters}
             lexical={lexical}
             settings={settings}
