@@ -215,7 +215,7 @@ async function Catalog({
   const [avatars, categories, tags, railWidth] = await Promise.all([
     listAvatars().catch(() => []),
     listCategories().catch(() => []),
-    tagLabels([...filters.tags, ...filters.extags], settings.ui),
+    tagLabels([...filters.tags, ...filters.extags], settings.ui, outcome),
     readRailWidth(),
   ]);
   const avatar = avatars.find((a) => a.slug === filters.avatar);

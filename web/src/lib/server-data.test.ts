@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { passOffer, visitorHeaders } from "./server-data";
+import {
+  passOffer,
+  type SearchOutcome,
+  tagLabels,
+  visitorHeaders,
+} from "./server-data";
 
 test("visitorHeaders forwards the session and the visitor's address headers, and nothing else", () => {
   const from = new Headers({
@@ -42,4 +47,29 @@ test("a read refused by the stricter limit carries the check it offers; other fa
   ).toBeUndefined();
   expect(await passOffer(failed(500, offered))).toBeUndefined();
   expect(await passOffer(new TypeError("fetch failed"))).toBeUndefined();
+});
+
+test("a visitor whose search a rate limit refused gets the tags' names, and no lookup is made", async () => {
+  const asked: string[] = [];
+  const lookup = async (name: string) => {
+    asked.push(name);
+    return { name, display: name.toUpperCase() };
+  };
+  const labels = (o: SearchOutcome) =>
+    tagLabels(["long_hair", "cat_ears"], "en", Promise.resolve(o), lookup);
+  for (const refused of [
+    { state: "error", limited: true, offer: { siteKey: "0x-site" } },
+    { state: "error", limited: true },
+  ] as const)
+    expect(await labels(refused)).toEqual({
+      long_hair: "long_hair",
+      cat_ears: "cat_ears",
+    });
+  expect(asked).toEqual([]);
+  // any other failure still reads the labels
+  expect(await labels({ state: "error" })).toEqual({
+    long_hair: "LONG_HAIR",
+    cat_ears: "CAT_EARS",
+  });
+  expect(asked).toEqual(["long_hair", "cat_ears"]);
 });

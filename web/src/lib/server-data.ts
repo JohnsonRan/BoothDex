@@ -51,11 +51,11 @@ export async function readRailWidth(): Promise<number> {
 }
 
 /** "starting": the API is still loading after a restart (503) or unreachable; "error": it is up but failed, or, with
- *  `offer`, refused the visitor by the stricter limit, which a passed check lifts. */
+ *  `limited`, refused the visitor by a rate limit; with `offer` too, the stricter one, which a passed check lifts. */
 export type SearchOutcome =
   /** `ms`: this server's request, the API's time included (the search trace's total) */
   | { state: "ok"; result: SearchResponse; ms: number }
-  | { state: "starting" | "error"; offer?: PassOffer };
+  | { state: "starting" | "error"; offer?: PassOffer; limited?: boolean };
 
 /** The check a refused read offers (crates/api/src/limit.rs, `RateLimited`): the server cannot show it, the page can. */
 export async function passOffer(e: unknown): Promise<PassOffer | undefined> {
@@ -114,8 +114,12 @@ export async function searchItems(
     );
     return { state: "ok", result, ms: performance.now() - start };
   } catch (e) {
-    const offer = await passOffer(e);
-    if (offer) return { state: "error", offer };
+    if (
+      e instanceof Error &&
+      e.cause instanceof Response &&
+      e.cause.status === 429
+    )
+      return { state: "error", limited: true, offer: await passOffer(e) };
     return { state: (await apiReady()) ? "error" : "starting" };
   }
 }
@@ -163,14 +167,21 @@ async function smartTag(name: string): Promise<SmartTag | null> {
   return items.find((x) => x.name === name) ?? null;
 }
 
-/** Display names of the tags in a URL, in the interface language; a tag that cannot be read keeps its name. */
+/** Display names of the tags in a URL, in the interface language; a tag that cannot be read keeps its name. The
+ *  lookups are the server's own and not rate-limited (crates/api/src/limit.rs `own_server`), so they wait for the
+ *  visitor's `search` and are skipped when a rate limit refused it: a URL of 20 tags costs a refused visitor nothing. */
 export async function tagLabels(
   names: string[],
   ui: string,
+  search: Promise<SearchOutcome>,
+  lookup: (name: string) => Promise<SmartTag | null> = smartTag,
 ): Promise<Record<string, string>> {
-  const found = await Promise.all(
-    names.map((n) => smartTag(n).catch(() => null)),
-  );
+  if (names.length === 0) return {};
+  const o = await search;
+  const refused = o.state !== "ok" && !!o.limited;
+  const found = refused
+    ? []
+    : await Promise.all(names.map((n) => lookup(n).catch(() => null)));
   return Object.fromEntries(
     names.map((n, i) => [n, found[i] ? tagName(found[i], ui) : n]),
   );
