@@ -183,7 +183,7 @@ pub(crate) async fn verdict(s: &AppState, secret: &str, token: &str, ip: IpAddr,
 /// Refuses the request unless `token` passes a check for `action`. With either key unset the form is closed; when
 /// siteverify cannot judge the token the request is refused too, and the operator reads why in the log.
 pub(crate) async fn require(s: &AppState, token: &str, ip: IpAddr, action: &str) -> Result<(), ApiError> {
-    let config = config(&s.pool).await?;
+    let config = s.turnstile_config().await?;
     let Some((_, secret)) = config.keys() else { return Err(Refusal::VerificationUnavailable.into()) };
     match verdict(s, secret, token, ip, action).await {
         Verdict::Passed => Ok(()),
@@ -198,6 +198,7 @@ pub(crate) async fn require(s: &AppState, token: &str, ip: IpAddr, action: &str)
 /// Answers whether the token passed: only then does the session the request makes count toward today's rate limits
 /// (pass.rs).
 pub(crate) async fn require_for_account(s: &AppState, token: &str, ip: IpAddr, action: &str) -> Result<bool, ApiError> {
+    // the row, not the process's copy: docs/DEPLOY.md turns the switch off with SQL for a locked-out admin, no restart
     let config = config(&s.pool).await?;
     let Some((_, secret)) = config.auth_keys() else { return Ok(false) };
     match verdict(s, secret, token, ip, action).await {

@@ -99,10 +99,24 @@ async fn closed_until_both_keys_are_set(pool: PgPool) {
     let (status, body) = answer(post(State(s.clone()), ip(1), entry("Ann", "hi", "pass")).await).await;
     assert_eq!((status, body["code"].as_str()), (StatusCode::SERVICE_UNAVAILABLE, Some("verification_unavailable")));
     sqlx::query("insert into app_settings (key, value) values ('turnstile', '{\"site_key\": \"0x-site\"}')").execute(&pool).await.unwrap();
+    // a fresh API reads the row, as one does after a restart; the console's save updates a running one
+    let s = state(pool.clone()).await;
     assert_eq!(page(&s).await["site_key"], Value::Null);
     let (status, _) = answer(post(State(s.clone()), ip(1), entry("Ann", "hi", "pass")).await).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from guestbook").fetch_one(&pool).await.unwrap(), 0);
+}
+
+/// The list and the post read the API's copy of the settings, the one the rate limits and `/api/verify` read, so
+/// all of them change together when the console saves.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn the_guestbook_follows_the_apis_copy_of_the_settings(pool: PgPool) {
+    let s = state(pool.clone()).await;
+    let copy = crate::turnstile::resolve(&json!({ "site_key": "0x-site", "secret": "0x-secret" }), |_| None);
+    s.turnstile.store(Some(Arc::new(copy)));
+    assert_eq!(page(&s).await["site_key"], "0x-site");
+    assert_eq!(answer(post(State(s.clone()), ip(1), entry("Ann", "hi", "pass")).await).await.0, StatusCode::OK);
 }
 
 #[sqlx::test(migrations = "../core/migrations")]

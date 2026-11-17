@@ -141,7 +141,7 @@ pub(crate) async fn list(State(s): State<Arc<AppState>>, ClientIp(ip): ClientIp,
     .await?;
     let more = entries.len() as i64 > PAGE;
     entries.truncate(PAGE as usize);
-    let site_key = turnstile::config(&s.pool).await?.keys().map(|(site, _)| site.to_owned());
+    let site_key = s.turnstile_config().await?.keys().map(|(site, _)| site.to_owned());
     Ok(Json(GuestbookPage { entries, more, site_key }).into_response())
 }
 
