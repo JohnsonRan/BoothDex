@@ -42,14 +42,16 @@ impl IntoResponse for RateLimited {
 
 /// Whether a request is the site's own server's, which no per-address bucket limits (owner, 2026-11-17: "我们永远不应该
 /// 对服务端自身请求进行任何限速吧"): its client IP is internal. `client_ip` (crates/limit) answers an internal address only
-/// for an internal peer whose request names no public address. A request from a public peer is that peer, whatever
-/// its headers say; behind the front proxy, which appends the visitor's address to X-Forwarded-For (docs/DEPLOY.md),
-/// the rightmost public hop wins, internal hops are skipped and X-Real-IP and CF-Connecting-IP are not read. So an
-/// outside request is never the server's own, and a read `web` makes for a visitor carries that visitor's headers
-/// (web lib/server-data.ts, `visitorHeaders`) and is limited as the visitor. What does reach here: `web`'s cached
-/// lookups, a LAN visitor, local development, and every visitor when the front proxy sets no forwarding header, the
-/// misconfiguration `warn_unforwarded` reports. Global caps (`embed_global`) and the embedding limit per address
-/// (`embed_ip`), which bound a paid upstream, are not exempt.
+/// for an internal peer whose forwarding headers are absent or hold only internal addresses, each entry parsed on its
+/// own; an entry that does not parse sends the request to the shared `UNATTRIBUTED` bucket instead. A request from a
+/// public peer is that peer, whatever its headers say. Behind the front proxy, which appends the visitor's address to
+/// X-Forwarded-For (docs/DEPLOY.md), that public hop wins over internal hops, over X-Real-IP, and over
+/// CF-Connecting-IP unless the hop is Cloudflare's; X-Real-IP and CF-Connecting-IP are read only when no public hop
+/// exists. So an outside request is never the server's own, and a read `web` makes for a visitor carries that
+/// visitor's headers (web lib/server-data.ts, `visitorHeaders`) and is limited as the visitor. What does reach here:
+/// `web`'s cached lookups, a LAN visitor, local development, and every visitor when the front proxy sets no forwarding
+/// header, the misconfiguration `warn_unforwarded` reports. Global caps (`embed_global`) and the embedding limit per
+/// address (`embed_ip`), which bound a paid upstream, are not exempt.
 pub fn own_server(ip: IpAddr) -> bool {
     is_internal(ip)
 }

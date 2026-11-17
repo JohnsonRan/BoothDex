@@ -294,6 +294,30 @@ async fn the_sites_own_server_is_never_limited(pool: PgPool) {
     });
 }
 
+/// A forwarding header the server would never send (a byte outside ASCII, an entry that is not an address) makes a
+/// request a visitor's: the appended address when there is one, else one shared bucket, and never unlimited.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_visitor_cannot_pass_as_the_server(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        let site = site(&pool, strict()).await;
+        let behind_nginx = [("x-forwarded-for", "é, 203.0.113.9"), ("x-real-ip", "8.8.4.4")];
+        assert_eq!(site.count_with("/api/search", &behind_nginx).await, (2, offered()));
+        assert_eq!(site.count_with("/api/rss", &behind_nginx).await, (3, PLAIN));
+        // the same visitor, its address written with a port
+        assert_eq!(site.count_with("/api/search", &[("x-forwarded-for", "203.0.113.9:1234")]).await, (0, offered()));
+        // nothing usable: the one shared bucket
+        assert_eq!(site.count_with("/api/tags", &[("x-forwarded-for", "é")]).await, (2, offered()));
+        assert_eq!(site.count_with("/api/guestbook", &[("x-forwarded-for", "garbage, 10.0.0.1")]).await, (0, offered()));
+        // the check's own limit holds too, and siteverify is asked no more than it allows
+        for _ in 0..3 {
+            assert_eq!(site.verify("nope", "é, 198.51.100.50", None).await.0, StatusCode::FORBIDDEN);
+        }
+        assert_eq!(site.verify("nope", "é, 198.51.100.50", None).await.0, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(site.asked.load(Ordering::SeqCst), 3);
+    });
+}
+
 /// A browser's request that reaches the API as the server's own (no forwarding header: a front proxy that sets none)
 /// is reported once a minute, so the operator learns that no visitor is limited; `web`'s own reads are not.
 #[sqlx::test(migrations = "../core/migrations")]

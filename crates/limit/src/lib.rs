@@ -61,45 +61,70 @@ pub fn is_internal(ip: IpAddr) -> bool {
     }
 }
 
-fn parse_ip(s: &str) -> Option<IpAddr> {
-    s.trim().parse::<IpAddr>().ok().map(|ip| ip.to_canonical())
+/// One address entry of a forwarding header: `1.2.3.4`, `1.2.3.4:5678`, `2001:db8::1`, `[2001:db8::1]` or
+/// `[2001:db8::1]:5678`. None for anything else, a non-UTF-8 entry included.
+fn parse_entry(raw: &[u8]) -> Option<IpAddr> {
+    let s = std::str::from_utf8(raw).ok()?.trim();
+    let ip = if let Some(rest) = s.strip_prefix('[') {
+        let (ip, tail) = rest.split_once(']')?;
+        if !(tail.is_empty() || tail.strip_prefix(':').is_some_and(|port| port.parse::<u16>().is_ok())) {
+            return None;
+        }
+        IpAddr::V6(ip.parse().ok()?)
+    } else if let Ok(ip) = s.parse::<IpAddr>() {
+        ip
+    } else {
+        let (ip, port) = s.rsplit_once(':')?;
+        port.parse::<u16>().ok()?;
+        IpAddr::V4(ip.parse().ok()?)
+    };
+    Some(ip.to_canonical())
 }
 
-fn header_ip(headers: &HeaderMap, name: &str) -> Option<IpAddr> {
-    headers.get(name).and_then(|v| v.to_str().ok()).and_then(parse_ip)
+/// A forwarding header as the proxies wrote it: absent, or its entries, each parsed or not.
+fn header_entries(headers: &HeaderMap, name: &str) -> Vec<Option<IpAddr>> {
+    // per entry from the raw bytes: one byte a visitor wrote outside ASCII must not drop the entry a proxy appended
+    headers.get_all(name).iter().flat_map(|v| v.as_bytes().split(|b| *b == b',')).map(parse_entry).collect()
 }
+
+/// The bucket of a request whose forwarding headers name no usable visitor address but hold something other than
+/// internal addresses: such a request is not the site's own server's, so it is limited, all of them together. The
+/// address is from the discard-only block (RFC 6666), which no client has.
+pub const UNATTRIBUTED: IpAddr = IpAddr::V6(Ipv6Addr::new(0x100, 0, 0, 0, 0, 0, 0, 0));
 
 /// Real visitor IP behind `web` and the front reverse proxy (Caddy, nginx or Cloudflare).
 /// shortcut: assumes the front proxy supplies a sanitized `X-Forwarded-For` (see `docs/DEPLOY.md`);
 /// with a public XFF hop, `CF-Connecting-IP` is only trusted when that rightmost hop is a Cloudflare range;
 /// with none, `X-Real-IP` and then `CF-Connecting-IP` are the fallback. Exposing `web` on `0.0.0.0`, or
 /// failing to sanitize incoming `X-Forwarded-For`, lets callers forge headers.
+/// An internal answer means every forwarding header is absent or names only internal addresses: the site's own
+/// server (the API exempts it from its limits) or a LAN visitor. A header holding an entry that does not parse, with
+/// no usable address, gives `UNATTRIBUTED` instead of the internal peer.
 pub fn client_ip(headers: &HeaderMap, peer: Option<IpAddr>) -> IpAddr {
     let peer = peer.map(|ip| ip.to_canonical()).unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST));
     if !is_internal(peer) {
         return peer;
     }
-    let xff: Vec<IpAddr> = headers
-        .get_all("x-forwarded-for")
-        .iter()
-        .filter_map(|v| v.to_str().ok())
-        .flat_map(|v| v.split(','))
-        .filter_map(parse_ip)
-        .collect();
-    let mut public_hops = xff.into_iter().rev().filter(|ip| !is_internal(*ip));
-    match public_hops.next() {
+    let xff = header_entries(headers, "x-forwarded-for");
+    let real = header_entries(headers, "x-real-ip");
+    let cf = header_entries(headers, "cf-connecting-ip");
+    let mut public_hops = xff.iter().rev().flatten().copied().filter(|ip| !is_internal(*ip));
+    let found = match public_hops.next() {
         // Cloudflare edge in front of Caddy/nginx: trust CF-Connecting-IP, not a spoofed XFF prefix
-        Some(hop) if is_cloudflare(hop) => header_ip(headers, "cf-connecting-ip")
+        Some(hop) if is_cloudflare(hop) => cf
+            .first()
+            .copied()
+            .flatten()
             .filter(|ip| !is_internal(*ip))
             .or_else(|| public_hops.find(|ip| !is_cloudflare(*ip)))
             .unwrap_or(hop),
         // Caddy/nginx/cloudflared appended the visitor's real IP at the end; ignore CF-Connecting-IP and XFF prefix
         Some(hop) => hop,
         // proxy configured with only X-Real-IP or CF-Connecting-IP, or local development
-        None => header_ip(headers, "x-real-ip")
-            .or_else(|| header_ip(headers, "cf-connecting-ip"))
-            .unwrap_or(peer),
-    }
+        None => real.first().copied().flatten().or_else(|| cf.first().copied().flatten()).unwrap_or(peer),
+    };
+    let unparsed = [&xff, &real, &cf].iter().any(|entries| entries.iter().any(Option::is_none));
+    if is_internal(found) && unparsed { UNATTRIBUTED } else { found }
 }
 
 /// Groups an IPv6 `/64` allocation into one bucket so subnet address rotation cannot bypass limits.
@@ -194,6 +219,37 @@ mod tests {
         h.insert("x-forwarded-for", "1.1.1.1".parse().unwrap());
         h.insert("cf-connecting-ip", "8.8.8.8".parse().unwrap());
         assert_eq!(client_ip(&h, Some(ip("203.0.113.9"))), ip("203.0.113.9"));
+    }
+
+    /// A visitor's byte outside ASCII, or an entry with a port or in brackets, must not hide the address the proxy
+    /// appended, nor let X-Real-IP stand in for it.
+    #[test]
+    fn every_forwarded_entry_is_read_on_its_own() {
+        let with = |xff: &[u8], real: Option<&str>| {
+            let mut h = HeaderMap::new();
+            h.insert("x-forwarded-for", axum::http::HeaderValue::from_bytes(xff).unwrap());
+            if let Some(real) = real {
+                h.insert("x-real-ip", real.parse().unwrap());
+            }
+            client_ip(&h, Some(ip("172.18.0.5")))
+        };
+        assert_eq!(with(b"\xff, 203.0.113.9", None), ip("203.0.113.9"));
+        assert_eq!(with("é, 203.0.113.9".as_bytes(), None), ip("203.0.113.9"));
+        assert_eq!(with(b"\xff, 203.0.113.9", Some("8.8.4.4")), ip("203.0.113.9"));
+        assert_eq!(with(b"203.0.113.9:1234", None), ip("203.0.113.9"));
+        assert_eq!(with(b"[2001:db8::9]", None), ip("2001:db8::9"));
+        assert_eq!(with(b"10.0.0.1, [2001:db8::9]:443", None), ip("2001:db8::9"));
+        // nothing usable and something that is not an address: limited, never the internal peer
+        for xff in [&b"\xff"[..], b"garbage", b"10.0.0.1, nope", b"203.0.113.9:99999", b"[2001:db8::9]x", b"10.0.0.1,"] {
+            assert_eq!(with(xff, None), UNATTRIBUTED, "{xff:?}");
+        }
+        assert!(!is_internal(UNATTRIBUTED));
+        let mut h = HeaderMap::new();
+        h.insert("x-real-ip", axum::http::HeaderValue::from_bytes(b"\xff").unwrap());
+        assert_eq!(client_ip(&h, Some(ip("127.0.0.1"))), UNATTRIBUTED);
+        // internal entries only, or no header at all: the internal peer
+        assert!(is_internal(with(b"10.0.0.1, 172.18.0.3", None)));
+        assert!(is_internal(client_ip(&HeaderMap::new(), Some(ip("127.0.0.1")))));
     }
 
     /// The API exempts an internal client IP from its per-address limits as the site's own server (api limit.rs
