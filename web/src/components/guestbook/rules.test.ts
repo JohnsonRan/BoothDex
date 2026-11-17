@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { ApiError, errorKey } from "@/lib/api";
 import { API_ERRORS } from "@/lib/messages";
 import { guestbookError } from "./messages";
@@ -17,23 +18,46 @@ test("the form takes what the server's validate takes", () => {
   expect(bodyOk("lone\rreturn")).toBe(false);
   expect(bodyOk(`${"a".repeat(BODY_MAX)}\n`)).toBe(true);
   expect(bodyOk("a".repeat(BODY_MAX + 1))).toBe(false);
-  // invisible characters are refused; an emoji's joiners and variation selectors are kept, but not on their own
-  expect(nicknameOk("👨\u200d👩\u200d👧")).toBe(true);
-  expect(bodyOk("❤\ufe0f")).toBe(true);
-  for (const c of [
-    "\u200b",
-    "\u200c",
-    "\u202e",
-    "\u2066",
-    "\ufeff",
-    "\u3164",
-    "\u00ad",
-  ]) {
+  // trimmed as Rust trims: the BOM stays and is refused, U+0085 goes
+  expect(nicknameOk("\ufeffAnn")).toBe(false);
+  expect(nicknameOk("Ann\u0085")).toBe(true);
+});
+
+/** The characters of a `const NAME: &[(char, char)]` table in the server's guestbook.rs. */
+function serverList(name: string) {
+  const source = readFileSync(
+    new URL("../../../../crates/api/src/guestbook.rs", import.meta.url),
+    "utf8",
+  );
+  const table = source.split(`const ${name}: &[(char, char)] = &[`)[1];
+  const found: string[] = [];
+  for (const [, from, to] of table
+    .slice(0, table.indexOf("];"))
+    .matchAll(/'\\u\{(\w+)\}', '\\u\{(\w+)\}'/g))
+    for (let c = Number.parseInt(from, 16); c <= Number.parseInt(to, 16); c++)
+      found.push(String.fromCodePoint(c));
+  return found;
+}
+
+test("the form refuses every invisible character the server refuses", () => {
+  const invisible = serverList("INVISIBLE");
+  expect(invisible.length).toBeGreaterThan(40);
+  for (const c of invisible) {
     expect(nicknameOk(`A${c}nn`)).toBe(false);
     expect(bodyOk(`h${c}i`)).toBe(false);
   }
-  expect(nicknameOk("\u200d")).toBe(false);
-  expect(bodyOk("\ufe0f \u200d")).toBe(false);
+});
+
+test("what shapes the text beside it is kept, but not on its own", () => {
+  expect(nicknameOk("👨\u200d👩\u200d👧")).toBe(true);
+  expect(bodyOk("❤\ufe0f")).toBe(true);
+  const shaping = serverList("SHAPING");
+  expect(shaping.length).toBeGreaterThan(300);
+  for (const c of shaping) {
+    expect(nicknameOk(`A${c}nn`)).toBe(true);
+    expect(nicknameOk(`${c} ${c}`)).toBe(false);
+    expect(bodyOk(`${c} ${c}`)).toBe(false);
+  }
 });
 
 test("a closed guestbook's 503 is read by its code, not as the site starting", () => {
