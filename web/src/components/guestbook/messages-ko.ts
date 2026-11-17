@@ -24,6 +24,8 @@ export const guestbookKo: GuestbookDict = {
   closedDesc: "관리자가 열면 여기에 메시지를 남길 수 있어요.",
   failed: "메시지를 불러올 수 없어요",
   retry: "다시 시도",
+  "status.completed": "완료됨",
+  "status.not_planned": "계획되지 않음",
   "error.entry": "닉네임은 1~24자, 메시지는 1~500자여야 해요.",
   "error.verification": "인증에 실패했어요. 다시 시도하세요.",
   "error.tooMany": "너무 자주 게시하고 있어요. 나중에 다시 시도하세요.",

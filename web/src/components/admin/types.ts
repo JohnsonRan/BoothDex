@@ -1,5 +1,6 @@
 // Shapes of the admin API (crates/api/src/admin.rs, worker jobs.rs) and the fixed choices the console offers.
 
+import type { GuestbookStatus } from "@/lib/api-types";
 import type { AccountSession } from "@/lib/device";
 
 export const KINDS = [
@@ -189,6 +190,7 @@ export type AdminGuestbookEntry = {
   id: number;
   nickname: string;
   body: string;
+  status: GuestbookStatus;
   created_at: string;
   hidden_at: string | null;
 };

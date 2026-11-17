@@ -26,6 +26,8 @@ export const guestbookJa: GuestbookDict = {
   closedDesc: "管理者が公開すると、ここに投稿できます。",
   failed: "メッセージを読み込めませんでした",
   retry: "再試行",
+  "status.completed": "完了",
+  "status.not_planned": "予定なし",
   "error.entry":
     "ニックネームは 1～24 文字、メッセージは 1～500 文字で入力してください。",
   "error.verification": "認証に失敗しました。もう一度お試しください。",
