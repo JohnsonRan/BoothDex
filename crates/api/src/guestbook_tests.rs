@@ -15,7 +15,7 @@ use crate::limit::ClientIp;
 fn entries_are_trimmed_and_bounded() {
     assert_eq!(validate("  Ann ", " hi\r\nthere\t ").unwrap(), ("Ann".into(), "hi\nthere".into()));
     assert!(validate(&"名".repeat(NICKNAME_MAX), &"字".repeat(BODY_MAX)).is_ok());
-    for (nickname, body) in [(" ", "hi"), ("Ann", " "), (&*"名".repeat(NICKNAME_MAX + 1), "hi"), ("Ann", &*"字".repeat(BODY_MAX + 1)), ("A\nnn", "hi"), ("Ann", "h\0i"), ("Ann", "h\u{1b}i")] {
+    for (nickname, body) in [(" ", "hi"), ("Ann", " "), (&*"名".repeat(NICKNAME_MAX + 1), "hi"), ("Ann", &*"字".repeat(BODY_MAX + 1)), ("A\nnn", "hi"), ("A\u{2028}nn", "hi"), ("A\u{2029}nn", "hi"), ("Ann", "h\0i"), ("Ann", "h\u{1b}i")] {
         assert!(matches!(validate(nickname, body), Err(Refusal::BadGuestbookEntry)), "{nickname:?} {body:?}");
     }
 }
@@ -24,6 +24,10 @@ fn entries_are_trimmed_and_bounded() {
 fn nothing_invisible_is_taken() {
     // an emoji family keeps its zero-width joiners, a heart its variation selector and a flag its tags
     assert!(validate("👨\u{200D}👩\u{200D}👧", "❤\u{FE0F} 🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}").is_ok());
+    // unassigned default-ignorables show nothing either, so a field made only of them would read blank
+    for c in ['\u{FFF0}', '\u{FFF8}', '\u{E0080}', '\u{E00FF}', '\u{E01F0}', '\u{E0FFF}'] {
+        assert!(matches!(validate(&c.to_string().repeat(5), "hi"), Err(Refusal::BadGuestbookEntry)), "{:04X}", c as u32);
+    }
     for c in INVISIBLE.iter().flat_map(|(a, b)| *a..=*b) {
         assert!(matches!(validate(&format!("A{c}nn"), "hi"), Err(Refusal::BadGuestbookEntry)), "{:04X}", c as u32);
         assert!(matches!(validate("Ann", &format!("h{c}i")), Err(Refusal::BadGuestbookEntry)), "{:04X}", c as u32);
