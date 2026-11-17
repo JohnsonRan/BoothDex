@@ -21,6 +21,8 @@ pub(super) fn public(c: &TurnstileConfig) -> Value {
         "secret_hint": c.secret.as_deref().map(key_hint),
         // fields set by TURNSTILE_* environment variables can't be edited in the console
         "from_env": { "site_key": c.site_key_from_env, "secret": c.secret_from_env },
+        // sign-in and registration are checked too; it takes effect while both keys are set
+        "auth": c.auth,
     })
 }
 
@@ -30,6 +32,8 @@ pub(super) struct TurnstileSettings {
     site_key: Option<String>,
     /// empty or missing keeps the stored secret
     secret: Option<String>,
+    /// whether sign-in and registration are checked; missing keeps the stored choice
+    auth: Option<bool>,
 }
 
 fn valid_key(k: &str) -> bool {
@@ -49,6 +53,9 @@ pub(super) async fn put(State(s): State<Arc<AppState>>, headers: HeaderMap, Json
     }
     if let Some(k) = secret {
         change["secret"] = json!(k);
+    }
+    if let Some(on) = b.auth {
+        change["auth"] = json!(on);
     }
     // merged in one statement, so two saves of different fields both land
     sqlx::query(
@@ -125,7 +132,7 @@ mod tests {
         let s = Arc::try_unwrap(account::test_state(pool.clone())).ok().unwrap();
         let s = Arc::new(AppState { siteverify_url: stand_in().await, ..s });
         let save = |site_key: Option<&str>, secret: Option<&str>| {
-            put(State(s.clone()), h.clone(), Json(TurnstileSettings { site_key: site_key.map(Into::into), secret: secret.map(Into::into) }))
+            put(State(s.clone()), h.clone(), Json(TurnstileSettings { site_key: site_key.map(Into::into), secret: secret.map(Into::into), auth: None }))
         };
 
         assert_eq!(body(test(State(s.clone()), h.clone()).await).await.1["code"], "verification_unavailable");
@@ -143,6 +150,15 @@ mod tests {
         for (site_key, secret) in [(Some("0x site"), None), (None, Some("0x\0")), (Some(&*"k".repeat(201)), None)] {
             assert_eq!(body(save(site_key, secret).await).await.1["code"], "bad_turnstile_settings");
         }
+        // the switch for sign-in and registration is saved alone, beside the keys, and a save without it keeps it
+        let switch = |on: bool| put(State(s.clone()), h.clone(), Json(TurnstileSettings { site_key: None, secret: None, auth: Some(on) }));
+        assert_eq!(body(save(None, None).await).await.1["auth"], false);
+        assert_eq!(body(switch(true).await).await.1["auth"], true);
+        assert_eq!(turnstile::stored(&pool).await.unwrap(), json!({ "site_key": "0x-site", "secret": "0x-right", "auth": true }));
+        assert_eq!(body(save(Some("0x-site"), None).await).await.1["auth"], true);
+        assert!(turnstile::config(&pool).await.unwrap().auth_keys().is_some());
+        assert_eq!(body(switch(false).await).await.1["auth"], false);
+
         // an empty site key closes the guestbook again
         assert_eq!(body(save(Some(""), None).await).await.1["site_key"], Value::Null);
         assert_eq!(turnstile::config(&pool).await.unwrap().keys(), None);

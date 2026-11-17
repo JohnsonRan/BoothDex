@@ -12,7 +12,11 @@ use super::password::{hash_password, log_attempt, log_failure, valid_password, v
 use super::session::start_session;
 use crate::error::Refusal;
 use crate::limit::Check;
-use crate::{ApiError, AppState};
+use crate::{ApiError, AppState, turnstile};
+
+/// The actions the site's widgets name; a token for another form does not pass.
+pub(crate) const SIGN_IN_ACTION: &str = "sign-in";
+pub(crate) const REGISTER_ACTION: &str = "register";
 
 fn valid_username(u: &str) -> bool {
     (3..=24).contains(&u.chars().count()) && u.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -49,6 +53,9 @@ pub(crate) struct Register {
     pub(crate) password: String,
     #[serde(default)]
     pub(crate) keep: bool,
+    /// the Turnstile widget's token; read only while sign-in and registration are checked
+    #[serde(default)]
+    pub(crate) token: String,
 }
 
 pub(crate) async fn register(
@@ -73,6 +80,8 @@ pub(crate) async fn register(
     if !valid_password(&b.password) {
         return Err(Refusal::PasswordTooShort.into());
     }
+    // after the form's own rules, so a visitor fixes a field without a new check; before the hash and the insert
+    turnstile::require_for_account(&s, &b.token, ip, REGISTER_ACTION).await?;
     let hash = hash_password(b.password).await?;
     // ADMIN_USERNAMES makes an account admin by its name: a listed name with no account would make whoever registers it
     // an admin. The insert itself skips a listed name, so it is refused after the hash and the same statement as a
@@ -104,6 +113,9 @@ pub(crate) struct Login {
     pub(crate) password: String,
     #[serde(default)]
     pub(crate) keep: bool,
+    /// the Turnstile widget's token; read only while sign-in and registration are checked
+    #[serde(default)]
+    pub(crate) token: String,
 }
 
 pub(crate) async fn login(
@@ -118,6 +130,9 @@ pub(crate) async fn login(
         }
         return Err(limited.into());
     }
+    // before the account is looked up: a refused token does the same work for every name and never counts against
+    // an account's lockout
+    turnstile::require_for_account(&s, &b.token, ip, SIGN_IN_ACTION).await?;
     if !valid_login(&b.login) {
         return Err(Refusal::BadCredentials.into());
     }
@@ -159,9 +174,17 @@ pub(crate) async fn login(
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({ "ok": true }))).into_response())
 }
 
+/// What the sign-in dialog asks before it shows: whether registration is open, and the widget's site key while
+/// sign-in and registration are checked (null otherwise).
 pub(super) async fn registration(State(s): State<Arc<AppState>>) -> Result<Response, ApiError> {
-    Ok(Json(json!({ "open": registration_open(&s.pool).await? })).into_response())
+    let config = turnstile::config(&s.pool).await?;
+    let site_key = config.auth_keys().map(|(site, _)| site);
+    Ok(Json(json!({ "open": registration_open(&s.pool).await?, "site_key": site_key })).into_response())
 }
+
+#[cfg(test)]
+#[path = "sign_in_turnstile_tests.rs"]
+mod turnstile_tests;
 
 #[cfg(test)]
 mod tests {
@@ -195,10 +218,11 @@ mod tests {
                 email: format!("{username}@example.test"),
                 password: "0123456789".into(),
                 keep: false,
+                token: String::new(),
             }))
         };
         let sign_in = || {
-            login(State(state.clone()), crate::limit::ClientIp(ip), HeaderMap::new(), Json(Login { login: "ann".into(), password: "0123456789".into(), keep: false }))
+            login(State(state.clone()), crate::limit::ClientIp(ip), HeaderMap::new(), Json(Login { login: "ann".into(), password: "0123456789".into(), keep: false, token: String::new() }))
         };
         let status = |r: Result<Response, ApiError>| r.into_response().status();
 
@@ -228,7 +252,7 @@ mod tests {
         crate::install_tls();
         let state = Arc::new(crate::build_state(pool.clone(), Some(admins.clone())).await.unwrap());
         let sign_up = |username: &str, email: &str| {
-            let form = Register { display_name: "A".into(), username: username.into(), email: email.into(), password: "0123456789".into(), keep: false };
+            let form = Register { display_name: "A".into(), username: username.into(), email: email.into(), password: "0123456789".into(), keep: false, token: String::new() };
             register(State(state.clone()), crate::limit::ClientIp([198, 51, 100, 20].into()), HeaderMap::new(), Json(form))
         };
         let accounts = || sqlx::query_as::<_, (String, bool)>("select username, is_admin from users order by username").fetch_all(&pool);
@@ -252,7 +276,7 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        let form = Login { login: "ZOË@example.test".into(), password: "0123456789".into(), keep: false };
+        let form = Login { login: "ZOË@example.test".into(), password: "0123456789".into(), keep: false, token: String::new() };
         let r = login(State(test_state(pool)), crate::limit::ClientIp([198, 51, 100, 1].into()), HeaderMap::new(), Json(form)).await;
         assert_eq!(answer(r).await, (StatusCode::OK, json!({ "ok": true })));
     }
@@ -269,7 +293,7 @@ mod tests {
             .unwrap();
         let state = test_state(pool.clone());
         let sign_in = |i: u8, name: &str, password: &str| {
-            let form = Login { login: name.into(), password: password.into(), keep: false };
+            let form = Login { login: name.into(), password: password.into(), keep: false, token: String::new() };
             login(State(state.clone()), crate::limit::ClientIp([198, 51, 100, i].into()), HeaderMap::new(), Json(form))
         };
         let seed = |key: &str, n: u32| (0..n).for_each(|_| _ = state.throttle.fail(key));
@@ -301,7 +325,7 @@ mod tests {
     async fn the_dummy_hash_password_signs_in_to_no_account(pool: PgPool) {
         let state = test_state(pool.clone());
         (0..9).for_each(|_| _ = state.throttle.fail("ghost"));
-        let form = Login { login: "ghost".into(), password: "timing-equaliser-not-a-password".into(), keep: false };
+        let form = Login { login: "ghost".into(), password: "timing-equaliser-not-a-password".into(), keep: false, token: String::new() };
         let r = login(State(state.clone()), crate::limit::ClientIp([198, 51, 100, 9].into()), HeaderMap::new(), Json(form)).await;
         assert_eq!(answer(r).await.0, StatusCode::UNAUTHORIZED);
         assert!(state.throttle.blocked("ghost"));

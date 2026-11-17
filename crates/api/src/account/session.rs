@@ -191,14 +191,14 @@ mod tests {
             (ClientIp(client_ip(&h, Some(peer.into()))), h)
         };
         let sign_in = |(ip, h): (ClientIp, HeaderMap)| {
-            login(State(state.clone()), ip, h, Json(Login { login: "ann".into(), password: "0123456789".into(), keep: false }))
+            login(State(state.clone()), ip, h, Json(Login { login: "ann".into(), password: "0123456789".into(), keep: false, token: String::new() }))
         };
         let ok = |r: Result<Response, ApiError>| assert_eq!(r.into_response().status(), axum::http::StatusCode::OK);
 
         // behind Caddy or nginx: the proxy appended the visitor's address last; the header is forged
         ok(sign_in(request(&[("x-forwarded-for", "198.51.100.7, 203.0.113.42"), ("cf-connecting-ip", "8.8.8.8")], [172, 18, 0, 5])).await);
         let (ip, h) = request(&[("x-forwarded-for", "2001:DB8::1"), ("cf-connecting-ip", "8.8.8.8")], [10, 89, 0, 5]);
-        let form = Register { display_name: "Bob".into(), username: "bob".into(), email: "bob@example.test".into(), password: "0123456789".into(), keep: false };
+        let form = Register { display_name: "Bob".into(), username: "bob".into(), email: "bob@example.test".into(), password: "0123456789".into(), keep: false, token: String::new() };
         ok(register(State(state.clone()), ip, h, Json(form)).await);
         // a LAN visitor: client_ip answers web's container address, which is not stored
         ok(sign_in(request(&[("x-forwarded-for", "192.168.1.20")], [172, 18, 0, 5])).await);
