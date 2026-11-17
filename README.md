@@ -89,6 +89,8 @@ docker compose pull && docker compose up -d
 - Favourites, recently viewed items (marked "Viewed" in results), a remembered avatar, and saved searches as
   saved views that you can rename and follow by RSS.
 - Change your display name and password in Settings; a new password signs your other devices out.
+- Leave a message in the guestbook from the top bar without an account: a nickname, up to 500 characters and a
+  Cloudflare Turnstile check. An admin opens it by setting the Turnstile keys, and hides or deletes messages.
 
 <details>
 <summary>An item's details open over the results</summary>
