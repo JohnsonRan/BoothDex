@@ -7,7 +7,7 @@ use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -187,14 +187,30 @@ async fn stream(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Re
         .into_response())
 }
 
-async fn list_jobs(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
+/// The most job rows one answer of `list_jobs` holds, newest first; the page polls it every 5 s.
+const JOBS_SHOWN: i64 = 100;
+
+#[derive(Default, Deserialize)]
+struct JobsQuery {
+    /// the runs the overview counts as unresolved failures (trends.rs), the newest `JOBS_SHOWN` with their total, in
+    /// place of the last jobs
+    #[serde(default)]
+    unresolved: bool,
+}
+
+async fn list_jobs(State(s): State<Arc<AppState>>, headers: HeaderMap, Query(q): Query<JobsQuery>) -> Result<Response, ApiError> {
     require_admin(&s, &headers).await?;
+    let schedules: Value = sqlx::query_scalar("select coalesce(jsonb_agg(to_jsonb(s) order by s.kind), '[]') from job_schedules s").fetch_one(&s.pool).await?;
+    if q.unresolved {
+        let (jobs, total) = trends::unresolved_jobs(&s.pool, trends::DAYS, JOBS_SHOWN).await?;
+        return Ok(Json(json!({ "jobs": jobs, "total": total, "schedules": schedules })).into_response());
+    }
     let jobs: Value = sqlx::query_scalar(
-        "select coalesce(jsonb_agg(to_jsonb(j) order by j.id desc), '[]') from (select id, kind, status, params, done, total, message, error, created_by, created_at, started_at, finished_at from jobs order by id desc limit 100) j",
+        "select coalesce(jsonb_agg(to_jsonb(j) order by j.id desc), '[]') from (select id, kind, status, params, done, total, message, error, created_by, created_at, started_at, finished_at from jobs order by id desc limit $1) j",
     )
+    .bind(JOBS_SHOWN)
     .fetch_one(&s.pool)
     .await?;
-    let schedules: Value = sqlx::query_scalar("select coalesce(jsonb_agg(to_jsonb(s) order by s.kind), '[]') from job_schedules s").fetch_one(&s.pool).await?;
     Ok(Json(json!({ "jobs": jobs, "schedules": schedules })).into_response())
 }
 

@@ -15,6 +15,7 @@ import { LOCALES } from "@/lib/settings-core";
 import { useLive } from "./admin-console";
 import { Band, Tiles } from "./band";
 import { formatBytes, formatNumber } from "./format";
+import { UNRESOLVED } from "./history-filter";
 import { errorText, useAdminT } from "./messages";
 import { MetricCard } from "./metric-card";
 import type { Trends } from "./types";
@@ -85,6 +86,8 @@ export function StatusBand({ trends }: { trends?: Trends }) {
       value: trends ? n(failed) : "—",
       sub: t("tile.failedSub", { n: trends ? n(total) : "—" }),
       attention: failed > 0 ? "warning" : undefined,
+      // the history asks the API for exactly the runs this tile counts
+      href: `/admin/jobs/history?status=${UNRESOLVED}`,
     },
     {
       id: "booth",

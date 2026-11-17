@@ -142,7 +142,7 @@ docker compose pull && docker compose up -d
 ### Administration
 
 - The admin console at `/admin` shows an overview with live status (SSE) and 30-day trend charts.
-- Run and stop jobs and follow each job's live log; turn schedules on and off; browse the job history.
+- Run and stop jobs and follow each job's live log; turn schedules on and off; browse the job history, or from the overview's failures tile the failed runs of the last 30 days that no later run of the same kind made good.
 - List the items AI enrichment gave up on after 3 failures, and retry one or all of them.
 - Configure the AI provider and open or close registration.
 - Find users, see where they are signed in, sign out a device, disable an account or reset its password; a reset or re-enable also lifts a sign-in lockout.

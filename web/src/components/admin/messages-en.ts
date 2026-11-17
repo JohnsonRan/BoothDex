@@ -165,6 +165,11 @@ export const adminEn: AdminDict = {
   "history.shown": "{shown} of {n} jobs",
   "history.empty": "No jobs yet",
   "history.noMatch": "No jobs match these filters",
+  "history.unresolved": "Unresolved failures",
+  "history.unresolvedCount": "{n} unresolved failures in 30 days",
+  "history.unresolvedNewest":
+    "Newest {shown} of {n} unresolved failures in 30 days",
+  "history.noUnresolved": "No unresolved failures in 30 days",
   "log.progress": "Progress",
   "log.duration": "Duration",
   "log.creator": "Created by",

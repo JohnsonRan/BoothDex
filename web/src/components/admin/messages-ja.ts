@@ -166,6 +166,11 @@ export const adminJa: AdminDict = {
   "history.shown": "{n} 件中 {shown} 件を表示",
   "history.empty": "ジョブはまだありません",
   "history.noMatch": "条件に一致するジョブはありません",
+  "history.unresolved": "未解決の失敗",
+  "history.unresolvedCount": "過去 30 日間の未解決の失敗 {n} 件",
+  "history.unresolvedNewest":
+    "過去 30 日間の未解決の失敗 {n} 件中、新しい {shown} 件",
+  "history.noUnresolved": "過去 30 日間に未解決の失敗はありません",
   "log.progress": "進捗",
   "log.duration": "所要時間",
   "log.creator": "作成者",

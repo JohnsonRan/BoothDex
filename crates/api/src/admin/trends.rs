@@ -3,6 +3,8 @@
 //! details and refresh runs, which count fetched item pages; the listing walks count pages), plus the finished
 //! runs by kind and outcome. `items` keeps only its latest scrape time, so refreshes per day come from the jobs.
 //! The attention count excludes failures followed by a successful run of the same kind; history stays intact.
+//! The job history lists the same runs (`unresolved_jobs`): both read `FINISHED` and `UNRESOLVED`, so the count and
+//! the list cannot disagree.
 
 use std::sync::Arc;
 
@@ -16,7 +18,17 @@ use sqlx::PgPool;
 use super::require_admin;
 use crate::{ApiError, AppState};
 
-const DAYS: i32 = 30;
+pub(super) const DAYS: i32 = 30;
+
+/// The runs that finished in the last `$1` UTC days, each with the end of the last successful run of its kind in
+/// that window. The columns are the job list's (`list_jobs` in admin.rs), so the history can show these rows.
+const FINISHED: &str = "select id, kind, status, params, done, total, message, error, created_by, created_at, started_at, finished_at,
+         max(finished_at) filter (where status = 'succeeded') over (partition by kind) as last_success_at
+       from jobs where finished_at >= ((now() at time zone 'utc')::date - ($1 - 1))::timestamp at time zone 'utc'";
+
+/// A run of `FINISHED` that failed and that no later run of its kind made good. A run the worker marked failed when
+/// it restarted counts too: it has finished.
+const UNRESOLVED: &str = "status = 'failed' and (last_success_at is null or finished_at > last_success_at)";
 
 pub(super) async fn trends(State(s): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, ApiError> {
     require_admin(&s, &headers).await?;
@@ -26,31 +38,42 @@ pub(super) async fn trends(State(s): State<Arc<AppState>>, headers: HeaderMap) -
 /// Both scans filter their column on a range from a constant start (midnight UTC, `days` - 1 days ago), so
 /// the planner can estimate it, scan in parallel, and use an index on the column if one is ever added.
 async fn trends_json(pool: &PgPool, days: i32) -> Result<Value, sqlx::Error> {
-    sqlx::query_scalar(
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "with days as (select (now() at time zone 'utc')::date - g as day from generate_series(0, $1 - 1) g),
          published as (
            select (published_at at time zone 'utc')::date as day, count(*) as n
            from items where published_at >= ((now() at time zone 'utc')::date - ($1 - 1))::timestamp at time zone 'utc' group by 1),
-         finished as (
-           select kind, status, done, finished_at,
-                  max(finished_at) filter (where status = 'succeeded') over (partition by kind) as last_success_at
-           from jobs where finished_at >= ((now() at time zone 'utc')::date - ($1 - 1))::timestamp at time zone 'utc'),
+         finished as ({FINISHED}),
          runs as (
            select (finished_at at time zone 'utc')::date as day, kind, status, count(*) as n,
                   coalesce(sum(done) filter (where kind in ('details', 'refresh')), 0) as fetched
            from finished group by 1, 2, 3)
          select jsonb_build_object(
-           'unresolved_failures', (select count(*) from finished where status = 'failed'
-                                   and (last_success_at is null or finished_at > last_success_at)),
+           'unresolved_failures', (select count(*) from finished where {UNRESOLVED}),
            'days', (select jsonb_agg(jsonb_build_object(
                       'day', d.day,
                       'published', coalesce(p.n, 0),
                       'fetched', coalesce((select sum(r.fetched) from runs r where r.day = d.day), 0)) order by d.day)
                     from days d left join published p using (day)),
            'runs', (select coalesce(jsonb_agg(jsonb_build_object('day', day, 'kind', kind, 'status', status, 'n', n)
-                      order by day, kind, status), '[]') from runs))",
-    )
+                      order by day, kind, status), '[]') from runs))"
+    )))
     .bind(days)
+    .fetch_one(pool)
+    .await
+}
+
+/// The newest `shown` of the runs `unresolved_failures` counts over the last `days` UTC days, as rows of the job list,
+/// and how many there are in all.
+pub(super) async fn unresolved_jobs(pool: &PgPool, days: i32, shown: i64) -> Result<(Value, i64), sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "with unresolved as (select * from ({FINISHED}) f where {UNRESOLVED})
+         select (select coalesce(jsonb_agg(to_jsonb(j) - 'last_success_at' order by j.id desc), '[]')
+                 from (select * from unresolved order by id desc limit $2) j),
+                (select count(*) from unresolved)"
+    )))
+    .bind(days)
+    .bind(shown)
     .fetch_one(pool)
     .await
 }
@@ -107,5 +130,60 @@ mod tests {
         assert!(recovered["runs"].as_array().unwrap().contains(&json!({ "day": day, "kind": "details", "status": "failed", "n": 1 })));
         sqlx::query("insert into jobs (kind, status, finished_at) values ('details', 'failed', now())").execute(&pool).await.unwrap();
         assert_eq!(super::trends_json(&pool, 30).await.unwrap()["unresolved_failures"], 1);
+    }
+
+    /// The history's "unresolved" filter (`GET /api/admin/jobs?unresolved=true`) lists exactly the runs the tile counts.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn the_unresolved_job_list_holds_exactly_the_counted_runs(pool: PgPool) {
+        use axum::extract::{Query, State};
+        use axum::http::{HeaderMap, header};
+
+        use crate::account;
+
+        sqlx::raw_sql(
+            "insert into jobs (id, kind, status, error, finished_at) values
+               (1, 'refresh', 'failed', 'boom', now() - interval '2 hours'),
+               (2, 'refresh', 'succeeded', null, now() - interval '1 hour'),
+               (3, 'details', 'failed', 'boom', now() - interval '3 hours'),
+               (4, 'sweep', 'failed', 'worker restarted', now() - interval '10 minutes'),
+               (5, 'embed', 'failed', 'boom', now() - interval '40 days'),
+               (6, 'incremental', 'succeeded', null, now() - interval '40 days'),
+               (7, 'incremental', 'failed', 'boom', now() - interval '5 days'),
+               (8, 'enrich', 'cancelled', null, now());
+             insert into jobs (id, kind, status) values (9, 'localize', 'running');
+             insert into users (id, username, email, display_name, password_hash, is_admin) values (1, 'boss', 'boss@example.test', 'Boss', 'x', true);",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, 1, now() + interval '1 day')")
+            .bind(account::token_hash("tok-boss"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        let mut h = HeaderMap::new();
+        h.insert(header::COOKIE, "session=tok-boss".parse().unwrap());
+        let s = account::test_state(pool.clone());
+        // the ids of the rows, and the total the answer gives beside them
+        let ids = |q: serde_json::Value| {
+            let (s, h) = (s.clone(), h.clone());
+            async move {
+                let r = crate::admin::list_jobs(State(s), h, Query(serde_json::from_value(q).unwrap())).await.ok().unwrap();
+                let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap();
+                let ids = body["jobs"].as_array().unwrap().iter().map(|j| j["id"].as_i64().unwrap()).collect::<Vec<_>>();
+                (ids, body["total"].as_i64())
+            }
+        };
+
+        // 1 was made good by 2; 5 finished outside the window; 6's success is outside it and 7 failed later anyway
+        let (unresolved, total) = ids(json!({ "unresolved": true })).await;
+        assert_eq!((&*unresolved, total), (&[7, 4, 3][..], Some(3)));
+        assert_eq!(super::trends_json(&pool, super::DAYS).await.unwrap()["unresolved_failures"], unresolved.len());
+        // past the cap: the newest rows, and the count the tile shows
+        let (newest, total) = super::unresolved_jobs(&pool, super::DAYS, 2).await.unwrap();
+        assert_eq!((newest.as_array().unwrap().iter().map(|j| j["id"].as_i64().unwrap()).collect::<Vec<_>>(), total), (vec![7, 4], 3));
+        assert_eq!(newest[0]["error"], "boom");
+        assert_eq!(ids(json!({})).await, (vec![9, 8, 7, 6, 5, 4, 3, 2, 1], None));
     }
 }
