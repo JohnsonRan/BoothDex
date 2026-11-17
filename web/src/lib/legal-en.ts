@@ -58,7 +58,7 @@ const texts: LegalTexts = {
                 [
                   "pass",
                   "Cookie",
-                  "Shows that you passed the verification the site asks for after many requests, so the usual limits apply. It holds your network's address range (the first three parts of an IPv4 address) and an expiry. Scripts can't read it.",
+                  "Shows that you passed the verification the site asks for after many requests, so the usual limits apply. It holds your network's address range (the first three parts of an IPv4 address, or the first half of an IPv6 address) and an expiry. Scripts can't read it.",
                   "10 minutes",
                 ],
                 [
