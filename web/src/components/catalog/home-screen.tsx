@@ -75,6 +75,10 @@ export async function HomeScreen({
   // the filters from the raw query: decoded `searchParams` lose the "+" that separates list values (proxy.ts)
   const filters = parseFilters(request.get(RAW_QUERY_HEADER) ?? "");
   const page = Math.max(1, Number.parseInt(String(params.page), 10) || 1);
+  // A client navigation fetches the page's payload, a document load navigates to it. Next hides its own `rsc`
+  // request header from headers() and Proxy, so the browser's Sec-Fetch-Dest tells them apart; a browser that sends
+  // none is served as a document load.
+  const navigation = request.get("sec-fetch-dest") === "empty";
   // started here: the item dialog (prices) and the results use them; nothing waits for them
   const rates =
     settings.currency === "JPY"
@@ -103,6 +107,7 @@ export async function HomeScreen({
               filters={filters}
               page={page}
               noSemantic={params.sem === "0"}
+              navigation={navigation}
               rates={rates}
             />
           </Arrival>
@@ -182,12 +187,14 @@ async function Catalog({
   filters,
   page,
   noSemantic,
+  navigation,
   rates,
 }: {
   settings: Settings;
   filters: Filters;
   page: number;
   noSemantic: boolean;
+  navigation: boolean;
   rates: Promise<Rates>;
 }) {
   const t = translator(settings.ui);
@@ -335,6 +342,7 @@ async function Catalog({
                   filters={filters}
                   names={names}
                   noSemantic={noSemantic}
+                  navigation={navigation}
                 />
               )}
             </Pending>

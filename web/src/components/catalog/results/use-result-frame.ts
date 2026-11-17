@@ -37,7 +37,7 @@ export function useResultFrame(
     page,
     key,
     lexical,
-    hasNext,
+    end,
     hasPrev,
     loading,
     failed,
@@ -47,7 +47,8 @@ export function useResultFrame(
     page: number;
     key: string;
     lexical: boolean;
-    hasNext: boolean;
+    /** the key of the silhouettes after the last page; none when there is no next page */
+    end: string | undefined;
     hasPrev: boolean;
     loading: Dir | null;
     failed: boolean;
@@ -55,10 +56,11 @@ export function useResultFrame(
     setMask: (mask: undefined) => void;
   },
 ) {
-  // template :2356-2376: the sentinel under the last row loads the next page, observed again after each one
+  // template :2356-2376: the sentinel under the last row loads the next page, observed again after each one: a
+  // page read ends its loading state, the rest the server sent only replaces the sentinel (`end`)
   useEffect(() => {
     const el = r.end.current;
-    if (!el || !hasNext || loading || failed) return;
+    if (!el || !end || loading || failed) return;
     const seen = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) loadNext();
@@ -67,7 +69,7 @@ export function useResultFrame(
     );
     seen.observe(el);
     return () => seen.disconnect();
-  }, [r, hasNext, loading, failed, loadNext]);
+  }, [r, end, loading, failed, loadNext]);
 
   // the one above the first row marks the top of the boxes as near: more go up when the reader moves up. Its
   // margin is screens of the viewport's height, so a new size (a rotation) sets it again.

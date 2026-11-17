@@ -1,7 +1,9 @@
 "use client";
 // The results as one endless grid (the table-filter template's useInfiniteBatches, page.tsx:1160-1237, with our
 // /api/search pages for its timer). The server renders the page in the URL, its first screen of tiles in the HTML;
-// the rest of that page and the next pages are read here and drawn in the same grid, so rows run on across pages.
+// the rest of that page is drawn here once the end nears, from the server's payload after a client navigation and
+// read again after a document load, whose HTML carries only the first screen (results.tsx). The next pages are read
+// here, all drawn in the same grid, so rows run on across pages.
 // A start past page 1 puts the pages before it above it as boxes of a page's cells (its rows at the row pitch
 // measured from the server's tiles), the window scrolled by as much before the first paint, so the
 // scrollbar shows the place and scrolling up just works: the page in view is read into its box, whichever it is.
@@ -88,6 +90,7 @@ export function ResultPages({
   pageSize,
   tiles,
   partial,
+  rest,
   filters,
   lexical,
   settings,
@@ -102,6 +105,8 @@ export function ResultPages({
   tiles: Tile[];
   /** `page` has more results than `tiles` */
   partial: boolean;
+  /** the rest of a partial `page`, when the server sent it */
+  rest?: Tile[];
   filters: Filters;
   /** the first page went without meaning-based matches: the others are read the same way */
   lexical: boolean;
@@ -110,7 +115,7 @@ export function ResultPages({
 }) {
   const { t } = useUi();
   const [pages, setPages] = useState<Page[]>(() => [
-    { n: page, tiles, partial },
+    { n: page, tiles, partial, rest },
   ]);
   const [loading, setLoading] = useState<Dir | null>(null);
   const [failed, setFailed] = useState(false);
@@ -161,12 +166,14 @@ export function ResultPages({
 
   const last = pages[pages.length - 1];
   const hasNext = !!last.partial || last.n < total;
+  // the row of silhouettes after the last page, new with each page or rest drawn (and observed again)
+  const end = hasNext ? `${last.n}${last.partial ? "+" : ""}` : undefined;
   const hasPrev = pages[0].n > 1;
   useResultFrame(r, reads, {
     page,
     key,
     lexical,
-    hasNext,
+    end,
     hasPrev,
     loading,
     failed,
@@ -237,7 +244,7 @@ export function ResultPages({
               // past the tiles that arrived (a layout shift)
               <TileSilhouette
                 // biome-ignore lint/suspicious/noArrayIndexKey: a fixed row of silhouettes
-                key={`${last.n}${last.partial ? "+" : ""}-${i}`}
+                key={`${end}-${i}`}
                 ref={i === 0 ? r.end : undefined}
               />
             ))

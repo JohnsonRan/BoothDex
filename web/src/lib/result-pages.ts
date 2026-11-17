@@ -124,8 +124,10 @@ export type Page<T> = {
   n: number;
   /** none: not read yet, drawn as the boxes of its cells (boxParts; near view: silhouette tiles) */
   tiles: T[];
-  /** the server's first screen of its page; the rest is still to read */
+  /** the server's first screen of its page; the rest is still to draw */
   partial?: boolean;
+  /** the rest of a partial page, when the server sent it (a client navigation); else it is read again */
+  rest?: T[];
   /** far from view: a box of each tile's height stands in for it */
   heights?: number[];
   /** its tiles come and go a few a frame (PageTiles): the change moves nothing in view */
@@ -177,7 +179,7 @@ export function boxesBefore<T>(n: number): Page<T>[] {
 export const withAbove = <T>(pages: Page<T>[], first: number) =>
   pages[0].n === first ? [...boxesBefore<T>(first), ...pages] : pages;
 
-/** The rest of partial page `n` read: the tiles not `seen` go after the server's, drawn a few a frame. */
+/** The rest of partial page `n`, sent or read: the tiles not `seen` go after the server's, drawn a few a frame. */
 export const withRest = <T extends { id: number }>(
   pages: Page<T>[],
   n: number,
