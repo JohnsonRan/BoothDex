@@ -2,7 +2,9 @@
 //! (limit.rs `Tiered`). A visitor earns it by passing a Turnstile check (`POST /api/verify`), and keeps it as a cookie
 //! for 10 minutes. The cookie names the visitor's address range (an IPv4 /24, an IPv6 /64) and its expiry, signed with
 //! HMAC-SHA256 by a key this process makes at start: a pass counts only with that signature, before its expiry and
-//! from an address in its range, and a restart ends every pass, after which the visitor checks again.
+//! from an address in its range, and a restart ends every pass, after which the visitor checks again. While sign-in
+//! and registration are checked too (turnstile.rs `auth_keys`), a session whose sign-in or registration passed that
+//! check (`sessions.turnstile_passed`) gets today's limits without a pass; one let through unchecked does not.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
@@ -16,6 +18,7 @@ use axum::response::{IntoResponse, Response};
 use hmac::{KeyInit, Mac};
 use serde::Deserialize;
 use serde_json::json;
+use sqlx::PgPool;
 
 use crate::error::Refusal;
 use crate::limit::{Check, ClientIp, Tier};
@@ -96,8 +99,34 @@ impl FromRequestParts<Arc<AppState>> for Tier {
             return Ok(Self::Base);
         }
         let Ok(ClientIp(ip)) = ClientIp::from_request_parts(parts, s).await;
-        let passed = account::cookie(&parts.headers, COOKIE).is_some_and(|value| s.pass_key.valid(&value, ip, now()));
-        Ok(if passed { Self::Base } else { Self::Strict(config) })
+        if account::cookie(&parts.headers, COOKIE).is_some_and(|value| s.pass_key.valid(&value, ip, now())) {
+            return Ok(Self::Base);
+        }
+        // A session counts only while sign-in is checked (owner, 2026-11-17: "1. B"), and only if its own sign-in
+        // passed the check; it is read only when the strict bucket refuses (limit.rs `Tiered::check`)
+        let session = config.auth_keys().and(account::cookie_token(&parts.headers)).map(|token| Session { pool: s.pool.clone(), token });
+        Ok(Self::Strict { config, session })
+    }
+}
+
+/// The session cookie of a request to a tiered bucket while sign-in is Turnstile-checked.
+pub struct Session {
+    pool: PgPool,
+    token: String,
+}
+
+impl Session {
+    /// Whether the cookie names a live session whose sign-in or registration passed a Turnstile check. A database
+    /// error counts as no such session, so the visitor keeps the stricter limits rather than getting a 500.
+    pub(crate) async fn checked(&self) -> bool {
+        let query = "select exists (select 1 from sessions where token_hash = $1 and expires_at > now() and turnstile_passed)";
+        match sqlx::query_scalar(query).bind(account::token_hash(&self.token)).fetch_one(&self.pool).await {
+            Ok(checked) => checked,
+            Err(e) => {
+                eprintln!("error: rate limit: reading the session failed, counted as none: {e}");
+                false
+            }
+        }
     }
 }
 

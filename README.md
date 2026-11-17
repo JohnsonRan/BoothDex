@@ -95,6 +95,8 @@ docker compose pull && docker compose up -d
 - An admin can make sign-in and registration ask for the same Cloudflare Turnstile check.
 - An admin can give visitors who haven't passed that check stricter limits on search, the palette, item pages and
   the lookups. A visitor who reaches one is offered the check; passing it restores the usual limits for 10 minutes.
+  While sign-in and registration ask for the check, a visitor whose sign-in or registration passed it keeps the usual
+  limits.
 
 <details>
 <summary>An item's details open over the results</summary>
@@ -140,7 +142,8 @@ docker compose pull && docker compose up -d
 ### Administration
 
 - The admin console at `/admin` shows an overview with live status (SSE) and 30-day trend charts.
-- Run and stop jobs and follow each job's live log; turn schedules on and off; browse the job history.
+- Run and stop jobs and follow each job's live log; turn schedules on and off; browse the job history, or from the overview's failures tile the failed runs of the last 30 days that no later run of the same kind made good.
+- List the items AI enrichment gave up on after 3 failures, and retry one or all of them.
 - Configure the AI provider and open or close registration.
 - Find users, see where they are signed in, sign out a device, disable an account or reset its password; a reset or re-enable also lifts a sign-in lockout.
 - The console is available in Chinese, English and Japanese.

@@ -3,9 +3,11 @@
 // with the label's icon, as the reference admin tags its tiles. A status dot beside the value only while the
 // number asks for attention, an optional usage bar (the template dashboard's ProgressBar,
 // @astryxdesign/cli assets/templates/pages/dashboard/page.tsx:369-375) and one supporting line. The card fills its grid cell, so the
-// tiles of a row share one height.
+// tiles of a row share one height. A tile whose number has a list elsewhere in the console is a ClickableCard
+// linking to it.
 
 import { Card } from "@astryxdesign/core/Card";
+import { ClickableCard } from "@astryxdesign/core/ClickableCard";
 import { Icon } from "@astryxdesign/core/Icon";
 import { HStack, VStack } from "@astryxdesign/core/Layout";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
@@ -24,6 +26,7 @@ export function MetricCard({
   sub,
   attention,
   usage,
+  href,
 }: {
   label: string;
   icon: `admin:${string}`;
@@ -32,46 +35,59 @@ export function MetricCard({
   attention?: "warning" | "error";
   /** 0-100, a share of a resource in use */
   usage?: number;
+  /** the console page that lists what the number counts */
+  href?: string;
 }) {
   const t = useAdminT();
   const note = attention && t(`tile.${attention}`);
-  return (
+  const content = (
+    <VStack gap={1}>
+      <HStack gap={2} vAlign="center" wrap="nowrap">
+        <Icon icon={icon} size="sm" color="secondary" />
+        <Text type="label" color="secondary">
+          {label}
+        </Text>
+      </HStack>
+      <HStack gap={2} vAlign="center">
+        <Heading level={2} accessibilityLevel={3}>
+          {value}
+        </Heading>
+        {note && <StatusDot variant={attention} label={note} tooltip={note} />}
+      </HStack>
+      {usage !== undefined && (
+        <ProgressBar
+          label={label}
+          isLabelHidden
+          value={usage}
+          variant={
+            usage >= USAGE_HIGH
+              ? "error"
+              : usage >= USAGE_WARN
+                ? "warning"
+                : "accent"
+          }
+        />
+      )}
+      {sub && (
+        <Text type="supporting" color="secondary">
+          {sub}
+        </Text>
+      )}
+    </VStack>
+  );
+  // the whole tile is the link (ClickableCard), so its name carries the number the tile shows
+  return href ? (
+    <ClickableCard
+      label={`${label} ${value}`}
+      href={href}
+      padding={4}
+      height="100%"
+    >
+      {content}
+    </ClickableCard>
+  ) : (
     <Card padding={4} height="100%">
-      <VStack gap={1}>
-        <HStack gap={2} vAlign="center" wrap="nowrap">
-          <Icon icon={icon} size="sm" color="secondary" />
-          <Text type="label" color="secondary">
-            {label}
-          </Text>
-        </HStack>
-        <HStack gap={2} vAlign="center">
-          <Heading level={2} accessibilityLevel={3}>
-            {value}
-          </Heading>
-          {note && (
-            <StatusDot variant={attention} label={note} tooltip={note} />
-          )}
-        </HStack>
-        {usage !== undefined && (
-          <ProgressBar
-            label={label}
-            isLabelHidden
-            value={usage}
-            variant={
-              usage >= USAGE_HIGH
-                ? "error"
-                : usage >= USAGE_WARN
-                  ? "warning"
-                  : "accent"
-            }
-          />
-        )}
-        {sub && (
-          <Text type="supporting" color="secondary">
-            {sub}
-          </Text>
-        )}
-      </VStack>
+      {content}
     </Card>
   );
 }

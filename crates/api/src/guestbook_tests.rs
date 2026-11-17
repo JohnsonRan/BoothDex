@@ -143,7 +143,7 @@ async fn the_list_pages_and_leaves_out_hidden_messages(pool: PgPool) {
 #[ignore = "requires PostgreSQL with pgvector"]
 async fn reading_the_list_is_rate_limited(pool: PgPool) {
     let s = state(pool).await;
-    while s.limits.lookup.check(ip(9).0, &crate::limit::Tier::Base).is_ok() {}
+    while s.limits.lookup.check(ip(9).0, &crate::limit::Tier::Base).await.is_ok() {}
     let (status, _) = answer(list(State(s.clone()), ip(9), crate::limit::Tier::Base, Query(ListQuery { before: None })).await).await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(answer(list(State(s.clone()), ip(10), crate::limit::Tier::Base, Query(ListQuery { before: None })).await).await.0, StatusCode::OK);

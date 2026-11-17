@@ -301,7 +301,7 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
 }
 
 const ENRICH_ITEMS_SELECT: &str = "select id, title, bio, booth_category, price_jpy, booth_tags, variations, translations
-         from items where needs_enrichment and status = 'ok' and enrich_failures < 3 order by id desc limit $1";
+         from items where needs_enrichment and status = 'ok' and enrich_failures < $2 order by id desc limit $1";
 
 /// What one enrich batch shares: the category list for the prompt, the slugs a reply may use, the avatar matcher.
 struct EnrichKit {
@@ -350,7 +350,7 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let concurrency: usize = param(params, "concurrency", 4usize).clamp(1, 16);
 
     let kit = enrich_kit(ctx.pool).await?;
-    let items: Vec<crate::ai::EnrichItem> = sqlx::query_as(ENRICH_ITEMS_SELECT).bind(batch).fetch_all(ctx.pool).await?;
+    let items: Vec<crate::ai::EnrichItem> = sqlx::query_as(ENRICH_ITEMS_SELECT).bind(batch).bind(boothdex_core::ENRICH_ATTEMPTS).fetch_all(ctx.pool).await?;
     let total = items.len() as i64;
     let (mut ok, mut failed) = (0i64, 0i64);
     let mut stream = futures_util::stream::iter(items.into_iter().map(|it| {
@@ -393,8 +393,9 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     if ok > 0 {
         bump_catalog(ctx.pool).await?;
         // work through a backlog batch by batch; a localize queued meanwhile runs between batches.
-        // a batch with no success stops the chain, and items failing 3 times drop out of the query
-        ctx.again = sqlx::query_scalar("select exists (select 1 from items where needs_enrichment and status = 'ok' and enrich_failures < 3)")
+        // a batch with no success stops the chain, and items failing ENRICH_ATTEMPTS times drop out of the query
+        ctx.again = sqlx::query_scalar("select exists (select 1 from items where needs_enrichment and status = 'ok' and enrich_failures < $1)")
+            .bind(boothdex_core::ENRICH_ATTEMPTS)
             .fetch_one(ctx.pool)
             .await?;
     }
@@ -711,7 +712,7 @@ mod tests {
                             (3, 'Failed thrice', '', 'c', 'https://example.test', false, 'ok', now(), true, 3, null, null, '{}', '[]', '{}'),
                             (4, 'Done', '', 'c', 'https://example.test', false, 'ok', now(), false, 0, null, null, '{}', '[]', '{}')")
             .execute(&pool).await.unwrap();
-        let items: Vec<crate::ai::EnrichItem> = sqlx::query_as(ENRICH_ITEMS_SELECT).bind(10i64).fetch_all(&pool).await.unwrap();
+        let items: Vec<crate::ai::EnrichItem> = sqlx::query_as(ENRICH_ITEMS_SELECT).bind(10i64).bind(boothdex_core::ENRICH_ATTEMPTS).fetch_all(&pool).await.unwrap();
         assert_eq!(items.iter().map(|i| i.id).collect::<Vec<_>>(), [2, 1]);
         let ring = &items[1];
         assert_eq!(ring.match_text(), "Ring VRChat MA Full set ");

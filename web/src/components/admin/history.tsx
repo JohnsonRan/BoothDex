@@ -1,6 +1,8 @@
 "use client";
 // Crawler history: the API's last 100 jobs, filtered by kind and status in the browser, with the filters in the
-// URL (?kind=&status=) so a view can be shared and Back restores it. Rows are the Astryx template
+// URL (?kind=&status=) so a view can be shared and Back restores it. status=unresolved, the overview tile's link,
+// lists the newest 100 unresolved failed runs the API picks over the tile's 30 days instead, and their total
+// (history-filter.ts). Rows are the Astryx template
 // incident-console's (@astryxdesign/cli assets/templates/pages/incident-console/page.tsx:347-380: List with dividers, a status Token and
 // a relative Timestamp at the end, the row opens the details), and its EmptyState (:325-332) when nothing is
 // left. The filter Selectors sit above the list, as table-filter keeps its controls over the table.
@@ -16,6 +18,13 @@ import { Timestamp } from "@astryxdesign/core/Timestamp";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { jobDuration } from "./format";
+import {
+  ALL,
+  countLine,
+  jobsPath,
+  matches,
+  UNRESOLVED,
+} from "./history-filter";
 import { JobLog } from "./job-log";
 import { JobStatusToken } from "./job-status";
 import { JobsFrame } from "./jobs-frame";
@@ -23,17 +32,16 @@ import { useAdminT } from "./messages";
 import { KINDS, STATUSES } from "./types";
 import { useJobs } from "./use-jobs";
 
-const ALL = "all";
-
 function JobList() {
   const t = useAdminT();
   const router = useRouter();
   const path = usePathname();
   const query = useSearchParams();
-  const { jobs } = useJobs();
-  const [logId, setLogId] = useState<number>();
   const kind = query.get("kind") ?? ALL;
   const status = query.get("status") ?? ALL;
+  const unresolved = status === UNRESOLVED;
+  const { jobs, total } = useJobs(jobsPath(status));
+  const [logId, setLogId] = useState<number>();
 
   const filter = (name: "kind" | "status", value: string) => {
     const next = new URLSearchParams(query);
@@ -43,11 +51,7 @@ function JobList() {
     router.replace(qs ? `${path}?${qs}` : path, { scroll: false });
   };
 
-  const rows = jobs?.filter(
-    (j) =>
-      (kind === ALL || j.kind === kind) &&
-      (status === ALL || j.status === status),
-  );
+  const rows = jobs?.filter((j) => matches(j, kind, status));
   const all = { value: ALL, label: t("history.all") };
 
   return (
@@ -71,6 +75,7 @@ function JobList() {
           value={status}
           options={[
             all,
+            { value: UNRESOLVED, label: t("history.unresolved") },
             ...STATUSES.map((s) => ({ value: s, label: t(`status.${s}`) })),
           ]}
           onChange={(v) => filter("status", v)}
@@ -78,9 +83,7 @@ function JobList() {
         <StackItem size="fill" />
         {jobs && (
           <Text type="supporting" color="secondary">
-            {rows && rows.length < jobs.length
-              ? t("history.shown", { shown: rows.length, n: jobs.length })
-              : t("history.count", { n: jobs.length })}
+            {countLine(t, rows?.length ?? 0, jobs.length, unresolved, total)}
           </Text>
         )}
       </HStack>
@@ -88,7 +91,11 @@ function JobList() {
         <Spinner label={t("jobs.history")} />
       ) : rows.length === 0 ? (
         <EmptyState
-          title={jobs?.length ? t("history.noMatch") : t("history.empty")}
+          title={
+            jobs?.length
+              ? t("history.noMatch")
+              : t(unresolved ? "history.noUnresolved" : "history.empty")
+          }
           icon={<Icon icon="admin:empty" size="lg" />}
         />
       ) : (

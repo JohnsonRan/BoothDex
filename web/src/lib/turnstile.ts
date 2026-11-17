@@ -14,7 +14,7 @@ type RenderOptions = {
   sitekey: string;
   action: string;
   theme: "light" | "dark";
-  size: "flexible";
+  size: "flexible" | "compact";
   language: string;
   callback: (token: string) => void;
   "expired-callback": () => void;
@@ -40,6 +40,10 @@ export const TURNSTILE_LANGUAGES: Record<UiLang, string> = {
   ja: "ja",
   ko: "ko",
 };
+
+/** The narrowest host the flexible widget fits: Cloudflare gives its frame `min-width: 300px`, so a narrower host (the
+ *  guestbook drawer on a phone) would clip its right edge. The compact widget is 150 px wide. */
+const FLEXIBLE_MIN = 300;
 
 let loading: Promise<Turnstile> | undefined;
 
@@ -79,9 +83,35 @@ export function useTurnstile(siteKey: string, action: string) {
   // bumped by `retry`: the drawer keeps the form mounted while it is closed, so reopening it loads nothing
   const [attempt, setAttempt] = useState(0);
   const take = useEffectEvent((t: string) => setToken(t));
+  // null until the host has been laid out; a hidden host (width 0, the closed drawer keeps its form) changes nothing
+  const [compact, setCompact] = useState<boolean | null>(null);
+  const hostWidth = useRef(0);
+  // A new size renders the widget again, which drops its token: while the visitor holds one (a scrollbar appearing
+  // as messages load can narrow the host), the size waits until the token is used, expires or is reset.
+  const fit = useEffectEvent(() => {
+    if (hostWidth.current > 0 && !token)
+      setCompact(hostWidth.current < FLEXIBLE_MIN);
+  });
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a failed load replaces the host with a Banner, and Try again brings a new one
+  useEffect(() => {
+    const host = ref.current;
+    if (!host) return;
+    const sized = new ResizeObserver(([entry]) => {
+      hostWidth.current = entry.contentRect.width;
+      fit();
+    });
+    sized.observe(host);
+    return () => sized.disconnect();
+  }, [failed]);
+
+  useEffect(() => {
+    if (!token) fit();
+  }, [token]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt loads and renders the widget again after a failed load
   useEffect(() => {
+    if (compact === null) return;
     let gone = false;
     loadTurnstile().then(
       (api) => {
@@ -91,8 +121,8 @@ export function useTurnstile(siteKey: string, action: string) {
           sitekey: siteKey,
           action,
           theme: dark ? "dark" : "light",
-          // as wide as the form's fields, never under the widget's own 300 px
-          size: "flexible",
+          // as wide as the form's fields where they leave it room
+          size: compact ? "compact" : "flexible",
           language: TURNSTILE_LANGUAGES[ui],
           callback: take,
           "expired-callback": () => take(""),
@@ -107,7 +137,7 @@ export function useTurnstile(siteKey: string, action: string) {
       widget.current = undefined;
       setToken("");
     };
-  }, [siteKey, action, dark, ui, attempt]);
+  }, [siteKey, action, dark, ui, attempt, compact]);
 
   const reset = () => {
     if (widget.current) window.turnstile?.reset(widget.current);

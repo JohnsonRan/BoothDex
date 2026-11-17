@@ -81,7 +81,7 @@ pub(crate) async fn register(
         return Err(Refusal::PasswordTooShort.into());
     }
     // after the form's own rules, so a visitor fixes a field without a new check; before the hash and the insert
-    turnstile::require_for_account(&s, &b.token, ip, REGISTER_ACTION).await?;
+    let checked = turnstile::require_for_account(&s, &b.token, ip, REGISTER_ACTION).await?;
     let hash = hash_password(b.password).await?;
     // ADMIN_USERNAMES makes an account admin by its name: a listed name with no account would make whoever registers it
     // an admin. The insert itself skips a listed name, so it is refused after the hash and the same statement as a
@@ -103,7 +103,7 @@ pub(crate) async fn register(
         Err(e) => return Err(e.into()),
     };
     let Some(id) = id else { return Err(Refusal::NameTaken.into()) };
-    let cookie = start_session(&s.pool, id, b.keep, &headers, ip, None).await?.expect("session insert on register");
+    let cookie = start_session(&s.pool, id, b.keep, &headers, ip, checked, None).await?.expect("session insert on register");
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({ "ok": true }))).into_response())
 }
 
@@ -132,7 +132,7 @@ pub(crate) async fn login(
     }
     // before the account is looked up: a refused token does the same work for every name and never counts against
     // an account's lockout
-    turnstile::require_for_account(&s, &b.token, ip, SIGN_IN_ACTION).await?;
+    let checked = turnstile::require_for_account(&s, &b.token, ip, SIGN_IN_ACTION).await?;
     if !valid_login(&b.login) {
         return Err(Refusal::BadCredentials.into());
     }
@@ -162,7 +162,7 @@ pub(crate) async fn login(
         log_attempt("sign-in refused (disabled)", account, ip);
         return Err(Refusal::AccountDisabled.into());
     }
-    let cookie = match start_session(&s.pool, id, b.keep, &headers, ip, Some(&hash)).await? {
+    let cookie = match start_session(&s.pool, id, b.keep, &headers, ip, checked, Some(&hash)).await? {
         Some(c) => c,
         None => {
             let locked_now = s.throttle.fail(&key);

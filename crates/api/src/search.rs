@@ -136,7 +136,7 @@ pub(crate) async fn search(
     headers: axum::http::HeaderMap,
     RawQuery(q): RawQuery,
 ) -> Result<Response, ApiError> {
-    s.limits.search.check(ip, &tier)?;
+    s.limits.search.check(ip, &tier).await?;
     let t0 = Instant::now();
     let mut trace = Trace::default();
     trace.start();

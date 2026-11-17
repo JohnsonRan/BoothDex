@@ -127,3 +127,11 @@ html {
   animation-timeline: scroll(self);
   animation-range: calc(100% - var(--spacing-8)) 100%;
 }
+/* The Turnstile widget's host (components/verification/verification-field.tsx) is a whole number of CSS px wide:
+   Chrome lays out the widget's cross-origin frame at the frame's width rounded to the nearest CSS px, so a frame of
+   390.875 px (the drawer's fluid padding at 4K, 150% scaling, 150% zoom) holds a 391 px page whose last fraction,
+   the widget's right border, is clipped. Rounding down keeps that page inside its frame; the 1px is the CSS pixel
+   grid, not a size. A browser without round() keeps the full width. */
+.turnstile-host {
+  width: round(down, 100%, 1px);
+}

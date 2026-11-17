@@ -36,7 +36,7 @@ pub(crate) async fn lookup_rate_limit(
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    if let Err(r) = s.limits.lookup.check(ip, &tier) {
+    if let Err(r) = s.limits.lookup.check(ip, &tier).await {
         return r.into_response();
     }
     next.run(req).await

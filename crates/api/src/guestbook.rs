@@ -126,7 +126,7 @@ pub(crate) struct ListQuery {
 }
 
 pub(crate) async fn list(State(s): State<Arc<AppState>>, ClientIp(ip): ClientIp, tier: Tier, Query(q): Query<ListQuery>) -> Result<Response, ApiError> {
-    s.limits.lookup.check(ip, &tier)?;
+    s.limits.lookup.check(ip, &tier).await?;
     let mut entries: Vec<GuestbookEntry> = sqlx::query_as(
         "select id, nickname, body, status, created_at from guestbook
          where hidden_at is null and ($1::bigint is null or id < $1) order by id desc limit $2",

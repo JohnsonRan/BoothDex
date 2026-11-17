@@ -18,7 +18,7 @@ pub(crate) async fn palette(
     tier: limit::Tier,
     RawQuery(q): RawQuery,
 ) -> Result<Response, ApiError> {
-    s.limits.palette.check(ip, &tier)?;
+    s.limits.palette.check(ip, &tier).await?;
     let raw = q.unwrap_or_default();
     let user = SearchRequest::from(&Params::parse(&raw));
     let Some(text) = user.q else {

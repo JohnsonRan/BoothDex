@@ -27,6 +27,6 @@ export function VerificationField({
       }
     />
   ) : (
-    <VStack ref={verification.ref} />
+    <VStack ref={verification.ref} className="turnstile-host" />
   );
 }

@@ -65,7 +65,7 @@ pub(crate) fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
         .find_map(|kv| kv.trim().strip_prefix(name)?.strip_prefix('=').map(str::to_owned))
 }
 
-fn cookie_token(headers: &HeaderMap) -> Option<String> {
+pub(crate) fn cookie_token(headers: &HeaderMap) -> Option<String> {
     cookie(headers, "session")
 }
 

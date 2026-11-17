@@ -47,6 +47,7 @@ export const adminJa: AdminDict = {
   "tile.newSub": "Booth の公開日時で集計",
   "tile.ai": "AI 処理待ち",
   "tile.aiSub": "対応アバターとカテゴリの絞り込みには未反映",
+  "tile.aiGivenUp": "うち {n} 件は断念済みで、自動では再処理されません",
   "tile.images": "Booth 画像なし",
   "tile.imagesSub": "販売中で Booth 画像リンクのない商品",
   "tile.users": "ユーザー",
@@ -76,6 +77,7 @@ export const adminJa: AdminDict = {
   "meter.workerSub": "メモリ {rss} · ハートビート",
   "jobs.tasks": "タスク",
   "jobs.history": "履歴",
+  "jobs.givenUp": "AI 処理を断念",
   "kind.incremental": "増分クロール",
   "kind.incremental.desc":
     "Booth の新着一覧を巡回して新商品と画像リンクを取得し、取得済みの商品に追いつくと自動停止します。",
@@ -164,6 +166,11 @@ export const adminJa: AdminDict = {
   "history.shown": "{n} 件中 {shown} 件を表示",
   "history.empty": "ジョブはまだありません",
   "history.noMatch": "条件に一致するジョブはありません",
+  "history.unresolved": "未解決の失敗",
+  "history.unresolvedCount": "過去 30 日間の未解決の失敗 {n} 件",
+  "history.unresolvedNewest":
+    "過去 30 日間の未解決の失敗 {n} 件中、新しい {shown} 件",
+  "history.noUnresolved": "過去 30 日間に未解決の失敗はありません",
   "log.progress": "進捗",
   "log.duration": "所要時間",
   "log.creator": "作成者",
@@ -264,7 +271,7 @@ export const adminJa: AdminDict = {
   "turnstile.authOff": "ログインと新規登録で認証を求めないようにしました",
   "turnstile.strict": "認証していない訪問者の制限を厳しくする",
   "turnstile.strictDesc":
-    "認証していない訪問者は検索やアイテムの表示で早めに制限されます。認証すると 10 分間は通常の制限に戻ります",
+    "認証していない訪問者は検索やアイテムの表示で早めに制限されます。認証すると 10 分間は通常の制限に戻ります。ログインと新規登録で認証を求めている間は、ログインまたは新規登録の際に認証を通過したユーザーは通常の制限です",
   "turnstile.strictOn": "認証していない訪問者の制限を厳しくしました",
   "turnstile.strictOff": "すべての訪問者を通常の制限に戻しました",
   "guestbook.empty": "メッセージはまだありません",
@@ -288,4 +295,19 @@ export const adminJa: AdminDict = {
   "guestbook.deleteAction": "メッセージを削除",
   "guestbook.deleted": "メッセージを削除しました",
   "guestbook.more": "さらに読み込む",
+  "givenUp.desc":
+    "販売中の商品の AI 処理に {n} 回失敗すると、以降の AI 処理では対象外になります。再試行すると失敗回数が 0 に戻り、まもなく AI 処理が実行されます。",
+  "givenUp.count": "全 {n} 件",
+  "givenUp.shown": "{n} 件中 {shown} 件を表示",
+  "givenUp.failures": "{n} 回失敗",
+  "givenUp.retry": "再試行",
+  "givenUp.retryAll": "すべて再試行",
+  "givenUp.retryAllTitle": "{n} 件の商品をすべて再試行しますか？",
+  "givenUp.retryAllDesc":
+    "AI 処理がこれらの商品について AI プロバイダーを再度呼び出します。各商品は最大 {attempts} 回まで再試行されます。",
+  "givenUp.retried":
+    "{n} 件の失敗回数をリセットしました。次回の AI 処理で再試行されます",
+  "givenUp.retriedOne": "次回の AI 処理でこの商品を再試行します",
+  "givenUp.stale": "再試行が必要な商品はありません。一覧を更新しました",
+  "givenUp.empty": "AI 処理を断念した商品はありません",
 };
