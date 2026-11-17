@@ -91,10 +91,6 @@ export function PostForm({
       <TextInput
         label={t("nickname")}
         autoComplete="nickname"
-        description={t("count", {
-          n: [...nickname.trim()].length,
-          max: NICKNAME_MAX,
-        })}
         status={
           nicknameBad
             ? {
