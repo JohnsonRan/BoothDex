@@ -502,19 +502,20 @@ struct AvatarKit {
 }
 
 impl AvatarKit {
-    /// The avatar names `tag` holds: for each avatar the matcher finds in it, the names it writes and the avatar's
-    /// Japanese name and romaji, each NFKC and lowercase.
-    fn held_names(&self, tag: &str) -> Vec<crate::ai::HeldName> {
-        let folded = crate::avatars::norm(tag);
+    /// The avatar names `text` (a tag or a title) holds: for each avatar the matcher finds in it, the names it writes
+    /// and the avatar's Japanese name and romaji, each NFKC and lowercase.
+    fn held_names(&self, text: &str) -> Vec<crate::ai::HeldName> {
+        let folded = crate::avatars::norm(text);
         self.matcher
-            .find(tag)
+            .find(text)
             .iter()
             .filter_map(|slug| {
                 let name = self.names.get(slug)?;
                 let written = self.forms.get(slug)?.iter().map(|f| crate::avatars::norm(f)).filter(|f| folded.contains(f.as_str()));
                 let mut forms: Vec<String> = written.chain(name.ja.iter().chain([&name.romaji]).map(|f| crate::avatars::norm(f))).collect();
                 forms.dedup();
-                Some(crate::ai::HeldName(forms))
+                let latin = forms.iter().filter(|f| crate::ai::latin_letters(f)).cloned().collect();
+                Some(crate::ai::HeldName { forms, latin })
             })
             .collect()
     }
@@ -557,19 +558,34 @@ async fn enrich_kit(pool: &PgPool) -> Result<EnrichKit> {
     Ok(EnrichKit { category_list, known, avatars: avatar_kit(pool).await? })
 }
 
-/// One model call for one item; a reply that parsed but failed validation (e.g. a misspelt category slug) gets one correction round.
+/// One model call for one item. A reply that parsed but failed validation (e.g. a misspelt category slug), or whose
+/// translated titles fail their checks (`ai::TitleCheck`), gets one correction round. A title that still fails is not
+/// written: the item keeps its earlier title in that language when that one passes. A correction that fails
+/// validation leaves the first reply, when that one passed, minus its failing titles.
 /// `linked`: the slugs of the avatars the matcher found in the listing.
 async fn enrich_reply(ai: &crate::ai::Ai, kit: &EnrichKit, item: &crate::ai::EnrichItem, linked: &[String]) -> Result<crate::ai::Enrichment> {
     let system = crate::ai::ENRICH_SYSTEM;
     let names: Vec<&crate::ai::AvatarName> = linked.iter().filter_map(|slug| kit.avatars.names.get(slug)).collect();
     let prompt = crate::ai::enrich_prompt(item, &kit.category_list, &names);
+    let titles = crate::ai::TitleCheck { original: &item.title, names: kit.avatars.held_names(&item.title), japanese: &kit.avatars.japanese };
     let v = ai.json(system, &prompt).await?;
-    match crate::ai::validate_enrichment(&v, &kit.known, &item.translations) {
-        Err(e) => {
-            let v2 = ai.json_correction(system, &prompt, &v, &format!("{e:#}")).await?;
-            crate::ai::validate_enrichment(&v2, &kit.known, &item.translations).map_err(|e2| e2.context(format!("after correction (first: {e:#})")))
-        }
-        ok => ok,
+    let first = crate::ai::validate_enrichment(&v, &kit.known, &item.translations);
+    let error = match &first {
+        Ok(e) => match titles.problems(&e.translations) {
+            problems if problems.is_empty() => return first,
+            problems => crate::ai::title_problems_message(&problems),
+        },
+        Err(e) => format!("{e:#}"),
+    };
+    let v2 = match ai.json_correction(system, &prompt, &v, &error).await {
+        Ok(v2) => v2,
+        // a correction with no JSON object in it is no valid reply either: the first one still counts when it passed
+        Err(e) if first.is_ok() && !e.is::<crate::ai::ProviderError>() => Value::Null,
+        Err(e) => return Err(e),
+    };
+    match (crate::ai::validate_enrichment(&v2, &kit.known, &item.translations), first) {
+        (Ok(e), _) | (Err(_), Ok(e)) => Ok(titles.keep_passing(e, &item.translations)),
+        (Err(e2), Err(e)) => Err(e2.context(format!("after correction (first: {e:#})"))),
     }
 }
 
@@ -971,7 +987,7 @@ mod tests {
         let titles = json!({
             "en": {"title": "[For Manuka] Frill Dress"},
             "ja": {"title": "【マヌカ対応】フリルドレス"},
-            "ko": {"title": "【マヌカ対応】프릴 드레스"},
+            "ko": {"title": "【マヌカ 대응】프릴 드레스"},
             "zh": {"title": "【マヌカ対応】荷叶边连衣裙"},
         });
         let reply = json!({
@@ -1015,6 +1031,81 @@ mod tests {
         expected["original_language"] = json!("ja");
         assert_eq!(translations, expected);
         assert_eq!(avatars, ["manuka"]);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn enrich_corrects_failing_titles_once_and_writes_only_those_that_pass(pool: PgPool) {
+        for key in ["AI_BASE_URL", "AI_API_KEY", "AI_MODEL"] {
+            assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test's provider is a local stand-in");
+        }
+        crate::install_tls();
+        // item 1: the English title drops the avatar's romaji and adds a number, the Chinese one keeps kana; the
+        // correction fixes English only. Item 2: its Chinese title keeps kana and its correction is no valid reply.
+        // Item 3: its Chinese title keeps kana and its correction holds no JSON at all.
+        let reply = |en: &str, zh: &str| {
+            json!({
+                "categories": ["clothing--outfit-dresses"], "content_rating": "SFW", "quest_compatible": "No", "smart_price": 1500, "features": [],
+                "translations": {"en": {"title": en}, "ja": {"title": "【マヌカ対応】フリルドレス"}, "ko": {"title": "【マヌカ 대응】프릴 드레스"}, "zh": {"title": zh}},
+                "original_language": "ja",
+            })
+        };
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+        let seen = requests.clone();
+        let app = axum::Router::new().fallback(move |axum::Json(body): axum::Json<Value>| {
+            seen.lock().unwrap().push(body.clone());
+            let listing = body["messages"][1]["content"].as_str().unwrap();
+            let item = if listing.contains("Title: 【マヌカ対応】フリルドレス2") { 2 } else if listing.contains("Title: 【マヌカ対応】リボン") { 3 } else { 1 };
+            let correction = body["messages"].as_array().unwrap().len() == 4;
+            let content = match (item, correction) {
+                (1, false) => reply("[For the avatar] Frill Dress 3", "【マヌカ対応】荷叶边ドレス").to_string(),
+                (1, true) => reply("[For Manuka] Frill Dress", "【マヌカ対応】荷叶边ドレス").to_string(),
+                (2, false) => reply("[For Manuka] Frill Dress 2", "【マヌカ対応】荷叶边ドレス2").to_string(),
+                (2, true) => json!({"categories": []}).to_string(),
+                (_, false) => reply("[For Manuka] Ribbon", "【マヌカ対応】リボン").to_string(),
+                (_, true) => "Sorry, I can't help with that.".to_owned(),
+            };
+            async move { axum::Json(json!({"choices": [{"message": {"content": content}}]})) }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        sqlx::query("insert into app_settings (key, value) values ('ai', $1)")
+            .bind(json!({"base_url": base_url, "model": "stand-in", "api_key": "test"}))
+            .execute(&pool).await.unwrap();
+        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, needs_enrichment, booth_tags, translations)
+                     values (1, '【マヌカ対応】フリルドレス', 'c', 'https://example.test', false, 'ok', now(), true, '{ドレス}', '{}'),
+                            (2, '【マヌカ対応】フリルドレス2', 'c', 'https://example.test', false, 'ok', now(), true, '{ドレス}', '{\"zh\": {\"title\": \"【マヌカ対応】荷叶边连衣裙2\"}}'),
+                            (3, '【マヌカ対応】リボン', 'c', 'https://example.test', false, 'ok', now(), true, '{リボン}', '{}')")
+            .execute(&pool).await.unwrap();
+        let job: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('enrich', 'running', now()) returning id")
+            .fetch_one(&pool).await.unwrap();
+        let booth = Booth::new().unwrap();
+        let mut ctx = Ctx::new(&pool, &booth, job);
+        assert_eq!(enrich(&mut ctx, &json!({"concurrency": 1})).await.unwrap(), "3 enriched, 0 failed of 3");
+
+        // one correction per item, which names each failing title
+        let requests = requests.lock().unwrap().clone();
+        assert_eq!(requests.len(), 6);
+        let fixes: Vec<&str> = requests.iter().filter_map(|r| r["messages"].get(3).and_then(|m| m["content"].as_str())).collect();
+        assert!(fixes.iter().any(|f| f.contains("translations.en.title drops the avatar name manuka") && f.contains("translations.zh.title holds kana")), "{fixes:?}");
+        let pool = &pool;
+        let titles = |id: i64| async move {
+            sqlx::query_scalar::<_, Value>("select translations from items where id = $1").bind(id).fetch_one(pool).await.unwrap()
+        };
+        // item 1: the corrected English title; no Chinese title, as none passed and none came before
+        assert_eq!(
+            titles(1).await,
+            json!({"en": {"title": "[For Manuka] Frill Dress"}, "ja": {"title": "【マヌカ対応】フリルドレス"}, "ko": {"title": "【マヌカ 대응】프릴 드레스"}, "original_language": "ja"})
+        );
+        // item 2: the first reply, its Chinese title replaced by the earlier one
+        assert_eq!(titles(2).await["zh"], json!({"title": "【マヌカ対応】荷叶边连衣裙2"}));
+        assert_eq!(titles(2).await["en"], json!({"title": "[For Manuka] Frill Dress 2"}));
+        // item 3: the first reply without its Chinese title, which failed and had none before
+        assert_eq!(
+            titles(3).await,
+            json!({"en": {"title": "[For Manuka] Ribbon"}, "ja": {"title": "【マヌカ対応】フリルドレス"}, "ko": {"title": "【マヌカ 대응】프릴 드레스"}, "original_language": "ja"})
+        );
     }
 
     /// What the stand-in provider answers a tag request (its body, the asked tags in id order): the reply's content, or
@@ -1314,19 +1405,24 @@ mod tests {
 
     #[test]
     fn a_tag_holds_an_avatar_name_in_the_forms_it_writes_and_in_japanese_and_romaji() {
-        let forms: std::collections::HashMap<String, Vec<String>> = [("manuka".to_owned(), vec!["Manuka".to_owned(), "マヌカ".to_owned(), "마누카".to_owned()])].into();
+        let names = |romaji: &str, ja: &str, ko: &str| vec![romaji.to_owned(), ja.to_owned(), ko.to_owned()];
+        let forms: std::collections::HashMap<String, Vec<String>> = [("manuka".to_owned(), names("Manuka", "マヌカ", "마누카")), ("alue".to_owned(), names("Alué", "アルエ", "アルエ"))].into();
+        let avatar = |ja: &str, romaji: &str| crate::ai::AvatarName { ja: Some(ja.into()), romaji: romaji.into() };
         let kit = AvatarKit {
             matcher: crate::avatars::Matcher::new(forms.clone()),
-            names: [("manuka".to_owned(), crate::ai::AvatarName { ja: Some("マヌカ".into()), romaji: "Manuka".into() })].into(),
+            names: [("manuka".to_owned(), avatar("マヌカ", "Manuka")), ("alue".to_owned(), avatar("アルエ", "Alué"))].into(),
             forms,
             romaji: Default::default(),
             japanese: Vec::new(),
         };
-        let held = |tag: &str| kit.held_names(tag).into_iter().map(|n| n.0).collect::<Vec<_>>();
+        let held = |tag: &str| kit.held_names(tag).into_iter().map(|n| (n.forms.join(" "), n.latin.join(" "))).collect::<Vec<_>>();
+        let pair = |forms: &str, latin: &str| (forms.to_owned(), latin.to_owned());
         // the Korean name counts only where the tag writes it, so a Korean value transliterating マヌカ is caught
-        assert_eq!(held("マヌカ用"), [vec!["マヌカ", "manuka"]]);
-        assert_eq!(held("마누카용"), [vec!["마누카", "マヌカ", "manuka"]]);
+        assert_eq!(held("マヌカ用"), [pair("マヌカ manuka", "manuka")]);
+        assert_eq!(held("마누카용"), [pair("마누카 マヌカ manuka", "manuka")]);
         assert!(held("スカート").is_empty());
+        // a romaji with an accent is in Latin letters, so an English title can keep it
+        assert_eq!(held("【アルエ対応】ドレス"), [pair("アルエ alué", "alué")]);
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
