@@ -98,7 +98,7 @@ cp .env.example .env
 
 Without a data bundle, skip to [3. Configure](#3-configure) and follow [Starting without a data bundle](#starting-without-a-data-bundle) in step 4.
 
-A data bundle is a snapshot of an existing instance created with `scripts/make-bundle.sh <out-dir>`. A ready-made bundle is published as the GitHub release [data-2026-11-04](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04): 217,494 items (VRCatalogue archive plus BOOTH crawls up to that day), with semantic-search vectors from `Qwen/Qwen3-Embedding-4B`. Services apply newer migrations automatically at startup, and the hourly crawl catches up from there.
+A data bundle is a snapshot of an existing instance created with `scripts/make-bundle.sh <out-dir>`. A ready-made bundle is published as the GitHub release [data-2026-11-04](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04): 217,494 items (VRCatalogue archive plus BOOTH crawls up to that day), with semantic-search vectors from `Qwen/Qwen3-Embedding-4B`. Services apply newer migrations automatically at startup, and the hourly crawl catches up from there. A bundle also carries its instance's BOOTH tag dictionary and title translations (data-2026-11-04 predates the dictionary); the daily `localize` job translates the tags it lacks.
 
 If you configure a different embeddings model, clear the bundled vectors once so the `embed` job rebuilds them with yours: `docker compose exec postgres psql -U catalogue catalogue -c 'update items set embedding = null'`.
 
@@ -162,7 +162,7 @@ Then complete onboarding:
 
 1. Open the site (via your reverse proxy, or, for a quick check without one, `http://<server>:3100` with `WEB_LISTEN=3100` and `COOKIE_SECURE=0`; set both back afterwards) and register your account.
 2. Add that username to `ADMIN_USERNAMES` in `.env`, then run `docker compose up -d api`.
-3. Open `/admin`: verify `worker` shows as running. The hourly incremental crawl, the daily full sweep (03:00 JST) and the daily `details` pass (fetches missing galleries) are enabled by default.
+3. Open `/admin`: verify `worker` shows as running. The hourly incremental crawl, the daily full sweep (03:00 JST), the daily `details` pass (fetches missing galleries) and the daily `localize` (adds the BOOTH tags on 5 or more items that the tag dictionary lacks, up to 400 a run, once an AI provider is set; its first run comes a day after the migration; a tag without a valid translation after 3 runs is skipped until its row in `booth_tag_failures` is deleted) are enabled by default.
 4. Configure the AI provider in `/admin` (and click **Test**) or via `AI_*` in `.env`. A key is sent only to the base URL it was saved with: to change the URL in `/admin`, enter the key again in the same save.
 5. Read `/privacy` and `/terms`. They describe what the software does and are a starting point, not legal advice: if you change what the site collects (analytics, another network provider) or your jurisdiction needs more, update `web/src/lib/legal-*.ts` and `LEGAL_UPDATED` in `web/src/lib/legal.ts`. The site sets only strictly necessary and preference cookies, so it shows no consent banner; adding analytics or ads would need one.
 

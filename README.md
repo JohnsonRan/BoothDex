@@ -153,8 +153,11 @@ docker compose pull && docker compose up -d
   delisted ones.
 - AI enrichment *(optional, any OpenAI-compatible API, configurable reasoning effort)* adds smart categories,
   content rating, features and title translations (Chinese, English, Japanese, Korean; avatar names stay as
-  written) to new items, links avatars by name, and localizes category and tag names. Embeddings for semantic
-  search come from the same provider.
+  written) to new items, links avatars by name, and localizes category and tag names. Each day it also translates the
+  BOOTH tags on 5 or more items that the tag dictionary lacks, up to 400 a run, into the four languages; avatar names stay
+  as written, and it never changes a dictionary row. A value that fails its checks is left empty, and a tag without
+  any valid value is asked again on later runs, three runs at most. Embeddings for semantic search come from the same
+  provider.
 - A proxy re-encodes BOOTH images and shop icons to AVIF and caches them; archived copies cover delisted items.
 
 ### Administration

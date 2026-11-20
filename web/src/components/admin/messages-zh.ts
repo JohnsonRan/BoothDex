@@ -91,9 +91,9 @@ export const adminZh = {
   "kind.embed": "语义向量",
   "kind.embed.desc":
     "为新商品和改过标题或简介的商品生成语义搜索向量（设置向量模型之前不会运行）",
-  "kind.localize": "翻译分类",
+  "kind.localize": "翻译分类和标签",
   "kind.localize.desc":
-    "把分类和标签名翻译成中文（只翻译还没有中文名的）。保存 AI 设置后会自动运行一次",
+    "把分类和标签名翻译成中文，并把用于 5 个及以上商品的 BOOTH 标签翻译成中、英、日、韩四种语言以供搜索（只翻译还没有译文的，每次最多 400 个标签）。每天运行，保存 AI 设置后也会运行",
   "status.queued": "排队中",
   "status.running": "运行中",
   "status.cancelling": "停止中",

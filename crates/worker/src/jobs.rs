@@ -244,18 +244,41 @@ async fn unseen_by_walk(pool: &PgPool, started: chrono::DateTime<chrono::Utc>, t
     .await?)
 }
 
-async fn ai_client(pool: &PgPool) -> Result<crate::ai::Ai> {
-    match crate::ai::Ai::from_config(&boothdex_core::settings::ai(pool).await?)? {
-        Some(ai) => Ok(ai),
-        None => bail!("AI provider not configured (set API address, model and key in the admin console)"),
+/// Listed items a BOOTH tag must be on before `localize` gives it a dictionary row: production had 31,775 such tags,
+/// 95% of tag uses (2026-11-20).
+const TAG_MIN_ITEMS: i64 = 5;
+/// Tags per request.
+const TAG_BATCH: usize = 40;
+/// Runs a tag may get no valid value in before `localize` stops asking for it (`booth_tag_failures`), so a tag the model
+/// always fails on is not paid for every day.
+const TAG_MAX_FAILURES: i32 = 3;
+
+/// Translates the taxonomy (category names, category groups, smart tags) into Simplified Chinese, and gives each BOOTH
+/// tag on `TAG_MIN_ITEMS` listed items without a dictionary row (`booth_tag_translations`) one in four languages.
+/// Only fills what is missing, so it is cheap to rerun. params.force translates every taxonomy name again and leaves the
+/// dictionary alone, so no run overwrites an imported or corrected row (owner ruling 22, 2026-11-21).
+/// params.max_tags (default 400) caps the tags one run asks for: a dictionary without an import fills over several runs
+/// instead of holding the AI lane, which enrichment shares, for hours.
+pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
+    // scheduled daily; without a provider there is nothing to do, which isn't a failure
+    let Some(ai) = crate::ai::Ai::from_config(&boothdex_core::settings::ai(ctx.pool).await?)? else {
+        return Ok("skipped: AI provider not configured".into());
+    };
+    let force: bool = param(params, "force", false);
+    let (written, unique, finished) = localize_names(ctx, &ai, force).await?;
+    if written > 0 {
+        bump_catalog(ctx.pool).await?;
     }
+    let names = format!("{written} names translated to Chinese ({unique} unique strings)");
+    if force || !finished {
+        return Ok(names);
+    }
+    let tags = localize_tags(ctx, &ai, param(params, "max_tags", 400i64)).await?;
+    Ok(format!("{names}; {tags}"))
 }
 
-/// Translates the taxonomy (category names, category groups, smart tags) into Simplified Chinese.
-/// Only fills missing names unless params.force is set, so it is cheap to rerun.
-pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
-    let ai = ai_client(ctx.pool).await?;
-    let force: bool = param(params, "force", false);
+/// The taxonomy part of `localize`: (rows written, unique strings translated, whether it ran to the end).
+async fn localize_names(ctx: &mut Ctx<'_>, ai: &crate::ai::Ai, force: bool) -> Result<(u64, usize, bool)> {
     // (table, key column, English column, Chinese column)
     let targets = [
         ("smart_categories", "slug", "name_en", "name_zh"),
@@ -269,14 +292,12 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         let rows: Vec<(String, String)> = sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(force).fetch_all(ctx.pool).await?;
         work.extend(rows.into_iter().map(|(k, v)| (t, k, v)));
     }
-    if work.is_empty() {
-        return Ok("nothing to translate".into());
-    }
     // unique English strings, translated in batches of 60
     let mut texts: Vec<String> = work.iter().map(|w| w.2.clone()).collect();
     texts.sort();
     texts.dedup();
     let mut zh: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut finished = true;
     for (n, batch) in texts.chunks(60).enumerate() {
         let input: serde_json::Map<String, Value> = batch.iter().map(|s| (s.clone(), Value::String(s.clone()))).collect();
         let out = ai.json(crate::ai::LOCALIZE_SYSTEM, &Value::Object(input).to_string()).await?;
@@ -286,6 +307,7 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
             }
         }
         if !ctx.progress((n + 1) as i64 * 60, Some(texts.len() as i64), &format!("translated {} of {}", zh.len(), texts.len()), false).await? {
+            finished = false;
             break;
         }
     }
@@ -296,20 +318,211 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         let sql = format!("update {table} set {zh_col} = $1 where {key_col} = $2");
         written += sqlx::query(sqlx::AssertSqlSafe(sql)).bind(value).bind(key).execute(ctx.pool).await?.rows_affected();
     }
-    bump_catalog(ctx.pool).await?;
-    Ok(format!("{written} names translated to Chinese ({} unique strings)", zh.len()))
+    Ok((written, zh.len(), finished))
+}
+
+/// The BOOTH tags on at least $2 listed items without a dictionary row and without $3 failed runs, most used first, at
+/// most $1; each with up to 3 titles of listed items that carry it, most liked first.
+const MISSING_TAGS_SELECT: &str = "with counts as (
+           select t.tag, count(*) as n
+             from items i cross join lateral (select distinct unnest(i.booth_tags) as tag) t
+            where i.status = 'ok'
+            group by t.tag
+           having count(*) >= $2
+         ), missing as (
+           select c.tag, c.n from counts c
+            where c.tag <> '' and not exists (select 1 from booth_tag_translations b where b.tag = c.tag)
+              and not exists (select 1 from booth_tag_failures f where f.tag = c.tag and f.failures >= $3)
+            order by c.n desc, c.tag limit $1
+         ), ranked as (
+           select m.tag, m.n, i.title, row_number() over (partition by m.tag order by i.likes desc, i.id desc) as r
+             from missing m join (select id, title, likes, unnest(booth_tags) as tag from items where status = 'ok') i on i.tag = m.tag
+         )
+         select tag, array_agg(title order by r) from ranked where r <= 3 group by tag, n order by n desc, tag";
+
+/// Adds the rows the job made; a tag that got a row meanwhile (an import) keeps it. A language left out is null. $6
+/// holds each row's keywords joined by U+001F.
+const TAG_ROWS_INSERT: &str = "insert into booth_tag_translations (tag, en, ja, ko, zh, keywords, source)
+         select t.tag, t.en, t.ja, t.ko, t.zh, coalesce(string_to_array(nullif(t.k, ''), chr(31)), '{}'), 'localize'
+           from unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[]) as t(tag, en, ja, ko, zh, k)
+         on conflict (tag) do nothing";
+
+/// Counts one more failed run for each tag.
+const TAG_FAILURES_UPSERT: &str = "insert into booth_tag_failures (tag, failures) select unnest($1::text[]), 1
+         on conflict (tag) do update set failures = booth_tag_failures.failures + 1";
+
+/// A tag with its values in `ai::TAG_LANGUAGES` order, `None` for a language left out.
+type TagRow = (String, [Option<String>; 4]);
+/// A tag with titles of listed items that carry it.
+type TagAsk = (String, Vec<String>);
+
+async fn insert_tag_rows(pool: &PgPool, rows: &[TagRow]) -> Result<u64> {
+    if rows.is_empty() {
+        return Ok(0);
+    }
+    let column = |k: usize| rows.iter().map(|r| r.1[k].clone()).collect::<Vec<_>>();
+    let tags: Vec<&str> = rows.iter().map(|r| r.0.as_str()).collect();
+    let keywords: Vec<String> = rows.iter().map(|r| r.1[3].as_deref().map(crate::ai::tag_keywords).unwrap_or_default().join("\u{1f}")).collect();
+    let insert = sqlx::query(TAG_ROWS_INSERT).bind(&tags).bind(column(0)).bind(column(1)).bind(column(2)).bind(column(3)).bind(&keywords);
+    Ok(insert.execute(pool).await?.rows_affected())
+}
+
+/// What the tag part of one `localize` run did.
+#[derive(Default)]
+struct TagTally {
+    added: u64,
+    /// rows added with a language left out
+    partial: usize,
+    /// tags without any valid value, asked again by a later run
+    failed: usize,
+}
+
+/// The tag part of `localize`. A tag that is an avatar's name in any language gets its romaji in English and the tag as
+/// written in the other languages, without a request. The others are asked in batches of `TAG_BATCH`; a value that
+/// fails `ai::tag_values` is left out and logged, and a tag with no valid value gets no row and one more failed run.
+async fn localize_tags(ctx: &mut Ctx<'_>, ai: &crate::ai::Ai, max: i64) -> Result<String> {
+    let missing: Vec<TagAsk> = sqlx::query_as(MISSING_TAGS_SELECT).bind(max).bind(TAG_MIN_ITEMS).bind(TAG_MAX_FAILURES).fetch_all(ctx.pool).await?;
+    if missing.is_empty() {
+        return Ok("no new tags".into());
+    }
+    let avatars = avatar_kit(ctx.pool).await?;
+    let romaji = |tag: &str| avatars.romaji.get(&tag.trim().to_lowercase()).cloned();
+    let (named, asked): (Vec<TagAsk>, Vec<TagAsk>) = missing.into_iter().partition(|(tag, _)| romaji(tag).is_some());
+    let named: Vec<TagRow> = named.into_iter().map(|(tag, _)| (tag.clone(), [romaji(&tag), Some(tag.clone()), Some(tag.clone()), Some(tag)])).collect();
+    let mut tally = TagTally { added: insert_tag_rows(ctx.pool, &named).await?, ..Default::default() };
+    let outcome = ask_tags(ctx, ai, &avatars, asked, &mut tally).await;
+    if tally.added > 0 {
+        bump_catalog(ctx.pool).await?;
+    }
+    outcome.map_err(|e| e.context(format!("after {} tags were added", tally.added)))?;
+    Ok(format!(
+        "{} tags added to the dictionary ({} avatar names, {} with a language left empty), {} without a valid translation",
+        tally.added,
+        named.len(),
+        tally.partial,
+        tally.failed
+    ))
+}
+
+/// Asks for `asked` in batches of `TAG_BATCH`, with the reply held to `ai::tag_schema` until the provider refuses that
+/// format; from then on, for the rest of the run, as a plain JSON object.
+async fn ask_tags(ctx: &mut Ctx<'_>, ai: &crate::ai::Ai, avatars: &AvatarKit, asked: Vec<TagAsk>, tally: &mut TagTally) -> Result<()> {
+    let total = asked.len();
+    let mut schema = true;
+    for (n, batch) in asked.chunks(TAG_BATCH).enumerate() {
+        let reply = ask_batch(ctx, ai, avatars, batch, &mut schema).await?;
+        let (mut rows, mut failed) = (Vec::new(), Vec::new());
+        for (i, (tag, titles)) in batch.iter().enumerate() {
+            let values = crate::ai::tag_values(&reply[crate::ai::tag_id(i)], tag, titles, &avatars.held_names(tag));
+            let left_out: Vec<String> = crate::ai::TAG_LANGUAGES.iter().zip(&values).filter_map(|(lang, v)| v.as_ref().err().map(|why| format!("{lang} {why}"))).collect();
+            if left_out.len() == values.len() {
+                let why = if values.iter().all(|v| v.as_ref().is_err_and(|why| why == "no value")) { "no answer".to_owned() } else { left_out.join("; ") };
+                ctx.log(&format!("tag {tag}: no valid translation ({why}); a later run asks again")).await?;
+                failed.push(tag.clone());
+                continue;
+            }
+            if !left_out.is_empty() {
+                ctx.log(&format!("tag {tag}: left empty: {}", left_out.join("; "))).await?;
+                tally.partial += 1;
+            }
+            rows.push((tag.clone(), values.map(std::result::Result::ok)));
+        }
+        tally.added += insert_tag_rows(ctx.pool, &rows).await?;
+        tally.failed += failed.len();
+        if !failed.is_empty() {
+            sqlx::query(TAG_FAILURES_UPSERT).bind(&failed).execute(ctx.pool).await?;
+        }
+        let done = ((n + 1) * TAG_BATCH).min(total);
+        if !ctx.progress(done as i64, Some(total as i64), &format!("tags: {} added, {} without a valid translation", tally.added, tally.failed), false).await? {
+            return ctx.log("cancelled").await;
+        }
+    }
+    Ok(())
+}
+
+/// One request for `batch`; returns the reply, keyed by `ai::tag_id`. A provider error stops the job; an unreadable
+/// reply is logged and counts as no answer. A provider that refuses the json_schema format gets the batch again as a
+/// plain JSON request, and `schema` turns off.
+async fn ask_batch(ctx: &Ctx<'_>, ai: &crate::ai::Ai, avatars: &AvatarKit, batch: &[TagAsk], schema: &mut bool) -> Result<Value> {
+    let mut slugs: Vec<String> = batch.iter().flat_map(|(tag, _)| avatars.matcher.find(tag)).collect();
+    slugs.sort();
+    slugs.dedup();
+    let names: Vec<&crate::ai::AvatarName> = slugs.iter().filter_map(|s| avatars.names.get(s)).collect();
+    let user = crate::ai::tag_prompt(batch, &names);
+    let mut reply = None;
+    if *schema {
+        reply = ai.json_schema(crate::ai::TAG_SYSTEM, &user, crate::ai::tag_schema(batch.len())).await.transpose();
+        if reply.is_none() {
+            ctx.log("the provider refused the json_schema reply format; the rest of this run asks for a plain JSON object").await?;
+            *schema = false;
+        }
+    }
+    let reply = match reply {
+        Some(reply) => reply,
+        None => ai.json(crate::ai::TAG_SYSTEM, &user).await,
+    };
+    match reply {
+        Ok(v) => Ok(v),
+        Err(err) if err.is::<crate::ai::ProviderError>() => Err(err),
+        Err(err) => {
+            ctx.log(&format!("{} tags from {}: {err:#}", batch.len(), batch[0].0)).await?;
+            Ok(Value::Null)
+        }
+    }
+}
+
+/// The avatars table as the AI jobs read it.
+struct AvatarKit {
+    /// finds the avatars a text names (avatars.rs)
+    matcher: crate::avatars::Matcher,
+    /// each avatar's names, by slug
+    names: std::collections::HashMap<String, crate::ai::AvatarName>,
+    /// each avatar's names in every language, by slug
+    forms: std::collections::HashMap<String, Vec<String>>,
+    /// every name in any language, trimmed and lowercase -> the avatar's romaji
+    romaji: std::collections::HashMap<String, String>,
+}
+
+impl AvatarKit {
+    /// The avatar names `tag` holds: for each avatar the matcher finds in it, the names it writes and the avatar's
+    /// Japanese name and romaji, each NFKC and lowercase.
+    fn held_names(&self, tag: &str) -> Vec<crate::ai::HeldName> {
+        let folded = crate::avatars::norm(tag);
+        self.matcher
+            .find(tag)
+            .iter()
+            .filter_map(|slug| {
+                let name = self.names.get(slug)?;
+                let written = self.forms.get(slug)?.iter().map(|f| crate::avatars::norm(f)).filter(|f| folded.contains(f.as_str()));
+                let mut forms: Vec<String> = written.chain(name.ja.iter().chain([&name.romaji]).map(|f| crate::avatars::norm(f))).collect();
+                forms.dedup();
+                Some(crate::ai::HeldName(forms))
+            })
+            .collect()
+    }
+}
+
+async fn avatar_kit(pool: &PgPool) -> Result<AvatarKit> {
+    let avatars: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as("select slug, name_en, name_ja, name_ko from avatars").fetch_all(pool).await?;
+    let forms: std::collections::HashMap<String, Vec<String>> =
+        avatars.iter().map(|(s, en, ja, ko)| (s.clone(), [Some(en), ja.as_ref(), ko.as_ref()].into_iter().flatten().cloned().collect())).collect();
+    let matcher = crate::avatars::Matcher::new(forms.iter().map(|(s, f)| (s.clone(), f.clone())));
+    let romaji = avatars
+        .iter()
+        .flat_map(|(_, en, ja, ko)| [Some(en), ja.as_ref(), ko.as_ref()].into_iter().flatten().map(move |n| (n.trim().to_lowercase(), en.clone())))
+        .collect();
+    let names = avatars.into_iter().map(|(slug, romaji, ja, _)| (slug, crate::ai::AvatarName { ja, romaji })).collect();
+    Ok(AvatarKit { matcher, names, forms, romaji })
 }
 
 const ENRICH_ITEMS_SELECT: &str = "select id, title, bio, booth_category, price_jpy, booth_tags, variations, translations
          from items where needs_enrichment and status = 'ok' and enrich_failures < $2 order by id desc limit $1";
 
-/// What one enrich batch shares: the category list for the prompt, the slugs a reply may use, the avatar matcher and
-/// each avatar's names by slug.
+/// What one enrich batch shares: the category list for the prompt, the slugs a reply may use and the avatars.
 struct EnrichKit {
     category_list: String,
     known: Vec<String>,
-    matcher: crate::avatars::Matcher,
-    avatar_names: std::collections::HashMap<String, crate::ai::AvatarName>,
+    avatars: AvatarKit,
 }
 
 async fn enrich_kit(pool: &PgPool) -> Result<EnrichKit> {
@@ -321,17 +534,14 @@ async fn enrich_kit(pool: &PgPool) -> Result<EnrichKit> {
     let leaf: Vec<&(String, String, Option<String>)> = cats.iter().filter(|c| c.2.is_some()).collect();
     let known = leaf.iter().map(|c| c.0.clone()).collect();
     let category_list = leaf.iter().map(|(slug, en, parent)| format!("{slug}: {} / {en}", parent.as_deref().unwrap_or_default())).collect::<Vec<_>>().join("\n");
-    let avatars: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as("select slug, name_en, name_ja, name_ko from avatars").fetch_all(pool).await?;
-    let matcher = crate::avatars::Matcher::new(avatars.iter().map(|(s, en, ja, ko)| (s.clone(), [Some(en), ja.as_ref(), ko.as_ref()].into_iter().flatten().cloned().collect())));
-    let avatar_names = avatars.into_iter().map(|(slug, romaji, ja, _)| (slug, crate::ai::AvatarName { ja, romaji })).collect();
-    Ok(EnrichKit { category_list, known, matcher, avatar_names })
+    Ok(EnrichKit { category_list, known, avatars: avatar_kit(pool).await? })
 }
 
 /// One model call for one item; a reply that parsed but failed validation (e.g. a misspelt category slug) gets one correction round.
 /// `linked`: the slugs of the avatars the matcher found in the listing.
 async fn enrich_reply(ai: &crate::ai::Ai, kit: &EnrichKit, item: &crate::ai::EnrichItem, linked: &[String]) -> Result<crate::ai::Enrichment> {
     let system = crate::ai::ENRICH_SYSTEM;
-    let names: Vec<&crate::ai::AvatarName> = linked.iter().filter_map(|slug| kit.avatar_names.get(slug)).collect();
+    let names: Vec<&crate::ai::AvatarName> = linked.iter().filter_map(|slug| kit.avatars.names.get(slug)).collect();
     let prompt = crate::ai::enrich_prompt(item, &kit.category_list, &names);
     let v = ai.json(system, &prompt).await?;
     match crate::ai::validate_enrichment(&v, &kit.known, &item.translations) {
@@ -361,7 +571,7 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let mut stream = futures_util::stream::iter(items.into_iter().map(|it| {
         let (ai, kit) = (&ai, &kit);
         async move {
-            let linked = kit.matcher.find(&it.match_text());
+            let linked = kit.avatars.matcher.find(&it.match_text());
             (enrich_reply(ai, kit, &it, &linked).await, it, linked)
         }
     }))
@@ -785,6 +995,269 @@ mod tests {
         expected["original_language"] = json!("ja");
         assert_eq!(translations, expected);
         assert_eq!(avatars, ["manuka"]);
+    }
+
+    /// What the stand-in provider answers a tag request (its body, the asked tags in id order): the reply's content, or
+    /// a refusal's status and body.
+    type TagAnswer = std::result::Result<String, (u16, String)>;
+
+    /// A local stand-in for the AI provider: a taxonomy request gets "中 " before each English name, a tag request what
+    /// `answer` gives. Returns every request body it got.
+    async fn stand_in_provider(pool: &PgPool, answer: impl Fn(&Value, &[String]) -> TagAnswer + Send + Sync + 'static) -> std::sync::Arc<std::sync::Mutex<Vec<Value>>> {
+        use axum::response::IntoResponse;
+        for key in ["AI_BASE_URL", "AI_API_KEY", "AI_MODEL"] {
+            assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test's provider is a local stand-in");
+        }
+        crate::install_tls();
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+        let seen = requests.clone();
+        let answer = std::sync::Arc::new(answer);
+        let app = axum::Router::new().fallback(move |axum::Json(body): axum::Json<Value>| {
+            seen.lock().unwrap().push(body.clone());
+            let reply = if body["messages"][0]["content"] == crate::ai::TAG_SYSTEM {
+                answer(&body, &asked_in(&body))
+            } else {
+                let asked: serde_json::Map<String, Value> = serde_json::from_str(body["messages"][1]["content"].as_str().unwrap()).unwrap();
+                Ok(Value::Object(asked.keys().map(|k| (k.clone(), json!(format!("中 {k}")))).collect()).to_string())
+            };
+            async move {
+                match reply {
+                    Ok(content) => axum::Json(json!({"choices": [{"message": {"content": content}}]})).into_response(),
+                    Err((status, text)) => (axum::http::StatusCode::from_u16(status).unwrap(), text).into_response(),
+                }
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        sqlx::query("insert into app_settings (key, value) values ('ai', $1)")
+            .bind(json!({"base_url": base_url, "model": "stand-in", "api_key": "test"}))
+            .execute(pool).await.unwrap();
+        requests
+    }
+
+    /// The tags a tag request asks for, in id order: the JSON array on the user message's last line.
+    fn asked_in(request: &Value) -> Vec<String> {
+        let items: Vec<Value> = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap().lines().last().unwrap()).unwrap();
+        items.iter().map(|item| item["tag"].as_str().unwrap().to_owned()).collect()
+    }
+
+    /// The tags each tag request asked for, request by request, sorted.
+    fn asked_tags(requests: &[Value]) -> Vec<Vec<String>> {
+        let tag_requests = requests.iter().filter(|r| r["messages"][0]["content"] == crate::ai::TAG_SYSTEM);
+        tag_requests
+            .map(|r| {
+                let mut tags = asked_in(r);
+                tags.sort();
+                tags
+            })
+            .collect()
+    }
+
+    /// A reply keyed by id with each asked tag's raw JSON answer from `answers` (none for a tag it lacks).
+    fn by_id(tags: &[String], answers: &[(&str, &str)]) -> String {
+        let entries: Vec<String> =
+            tags.iter().enumerate().filter_map(|(i, tag)| answers.iter().find(|(t, _)| t == tag).map(|(_, raw)| format!("\"{}\": {raw}", crate::ai::tag_id(i)))).collect();
+        format!("{{{}}}", entries.join(", "))
+    }
+
+    async fn localize_job(pool: &PgPool, params: Value) -> String {
+        crate::install_tls();
+        let job: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('localize', 'running', now()) returning id")
+            .fetch_one(pool).await.unwrap();
+        let booth = Booth::new().unwrap();
+        let mut ctx = Ctx::new(pool, &booth, job);
+        let summary = localize(&mut ctx, &params).await.unwrap();
+        sqlx::query("update jobs set status = 'succeeded' where id = $1").bind(job).execute(pool).await.unwrap();
+        summary
+    }
+
+    type DictionaryRow = (String, Option<String>, Option<String>, Option<String>, Option<String>, Vec<String>, String);
+
+    async fn dictionary(pool: &PgPool) -> Vec<DictionaryRow> {
+        sqlx::query_as("select tag, en, ja, ko, zh, keywords, source from booth_tag_translations order by tag").fetch_all(pool).await.unwrap()
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn localize_gives_missing_tags_a_row_and_keeps_every_row_there(pool: PgPool) {
+        // the taxonomy already has its Chinese names
+        sqlx::raw_sql("update smart_categories set name_zh = 'x', group_zh = 'x'; update smart_tags set display_zh = 'x';").execute(&pool).await.unwrap();
+        // 1-5 listed with six tags (6 delisted with them too); 7-10 listed and 11 delisted with レア; 12-16 with 壊れ
+        for (ids, status, tags) in [
+            (1..=5, "ok", "{テクスチャ,スカート,マヌカ,マヌカ用,ポジ,ミミ}"),
+            (6..=6, "delisted", "{テクスチャ,スカート,マヌカ,マヌカ用,ポジ,ミミ}"),
+            (7..=10, "ok", "{レア}"),
+            (11..=11, "delisted", "{レア}"),
+            (12..=16, "ok", "{壊れ}"),
+        ] {
+            for id in ids {
+                sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, likes, booth_tags) values ($1, $2, 'c', 'https://example.test', false, $3, now(), $1, $4::text[])")
+                    .bind(id as i64).bind(format!("Item {id}")).bind(status).bind(tags).execute(&pool).await.unwrap();
+            }
+        }
+        sqlx::query("insert into booth_tag_translations (tag, en, ja, ko, zh, source) values ('スカート', 'skirt', 'スカート', '스커트', '裙子', 'import')")
+            .execute(&pool).await.unwrap();
+        let answers = [
+            ("テクスチャ", r#"{"en": "texture", "ja": "テクスチャ", "ko": "텍스처", "zh": "纹理"}"#),
+            // the avatar name transliterated in Korean
+            ("マヌカ用", r#"{"en": "for Manuka", "ja": "マヌカ用", "ko": "마누카용", "zh": "マヌカ用"}"#),
+            ("壊れ", r#"{"en": "broken", "ja": "壊れ", "ko": "고장", "zh": "损坏\n坏了"}"#),
+            // the four values as a positional array, and the input structure echoed back with repeated keys
+            ("ポジ", r#"["positive", "ポジ", "포지", "正面"]"#),
+            ("ミミ", r#"{"id": "t1", "tag": "ミミ", "id": "t1", "context": ["Item 5"]}"#),
+        ];
+        let requests = stand_in_provider(&pool, move |_, tags| Ok(by_id(tags, &answers))).await;
+
+        // max_tags caps what one run asks for; a run that adds nothing leaves the catalogue version alone
+        let version = || async { sqlx::query_scalar::<_, i64>("select version from catalog_meta").fetch_one(&pool).await.unwrap() };
+        let before = version().await;
+        assert_eq!(localize_job(&pool, json!({"max_tags": 0})).await, "0 names translated to Chinese (0 unique strings); no new tags");
+        assert!(requests.lock().unwrap().is_empty());
+        assert_eq!(version().await, before);
+        let summary = localize_job(&pool, json!({})).await;
+        assert_eq!(
+            summary,
+            "0 names translated to Chinese (0 unique strings); 4 tags added to the dictionary (1 avatar names, 2 with a language left empty), 2 without a valid translation"
+        );
+        // the added rows reach search with the next snapshot
+        assert_eq!(version().await, before + 1);
+        let row = |tag: &str, v: [Option<&str>; 4], keywords: &[&str], source: &str| {
+            let [en, ja, ko, zh] = v.map(|v| v.map(str::to_owned));
+            (tag.to_owned(), en, ja, ko, zh, keywords.iter().map(|k| k.to_string()).collect(), source.to_owned())
+        };
+        let expected = vec![
+            // an avatar's name keeps its romaji in English and the tag elsewhere
+            row("マヌカ", [Some("Manuka"), Some("マヌカ"), Some("マヌカ"), Some("マヌカ")], &[], "localize"),
+            // a value that fails its checks is left empty, the others kept
+            row("マヌカ用", [Some("for Manuka"), Some("マヌカ用"), None, Some("マヌカ用")], &[], "localize"),
+            row("壊れ", [Some("broken"), Some("壊れ"), Some("고장"), None], &[], "localize"),
+            row("スカート", [Some("skirt"), Some("スカート"), Some("스커트"), Some("裙子")], &[], "import"),
+            // Unity's 纹理 is also found as 贴图
+            row("テクスチャ", [Some("texture"), Some("テクスチャ"), Some("텍스처"), Some("纹理")], &["贴图"], "localize"),
+        ];
+        let mut sorted = expected.clone();
+        sorted.sort();
+        assert_eq!(dictionary(&pool).await, sorted);
+        // one request for the batch, its reply held to the schema; no request for the avatar's name, the tag with a row
+        // or the tag on four listed items
+        let sent = requests.lock().unwrap().clone();
+        assert_eq!(asked_tags(&sent), [vec!["テクスチャ", "ポジ", "マヌカ用", "ミミ", "壊れ"]]);
+        let format = &sent[0]["response_format"];
+        assert_eq!((format["type"].as_str(), format["json_schema"]["strict"].as_bool()), (Some("json_schema"), Some(true)));
+        assert_eq!(format["json_schema"]["schema"], crate::ai::tag_schema(5));
+        let (names, items) = sent[0]["messages"][1]["content"].as_str().unwrap().split_once('\n').unwrap();
+        assert_eq!(names, "Avatar names (Japanese / romaji): マヌカ / Manuka");
+        let items: Vec<Value> = serde_json::from_str(items).unwrap();
+        let texture = items.iter().find(|i| i["tag"] == "テクスチャ").unwrap();
+        assert_eq!(texture["context"], json!(["Item 5", "Item 4", "Item 3"]));
+        let system = sent[0]["messages"][0]["content"].as_str().unwrap();
+        for rule in ["never translate it or copy it", "never translated or transliterated", "Product, app, tool, brand and shop names stay as written", "白模", "虚拟形象 for an avatar", "纹理 for a texture"] {
+            assert!(system.contains(rule), "{rule}: {system}");
+        }
+
+        // a tag without any valid value gets no row and is asked again by the next runs, three in all, then left alone
+        let failures = || async {
+            sqlx::query_as::<_, (String, i32)>("select tag, failures from booth_tag_failures order by tag").fetch_all(&pool).await.unwrap()
+        };
+        for run in 2..=3 {
+            assert_eq!(failures().await, [("ポジ".to_owned(), run - 1), ("ミミ".to_owned(), run - 1)]);
+            requests.lock().unwrap().clear();
+            let again = localize_job(&pool, json!({})).await;
+            assert_eq!(again, "0 names translated to Chinese (0 unique strings); 0 tags added to the dictionary (0 avatar names, 0 with a language left empty), 2 without a valid translation");
+            assert_eq!(asked_tags(&requests.lock().unwrap()), [vec!["ポジ", "ミミ"]]);
+            assert_eq!(version().await, before + 1);
+        }
+        requests.lock().unwrap().clear();
+        assert_eq!(localize_job(&pool, json!({})).await, "0 names translated to Chinese (0 unique strings); no new tags");
+        assert!(requests.lock().unwrap().is_empty());
+        assert_eq!(dictionary(&pool).await, sorted);
+
+        // a forced run translates every taxonomy name again and leaves the dictionary alone
+        requests.lock().unwrap().clear();
+        let forced = localize_job(&pool, json!({"force": true})).await;
+        assert!(forced.ends_with(" unique strings)") && !forced.starts_with("0 "), "{forced}");
+        assert!(asked_tags(&requests.lock().unwrap()).is_empty());
+        assert_eq!(dictionary(&pool).await, sorted);
+        let untranslated: i64 = sqlx::query_scalar("select count(*) from smart_categories where name_zh not like '中 %'").fetch_one(&pool).await.unwrap();
+        assert_eq!(untranslated, 0);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn localize_asks_for_plain_json_once_the_provider_refuses_json_schema(pool: PgPool) {
+        sqlx::raw_sql("update smart_categories set name_zh = 'x', group_zh = 'x'; update smart_tags set display_zh = 'x';").execute(&pool).await.unwrap();
+        // 41 tags on 5 listed items: two batches
+        let tags: Vec<String> = (0..=40).map(|n| format!("タグ{n:02}")).collect();
+        for id in 1..=5i64 {
+            sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags) values ($1, 'Item', 'c', 'https://example.test', false, 'ok', now(), $2)")
+                .bind(id).bind(&tags).execute(&pool).await.unwrap();
+        }
+        let requests = stand_in_provider(&pool, |body, tags| {
+            if body["response_format"]["type"] == "json_schema" {
+                return Err((400, r#"{"error": {"message": "response_format type json_schema is not supported"}}"#.into()));
+            }
+            let answers: Vec<String> = tags.iter().map(|t| format!(r#"{{"en": "tag {0}", "ja": "{t}", "ko": "태그 {0}", "zh": "标签 {0}"}}"#, &t[t.len() - 2..])).collect();
+            let answers: Vec<(&str, &str)> = tags.iter().map(String::as_str).zip(answers.iter().map(String::as_str)).collect();
+            Ok(by_id(tags, &answers))
+        })
+        .await;
+        let summary = localize_job(&pool, json!({})).await;
+        assert_eq!(summary, "0 names translated to Chinese (0 unique strings); 41 tags added to the dictionary (0 avatar names, 0 with a language left empty), 0 without a valid translation");
+        // the first batch refused with json_schema and asked again as plain JSON; the second batch plain JSON at once
+        let sent = requests.lock().unwrap().clone();
+        let asked: Vec<(&str, usize)> = sent.iter().map(|r| (r["response_format"]["type"].as_str().unwrap(), asked_in(r).len())).collect();
+        assert_eq!(asked, [("json_schema", 40), ("json_object", 40), ("json_object", 1)]);
+        let zh: Option<String> = sqlx::query_scalar("select zh from booth_tag_translations where tag = 'タグ40'").fetch_one(&pool).await.unwrap();
+        assert_eq!(zh.as_deref(), Some("标签 40"));
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn localize_stops_when_the_provider_refuses_a_tag_request(pool: PgPool) {
+        sqlx::raw_sql("update smart_categories set name_zh = 'x', group_zh = 'x'; update smart_tags set display_zh = 'x';").execute(&pool).await.unwrap();
+        for id in 1..=5i64 {
+            sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags) values ($1, 'Item', 'c', 'https://example.test', false, 'ok', now(), '{スカート}')")
+                .bind(id).execute(&pool).await.unwrap();
+        }
+        stand_in_provider(&pool, |_, _| Err((401, "invalid api key".into()))).await;
+        let job: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('localize', 'running', now()) returning id").fetch_one(&pool).await.unwrap();
+        let booth = Booth::new().unwrap();
+        let err = localize(&mut Ctx::new(&pool, &booth, job), &json!({})).await.unwrap_err();
+        assert!(err.downcast_ref::<crate::ai::ProviderError>().is_some_and(|e| e.0.contains("401")), "{err:#}");
+        // the refusal is the provider's, not the tag's: no row and no failed run
+        let (rows, failures): (i64, i64) =
+            sqlx::query_as("select (select count(*) from booth_tag_translations), (select count(*) from booth_tag_failures)").fetch_one(&pool).await.unwrap();
+        assert_eq!((rows, failures), (0, 0));
+    }
+
+    #[test]
+    fn a_tag_holds_an_avatar_name_in_the_forms_it_writes_and_in_japanese_and_romaji() {
+        let forms: std::collections::HashMap<String, Vec<String>> = [("manuka".to_owned(), vec!["Manuka".to_owned(), "マヌカ".to_owned(), "마누카".to_owned()])].into();
+        let kit = AvatarKit {
+            matcher: crate::avatars::Matcher::new(forms.clone()),
+            names: [("manuka".to_owned(), crate::ai::AvatarName { ja: Some("マヌカ".into()), romaji: "Manuka".into() })].into(),
+            forms,
+            romaji: Default::default(),
+        };
+        let held = |tag: &str| kit.held_names(tag).into_iter().map(|n| n.0).collect::<Vec<_>>();
+        // the Korean name counts only where the tag writes it, so a Korean value transliterating マヌカ is caught
+        assert_eq!(held("マヌカ用"), [vec!["マヌカ", "manuka"]]);
+        assert_eq!(held("마누카용"), [vec!["마누카", "マヌカ", "manuka"]]);
+        assert!(held("スカート").is_empty());
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn localize_without_a_provider_is_skipped(pool: PgPool) {
+        for key in ["AI_BASE_URL", "AI_API_KEY", "AI_MODEL"] {
+            assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}");
+        }
+        assert_eq!(localize_job(&pool, json!({})).await, "skipped: AI provider not configured");
+        // the daily schedule waits a day before its first run
+        let (enabled, minutes, later): (bool, i32, bool) =
+            sqlx::query_as("select enabled, interval_minutes, next_run_at > now() + interval '23 hours' from job_schedules where kind = 'localize'").fetch_one(&pool).await.unwrap();
+        assert_eq!((enabled, minutes, later), (true, 1440, true));
     }
 
     #[sqlx::test(migrations = "../core/migrations")]

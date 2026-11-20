@@ -34,12 +34,12 @@ impl Ai {
         Ok(Some(Self { http, base_url, model, api_key, reasoning_effort: c.reasoning_effort }))
     }
 
-    fn body(&self, messages: Value) -> Value {
+    fn body(&self, messages: Value, response_format: Value) -> Value {
         json!({
             "model": self.model,
             "temperature": 0,
             "reasoning_effort": self.reasoning_effort,
-            "response_format": { "type": "json_object" },
+            "response_format": response_format,
             "messages": messages,
         })
     }
@@ -47,6 +47,18 @@ impl Ai {
     /// One JSON-mode chat completion; retries 429/5xx with backoff. Returns the parsed JSON object.
     pub async fn json(&self, system: &str, user: &str) -> Result<Value> {
         self.chat(json!([{ "role": "system", "content": system }, { "role": "user", "content": user }])).await
+    }
+
+    /// Like `json`, with the reply held to `schema` (`response_format` json_schema, strict). `Ok(None)` when the
+    /// provider refuses that format (`refuses_format`), so the caller can ask with `json` instead.
+    pub async fn json_schema(&self, system: &str, user: &str, schema: Value) -> Result<Option<Value>> {
+        let messages = json!([{ "role": "system", "content": system }, { "role": "user", "content": user }]);
+        let format = json!({ "type": "json_schema", "json_schema": { "name": "reply", "strict": true, "schema": schema } });
+        match self.send(&self.body(messages, format)).await? {
+            Ok(v) => Ok(Some(v)),
+            Err(refusal) if refuses_format(refusal.status, &refusal.text) => Ok(None),
+            Err(refusal) => Err(refusal.into()),
+        }
     }
 
     /// Asks again in the same conversation after `rejected` failed validation with `error`, for a full corrected reply.
@@ -65,14 +77,18 @@ impl Ai {
     }
 
     async fn chat(&self, messages: Value) -> Result<Value> {
-        let body = self.body(messages);
+        Ok(self.send(&self.body(messages, json!({ "type": "json_object" }))).await??)
+    }
+
+    /// Sends one request; retries 429/5xx with backoff. The inner `Err` is a request the provider refused outright.
+    async fn send(&self, body: &Value) -> Result<std::result::Result<Value, Refusal>> {
         for attempt in 0..5u32 {
-            let res = self.http.post(format!("{}/chat/completions", self.base_url)).bearer_auth(&self.api_key).json(&body).send().await;
+            let res = self.http.post(format!("{}/chat/completions", self.base_url)).bearer_auth(&self.api_key).json(body).send().await;
             match res {
                 Ok(r) if r.status().is_success() => {
                     let v: Value = r.json().await?;
                     let text = v["choices"][0]["message"]["content"].as_str().context("provider reply without content")?;
-                    return parse_json_reply(text);
+                    return Ok(Ok(parse_json_reply(text)?));
                 }
                 Ok(r) if r.status() == 429 || r.status().is_server_error() => {
                     if attempt == 4 {
@@ -81,9 +97,9 @@ impl Ai {
                     tokio::time::sleep(Duration::from_secs(2u64.pow(attempt + 1))).await;
                 }
                 Ok(r) => {
-                    let status = r.status();
+                    let status = r.status().as_u16();
                     let text: String = r.text().await.unwrap_or_default().chars().take(300).collect();
-                    return Err(ProviderError(format!("provider answered {status}: {text}")).into());
+                    return Ok(Err(Refusal { status, text }));
                 }
                 Err(e) if attempt < 4 => {
                     eprintln!("ai request: {e}");
@@ -94,6 +110,24 @@ impl Ai {
         }
         Err(ProviderError("provider kept failing (rate limit or server errors)".into()).into())
     }
+}
+
+/// A request the provider refused outright (not 429 or 5xx): its status and the start of its body.
+struct Refusal {
+    status: u16,
+    text: String,
+}
+
+impl From<Refusal> for anyhow::Error {
+    fn from(r: Refusal) -> Self {
+        ProviderError(format!("provider answered {}: {}", r.status, r.text)).into()
+    }
+}
+
+/// Whether a refusal is about the reply format: HTTP 400, or an error that names `response_format` (providers without
+/// json_schema answer either way).
+fn refuses_format(status: u16, text: &str) -> bool {
+    status == 400 || text.contains("response_format")
 }
 
 /// Models sometimes wrap JSON in ```json fences or add text around it; take the outermost object.
@@ -112,6 +146,119 @@ into Simplified Chinese (zh-CN). Use the terms Chinese VRChat users use (e.g. �
 材质 for a material, 着色器 for a shader, 网格 for a mesh. \
 Keep brand and tool names (VRChat, Quest, lilToon, Poiyomi, Modular Avatar, VRCFury, FBX, Unity) untranslated. Labels are short; no trailing punctuation. \
 Reply with a JSON object mapping each given key to its translation, nothing else.";
+
+pub const TAG_SYSTEM: &str = "You translate BOOTH tags for a catalogue of VRChat avatar assets (clothing, hair, accessories, shaders, tools, avatars). \
+The user message may first name the avatars the tags hold; then it is a JSON array of items {\"id\", \"tag\", \"context\"}. \
+Translate only \"tag\". \"context\" holds titles of listings that carry the tag: never translate it or copy it into an answer. \
+For every item give an object with keys en, ja, ko and zh: the tag as a short search keyword in English, Japanese, Korean and \
+Simplified Chinese. Copy the tag where it already is in that language. Translate the tag itself: add nothing it does not say. \
+Avatar (character model) names are never translated or transliterated: keep each one as the tag writes it, in Japanese or Latin \
+letters, in every value; the English value uses its romaji. Product, app, tool, brand and shop names stay as written (VRChat, \
+Quest, lilToon, Poiyomi, Modular Avatar, VRCFury, FBX, Unity, GIFTuber). Community jargon is translated by its meaning, not \
+word by word: 白モデル is an untextured base model (zh 白模), 地雷系 is jirai kei in English. zh uses the terms Chinese VRChat \
+users use (衣装/服装, 发型, 配饰; 虚拟形象 for an avatar, 3D模型 for a 3D model file, 虚拟主播 for a VTuber) and the terms of \
+Unity's Chinese manual: 纹理 for a texture, X贴图 for an X map (法线贴图 for a normal map), 材质 for a material, 着色器 for a \
+shader, 网格 for a mesh. Each value is one line of at most 60 characters, in the script of its language. \
+Reply with one JSON object whose keys are the ids and whose values are objects with exactly the keys en, ja, ko and zh, nothing else.";
+
+/// User message for one batch of BOOTH tags: the avatars the matcher found in the tags (avatars.rs), so the model keeps
+/// their names, then the tags as a JSON array of {id, tag, context}, the ids `tag_id`, the context up to 3 titles of
+/// listings that carry the tag (each cut to 120 characters). Keying the reply by id, not by the tag, keeps the model from
+/// echoing tags and titles back (owner's test of the formats, 2026-11-21).
+pub fn tag_prompt(tags: &[(String, Vec<String>)], avatars: &[&AvatarName]) -> String {
+    let items: Vec<Value> = tags
+        .iter()
+        .enumerate()
+        .map(|(i, (tag, titles))| json!({ "id": tag_id(i), "tag": tag, "context": titles.iter().take(3).map(|t| t.chars().take(120).collect::<String>()).collect::<Vec<_>>() }))
+        .collect();
+    format!("{}{}", avatar_names_line(avatars), Value::Array(items))
+}
+
+/// The id of the `i`-th tag of a batch, which keys its answer.
+pub fn tag_id(i: usize) -> String {
+    format!("t{}", i + 1)
+}
+
+/// The reply schema for a batch of `n` tags (`Ai::json_schema`): an object with every id, each an object with the four
+/// languages as strings of 1 to 60 characters, and nothing else at either level.
+pub fn tag_schema(n: usize) -> Value {
+    let value = json!({ "type": "string", "minLength": 1, "maxLength": 60 });
+    let tag = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": TAG_LANGUAGES,
+        "properties": TAG_LANGUAGES.iter().map(|k| (k.to_string(), value.clone())).collect::<serde_json::Map<_, _>>(),
+    });
+    let ids: Vec<String> = (0..n).map(tag_id).collect();
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ids,
+        "properties": ids.iter().map(|id| (id.clone(), tag.clone())).collect::<serde_json::Map<_, _>>(),
+    })
+}
+
+/// The prompt line that names the avatars the matcher found, so the model keeps their names; empty without any.
+fn avatar_names_line(avatars: &[&AvatarName]) -> String {
+    if avatars.is_empty() {
+        return String::new();
+    }
+    let names: Vec<String> = avatars.iter().map(|a| a.to_string()).collect();
+    format!("Avatar names (Japanese / romaji): {}\n", names.join(", "))
+}
+
+/// The languages of a tag's dictionary row, in the column order of `booth_tag_translations`.
+pub const TAG_LANGUAGES: [&str; 4] = ["en", "ja", "ko", "zh"];
+
+/// An avatar name a tag holds, as the forms a value may keep it in, NFKC and lowercase: the forms the tag writes it in,
+/// its Japanese name and its romaji. A name is never translated or transliterated (owner ruling 13, 2026-11-20).
+pub struct HeldName(pub Vec<String>);
+
+/// One tag's values from its answer (`answer` is the reply's entry for the tag's id), in `TAG_LANGUAGES` order: each
+/// trimmed, or why it is left out. A value is left out unless it is at most 60 non-control characters, has no script
+/// foreign to its language (Han, kana or Hangul in English; Hangul in Japanese; Han or kana in Korean; kana or Hangul in
+/// Chinese) that the tag is not written in, is not one of the tag's example `titles` (nor, over 20 characters, a part
+/// of one) unless it is the tag itself, and keeps every avatar name the tag holds.
+pub fn tag_values(answer: &Value, tag: &str, titles: &[String], names: &[HeldName]) -> [std::result::Result<String, String>; 4] {
+    let scripts: [fn(char) -> bool; 3] = [is_han, is_kana, is_hangul];
+    let foreign: [&[usize]; 4] = [&[0, 1, 2], &[2], &[0, 1], &[1, 2]];
+    std::array::from_fn(|k| {
+        let v = answer[TAG_LANGUAGES[k]].as_str().map(str::trim).filter(|v| !v.is_empty()).ok_or("no value")?;
+        // a control character (a line break, or a NUL, which PostgreSQL text refuses) is no part of a keyword
+        if v.chars().count() > 60 || v.chars().any(char::is_control) {
+            return Err("not one line of at most 60 characters without control characters".into());
+        }
+        if foreign[k].iter().any(|&s| v.chars().any(scripts[s]) && !tag.chars().any(scripts[s])) {
+            return Err("in a script foreign to its language".into());
+        }
+        if v != tag.trim() && titles.iter().any(|t| t.trim() == v || (v.chars().count() > 20 && t.contains(v))) {
+            return Err("copies an example title".into());
+        }
+        let folded = crate::avatars::norm(v);
+        if let Some(lost) = names.iter().find(|n| !n.0.iter().any(|form| folded.contains(form.as_str()))) {
+            return Err(format!("drops the avatar name {}", lost.0[0]));
+        }
+        Ok(v.to_owned())
+    })
+}
+
+/// Search-only keywords for a tag's Chinese value (owner ruling 20, 2026-11-21): tags use Unity's 纹理 for a texture,
+/// buyers and titles say 贴图, so a value with 纹理 is also found as the same words with 贴图.
+pub fn tag_keywords(zh: &str) -> Vec<String> {
+    if zh.contains("纹理") { vec![zh.replace("纹理", "贴图")] } else { Vec::new() }
+}
+
+fn is_han(c: char) -> bool {
+    matches!(c, '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}' | '\u{20000}'..='\u{2FA1F}')
+}
+
+fn is_kana(c: char) -> bool {
+    matches!(c, '\u{3040}'..='\u{30FF}' | '\u{31F0}'..='\u{31FF}' | '\u{FF66}'..='\u{FF9F}')
+}
+
+fn is_hangul(c: char) -> bool {
+    matches!(c, '\u{1100}'..='\u{11FF}' | '\u{3130}'..='\u{318F}' | '\u{A960}'..='\u{A97F}' | '\u{AC00}'..='\u{D7AF}' | '\u{FFA0}'..='\u{FFDC}')
+}
 
 pub const ENRICH_SYSTEM: &str = "You classify listings and translate their titles from BOOTH, a Japanese marketplace, for a catalogue of VRChat avatar assets. \
 Reply with one valid JSON object only, without Markdown fences, comments or extra text. \
@@ -139,12 +286,7 @@ Before replying, check that the JSON is syntactically valid, every required key 
 pub fn enrich_prompt(item: &EnrichItem, category_list: &str, avatars: &[&AvatarName]) -> String {
     let bio: String = item.bio.chars().take(2500).collect();
     let variations: Vec<String> = item.variations.0.iter().map(|v| format!("- {} (¥{})", v.name, v.price_jpy)).collect();
-    let avatars = if avatars.is_empty() {
-        String::new()
-    } else {
-        let names: Vec<String> = avatars.iter().map(|a| a.to_string()).collect();
-        format!("Avatar names (Japanese / romaji): {}\n", names.join(", "))
-    };
+    let avatars = avatar_names_line(avatars);
     format!(
         "Categories (slug: meaning):\n{category_list}\n\nListing\nTitle: {}\nBooth category: {}\nListed price: ¥{}\nTags: {}\nVariations:\n{}\n{avatars}Description:\n{bio}",
         item.title,
@@ -422,6 +564,83 @@ mod tests {
         );
     }
 
+    /// Which of a tag's values `tag_values` keeps: `Some` for a kept value, `None` for one left out.
+    fn kept(answer: &Value, tag: &str, titles: &[&str], names: &[&[&str]]) -> [Option<String>; 4] {
+        let titles: Vec<String> = titles.iter().map(|t| t.to_string()).collect();
+        let names: Vec<HeldName> = names.iter().map(|forms| HeldName(forms.iter().map(|f| f.to_string()).collect())).collect();
+        tag_values(answer, tag, &titles, &names).map(Result::ok)
+    }
+
+    #[test]
+    fn each_tag_value_is_checked_on_its_own() {
+        let skirt = |en: &str, ja: &str, ko: &str, zh: &str| json!({"en": en, "ja": ja, "ko": ko, "zh": zh});
+        let all = |v: [&str; 4]| v.map(|s| Some(s.to_owned()));
+        assert_eq!(kept(&skirt(" skirt ", "スカート", "스커트", "裙子"), "スカート", &[], &[]), all(["skirt", "スカート", "스커트", "裙子"]));
+        // a second line, a control character, an overlong or empty value: only that language is left out
+        for bad in ["裙子\n短裙", "裙\0子", "裙\t子", &"裙".repeat(61), " "] {
+            assert_eq!(kept(&skirt("skirt", "スカート", "스커트", bad), "スカート", &[], &[])[3], None, "{bad:?}");
+        }
+        let overlong = kept(&skirt("skirt", "スカート", "스커트", &"裙".repeat(61)), "スカート", &[], &[]);
+        assert!(overlong[..3].iter().all(Option::is_some) && overlong[3].is_none());
+        // a script foreign to the language that the tag is not written in
+        assert_eq!(kept(&skirt("スカート", "스커트", "裙子", "スカート"), "skirt", &[], &[]), [None, None, None, None]);
+        assert_eq!(kept(&skirt("skirt", "スカート", "스커트", "스커트"), "Skirt", &[], &[])[3], None);
+        // a script the tag is written in may stay: the avatar name in マヌカ用
+        let manuka: &[&str] = &["マヌカ", "manuka"];
+        let manuka_for = skirt("for Manuka", "マヌカ用", "マヌカ용", "マヌカ用");
+        assert_eq!(kept(&manuka_for, "マヌカ用", &[], &[manuka]), all(["for Manuka", "マヌカ用", "マヌカ용", "マヌカ用"]));
+        // a name transliterated or translated is left out in that language only; English may give the romaji
+        let transliterated = skirt("for Manuka", "マヌカ用", "마누카용", "麦奴卡用");
+        assert_eq!(kept(&transliterated, "マヌカ用", &[], &[manuka]), [Some("for Manuka".into()), Some("マヌカ用".into()), None, None]);
+        assert_eq!(kept(&skirt("for the avatar", "マヌカ用", "マヌカ용", "マヌカ用"), "マヌカ用", &[], &[manuka])[0], None);
+        // an example title copied, whole or as a long part, unless it is the tag itself
+        let titles = ["【無料】ふわふわロングスカート for Manuka", "スカート"];
+        let copied = skirt("skirt", "ふわふわロングスカート for Manuka", "스커트", "【無料】ふわふわロングスカート for Manuka");
+        assert_eq!(kept(&copied, "スカート", &titles, &[]), [Some("skirt".into()), None, Some("스커트".into()), None]);
+        assert_eq!(kept(&skirt("skirt", "スカート", "스커트", "裙子"), "スカート", &titles, &[])[1], Some("スカート".into()));
+        // no object with the four languages under the tag's id: a positional array, or the input structure echoed back
+        assert_eq!(kept(&json!(["skirt", "スカート", "스커트", "裙子"]), "スカート", &[], &[]), [None, None, None, None]);
+        let echoed: Value = serde_json::from_str(r#"{"id": "t1", "tag": "スカート", "id": "t1", "context": ["スカート"]}"#).unwrap();
+        assert_eq!(kept(&echoed, "スカート", &[], &[]), [None, None, None, None]);
+        assert_eq!(kept(&Value::Null, "スカート", &[], &[]), [None, None, None, None]);
+    }
+
+    #[test]
+    fn a_provider_without_json_schema_is_told_apart_from_other_refusals() {
+        assert!(refuses_format(400, "bad request"));
+        assert!(refuses_format(422, r#"{"error": "unsupported response_format type json_schema"}"#));
+        assert!(!refuses_format(401, "invalid api key") && !refuses_format(404, "model not found"));
+    }
+
+    #[test]
+    fn the_reply_schema_asks_for_every_id_with_four_short_values() {
+        let schema = tag_schema(2);
+        assert_eq!(schema["required"], json!(["t1", "t2"]));
+        assert_eq!(schema["additionalProperties"], json!(false));
+        let tag = &schema["properties"]["t2"];
+        assert_eq!((tag["required"].clone(), tag["additionalProperties"].clone()), (json!(["en", "ja", "ko", "zh"]), json!(false)));
+        assert_eq!(tag["properties"]["zh"], json!({"type": "string", "minLength": 1, "maxLength": 60}));
+    }
+
+    #[test]
+    fn a_chinese_texture_is_also_found_as_tietu() {
+        assert_eq!(tag_keywords("眼睛纹理"), ["眼睛贴图"]);
+        assert_eq!(tag_keywords("纹理"), ["贴图"]);
+        assert!(tag_keywords("法线贴图").is_empty() && tag_keywords("裙子").is_empty());
+    }
+
+    #[test]
+    fn tag_prompt_names_the_avatars_and_keys_the_tags_by_id() {
+        let tags = vec![("マヌカ用".to_owned(), vec!["a".repeat(130), "b".into(), "c".into(), "d".into()]), ("白モデル".to_owned(), vec![])];
+        let manuka = AvatarName { ja: Some("マヌカ".into()), romaji: "Manuka".into() };
+        let prompt = tag_prompt(&tags, &[&manuka]);
+        let (head, body) = prompt.split_once('\n').unwrap();
+        assert_eq!(head, "Avatar names (Japanese / romaji): マヌカ / Manuka");
+        let items: Value = serde_json::from_str(body).unwrap();
+        assert_eq!(items, json!([{"id": "t1", "tag": "マヌカ用", "context": ["a".repeat(120), "b", "c"]}, {"id": "t2", "tag": "白モデル", "context": []}]));
+        assert!(tag_prompt(&tags, &[]).starts_with("[{"));
+    }
+
     #[test]
     fn reversed_braces_does_not_panic() {
         assert!(parse_json_reply("} text {").is_err());
@@ -623,8 +842,8 @@ mod tests {
         crate::install_tls();
         let mut c = boothdex_core::settings::resolve(&json!({ "base_url": "http://x/v1", "model": "m", "api_key": "k" }), |_| None);
         let ai = Ai::from_config(&c).unwrap().unwrap();
-        assert_eq!(ai.body(json!([]))["reasoning_effort"], "none");
+        assert_eq!(ai.body(json!([]), json!({}))["reasoning_effort"], "none");
         c.reasoning_effort = "high";
-        assert_eq!(Ai::from_config(&c).unwrap().unwrap().body(json!([]))["reasoning_effort"], "high");
+        assert_eq!(Ai::from_config(&c).unwrap().unwrap().body(json!([]), json!({}))["reasoning_effort"], "high");
     }
 }
