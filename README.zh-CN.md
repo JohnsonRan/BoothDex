@@ -238,7 +238,7 @@ btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。�
 `/api/tags`、`/api/booth-tags`（均支持 `?q=&offset=&limit=`）、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、`/api/related?<搜索参数>`
 以及 `/api/rss?<搜索参数>`。
 
-与 VRCatalogue 的差异：功能（Features）分面计数会联动当前选中的分类；“热门”（Trending）排序按点赞数随时间衰减计算；`range` 额外支持 `7d`、`30d` 与 `90d`；`fields=card` 可选返回卡片精简记录（bio、variations、booth_tags、linked_avatars 与 categories 置空，translations 仅保留标题，booth_images/media 最多 2 张；默认响应保持完整；完整记录通过 `/api/items?ids=` 获取）。`expandedWith` 列出译为查询并一同搜索的 BOOTH 标签（仅当只由它们找到的商品出现在结果中时）；`xl=0` 只按原词搜索。`q` 为 BOOTH 商品链接或 5 位及以上的商品编号时，该商品（含已重新上架的商品）在任何视图中按相关度排序时都排在最前，且不生成查询词向量（`semantic` 为 `skipped`）。等待 2.5 秒后 AI 服务仍在生成查询词向量时，`semantic` 为 `pending`：请求会继续执行并缓存向量，稍后的同一搜索即可使用。AI 服务出错、向量请求被速率限制拒绝，或同时进行的服务商请求已满时，`semantic` 为 `unavailable`。
+与 VRCatalogue 的差异：功能（Features）分面计数会联动当前选中的分类；“热门”（Trending）排序按点赞数随时间衰减计算；`range` 额外支持 `7d`、`30d` 与 `90d`；`fields=card` 可选返回卡片精简记录（bio、variations、booth_tags、linked_avatars 与 categories 置空，translations 仅保留标题，booth_images/media 最多 2 张；默认响应保持完整；完整记录通过 `/api/items?ids=` 获取）。`expandedWith` 列出译为查询并一同搜索的 BOOTH 标签（仅当只由它们找到的商品出现在结果中时）；`xl=0` 只按原词搜索。`/api/palette` 也会按这些标签搜索；`/api/rss` 只按原词搜索，订阅源中的商品因此不会变化。`q` 为 BOOTH 商品链接或 5 位及以上的商品编号时，该商品（含已重新上架的商品）在任何视图中按相关度排序时都排在最前，且不生成查询词向量（`semantic` 为 `skipped`）。等待 2.5 秒后 AI 服务仍在生成查询词向量时，`semantic` 为 `pending`：请求会继续执行并缓存向量，稍后的同一搜索即可使用。AI 服务出错、向量请求被速率限制拒绝，或同时进行的服务商请求已满时，`semantic` 为 `unavailable`。
 
 `/api/related` 接受相同的查询参数，在 `searches` 中最多返回 4 个相关搜索，每项包含显示名 `label` 与用于搜索它的 `q`（保留查询词中的虚拟形象名）。它们是商品平均向量与查询词向量最接近的 BOOTH 标签，排除以下标签：只是查询词的另一种写法或译词、含虚拟形象名、只由少数店铺使用或带有它的商品超过全部商品的 5%、很少出现在查询词本身的结果中，以及在相同筛选条件、成人内容设置和视图下找不到商品。它只读取搜索时已保存的查询词向量，从不请求 AI 服务，因此对没有已保存向量的查询词、商品链接或编号，以及当前设置的向量模型与生成商品向量的模型不一致时，都不返回结果。
 

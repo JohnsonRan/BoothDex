@@ -313,7 +313,8 @@ group, in order. `typoTolerant` is true when the query's words matched nothing a
 found the results, or when a misspelt word was read as an avatar. `nameTypo` is true when a misspelt word
 was read as an avatar; `typo=0` reads no word as a misspelt avatar, while a name spelt right still counts.
 `expandedWith` lists the BOOTH tags that translate the query and were searched too, when items only they found are
-among the results; `xl=0` searches the words alone. A `q` that is a BOOTH item link, or an item's number of five or
+among the results; `xl=0` searches the words alone. `/api/palette` searches those tags too; `/api/rss` searches the
+words alone, so a feed's items do not change. A `q` that is a BOOTH item link, or an item's number of five or
 more digits, ranks that item first by relevance in any view, relisted or not, and is not embedded (`semantic` is
 `skipped`). `semantic` is `pending` when the AI provider is still embedding the query after the search's 2.5 s
 wait: the request runs on and caches the vector, so the same search a moment later uses it. It is `unavailable`

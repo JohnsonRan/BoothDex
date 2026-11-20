@@ -384,14 +384,17 @@ async fn check_expansion(pool: PgPool) {
         assert_eq!((&body["count"], &body["widerCounts"], &body["expandedWith"]), (&json!(0), &json!([wider]), &json!([])), "{query}: {body}");
     }
 
-    // the feed and the palette search the words alone
+    // the feed searches the words alone, without the tag chosen to translate them; the palette searches the tag too,
+    // held to a model it names; a link names its item alone
     let ip = limit::ClientIp("203.0.113.41".parse().unwrap());
     let feed = rss_feed(State(state.clone()), ip, RawQuery(Some("q=skirt".into()))).await.unwrap_or_else(IntoResponse::into_response);
     let xml = String::from_utf8(to_bytes(feed.into_body(), 1024 * 1024).await.unwrap().to_vec()).unwrap();
     assert_eq!(xml.matches("<item>").count(), 12);
-    let found = palette(State(state), ip, crate::limit::Tier::Base, RawQuery(Some("q=skirt".into()))).await.unwrap_or_else(IntoResponse::into_response);
-    let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
-    assert_eq!(json["itemCount"], 12);
+    for (query, count) in [("q=skirt", 22), ("q=shinano%20skirt", 2), ("q=https%3A%2F%2Fbooth.pm%2Fja%2Fitems%2F13", 1)] {
+        let found = palette(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some(query.into()))).await.unwrap_or_else(IntoResponse::into_response);
+        let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+        assert_eq!(json["itemCount"], count, "{query}: {json}");
+    }
 }
 
 #[sqlx::test(migrations = "../core/migrations")]
@@ -441,12 +444,12 @@ async fn check_item_reference(pool: PgPool) {
     assert_eq!((&text["count"], &text["semantic"]), (&json!(0), &json!("unavailable")), "{text}");
     assert!(asked_for_embedding(&text), "{text}");
 
-    // the palette lists it first too
+    // the palette lists it first too, and does not search the number as the tag either
     let ip = limit::ClientIp("203.0.113.42".parse().unwrap());
-    for q in ["70001", "https://booth.pm/ja/items/70001"] {
+    for (q, count) in [("70001", 13), ("https://booth.pm/ja/items/70001", 1)] {
         let found = palette(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some(format!("q={q}")))).await.unwrap_or_else(IntoResponse::into_response);
         let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
-        assert_eq!(json["items"][0]["id"], 70001, "{q}: {json}");
+        assert_eq!((&json["items"][0]["id"], &json["itemCount"]), (&json!(70001), &json!(count)), "{q}: {json}");
     }
 }
 
