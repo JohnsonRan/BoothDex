@@ -422,7 +422,7 @@ async fn ask_tags(ctx: &mut Ctx<'_>, ai: &crate::ai::Ai, avatars: &AvatarKit, as
         let reply = ask_batch(ctx, ai, avatars, batch, &mut schema).await?;
         let (mut rows, mut failed) = (Vec::new(), Vec::new());
         for (i, (tag, titles)) in batch.iter().enumerate() {
-            let values = crate::ai::tag_values(&reply[crate::ai::tag_id(i)], tag, titles, &avatars.held_names(tag));
+            let values = crate::ai::tag_values(&reply[crate::ai::tag_id(i)], tag, titles, &avatars.held_names(tag), &avatars.japanese);
             let left_out: Vec<String> = crate::ai::TAG_LANGUAGES.iter().zip(&values).filter_map(|(lang, v)| v.as_ref().err().map(|why| format!("{lang} {why}"))).collect();
             if left_out.len() == values.len() {
                 let why = if values.iter().all(|v| v.as_ref().is_err_and(|why| why == "no value")) { "no answer".to_owned() } else { left_out.join("; ") };
@@ -490,6 +490,8 @@ struct AvatarKit {
     forms: std::collections::HashMap<String, Vec<String>>,
     /// every name in any language, trimmed and lowercase -> the avatar's romaji
     romaji: std::collections::HashMap<String, String>,
+    /// every avatar's Japanese name (`ai::AvatarName::japanese_names`)
+    japanese: Vec<String>,
 }
 
 impl AvatarKit {
@@ -520,8 +522,10 @@ async fn avatar_kit(pool: &PgPool) -> Result<AvatarKit> {
         .iter()
         .flat_map(|(_, en, ja, ko)| [Some(en), ja.as_ref(), ko.as_ref()].into_iter().flatten().map(move |n| (n.trim().to_lowercase(), en.clone())))
         .collect();
-    let names = avatars.into_iter().map(|(slug, romaji, ja, _)| (slug, crate::ai::AvatarName { ja, romaji })).collect();
-    Ok(AvatarKit { matcher, names, forms, romaji })
+    let names: std::collections::HashMap<String, crate::ai::AvatarName> =
+        avatars.into_iter().map(|(slug, romaji, ja, _)| (slug, crate::ai::AvatarName { ja, romaji })).collect();
+    let japanese = crate::ai::AvatarName::japanese_names(names.values());
+    Ok(AvatarKit { matcher, names, forms, romaji, japanese })
 }
 
 const ENRICH_ITEMS_SELECT: &str = "select id, title, bio, booth_category, price_jpy, booth_tags, variations, translations
@@ -1083,8 +1087,11 @@ mod tests {
 
     type DictionaryRow = (String, Option<String>, Option<String>, Option<String>, Option<String>, Vec<String>, String);
 
+    /// The dictionary's rows in Rust's order of the tags (the database's collation orders Hangul differently).
     async fn dictionary(pool: &PgPool) -> Vec<DictionaryRow> {
-        sqlx::query_as("select tag, en, ja, ko, zh, keywords, source from booth_tag_translations order by tag").fetch_all(pool).await.unwrap()
+        let mut rows: Vec<DictionaryRow> = sqlx::query_as("select tag, en, ja, ko, zh, keywords, source from booth_tag_translations").fetch_all(pool).await.unwrap();
+        rows.sort();
+        rows
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
@@ -1094,8 +1101,8 @@ mod tests {
         sqlx::raw_sql("update smart_categories set name_zh = 'x', group_zh = 'x'; update smart_tags set display_zh = 'x';").execute(&pool).await.unwrap();
         // 1-5 listed with six tags (6 delisted with them too); 7-10 listed and 11 delisted with レア; 12-16 with 壊れ
         for (ids, status, tags) in [
-            (1..=5, "ok", "{テクスチャ,スカート,マヌカ,マヌカ用,ポジ,ミミ}"),
-            (6..=6, "delisted", "{テクスチャ,スカート,マヌカ,マヌカ用,ポジ,ミミ}"),
+            (1..=5, "ok", "{テクスチャ,スカート,マヌカ,マヌカ用,ポジ,ミミ,신라}"),
+            (6..=6, "delisted", "{テクスチャ,スカート,マヌカ,マヌカ用,ポジ,ミミ,신라}"),
             (7..=10, "ok", "{レア}"),
             (11..=11, "delisted", "{レア}"),
             (12..=16, "ok", "{壊れ}"),
@@ -1111,6 +1118,8 @@ mod tests {
             ("テクスチャ", r#"{"en": "texture", "ja": "テクスチャ", "ko": "텍스처", "zh": "纹理"}"#),
             // the avatar name transliterated in Korean
             ("マヌカ用", r#"{"en": "for Manuka", "ja": "マヌカ用", "ko": "마누카용", "zh": "マヌカ用"}"#),
+            // the avatar 森羅 by its Japanese name in a tag written in Hangul
+            ("신라", r#"{"en": "Shinra", "ja": "森羅", "ko": "森羅", "zh": "森羅"}"#),
             ("壊れ", r#"{"en": "broken", "ja": "壊れ", "ko": "고장", "zh": "损坏\n坏了"}"#),
             // the four values as a positional array, and the input structure echoed back with repeated keys
             ("ポジ", r#"["positive", "ポジ", "포지", "正面"]"#),
@@ -1127,7 +1136,7 @@ mod tests {
         let summary = localize_job(&pool, json!({})).await;
         assert_eq!(
             summary,
-            "0 names translated to Chinese (0 unique strings); 4 tags added to the dictionary (1 avatar names, 2 with a language left empty), 2 without a valid translation"
+            "0 names translated to Chinese (0 unique strings); 5 tags added to the dictionary (1 avatar names, 2 with a language left empty), 2 without a valid translation"
         );
         // the added rows reach search with the next snapshot
         assert_eq!(version().await, before + 1);
@@ -1144,6 +1153,7 @@ mod tests {
             row("スカート", [Some("skirt"), Some("スカート"), Some("스커트"), Some("裙子")], &[], "import"),
             // Unity's 纹理 is also found as 贴图
             row("テクスチャ", [Some("texture"), Some("テクスチャ"), Some("텍스처"), Some("纹理")], &["贴图"], "localize"),
+            row("신라", [Some("Shinra"), Some("森羅"), Some("森羅"), Some("森羅")], &[], "localize"),
         ];
         let mut sorted = expected.clone();
         sorted.sort();
@@ -1151,10 +1161,10 @@ mod tests {
         // one request for the batch, its reply held to the schema; no request for the avatar's name, the tag with a row
         // or the tag on four listed items
         let sent = requests.lock().unwrap().clone();
-        assert_eq!(asked_tags(&sent), [vec!["テクスチャ", "ポジ", "マヌカ用", "ミミ", "壊れ"]]);
+        assert_eq!(asked_tags(&sent), [vec!["テクスチャ", "ポジ", "マヌカ用", "ミミ", "壊れ", "신라"]]);
         let format = &sent[0]["response_format"];
         assert_eq!((format["type"].as_str(), format["json_schema"]["strict"].as_bool()), (Some("json_schema"), Some(true)));
-        assert_eq!(format["json_schema"]["schema"], crate::ai::tag_schema(5));
+        assert_eq!(format["json_schema"]["schema"], crate::ai::tag_schema(6));
         let (names, items) = sent[0]["messages"][1]["content"].as_str().unwrap().split_once('\n').unwrap();
         assert_eq!(names, "Avatar names (Japanese / romaji): マヌカ / Manuka");
         let items: Vec<Value> = serde_json::from_str(items).unwrap();
@@ -1266,6 +1276,7 @@ mod tests {
             names: [("manuka".to_owned(), crate::ai::AvatarName { ja: Some("マヌカ".into()), romaji: "Manuka".into() })].into(),
             forms,
             romaji: Default::default(),
+            japanese: Vec::new(),
         };
         let held = |tag: &str| kit.held_names(tag).into_iter().map(|n| n.0).collect::<Vec<_>>();
         // the Korean name counts only where the tag writes it, so a Korean value transliterating マヌカ is caught

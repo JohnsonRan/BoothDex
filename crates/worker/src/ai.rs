@@ -218,8 +218,9 @@ pub struct HeldName(pub Vec<String>);
 /// trimmed, or why it is left out. A value is left out unless it is at most 60 non-control characters, has no script
 /// foreign to its language (Han, kana or Hangul in English; Hangul in Japanese; Han or kana in Korean; kana or Hangul in
 /// Chinese) that the tag is not written in, is not one of the tag's example `titles` (nor, over 20 characters, a part
-/// of one) unless it is the tag itself, and keeps every avatar name the tag holds.
-pub fn tag_values(answer: &Value, tag: &str, titles: &[String], names: &[HeldName]) -> [std::result::Result<String, String>; 4] {
+/// of one) unless it is the tag itself, and keeps every avatar name the tag holds. `japanese`: every avatar's Japanese
+/// name (`AvatarName::japanese_names`), which a Japanese, Korean or Chinese value may hold in any script.
+pub fn tag_values(answer: &Value, tag: &str, titles: &[String], names: &[HeldName], japanese: &[String]) -> [std::result::Result<String, String>; 4] {
     let scripts: [fn(char) -> bool; 3] = [is_han, is_kana, is_hangul];
     let foreign: [&[usize]; 4] = [&[0, 1, 2], &[2], &[0, 1], &[1, 2]];
     std::array::from_fn(|k| {
@@ -228,7 +229,9 @@ pub fn tag_values(answer: &Value, tag: &str, titles: &[String], names: &[HeldNam
         if v.chars().count() > 60 || v.chars().any(char::is_control) {
             return Err("not one line of at most 60 characters without control characters".into());
         }
-        if foreign[k].iter().any(|&s| v.chars().any(scripts[s]) && !tag.chars().any(scripts[s])) {
+        // English keeps an avatar's romaji instead (owner ruling 13)
+        let unnamed = if TAG_LANGUAGES[k] == "en" { v.to_owned() } else { without_names(v, japanese) };
+        if foreign[k].iter().any(|&s| unnamed.chars().any(scripts[s]) && !tag.chars().any(scripts[s])) {
             return Err("in a script foreign to its language".into());
         }
         if v != tag.trim() && titles.iter().any(|t| t.trim() == v || (v.chars().count() > 20 && t.contains(v))) {
@@ -240,6 +243,12 @@ pub fn tag_values(answer: &Value, tag: &str, titles: &[String], names: &[HeldNam
         }
         Ok(v.to_owned())
     })
+}
+
+/// `text` (NFKC, lowercase) with each of the `japanese` avatar names blanked out: a name is never translated or
+/// transliterated, so it may stay in the script it is written in (owner ruling 13; the tag 신라 is the avatar 森羅).
+fn without_names(text: &str, japanese: &[String]) -> String {
+    japanese.iter().fold(crate::avatars::norm(text), |t, name| t.replace(name.as_str(), " "))
 }
 
 /// Search-only keywords for a tag's Chinese value (owner ruling 20, 2026-11-21): tags use Unity's 纹理 for a texture,
@@ -301,6 +310,18 @@ pub fn enrich_prompt(item: &EnrichItem, category_list: &str, avatars: &[&AvatarN
 pub struct AvatarName {
     pub ja: Option<String>,
     pub romaji: String,
+}
+
+impl AvatarName {
+    /// The Japanese names of `avatars` that are not in Latin letters, NFKC and lowercase, longest first; names under two
+    /// characters are left out, as the matcher leaves them out (avatars.rs).
+    pub fn japanese_names<'a>(avatars: impl IntoIterator<Item = &'a AvatarName>) -> Vec<String> {
+        let mut names: Vec<String> =
+            avatars.into_iter().filter_map(|a| a.ja.as_deref()).map(crate::avatars::norm).filter(|n| !n.is_ascii() && n.chars().count() >= 2).collect();
+        names.sort_by(|a, b| b.chars().count().cmp(&a.chars().count()).then_with(|| a.cmp(b)));
+        names.dedup();
+        names
+    }
 }
 
 impl std::fmt::Display for AvatarName {
@@ -564,11 +585,13 @@ mod tests {
         );
     }
 
-    /// Which of a tag's values `tag_values` keeps: `Some` for a kept value, `None` for one left out.
+    /// Which of a tag's values `tag_values` keeps: `Some` for a kept value, `None` for one left out. The avatars known
+    /// by a Japanese name are マヌカ and 森羅.
     fn kept(answer: &Value, tag: &str, titles: &[&str], names: &[&[&str]]) -> [Option<String>; 4] {
         let titles: Vec<String> = titles.iter().map(|t| t.to_string()).collect();
         let names: Vec<HeldName> = names.iter().map(|forms| HeldName(forms.iter().map(|f| f.to_string()).collect())).collect();
-        tag_values(answer, tag, &titles, &names).map(Result::ok)
+        let avatars = [AvatarName { ja: Some("マヌカ".into()), romaji: "Manuka".into() }, AvatarName { ja: Some("森羅".into()), romaji: "Shinra".into() }];
+        tag_values(answer, tag, &titles, &names, &AvatarName::japanese_names(&avatars)).map(Result::ok)
     }
 
     #[test]
@@ -589,6 +612,12 @@ mod tests {
         let manuka: &[&str] = &["マヌカ", "manuka"];
         let manuka_for = skirt("for Manuka", "マヌカ用", "マヌカ용", "マヌカ用");
         assert_eq!(kept(&manuka_for, "マヌカ用", &[], &[manuka]), all(["for Manuka", "マヌカ用", "マヌカ용", "マヌカ用"]));
+        // an avatar's Japanese name may stay in the Japanese, Korean and Chinese values of a tag written in other
+        // letters (신라 is 森羅); English keeps the romaji, and other kana still count against Korean
+        let shinra = skirt("Shinra", "森羅", "森羅", "森羅");
+        assert_eq!(kept(&shinra, "신라", &[], &[]), [Some("Shinra".into()), Some("森羅".into()), Some("森羅".into()), Some("森羅".into())]);
+        assert_eq!(kept(&skirt("森羅", "森羅", "マヌカ 텍스처", "マヌカ纹理"), "Manukatexture", &[], &[])[..], [None, Some("森羅".into()), Some("マヌカ 텍스처".into()), Some("マヌカ纹理".into())]);
+        assert_eq!(kept(&skirt("Manuka eye", "マヌカの目", "マヌカの 눈", "マヌカの眼睛"), "Manukaeye", &[], &[])[2..], [None, None]);
         // a name transliterated or translated is left out in that language only; English may give the romaji
         let transliterated = skirt("for Manuka", "マヌカ用", "마누카용", "麦奴卡用");
         assert_eq!(kept(&transliterated, "マヌカ用", &[], &[manuka]), [Some("for Manuka".into()), Some("マヌカ用".into()), None, None]);
@@ -603,6 +632,13 @@ mod tests {
         let echoed: Value = serde_json::from_str(r#"{"id": "t1", "tag": "スカート", "id": "t1", "context": ["スカート"]}"#).unwrap();
         assert_eq!(kept(&echoed, "スカート", &[], &[]), [None, None, None, None]);
         assert_eq!(kept(&Value::Null, "スカート", &[], &[]), [None, None, None, None]);
+    }
+
+    #[test]
+    fn japanese_avatar_names_are_the_non_latin_ones_of_two_characters_or_more_longest_first() {
+        let name = |ja: Option<&str>| AvatarName { ja: ja.map(str::to_owned), romaji: "x".into() };
+        let avatars = [name(Some("森羅")), name(Some("ルーナリット")), name(Some("Adolescent U")), name(Some("萌")), name(None), name(Some("ﾏﾇｶ")), name(Some("マヌカ"))];
+        assert_eq!(AvatarName::japanese_names(&avatars), ["ルーナリット", "マヌカ", "森羅"]);
     }
 
     #[test]
