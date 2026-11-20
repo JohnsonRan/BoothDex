@@ -40,7 +40,7 @@ pub(crate) async fn palette(
     // items honour the caller's adult setting (default safe) like the main search
     let items_req = SearchRequest { q: Some(text), adult: user.adult, sort: Sort::Relevant, page_size: 8, ..SearchRequest::from(&Params::default()) };
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&items_req, now, None, None, false))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&items_req, now, None, None, None, false))?;
     let items: Vec<Value> = db::load_items(&s.pool, &r.ids, true)
         .await?
         .into_iter()

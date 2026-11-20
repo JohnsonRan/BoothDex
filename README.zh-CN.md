@@ -55,7 +55,7 @@ docker compose pull && docker compose up -d
 - 筛选栏包含搜索框和每个筛选条件的选择器；放不下的筛选条件收进“+N”按钮。
 - 输入时，搜索框给出最近搜索、模型、商品、店铺与标签建议。按 `Ctrl+K`（macOS 上为 `Cmd+K`）可聚焦搜索框。
 - 搜索框把每个搜索词显示为可单独删除的词条；识别为模型或分类的词合为一个词条，前面显示模型图片或分类图标。
-- 日文全文检索基于 Lindera（IPADIC），不区分全角与半角、平假名与片假名（搜索“しなの”也能匹配シナノ）。不超过 3 个单词的英文查询没有匹配任何文本时，会对 5 个字母及以上的纯字母单词各容许 1 处拼写错误，在标题、标签和作者名中重新搜索（“shinnano”也能匹配 Shinano）。可选的语义搜索支持跨语言按语义查找（如搜索“哥特裙”即可匹配ゴスロリ连衣裙），并与关键词结果融合排序。
+- 日文全文检索基于 Lindera（IPADIC），不区分全角与半角、平假名与片假名（搜索“しなの”也能匹配シナノ）。不超过 3 个单词的英文查询没有匹配任何文本时，会对 5 个字母及以上的纯字母单词各容许 1 处拼写错误，在标题、标签和作者名中重新搜索（“shinnano”也能匹配 Shinano）。标签和简介大多是日文，而且只有标题有翻译，因此不超过 3 个单词的查询还会按译为该查询的 BOOTH 标签（最多 3 个）一并搜索：这些标签来自标题匹配查询的商品，且在带有查询语言标题的商品中，标签本身的标题匹配与查询的标题匹配大部分重合（搜索“skirt”也能找到只带スカート标签的商品）。这些商品按关键词匹配一半的权重参与排序。可选的语义搜索支持跨语言按语义查找（如搜索“哥特裙”即可匹配ゴスロリ连衣裙），并与关键词结果融合排序。
 
 <details>
 <summary>输入“manuka”时的建议：先列出模型本体，再列出匹配的商品</summary>
@@ -156,7 +156,7 @@ flowchart LR
 flowchart TD
   subgraph query["混合搜索流程 (/api/search)"]
     q["查询词 + 多维筛选参数"] --> parse["识别模型名与分类短语"]
-    parse --> kw["Lindera (IPADIC) + Tantivy<br/>与 Roaring 内存位图筛选"]
+    parse --> kw["Lindera (IPADIC) + Tantivy<br/>+ 译为查询的标签<br/>与 Roaring 内存位图筛选"]
     parse -. "启用语义搜索时" .-> embq["查询词向量<br/>（内存 → 数据库缓存 → AI 接口，2.5 秒超时回退）"]
     embq -.-> ann["pgvector HNSW 近邻检索"]
     kw --> merge["融合排序与分面统计"]
@@ -186,7 +186,7 @@ flowchart TD
 | `deploy` | 容器构建文件、`docker-bake.hcl`、`compose.yaml` 与 `.env.example` |
 | `scripts` | 数据包打包校验脚本与模拟 AI 服务 |
 
-在 32 线程机器上面对 21.6 万件商品时，API 内部检索耗时 1–6 毫秒，单次请求端到端耗时 5–40 毫秒，32 并发下吞吐约 550 请求/秒。在 Linux 容器环境中，`api` 常驻内存约 0.4–1 GB（mmap 映射的 Tantivy 索引另计在页缓存中），热重载双份目录快照时峰值约 1.8 GB（容器限制 `4g`）。
+在 32 线程机器上面对 21.6 万件商品时，API 内部检索耗时 2–10 毫秒，单次请求端到端耗时 5–40 毫秒，32 并发下吞吐约 550 请求/秒。在 Linux 容器环境中，`api` 常驻内存约 0.4–1 GB（mmap 映射的 Tantivy 索引另计在页缓存中），热重载双份目录快照时峰值约 1.8 GB（容器限制 `4g`）。
 
 ## 开发
 
@@ -237,7 +237,7 @@ btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。�
 `/api/tags`、`/api/booth-tags`（均支持 `?q=&offset=&limit=`）、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`
 以及 `/api/rss?<搜索参数>`。
 
-与 VRCatalogue 的差异：功能（Features）分面计数会联动当前选中的分类；“热门”（Trending）排序按点赞数随时间衰减计算；`range` 额外支持 `7d`、`30d` 与 `90d`；`fields=card` 可选返回卡片精简记录（bio、variations、booth_tags、linked_avatars 与 categories 置空，translations 仅保留标题，booth_images/media 最多 2 张；默认响应保持完整；完整记录通过 `/api/items?ids=` 获取）。
+与 VRCatalogue 的差异：功能（Features）分面计数会联动当前选中的分类；“热门”（Trending）排序按点赞数随时间衰减计算；`range` 额外支持 `7d`、`30d` 与 `90d`；`fields=card` 可选返回卡片精简记录（bio、variations、booth_tags、linked_avatars 与 categories 置空，translations 仅保留标题，booth_images/media 最多 2 张；默认响应保持完整；完整记录通过 `/api/items?ids=` 获取）。`expandedWith` 列出译为查询并一同搜索的 BOOTH 标签（仅当只由它们找到的商品出现在结果中时）；`xl=0` 只按原词搜索。
 
 ## 致谢
 

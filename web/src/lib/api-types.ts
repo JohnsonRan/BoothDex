@@ -51,7 +51,12 @@ typoTolerant: boolean,
 /**
  * a word was read as the model whose name it misspells; `typo=0` asks for the words as typed
  */
-nameTypo: boolean, };
+nameTypo: boolean, 
+/**
+ * BOOTH tags that translate the query, searched too, when items only they found are among the results;
+ * `xl=0` asks for the words alone
+ */
+expandedWith: Array<string>, };
 
 export type SemanticStatus = "used" | "off" | "unavailable" | "skipped";
 

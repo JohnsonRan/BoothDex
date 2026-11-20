@@ -140,6 +140,73 @@ async fn check_feed_and_palette(pool: PgPool) {
 
 #[sqlx::test(migrations = "../core/migrations")]
 #[ignore = "requires PostgreSQL with pgvector"]
+async fn a_search_also_finds_what_the_tag_translating_it_finds(pool: PgPool) {
+    multi_thread(check_expansion(pool)).await;
+}
+
+async fn search_json(state: &Arc<AppState>, query: &str) -> Value {
+    use axum::body::to_bytes;
+    use axum::http::HeaderMap;
+
+    let response = search(State(state.clone()), limit::ClientIp("203.0.113.40".parse().unwrap()), crate::limit::Tier::Base, HeaderMap::new(), RawQuery(Some(query.into())))
+        .await
+        .unwrap_or_else(IntoResponse::into_response);
+    assert_eq!(response.status(), StatusCode::OK);
+    serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap()
+}
+
+async fn check_expansion(pool: PgPool) {
+    use axum::body::to_bytes;
+
+    // 1-12 are titled スカート with the title translated as Skirt; 13-22, in another BOOTH category, carry only the tag
+    sqlx::raw_sql(
+        "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_category, booth_tags, translations)
+         select i, 'スカート ' || i, 'creator', 'https://example.test', false, 'ok', now(), '3D Clothing', '{スカート}',
+                jsonb_build_object('en', jsonb_build_object('title', 'Skirt ' || i))
+         from generate_series(1, 12) i;
+         insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_category, booth_tags)
+         select i, 'Item ' || i, 'creator', 'https://example.test', false, 'ok', now(), '3D Accessory', '{スカート}'
+         from generate_series(13, 22) i;
+         insert into avatars (slug, name_en) values ('shinano', 'Shinano') on conflict (slug) do nothing;
+         insert into item_avatars (item_id, avatar_slug) values (1, 'shinano'), (13, 'shinano');",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let avatars = Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 2)]);
+    let state = app(pool.clone(), Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap(), avatars);
+    let ids = |body: &Value| body["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>();
+
+    // sem=0: no embedding is asked for. The words' own matches rank first, the tag's follow and are counted.
+    let both = search_json(&state, "q=skirt&sem=0&pageSize=100").await;
+    assert_eq!((&both["count"], &both["expandedWith"]), (&json!(22), &json!(["スカート"])), "{both}");
+    assert_eq!(both["boothCounts"], json!({ "3D Clothing": 12, "3D Accessory": 10 }));
+    let mut first = ids(&both)[..12].to_vec();
+    first.sort();
+    assert_eq!(first, (1..=12).collect::<Vec<_>>());
+    let words = search_json(&state, "q=skirt&sem=0&xl=0&pageSize=100").await;
+    assert_eq!((&words["count"], &words["expandedWith"], &words["boothCounts"]), (&json!(12), &json!([]), &json!({ "3D Clothing": 12 })), "{words}");
+    // a model named in the query: the other words are translated, and what the tag finds must fit the model
+    let fitting = search_json(&state, "q=shinano%20skirt&sem=0&pageSize=100").await;
+    assert_eq!((ids(&fitting), &fitting["expandedWith"]), (vec![1, 13], &json!(["スカート"])), "{fitting}");
+    // an empty search counts what it finds without its filter from the same matches
+    for (query, wider) in [("q=skirt&sem=0&pmin=100000&without=pmin", 22), ("q=skirt&sem=0&xl=0&pmin=100000&without=pmin", 12)] {
+        let body = search_json(&state, query).await;
+        assert_eq!((&body["count"], &body["widerCounts"], &body["expandedWith"]), (&json!(0), &json!([wider]), &json!([])), "{query}: {body}");
+    }
+
+    // the feed and the palette search the words alone
+    let ip = limit::ClientIp("203.0.113.41".parse().unwrap());
+    let feed = rss_feed(State(state.clone()), ip, RawQuery(Some("q=skirt".into()))).await.unwrap_or_else(IntoResponse::into_response);
+    let xml = String::from_utf8(to_bytes(feed.into_body(), 1024 * 1024).await.unwrap().to_vec()).unwrap();
+    assert_eq!(xml.matches("<item>").count(), 12);
+    let found = palette(State(state), ip, crate::limit::Tier::Base, RawQuery(Some("q=skirt".into()))).await.unwrap_or_else(IntoResponse::into_response);
+    let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+    assert_eq!(json["itemCount"], 12);
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
 async fn the_palette_items_follow_the_callers_adult_setting(pool: PgPool) {
     multi_thread(check_palette_adult(pool)).await;
 }
@@ -226,19 +293,25 @@ async fn load_docs_translated_titles(pool: PgPool) {
          (1, 'Original 1', 'creator', 'https://example.test', false, 'ok', now(), '{\"original_language\":\"ja\",\"en\":{\"title\":\"Title EN\"},\"ja\":{\"title\":\"Title JA\"},\"ko\":{\"title\":\"Title KO\"},\"zh\":{\"title\":\"Title ZH\"}}'),
          (2, 'Original 2', 'creator', 'https://example.test', false, 'ok', now(), '{\"en\":{\"title\":\"Title EN 2\"},\"ja\":{\"title\":null},\"ko\":{},\"zh\":{\"title\":\"Title ZH 2\"}}'),
          (3, 'Original 3', 'creator', 'https://example.test', false, 'ok', now(), '{\"fr\":{\"title\":\"Titre FR\"}}'),
-         (4, 'Original 4', 'creator', 'https://example.test', false, 'ok', now(), '42');",
+         (4, 'Original 4', 'creator', 'https://example.test', false, 'ok', now(), '42');
+         insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, original_language, translations) values
+         (5, '原标题', 'creator', 'https://example.test', false, 'ok', now(), 'zh', '{\"en\":{\"title\":\"Title EN 5\"}}');",
     )
     .execute(&pool)
     .await
     .unwrap();
 
     let docs = db::load_docs(&pool).await.unwrap();
+    let languages: HashMap<i64, u8> = docs.iter().map(|d| (d.id, d.title_languages)).collect();
     let by_id: HashMap<i64, Vec<String>> = docs.into_iter().map(|d| (d.id, d.titles_translated)).collect();
 
     assert_eq!(*by_id.get(&1).unwrap(), vec!["Title EN", "Title JA", "Title KO", "Title ZH"]);
     assert_eq!(*by_id.get(&2).unwrap(), vec!["Title EN 2", "Title ZH 2"]);
     assert!(by_id.get(&3).unwrap().is_empty());
     assert!(by_id.get(&4).unwrap().is_empty());
+    // the languages it has a title in (expansion::LANGUAGES: en, ja, ko, zh), a null title not counted, and the
+    // original language too
+    assert_eq!([1, 2, 3, 4, 5].map(|id| languages[&id]), [0b1111, 0b1001, 0, 0, 0b1001]);
 }
 
 #[test]

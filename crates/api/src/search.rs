@@ -43,6 +43,9 @@ pub(crate) struct SearchResponse {
     typo_tolerant: bool,
     /// a word was read as the model whose name it misspells; `typo=0` asks for the words as typed
     name_typo: bool,
+    /// BOOTH tags that translate the query, searched too, when items only they found are among the results;
+    /// `xl=0` asks for the words alone
+    expanded_with: Vec<String>,
 }
 
 /// Query words the search took as a model (matching what fits it) or a smart category (matching what is in it):
@@ -193,9 +196,11 @@ pub(crate) async fn search(
     let catalog_now = chrono::Utc::now().timestamp();
     let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
         .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models, rest: &meaning });
+    // xl=0 (the site's "without translated matches"): the words are not also searched as the tags that translate them
+    let expand = (p.get("xl").as_deref() != Some("0")).then_some(meaning.as_str());
     let search_start = Instant::now();
     let (r, wider_counts) =
-        tokio::task::block_in_place(|| search_and_wider(&s.snap().catalog, raw, &req, catalog_now, favourites.as_ref(), semantic))?;
+        tokio::task::block_in_place(|| search_and_wider(&s.snap().catalog, raw, &req, catalog_now, favourites.as_ref(), semantic, expand))?;
     let search_ms = search_start.elapsed().as_secs_f64() * 1e3;
     trace.step("search");
     let items = db::load_items(&s.pool, &r.ids, p.get("fields").as_deref() == Some("card")).await?;
@@ -218,6 +223,7 @@ pub(crate) async fn search(
         wider_counts,
         typo_tolerant: r.typo || name_typo,
         name_typo,
+        expanded_with: r.expanded_with,
     })
     .into_response())
 }
@@ -231,13 +237,14 @@ pub(crate) fn search_and_wider(
     now: i64,
     favourites: Option<&roaring::RoaringBitmap>,
     semantic: Option<catalog::Semantic>,
+    expand: Option<&str>,
 ) -> anyhow::Result<(catalog::SearchResult, Vec<u64>)> {
-    let r = catalog.search(req, now, favourites, semantic, true)?;
+    let r = catalog.search(req, now, favourites, semantic, expand, true)?;
     if r.count > 0 {
         return Ok((r, Vec::new()));
     }
     let wider: Vec<SearchRequest> = without_groups(raw).iter().map(|g| SearchRequest::from(&Params::parse(&query_without(raw, g)))).collect();
-    let counts = if wider.is_empty() { Vec::new() } else { catalog.counts(req, &wider, now, favourites, semantic)? };
+    let counts = if wider.is_empty() { Vec::new() } else { catalog.counts(req, &wider, now, favourites, semantic, expand)? };
     Ok((r, counts))
 }
 

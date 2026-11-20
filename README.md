@@ -71,6 +71,11 @@ docker compose pull && docker compose up -d
   Shinano), and the results page says so. A word that no title, tag or author name has, one typo from the Latin name
   of exactly one avatar, is read as that avatar ("shinnano short hair" searches like "shinano short hair"); the
   results page then offers to search the words as typed.
+  Tags and descriptions are mostly Japanese and only titles are translated, so a query of up to three words is also
+  searched as up to three BOOTH tags that translate it: tags carried by the items whose titles match the query, whose
+  own title matches largely overlap the query's among the items titled in the query's language ("skirt" also finds
+  the items only tagged スカート). Those items rank
+  among the word matches at half weight.
   Optional semantic search finds items by meaning across languages ("哥特裙" finds ゴスロリ dresses) and merges both
   rankings.
 
@@ -195,7 +200,7 @@ flowchart LR
 flowchart TD
   subgraph query["Hybrid Search (/api/search)"]
     q["Query + facet filters"] --> parse["Extract avatar names<br/>& category phrases"]
-    parse --> kw["Lindera (IPADIC) + Tantivy<br/>& Roaring bitmap facets"]
+    parse --> kw["Lindera (IPADIC) + Tantivy<br/>+ tags that translate the query<br/>& Roaring bitmap facets"]
     parse -. "if AI embed enabled" .-> embq["Query vector<br/>(RAM → DB cache → AI API, 2.5 s cap)"]
     embq -.-> ann["pgvector HNSW cosine match"]
     kw --> merge["Merge rankings & facet counts"]
@@ -225,7 +230,7 @@ flowchart TD
 | `deploy` | Dockerfiles, `docker-bake.hcl`, `compose.yaml` and `.env.example` |
 | `scripts` | Data bundle scripts and mock AI server |
 
-On a 32-thread machine with 216k items, searches take 1–6 ms inside the API and 5–40 ms per request (~550 req/s
+On a 32-thread machine with 216k items, searches take 2–10 ms inside the API and 5–40 ms per request (~550 req/s
 across 32 concurrent clients). On Linux containers, `api` uses ~0.4–1 GB RSS steady (plus the
 memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while atomically reloading a new catalogue (`mem_limit: 4g`).
 
@@ -289,6 +294,8 @@ booth_images/media at most 2; default response unchanged; fetch full records via
 group, in order. `typoTolerant` is true when the query's words matched nothing as typed and the typo retry
 found the results, or when a misspelt word was read as an avatar. `nameTypo` is true when a misspelt word
 was read as an avatar; `typo=0` reads no word as a misspelt avatar, while a name spelt right still counts.
+`expandedWith` lists the BOOTH tags that translate the query and were searched too, when items only they found are
+among the results; `xl=0` searches the words alone.
 
 ## Acknowledgments
 

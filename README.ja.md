@@ -52,7 +52,7 @@ docker compose pull && docker compose up -d
 - フィルター行には検索欄とフィルターごとのセレクターが並び、入りきらないフィルターは「+N」ボタンにまとめられます。
 - 検索欄は入力に合わせて最近の検索、アバター、商品、ショップ、タグを候補として表示します。`Ctrl+K` (macOS では `Cmd+K`) で検索欄にフォーカスできます。
 - 検索語は 1 語ずつトークンとして表示され、個別に削除できます。アバターやカテゴリとして認識された語は 1 つのトークンにまとまり、先頭にアバターの画像またはカテゴリのアイコンが付きます。
-- 日本語の全文検索には Lindera (IPADIC) を使用します。全角と半角、ひらがなとカタカナは区別せずに検索します (“しなの” でシナノもヒット)。3 語以内の英字の検索がどのテキストにも一致しない場合は、5 文字以上の英字だけの単語ごとに 1 文字の誤りを許し、タイトル、タグ、作者名を検索し直します (“shinnano” で Shinano もヒット)。オプションのセマンティック検索を有効にすると、言語をまたいで意味の近い商品 (“哥特裙” でゴスロリ衣装がヒットするなど) を検索し、キーワード検索の結果と統合して並べ替えます。
+- 日本語の全文検索には Lindera (IPADIC) を使用します。全角と半角、ひらがなとカタカナは区別せずに検索します (“しなの” でシナノもヒット)。3 語以内の英字の検索がどのテキストにも一致しない場合は、5 文字以上の英字だけの単語ごとに 1 文字の誤りを許し、タイトル、タグ、作者名を検索し直します (“shinnano” で Shinano もヒット)。タグと説明文の大半は日本語で、翻訳されるのはタイトルだけなので、3 語以内の検索は、それを訳した BOOTH タグ (最大 3 つ) でも検索します。訳語とみなすのは、タイトルが検索語に一致する商品に付いたタグのうち、検索語の言語のタイトルを持つ商品の中で、タグ自身がタイトルに一致する商品と検索語がタイトルに一致する商品が大きく重なるものです (“skirt” で、スカートのタグだけが付いた商品もヒット)。これらの商品はキーワード一致の半分の重みで並びます。オプションのセマンティック検索を有効にすると、言語をまたいで意味の近い商品 (“哥特裙” でゴスロリ衣装がヒットするなど) を検索し、キーワード検索の結果と統合して並べ替えます。
 
 <details>
 <summary>「マヌカ」と入力したときの候補: アバター本体、続いて一致する商品が表示されます</summary>
@@ -153,7 +153,7 @@ flowchart LR
 flowchart TD
   subgraph query["ハイブリッド検索 (/api/search)"]
     q["検索クエリ + 絞り込み条件"] --> parse["アバター名・カテゴリ語句の抽出"]
-    parse --> kw["Lindera (IPADIC) + Tantivy<br/>& Roaring ビットマップ絞り込み"]
+    parse --> kw["Lindera (IPADIC) + Tantivy<br/>+ 検索語を訳したタグ<br/>& Roaring ビットマップ絞り込み"]
     parse -. "セマンティック検索有効時" .-> embq["検索ベクトル取得<br/>(メモリ → DB キャッシュ → AI API、上限 2.5 秒)"]
     embq -.-> ann["pgvector HNSW 近傍検索"]
     kw --> merge["スコア統合・ファセット集計"]
@@ -183,7 +183,7 @@ flowchart TD
 | `deploy` | Dockerfile、`docker-bake.hcl`、`compose.yaml`、および `.env.example` |
 | `scripts` | データバンドル作成ツール、モック AI サーバー |
 
-32 スレッド環境で約 21.6 万件の商品を検索した場合、API 内部の処理時間は 1～6 ミリ秒、リクエスト全体では 5～40 ミリ秒で応答し、32 クライアント同時接続時に毎秒約 550 リクエストを処理します。Linux コンテナー上での `api` のメモリ使用量は通常時で約 0.4～1 GB (メモリマップされた Tantivy インデックスはページ キャッシュ側)、カタログ再読み込み時のピークで約 1.8 GB です (`mem_limit: 4g`)。
+32 スレッド環境で約 21.6 万件の商品を検索した場合、API 内部の処理時間は 2～10 ミリ秒、リクエスト全体では 5～40 ミリ秒で応答し、32 クライアント同時接続時に毎秒約 550 リクエストを処理します。Linux コンテナー上での `api` のメモリ使用量は通常時で約 0.4～1 GB (メモリマップされた Tantivy インデックスはページ キャッシュ側)、カタログ再読み込み時のピークで約 1.8 GB です (`mem_limit: 4g`)。
 
 ## 開発
 
@@ -231,7 +231,7 @@ cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 
 `/api/search` は VRCatalogue 互換のクエリパラメーターを受け付けます: `v q sort dir page pageSize adult avatars authors tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。その他のエンドポイントとして `/api/avatars`、`/api/authors`、`/api/tags`、`/api/booth-tags` (`?q=&offset=&limit=`)、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、および `/api/rss?<検索クエリ>` があります。
 
-VRCatalogue との違い: 機能 (Features) のファセット件数が選択中のカテゴリを反映します。「人気」(Trending) 順は経過時間で減衰させた「スキ!」数で算出します。`range` パラメーターでは `7d`、`30d`、`90d` も指定できます。`fields=card` でカード表示用の軽量データを取得できます (bio、variations、booth_tags、linked_avatars、categories を空にし、translations はタイトルのみ保持、booth_images/media は最大 2 枚に制限。デフォルト応答は完全なまま。完全な記録は `/api/items?ids=` で取得)。
+VRCatalogue との違い: 機能 (Features) のファセット件数が選択中のカテゴリを反映します。「人気」(Trending) 順は経過時間で減衰させた「スキ!」数で算出します。`range` パラメーターでは `7d`、`30d`、`90d` も指定できます。`fields=card` でカード表示用の軽量データを取得できます (bio、variations、booth_tags、linked_avatars、categories を空にし、translations はタイトルのみ保持、booth_images/media は最大 2 枚に制限。デフォルト応答は完全なまま。完全な記録は `/api/items?ids=` で取得)。`expandedWith` は、検索語を訳して一緒に検索した BOOTH タグを示します (それだけで見つかった商品が結果に含まれる場合)。`xl=0` を付けると検索語だけで検索します。
 
 ## 謝辞
 

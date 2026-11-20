@@ -13,6 +13,7 @@ mod api_types;
 mod catalog;
 mod db;
 mod error;
+mod expansion;
 mod gallery;
 mod guestbook;
 mod items;
