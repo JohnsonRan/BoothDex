@@ -15,7 +15,7 @@ import type { SearchOutcome } from "@/lib/server-data";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
 import { FIRST_TILES } from "./item-tile";
 import { ResultPages } from "./result-pages";
-import { ExpansionNote, Results, TypoNote } from "./results";
+import { ExpansionNote, RelatedSearches, Results, TypoNote } from "./results";
 import { ResultsGrid } from "./results-grid";
 
 const item: ItemResponse = {
@@ -208,6 +208,7 @@ test("the results carry the translation note only when the API names translation
     };
     walk(
       await Results({
+        related: Promise.resolve([]),
         outcome: Promise.resolve({
           state: "ok",
           ms: 1,
@@ -236,6 +237,77 @@ test("the results carry the translation note only when the API names translation
   expect(await notes(undefined)).toEqual([]);
 });
 
+test("the results carry the related searches only when there are some", async () => {
+  const rows = async (searches: { label: string; q: string }[]) => {
+    const found: unknown[] = [];
+    const walk = (node: unknown) => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== "object" || !("props" in node)) return;
+      const el = node as { type: unknown; props: Record<string, unknown> };
+      if (el.type === RelatedSearches) found.push(el.props.searches);
+      walk(el.props.children);
+    };
+    walk(
+      await Results({
+        outcome: Promise.resolve({
+          state: "ok",
+          ms: 1,
+          result: {
+            items: [item],
+            count: 1,
+            page: 1,
+            totalPages: 1,
+            pageSize: 30,
+          },
+        } as unknown as SearchOutcome),
+        related: Promise.resolve(searches),
+        rates: Promise.resolve({}),
+        settings: DEFAULT_SETTINGS,
+        filters: { ...DEFAULT_FILTERS, q: "skirt" },
+        names: { categories: [], avatars: [], tags: {} },
+        noSemantic: false,
+        navigation: false,
+      }),
+    );
+    return found;
+  };
+  const searches = [{ label: "long skirt", q: "long skirt" }];
+  expect(await rows(searches)).toEqual([searches]);
+  expect(await rows([])).toEqual([]);
+});
+
+test("a related search replaces the words, keeps the filters and the model names the API kept, and searches anew", () => {
+  // the words were searched as typed and without translations; the new ones are not
+  const filters = {
+    ...DEFAULT_FILTERS,
+    q: "Shinano skirt",
+    free: true,
+    noTypo: true,
+    noExpand: true,
+  };
+  const html = renderToStaticMarkup(
+    <AppRouterContext value={{} as AppRouterInstance}>
+      <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+        <FilterUrlProvider filters={filters}>
+          <RelatedSearches
+            searches={[
+              { label: "long skirt", q: "Shinano long skirt" },
+              { label: "ミニスカート", q: "Shinano ミニスカート" },
+            ]}
+            t={translator("en")}
+          />
+        </FilterUrlProvider>
+      </Providers>
+    </AppRouterContext>,
+  );
+  expect(html).toContain("Related searches");
+  expect(html).toContain('href="?q=Shinano%20long%20skirt&amp;free=1"');
+  expect(html).toContain(
+    `href="?q=Shinano%20${encodeURIComponent("ミニスカート")}&amp;free=1"`,
+  );
+  expect(html.match(/<a /g)?.length).toBe(2);
+});
+
 test("a tile without a cover shows the no-image state, not a Skeleton that stays", () => {
   const html = render([{ ...item, booth_images: [] }, item]);
   const covers = [
@@ -261,6 +333,7 @@ test("a model misread from a typo that left no results still offers the words as
           <FilterUrlProvider filters={filters}>
             {
               await Results({
+                related: Promise.resolve([]),
                 outcome: Promise.resolve(empty(nameTypo)),
                 rates: Promise.resolve({}),
                 settings: { ...DEFAULT_SETTINGS, ui: "en" },
@@ -276,6 +349,42 @@ test("a model misread from a typo that left no results still offers the words as
     );
   expect(await page(true)).toContain('href="?q=chifon%20dress&amp;typo=0');
   expect(await page(false)).not.toContain("typo=0");
+});
+
+test("a search that found nothing offers its related searches inside the empty state", async () => {
+  const filters = { ...DEFAULT_FILTERS, q: "skirt", free: true };
+  const page = async (searches: { label: string; q: string }[]) =>
+    renderToStaticMarkup(
+      <AppRouterContext value={{} as AppRouterInstance}>
+        <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+          <FilterUrlProvider filters={filters}>
+            {
+              await Results({
+                related: Promise.resolve(searches),
+                outcome: Promise.resolve({
+                  state: "ok",
+                  ms: 1,
+                  result: { items: [], count: 0, semantic: "used" },
+                } as unknown as SearchOutcome),
+                rates: Promise.resolve({}),
+                settings: { ...DEFAULT_SETTINGS, ui: "en" },
+                filters,
+                names: { categories: [], avatars: [], tags: {} },
+                noSemantic: false,
+                navigation: false,
+              })
+            }
+          </FilterUrlProvider>
+        </Providers>
+      </AppRouterContext>,
+    );
+  const html = await page([{ label: "long skirt", q: "long skirt" }]);
+  // after the empty state's title, among its actions
+  const title = html.indexOf("No items found");
+  expect(title).toBeGreaterThan(-1);
+  expect(html.indexOf("Related searches")).toBeGreaterThan(title);
+  expect(html).toContain('href="?q=long%20skirt&amp;free=1"');
+  expect(await page([])).not.toContain("Related searches");
 });
 
 test("a client navigation's payload carries the whole page, a document's HTML only the first screen", async () => {
@@ -295,6 +404,7 @@ test("a client navigation's payload carries the whole page, a document's HTML on
     };
     return find(
       await Results({
+        related: Promise.resolve([]),
         outcome: Promise.resolve(outcome),
         rates: Promise.resolve({}),
         settings: DEFAULT_SETTINGS,
@@ -318,6 +428,7 @@ test("a search the stricter limit refused offers the check from a navigation as 
   const offer = { siteKey: "0x-site" };
   for (const navigation of [true, false]) {
     const shown = (await Results({
+      related: Promise.resolve([]),
       outcome: Promise.resolve({ state: "error", offer }),
       rates: Promise.resolve({}),
       settings: DEFAULT_SETTINGS,

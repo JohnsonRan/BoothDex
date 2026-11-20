@@ -133,6 +133,7 @@ export const ja: Dict = {
   "list.expandedWith":
     "検索語を翻訳した「{words}」に一致する商品も表示しています。",
   "list.withoutExpanded": "訳語を含めずに検索",
+  "list.related": "関連する検索",
   "fav.add": "お気に入り",
   "fav.needSignIn": "お気に入りにはログインが必要です",
   "fav.failed": "お気に入りを更新できませんでした",

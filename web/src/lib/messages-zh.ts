@@ -128,6 +128,7 @@ export const zh = {
   "list.searchInstead": "按原词搜索“{q}”",
   "list.expandedWith": "同时显示了与译词“{words}”匹配的商品。",
   "list.withoutExpanded": "不含译词搜索",
+  "list.related": "相关搜索",
   "fav.add": "收藏",
   "fav.needSignIn": "登录后才能收藏",
   "fav.failed": "收藏失败",

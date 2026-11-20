@@ -133,6 +133,7 @@ export const en: Dict = {
   "list.expandedWith":
     'Also showing matches for "{words}", translated from your search.',
   "list.withoutExpanded": "Search without translated matches",
+  "list.related": "Related searches",
   "fav.add": "Favourite",
   "fav.needSignIn": "Sign in to save favourites",
   "fav.failed": "Couldn't update favourites",

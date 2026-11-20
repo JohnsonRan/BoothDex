@@ -51,9 +51,11 @@ import {
   listCategories,
   readRailWidth,
   readSettings,
+  relatedSearches,
   type SearchOutcome,
   searchItems,
   tagLabels,
+  visitorHeaders,
 } from "@/lib/server-data";
 import type { Rates, Settings } from "@/lib/settings-core";
 import { Arrival } from "./arrival";
@@ -212,6 +214,11 @@ async function Catalog({
         // an empty answer counts what each clause, dropped alone, would find (the empty state, results.tsx)
         clauseParams(filters).map(([, params]) => params),
       );
+  const related = relatedSearches(
+    outcome,
+    filters,
+    visitorHeaders(await headers()),
+  );
   const [avatars, categories, tags, railWidth] = await Promise.all([
     listAvatars().catch(() => []),
     listCategories().catch(() => []),
@@ -342,6 +349,7 @@ async function Catalog({
               ) : (
                 <Results
                   outcome={outcome}
+                  related={related}
                   rates={rates}
                   settings={settings}
                   filters={filters}

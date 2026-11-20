@@ -133,6 +133,7 @@ export const ko: Dict = {
   "list.expandedWith":
     '검색어를 번역한 "{words}"에 해당하는 상품도 함께 표시합니다.',
   "list.withoutExpanded": "번역어 없이 검색",
+  "list.related": "관련 검색",
   "fav.add": "즐겨찾기",
   "fav.needSignIn": "즐겨찾기는 로그인 후 사용할 수 있습니다",
   "fav.failed": "즐겨찾기를 변경하지 못했습니다",

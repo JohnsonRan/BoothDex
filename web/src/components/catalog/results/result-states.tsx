@@ -29,8 +29,14 @@ import { useApiRecovery } from "@/lib/client-data";
 import { LOCALES } from "@/lib/settings-core";
 
 /** No results: with filters set, offer to drop one clause (`wider`: the ones that find something, most first) or
- *  all of them (the search itself stays). */
-export function EmptyResults({ wider }: { wider: Wider[] }) {
+ *  all of them (the search itself stays); `related`, the related searches' row, offers other words. */
+export function EmptyResults({
+  wider,
+  related,
+}: {
+  wider: Wider[];
+  related?: React.ReactNode;
+}) {
   const { t, ui } = useUi();
   const { filters, apply } = useFilterUrl();
   const narrowed = activeFilterCount(filters) > 0;
@@ -53,28 +59,31 @@ export function EmptyResults({ wider }: { wider: Wider[] }) {
             : undefined
       }
       actions={
-        wider.length > 0 ? (
+        wider.length > 0 || related ? (
           <VStack gap={4} hAlign="center">
-            <HStack gap={2} hAlign="center" wrap="wrap">
-              {wider.map(({ key, label, count }) => {
-                const n = t("title.count", {
-                  n: count.toLocaleString(LOCALES[ui]),
-                });
-                return (
-                  <Button
-                    key={key}
-                    label={t("list.dropClause", { clause: label, count: n })}
-                    tooltip={label}
-                    icon={<Icon icon="close" />}
-                    endContent={<Badge label={n} />}
-                    onClick={() => apply(CLAUSE_CLEAR[key])}
-                  >
-                    {label}
-                  </Button>
-                );
-              })}
-            </HStack>
+            {wider.length > 0 && (
+              <HStack gap={2} hAlign="center" wrap="wrap">
+                {wider.map(({ key, label, count }) => {
+                  const n = t("title.count", {
+                    n: count.toLocaleString(LOCALES[ui]),
+                  });
+                  return (
+                    <Button
+                      key={key}
+                      label={t("list.dropClause", { clause: label, count: n })}
+                      tooltip={label}
+                      icon={<Icon icon="close" />}
+                      endContent={<Badge label={n} />}
+                      onClick={() => apply(CLAUSE_CLEAR[key])}
+                    >
+                      {label}
+                    </Button>
+                  );
+                })}
+              </HStack>
+            )}
             {clear}
+            {related}
           </VStack>
         ) : (
           clear
@@ -125,9 +134,21 @@ export function SemanticNote({ text }: { text: string }) {
   );
 }
 
-/** A results note's "search instead" link (results.tsx): a plain click applies `patch` as a filter change, so the
- *  refresh shows its bar and keeps the place as any other does; the address of the same change serves a modified
- *  click or a new tab. */
+/** A link to the results after `patch`: a plain click applies it as a filter change, so the refresh shows its bar
+ *  and keeps the place as any other does; the address of the same change serves a modified click or a new tab. */
+function useApplyLink(patch: Partial<Filters>) {
+  const { filters, apply } = useFilterUrl();
+  return {
+    href: `?${filtersToQuery(patched(filters, patch))}`,
+    onClick: (e: React.MouseEvent) => {
+      if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      apply(patch);
+    },
+  };
+}
+
+/** A results note's "search instead" link (results.tsx). */
 export function SearchInstead({
   patch,
   label,
@@ -135,18 +156,17 @@ export function SearchInstead({
   patch: Partial<Filters>;
   label: string;
 }) {
-  const { filters, apply } = useFilterUrl();
+  return <Link {...useApplyLink(patch)}>{label}</Link>;
+}
+
+/** A related search (results.tsx): its query searched instead, the other filters kept. */
+export function RelatedSearchLink({ q, label }: { q: string; label: string }) {
   return (
-    <Link
-      href={`?${filtersToQuery(patched(filters, patch))}`}
-      onClick={(e) => {
-        if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
-          return;
-        e.preventDefault();
-        apply(patch);
-      }}
-    >
-      {label}
-    </Link>
+    <Button
+      {...useApplyLink({ q })}
+      label={label}
+      size="sm"
+      icon={<Icon icon="search" />}
+    />
   );
 }

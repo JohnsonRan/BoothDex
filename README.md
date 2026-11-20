@@ -82,7 +82,10 @@ docker compose pull && docker compose up -d
   the items only tagged スカート). Those items rank
   among the word matches at half weight; the results page names the tags and offers to search without them.
   Optional semantic search finds items by meaning across languages ("哥特裙" finds ゴスロリ dresses) and merges both
-  rankings.
+  rankings. A search it answered also offers up to four related searches above the results: BOOTH tags whose items
+  are closest to the query in meaning (ミニスカート and long skirt for "skirt"). One replaces the query's words and
+  keeps the avatar names and the filters. A search that found nothing offers them under "No items found" once the
+  query has been embedded.
 
 <details>
 <summary>Suggestions for "manuka": the avatar body, then matching items</summary>
