@@ -9,6 +9,21 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::text::fold;
 
+/// One row of the dictionary: a BOOTH tag, its value in each language of `expansion::LANGUAGES` (en, ja, ko, zh; none
+/// where the translation failed its checks) and its search-only keywords.
+pub struct TagRow {
+    pub tag: String,
+    pub values: [Option<String>; 4],
+    pub keywords: Vec<String>,
+}
+
+impl TagRow {
+    /// The tag with its words, as `TagWords::new` takes them.
+    pub fn words(&self) -> (String, Vec<String>) {
+        (self.tag.clone(), self.values.iter().flatten().chain(&self.keywords).cloned().collect())
+    }
+}
+
 /// One dictionary row, as search reads it.
 struct Entry {
     /// the tag folded with `fold`
@@ -46,10 +61,6 @@ impl TagWords {
             })
             .collect();
         Self { entries, fingerprint: hasher.finish() }
-    }
-
-    pub fn len(&self) -> usize {
-        self.entries.len()
     }
 
     /// Changes with any row, so a text index on disk built with other words is not reused (`Catalog::build_with_tag_words`).
@@ -117,6 +128,5 @@ mod tests {
         let c = TagWords::new([("a".to_owned(), vec!["x".to_owned()]), ("b".to_owned(), vec!["z".to_owned()])]);
         assert_eq!(a.fingerprint(), b.fingerprint());
         assert_ne!(a.fingerprint(), c.fingerprint());
-        assert_eq!(a.len(), 2);
     }
 }

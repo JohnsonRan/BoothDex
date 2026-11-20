@@ -7,7 +7,7 @@ use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::catalog::DocInput;
-use crate::tag_words::TagWords;
+use crate::tag_words::TagRow;
 
 /// Explicit typed representation of an item in API responses. The site's TypeScript types are generated from
 /// this and the types below (see `api_types`), so a change here that the site doesn't follow fails `tsc`.
@@ -337,12 +337,15 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
         .collect())
 }
 
+/// (tag, en, ja, ko, zh, keywords) of `booth_tag_translations`
+type TagRowColumns = (String, Option<String>, Option<String>, Option<String>, Option<String>, Vec<String>);
+
 /// The BOOTH tag dictionary, one query per snapshot: each tag with its translations and keywords.
-pub async fn load_tag_words(pool: &PgPool) -> Result<TagWords> {
-    let rows: Vec<(String, Vec<String>)> =
-        sqlx::query_as("select tag, array_remove(array[en, ja, ko, zh], null) || keywords from booth_tag_translations").fetch_all(pool).await?;
-    Ok(TagWords::new(rows))
+pub async fn load_tag_rows(pool: &PgPool) -> Result<Vec<TagRow>> {
+    let rows: Vec<TagRowColumns> = sqlx::query_as("select tag, en, ja, ko, zh, keywords from booth_tag_translations").fetch_all(pool).await?;
+    Ok(rows.into_iter().map(|(tag, en, ja, ko, zh, keywords)| TagRow { tag, values: [en, ja, ko, zh], keywords }).collect())
 }
+
 
 /// Item payloads in the given order. Card mode avoids loading details that result grids discard.
 pub async fn load_items(pool: &PgPool, ids: &[i64], card: bool) -> Result<Vec<ItemResponse>> {

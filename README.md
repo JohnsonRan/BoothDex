@@ -87,8 +87,9 @@ docker compose pull && docker compose up -d
   Optional semantic search finds items by meaning across languages ("哥特裙" finds ゴスロリ dresses) and merges both
   rankings. When the AI provider is slow, the results page shows the word matches with a note and reads the search
   once more a moment later; if the matches by meaning are still not ready, it says so and stops. A search it answered also offers up to four related searches above the results: BOOTH tags whose items
-  are closest to the query in meaning (ミニスカート and long skirt for "skirt"). One replaces the query's words and
-  keeps the avatar names and the filters. A search that found nothing offers them under "No items found" once the
+  are closest to the query in meaning (ミニスカート and long skirt for "skirt"), each in the site's language when the
+  tag dictionary has it, and never one of the query's words or a translation of the query. One replaces the query's
+  words and keeps the avatar names and the filters. A search that found nothing offers them under "No items found" once the
   query has been embedded.
 
 <details>
@@ -324,11 +325,14 @@ slot stayed busy.
 
 `/api/related` takes the same query string and returns up to four related searches in `searches`, each a `label`
 and the `q` that searches it, avatar names of the query kept. They are BOOTH tags whose items' mean embedding is
-nearest to the query's, minus tags that respell or translate the query, repeat one of its words, name an avatar,
-come from a few shops or from more than 5% of the items, seldom go with the query's own matches, or find nothing
-under the same filters, adult setting and view. It reads only the embedding a search already stored for the query
-and never asks the AI provider, so it returns none for a query without one, for an item link or number, and while
-the configured embeddings model is not the one the items were embedded with.
+nearest to the query's, minus tags that respell or translate the query (as the tag dictionary or the expansion
+reads it), repeat one of its words, name an avatar, come from a few shops or from more than 5% of the items, seldom
+go with the query's own matches, or find nothing under the same filters, adult setting and view. With `hl` (`en`,
+`ja`, `ko` or `zh`), `label` is the tag in that language when the tag dictionary has it and no other search or
+query word reads the same, and `q` uses that label when its words find items, else the tag. It reads only the
+embedding a search already stored for the query and never asks the AI provider, so it returns none for a query
+without one, for an item link or number, and while the configured embeddings model is not the one the items were
+embedded with.
 
 ## Acknowledgments
 

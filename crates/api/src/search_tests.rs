@@ -463,7 +463,7 @@ async fn check_related(pool: PgPool) {
     use axum::body::to_bytes;
     use axum::http::HeaderMap;
 
-    use crate::related::{AvatarNames, Related, TagCentroids};
+    use crate::related::{AvatarNames, Related, TagCentroids, TagLabels};
 
     // 1-20 are long skirts that fit Shinano, 21-40 pleated skirts, from five shops each and embedded near the query;
     // 41-440 are untagged, so neither tag is on 5% of the items
@@ -484,7 +484,10 @@ async fn check_related(pool: PgPool) {
          select i, 'Filler ' || i, 'shop ' || (i % 50), 'https://example.test', false, 'ok', now() from generate_series(41, 440) i;
          insert into avatars (slug, name_en) values ('shinano', 'Shinano') on conflict (slug) do nothing;
          insert into item_avatars (item_id, avatar_slug) select i, 'shinano' from generate_series(1, 20) i;
-         insert into app_settings (key, value) values ('embed_state', '{\"model\": \"test-model\"}');",
+         insert into app_settings (key, value) values ('embed_state', '{\"model\": \"test-model\"}');
+         insert into booth_tag_translations (tag, en, ja, ko, zh, source) values
+           ('long skirt', 'long skirt', 'ロングスカート', '롱스커트', '长裙', 'import'),
+           ('pleats', 'pleats', 'プリーツ', '플리츠', '百褶裙', 'import');",
     )
     .execute(&pool)
     .await
@@ -494,9 +497,11 @@ async fn check_related(pool: PgPool) {
         sqlx::query("insert into query_embeddings (model, query, embedding) values ('test-model', $1, $2::halfvec)")
             .bind(query).bind(unit(3, 1.0)).execute(&pool).await.unwrap();
     }
-    let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
+    let rows = db::load_tag_rows(&pool).await.unwrap();
+    let words = crate::tag_words::TagWords::new(rows.iter().map(crate::tag_words::TagRow::words));
+    let catalog = Catalog::build_with_tag_words(db::load_docs(&pool).await.unwrap(), &words, 0, None).unwrap();
     let centroids = TagCentroids::current(&pool, &catalog, None).await.unwrap();
-    let related = Related { avatars: AvatarNames::new(["Shinano"]), centroids };
+    let related = Related { avatars: AvatarNames::new(["Shinano"]), centroids, labels: TagLabels::new(&rows, catalog.tags()) };
     let state = app_with(pool.clone(), catalog, Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 20)]), related, 2);
     let ip = "203.0.113.50".parse().unwrap();
     let used = || sqlx::query_as::<_, (i32, chrono::DateTime<chrono::Utc>)>("select hits, last_used_at from query_embeddings where query = 'skirt'").fetch_one(&pool);
@@ -515,6 +520,9 @@ async fn check_related(pool: PgPool) {
 
     // nearest first; a model named in the query stays in each destination, which finds only what fits it
     assert_eq!(searches("q=skirt").await, json!([{ "label": "long skirt", "q": "long skirt" }, { "label": "pleats", "q": "pleats" }]));
+    // in the visitor's language (the site's hl), searched as such when its words find the items
+    assert_eq!(searches("q=skirt&hl=zh").await, json!([{ "label": "长裙", "q": "长裙" }, { "label": "百褶裙", "q": "百褶裙" }]));
+    assert_eq!(searches("q=Shinano%20skirt&hl=ja").await, json!([{ "label": "ロングスカート", "q": "Shinano ロングスカート" }]));
     assert_eq!(searches("q=Shinano%20skirt").await, json!([{ "label": "long skirt", "q": "Shinano long skirt" }]));
     // a misspelt model name is read as the model unless typo=0 asks for the words as typed
     assert_eq!(searches("q=Shinnano%20skirt").await, json!([{ "label": "long skirt", "q": "Shinnano long skirt" }]));
@@ -682,8 +690,10 @@ async fn search_finds_items_by_the_words_of_the_tag_dictionary(pool: PgPool) {
     .execute(&pool)
     .await
     .unwrap();
-    let words = db::load_tag_words(&pool).await.unwrap();
-    assert_eq!(words.len(), 2);
+    let rows = db::load_tag_rows(&pool).await.unwrap();
+    let ko: Vec<(&str, Option<&str>)> = rows.iter().map(|r| (r.tag.as_str(), r.values[2].as_deref())).collect();
+    assert!(ko.contains(&("テクスチャ", None)) && ko.contains(&("椅子", Some("의자"))) && ko.len() == 2, "{ko:?}");
+    let words = crate::tag_words::TagWords::new(rows.iter().map(crate::tag_words::TagRow::words));
     let catalog = Catalog::build_with_tag_words(db::load_docs(&pool).await.unwrap(), &words, 0, None).unwrap();
     let found = |q: &str| {
         let request = crate::search_request::SearchRequest::from(&crate::params::Params::parse(&format!("q={q}")));
