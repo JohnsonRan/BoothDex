@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 use serde::Serialize;
 
 use crate::expansion::Equivalents;
-use crate::search_request::{Adult, Range, SearchRequest, Sort, Support, View};
+use crate::search_request::{Adult, ItemReference, Range, SearchRequest, Sort, Support, View, item_reference};
 use crate::text::{TextDoc, TextIndex, TextMatches};
 
 pub const FEATURES: &[&str] = &["quest", "vrcfury", "ma", "liltoon", "poiyomi"];
@@ -142,6 +142,8 @@ struct TextHits {
     /// the BOOTH tags the query was also searched as, and the docs only they found
     expanded: Arc<[String]>,
     expansion: RoaringBitmap,
+    /// the item the query names by its link or number (`Catalog::referenced`)
+    pinned: Option<u32>,
 }
 
 impl Catalog {
@@ -153,6 +155,16 @@ impl Catalog {
     /// The BOOTH tags that translate `meaning`, the query without model names (expansion.rs).
     pub(crate) fn equivalents(&self, meaning: &str) -> Result<Arc<[String]>> {
         self.equivalents.of(meaning, &self.text)
+    }
+
+    /// The doc of the item `q` names by itself (`item_reference`): `Some(None)` for a link to an item the catalogue
+    /// does not have, `None` when `q` is text (a number that is no item's id included).
+    pub(crate) fn referenced(&self, q: &str) -> Option<Option<u32>> {
+        let doc = |id| self.doc_of.get(&id).copied();
+        match item_reference(q)? {
+            ItemReference::Link(id) => Some(doc(id)),
+            ItemReference::Number(id) => doc(id).map(Some),
+        }
     }
 
     pub fn build(docs: Vec<DocInput>, now: i64, text_dir: Option<&std::path::Path>) -> Result<Self> {
@@ -291,20 +303,23 @@ impl Catalog {
         ids.iter().filter_map(|id| self.doc_of.get(id)).copied().collect()
     }
 
-    fn constraints(&self, r: &SearchRequest, now: i64, text: Option<&RoaringBitmap>, favourites: Option<&RoaringBitmap>) -> Vec<(Group, RoaringBitmap)> {
+    fn constraints(&self, r: &SearchRequest, now: i64, text: Option<&TextHits>, favourites: Option<&RoaringBitmap>) -> Vec<(Group, RoaringBitmap)> {
         let mut out = Vec::new();
-        out.push((
-            Group::View,
-            match (r.view, favourites) {
-                (View::Favourites, Some(f)) => f.clone(), // favourites span both items and avatar bodies
-                (View::Avatars(support), _) => &match support {
-                    Support::All => self.avatar_items.clone(),
-                    Support::Unsupported => &self.avatar_items - &self.supported,
-                    Support::Supported => &self.avatar_items & &self.supported,
-                } - &self.relisted,
-                _ => &(&self.all - &self.avatar_items) - &self.relisted,
-            },
-        ));
+        let mut view = match (r.view, favourites) {
+            (View::Favourites, Some(f)) => f.clone(), // favourites span both items and avatar bodies
+            (View::Avatars(support), _) => &match support {
+                Support::All => self.avatar_items.clone(),
+                Support::Unsupported => &self.avatar_items - &self.supported,
+                Support::Supported => &self.avatar_items & &self.supported,
+            } - &self.relisted,
+            _ => &(&self.all - &self.avatar_items) - &self.relisted,
+        };
+        // the item the query names shows in every view, an avatar or a re-uploaded item too: the person asked for that
+        // id, and a re-uploaded item's dialog links the new listing
+        if let Some(d) = text.and_then(|t| t.pinned) {
+            view.insert(d);
+        }
+        out.push((Group::View, view));
         if let (View::Avatars(_), Some(g)) = (r.view, &r.gender) {
             out.push((Group::Gender, self.gender.any(std::slice::from_ref(g))));
         }
@@ -315,7 +330,7 @@ impl Catalog {
             Adult::Safe => out.push((Group::Adult, &self.all - &self.adult_only)), // "safe" keeps Suggestive, as VRCatalogue did
         }
         if let Some(t) = text {
-            out.push((Group::Text, t.clone()));
+            out.push((Group::Text, t.matches.hits.clone()));
         }
         let mut list = |g, ix: &Index, keys: &[String]| {
             if !keys.is_empty() {
@@ -368,8 +383,9 @@ impl Catalog {
         cs.iter().filter(|(g, _)| Some(*g) != skip).fold(self.all.clone(), |acc, (_, b)| acc & b)
     }
 
-    /// The text query's hits and scores, joined by the meaning-based matches when there are any, and by the matches
-    /// of the BOOTH tags that translate `expand` (expansion.rs) when it is given.
+    /// The text query's hits and scores, joined by the meaning-based matches when there are any, by the matches of
+    /// the BOOTH tags that translate `expand` (expansion.rs) when it is given, and by the item the query names by its
+    /// link or number, scored above them all.
     fn text_hits(&self, r: &SearchRequest, semantic: Option<Semantic>, expand: Option<&str>) -> Result<Option<TextHits>> {
         let Some(q) = r.q.as_deref() else { return Ok(None) };
         let TextMatches { mut hits, mut scores, typo } = self.text.search(q)?;
@@ -421,7 +437,12 @@ impl Catalog {
             hits.extend(translated);
             hits |= cat;
         }
-        Ok(Some(TextHits { matches: TextMatches { hits, scores, typo }, expanded, expansion }))
+        let pinned = self.referenced(q).flatten();
+        if let Some(d) = pinned {
+            hits.insert(d);
+            scores.insert(d, f32::INFINITY);
+        }
+        Ok(Some(TextHits { matches: TextMatches { hits, scores, typo }, expanded, expansion, pinned }))
     }
 
     /// How many items each of `wider` finds: requests that differ from `r` only in their filters (never in the
@@ -437,7 +458,7 @@ impl Catalog {
         expand: Option<&str>,
     ) -> Result<Vec<u64>> {
         let text = self.text_hits(r, semantic, expand)?;
-        Ok(wider.iter().map(|w| self.intersect(&self.constraints(w, now, text.as_ref().map(|t| &t.matches.hits), favourites), None).len()).collect())
+        Ok(wider.iter().map(|w| self.intersect(&self.constraints(w, now, text.as_ref(), favourites), None).len()).collect())
     }
 
     /// `semantic`: item ids nearest to the query by meaning (see search.rs); they join the text hits and, when
@@ -453,7 +474,7 @@ impl Catalog {
         count_facets: bool,
     ) -> Result<SearchResult> {
         let text = self.text_hits(r, semantic, expand)?;
-        let cs = self.constraints(r, now, text.as_ref().map(|t| &t.matches.hits), favourites);
+        let cs = self.constraints(r, now, text.as_ref(), favourites);
         let hits = self.intersect(&cs, None);
 
         // disjunctive facets: each group's counts ignore that group's own selection
@@ -749,6 +770,37 @@ mod tests {
         f.sort();
         assert_eq!(f, [1, 3]);
         assert_eq!(c.docs_for(&[1]).len(), 1); // still known, so its page and gallery load
+    }
+
+    #[test]
+    fn an_item_named_by_its_link_or_number_ranks_first_among_the_hits() {
+        // 10001 is named and re-uploaded; 10002 and 10003 mention its number, 10003 re-uploaded too; 10004 is adult;
+        // 10005 is an avatar the site does not support
+        let mut d = (10_001..=10_005).map(doc).collect::<Vec<_>>();
+        for (doc, title) in d.iter_mut().zip(["Ribbon", "Set for 10001", "Old set for 10001", "Adult ribbon", "Avatar"]) {
+            doc.title = title.into();
+        }
+        d[0].relisted = true;
+        d[2].relisted = true;
+        d[3].is_adult = true;
+        d[4].booth_category = Some(AVATAR_CATEGORY.into());
+        let c = Catalog::build(d, 0, None).unwrap();
+        let found = |q: &str| c.search_plain(q, 0, None).unwrap().ids;
+        // the named item first, then what the number finds as text; of the re-uploaded items only the named one shows
+        assert_eq!(found("q=10001"), [10_001, 10_002]);
+        assert_eq!(found("q=https://booth.pm/ja/items/10001"), [10_001]);
+        // it shows in every view: an avatar among the items, an unsupported avatar among the supported ones, an item
+        // that is no favourite among the favourites
+        assert_eq!((found("q=10005"), found("q=10005&v=avatars")), (vec![10_005], vec![10_005]));
+        assert_eq!(c.search_plain("q=10001&v=favourites", 0, Some(&RoaringBitmap::new())).unwrap().ids, [10_001]);
+        // a link names an item the catalogue lacks too; a number that is no item's id is text
+        assert_eq!((c.referenced("booth.pm/ja/items/10009"), c.referenced("10009")), (Some(None), None));
+        // filters and the adult setting apply to it as to any hit, and an empty search counts it without a filter
+        assert!(found("q=10004").is_empty());
+        assert_eq!(found("q=10004&adult=include"), [10_004]);
+        let q = "q=10001&free=1&without=free";
+        let (r, wider) = crate::search::search_and_wider(&c, q, &request(q), 0, None, None, None).unwrap();
+        assert_eq!((r.count, wider), (0, vec![2]));
     }
 
     #[test]

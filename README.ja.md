@@ -52,6 +52,7 @@ docker compose pull && docker compose up -d
 - フィルター行には検索欄とフィルターごとのセレクターが並び、入りきらないフィルターは「+N」ボタンにまとめられます。
 - 検索欄は入力に合わせて最近の検索、アバター、商品、ショップ、タグを候補として表示します。`Ctrl+K` (macOS では `Cmd+K`) で検索欄にフォーカスできます。
 - 検索語は 1 語ずつトークンとして表示され、個別に削除できます。アバターやカテゴリとして認識された語は 1 つのトークンにまとまり、先頭にアバターの画像またはカテゴリのアイコンが付きます。
+- BOOTH の商品リンク (`booth.pm/<lang>/items/<id>` または `<shop>.booth.pm/items/<id>`) または 5 桁以上の商品番号で検索すると、表示中のビューにかかわらずその商品を先頭に表示します。商品の一覧にもアバター本体が表示され、新しい商品として再出品された商品 (ほかの検索には表示されません) も表示されます。フィルターと年齢制限の設定はそのまま適用され、関連度 (検索の既定の並び順) 以外で並べ替えた場合はほかの結果と同じく並び順に従います。この検索は AI プロバイダーに送信されず、訳語のタグでも検索しません。商品 ID に一致しない番号はテキストとして検索します。
 - 日本語の全文検索には Lindera (IPADIC) を使用します。全角と半角、ひらがなとカタカナは区別せずに検索します (“しなの” でシナノもヒット)。3 語以内の英字の検索がどのテキストにも一致しない場合は、5 文字以上の英字だけの単語ごとに 1 文字の誤りを許し、タイトル、タグ、作者名を検索し直します (“shinnano” で Shinano もヒット)。タグと説明文の大半は日本語で、翻訳されるのはタイトルだけなので、3 語以内の検索は、それを訳した BOOTH タグ (最大 3 つ) でも検索します。訳語とみなすのは、タイトルが検索語に一致する商品に付いたタグのうち、検索語の言語のタイトルを持つ商品の中で、タグ自身がタイトルに一致する商品と検索語がタイトルに一致する商品が大きく重なるものです (“skirt” で、スカートのタグだけが付いた商品もヒット)。これらの商品はキーワード一致の半分の重みで並びます。検索結果のページはそのタグを示し、訳語を含めない検索を提案します。オプションのセマンティック検索を有効にすると、言語をまたいで意味の近い商品 (“哥特裙” でゴスロリ衣装がヒットするなど) を検索し、キーワード検索の結果と統合して並べ替えます。
 
 <details>
@@ -152,7 +153,7 @@ flowchart LR
 ```mermaid
 flowchart TD
   subgraph query["ハイブリッド検索 (/api/search)"]
-    q["検索クエリ + 絞り込み条件"] --> parse["アバター名・カテゴリ語句の抽出"]
+    q["検索クエリ + 絞り込み条件"] --> parse["商品リンク・商品番号、アバター名・カテゴリ語句の抽出"]
     parse --> kw["Lindera (IPADIC) + Tantivy<br/>+ 検索語を訳したタグ<br/>& Roaring ビットマップ絞り込み"]
     parse -. "セマンティック検索有効時" .-> embq["検索ベクトル取得<br/>(メモリ → DB キャッシュ → AI API、上限 2.5 秒)"]
     embq -.-> ann["pgvector HNSW 近傍検索"]
@@ -231,7 +232,7 @@ cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 
 `/api/search` は VRCatalogue 互換のクエリパラメーターを受け付けます: `v q sort dir page pageSize adult avatars authors tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。その他のエンドポイントとして `/api/avatars`、`/api/authors`、`/api/tags`、`/api/booth-tags` (`?q=&offset=&limit=`)、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、および `/api/rss?<検索クエリ>` があります。
 
-VRCatalogue との違い: 機能 (Features) のファセット件数が選択中のカテゴリを反映します。「人気」(Trending) 順は経過時間で減衰させた「スキ!」数で算出します。`range` パラメーターでは `7d`、`30d`、`90d` も指定できます。`fields=card` でカード表示用の軽量データを取得できます (bio、variations、booth_tags、linked_avatars、categories を空にし、translations はタイトルのみ保持、booth_images/media は最大 2 枚に制限。デフォルト応答は完全なまま。完全な記録は `/api/items?ids=` で取得)。`expandedWith` は、検索語を訳して一緒に検索した BOOTH タグを示します (それだけで見つかった商品が結果に含まれる場合)。`xl=0` を付けると検索語だけで検索します。
+VRCatalogue との違い: 機能 (Features) のファセット件数が選択中のカテゴリを反映します。「人気」(Trending) 順は経過時間で減衰させた「スキ!」数で算出します。`range` パラメーターでは `7d`、`30d`、`90d` も指定できます。`fields=card` でカード表示用の軽量データを取得できます (bio、variations、booth_tags、linked_avatars、categories を空にし、translations はタイトルのみ保持、booth_images/media は最大 2 枚に制限。デフォルト応答は完全なまま。完全な記録は `/api/items?ids=` で取得)。`expandedWith` は、検索語を訳して一緒に検索した BOOTH タグを示します (それだけで見つかった商品が結果に含まれる場合)。`xl=0` を付けると検索語だけで検索します。`q` が BOOTH の商品リンク、または 5 桁以上の商品番号の場合は、その商品 (再出品されたものを含む) をどのビューでも関連度順の先頭に返し、検索ベクトルは取得しません (`semantic` は `skipped`)。
 
 ## 謝辞
 

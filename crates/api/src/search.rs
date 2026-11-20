@@ -85,7 +85,7 @@ pub(crate) enum SemanticStatus {
     Off,
     /// the provider is slow or failing
     Unavailable,
-    /// not needed (sem=0 from a later page, or the query only names models)
+    /// not needed (sem=0 from a later page, the query only names models, or it names an item by its link or number)
     Skipped,
 }
 
@@ -160,6 +160,9 @@ pub(crate) async fn search(
     // embedding, so "shinano short hair" adds short hair that fits Shinano, not other Shinano items
     let q = req.q.as_deref().unwrap_or_default();
     let snap = s.snap();
+    // a BOOTH item link, or the number of an item, names that item (catalog.rs): it is neither embedded nor searched
+    // as the tags that translate it
+    let names_item = snap.catalog.referenced(q).is_some();
     // typo=0 (the site's "search instead for"): every word counts as known, so none is read as a misspelt model
     let typos = p.get("typo").as_deref() != Some("0");
     let (meaning, named, name_typo) = snap.avatars.split_names(q, |w| !typos || snap.catalog.knows_word(w));
@@ -168,7 +171,7 @@ pub(crate) async fn search(
     trace.step("prepare");
     let embed_plan = match req.q {
         Some(_) if p.get("sem").as_deref() == Some("0") => EmbedPlan::Skipped,
-        Some(_) if meaning.is_empty() => EmbedPlan::Skipped,
+        Some(_) if meaning.is_empty() || names_item => EmbedPlan::Skipped,
         Some(_) => semantic_vector(s.clone(), ip, &meaning, &mut trace).await,
         None => EmbedPlan::Off,
     };
@@ -197,7 +200,7 @@ pub(crate) async fn search(
     let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
         .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models, rest: &meaning });
     // xl=0 (the site's "without translated matches"): the words are not also searched as the tags that translate them
-    let expand = (p.get("xl").as_deref() != Some("0")).then_some(meaning.as_str());
+    let expand = (!names_item && p.get("xl").as_deref() != Some("0")).then_some(meaning.as_str());
     let search_start = Instant::now();
     let (r, wider_counts) =
         tokio::task::block_in_place(|| search_and_wider(&s.snap().catalog, raw, &req, catalog_now, favourites.as_ref(), semantic, expand))?;
