@@ -4,11 +4,13 @@ import { ApiError, errorKey } from "@/lib/api";
 import { API_ERRORS } from "@/lib/messages";
 import { guestbookError } from "./messages";
 import {
+  BODY_LINES,
   BODY_MAX,
   bodyLength,
   bodyOk,
   NICKNAME_MAX,
   nicknameOk,
+  normalBody,
 } from "./rules";
 
 test("the form takes what the server's validate takes", () => {
@@ -36,6 +38,23 @@ test("the form takes what the server's validate takes", () => {
   // trimmed as Rust trims: the BOM stays and is refused, U+0085 goes
   expect(nicknameOk("\ufeffAnn")).toBe(false);
   expect(nicknameOk("Ann\u0085")).toBe(true);
+});
+
+// the same cases as a_message_keeps_ten_lines_and_one_blank_line_at_a_time in crates/api/src/guestbook_tests.rs
+test("a message keeps at most 10 lines, one blank line at a time", () => {
+  expect(normalBody("a\n\n\n\nb")).toBe("a\n\nb");
+  expect(normalBody("a\r\n \r\n\t\r\n\u3000\nb")).toBe("a\n\nb");
+  expect(normalBody("a\u2028b\u2029\u2029\u2029c")).toBe("a\nb\n\nc");
+  expect(normalBody("\n\n a \n\n")).toBe("a");
+  // two letters and 498 line breaks are two lines and a blank one
+  expect(normalBody(`a${"\n".repeat(498)}b`)).toBe("a\n\nb");
+  const lines = (n: number) =>
+    Array.from({ length: n }, (_, i) => i + 1).join("\n");
+  expect(bodyOk(lines(BODY_LINES))).toBe(true);
+  expect(bodyOk(lines(BODY_LINES + 1))).toBe(false);
+  // blank lines count once each run: ten lines with one blank line between each pair would be nineteen
+  expect(bodyOk(lines(BODY_LINES).replaceAll("\n", "\n\n\n"))).toBe(false);
+  expect(bodyOk(lines(5).replaceAll("\n", "\n\n\n"))).toBe(true);
 });
 
 /** The characters of a `const NAME: &[(char, char)]` table in the server's guestbook.rs. */

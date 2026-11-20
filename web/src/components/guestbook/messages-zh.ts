@@ -5,7 +5,7 @@ export const guestbookZh = {
   body: "留言",
   bodyCount: "{n}/{max} 个字符",
   nicknameRule: "昵称需为 1 到 {max} 个字符，且不含不可见字符",
-  bodyRule: "留言需为 1 到 {max} 个字符，且不含不可见字符",
+  bodyRule: "留言需为 1 到 {max} 个字符、不超过 {lines} 行，且不含不可见字符",
   post: "发布",
   confirmTitle: "发布这条留言?",
   confirmDesc: "发布后不能修改。",
@@ -21,7 +21,8 @@ export const guestbookZh = {
   retry: "重试",
   "status.completed": "已完成",
   "status.not_planned": "未计划",
-  "error.entry": "昵称需为 1 到 24 个字符，留言需为 1 到 500 个字符",
+  "error.entry":
+    "昵称需为 1 到 24 个字符，留言需为 1 到 500 个字符、不超过 10 行",
   "error.tooMany": "发布过于频繁，请稍后再试",
   "error.failed": "操作失败，请重试",
 };

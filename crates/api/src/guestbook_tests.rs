@@ -20,6 +20,25 @@ fn entries_are_trimmed_and_bounded() {
     }
 }
 
+/// The same cases as "a message keeps at most 10 lines, one blank line at a time" in
+/// web/src/components/guestbook/rules.test.ts, so the form and the API agree.
+#[test]
+fn a_message_keeps_ten_lines_and_one_blank_line_at_a_time() {
+    let kept = |body: &str| validate("Ann", body).map(|(_, body)| body);
+    assert_eq!(kept("a\n\n\n\nb").unwrap(), "a\n\nb");
+    assert_eq!(kept("a\r\n \r\n\t\r\n\u{3000}\nb").unwrap(), "a\n\nb");
+    assert_eq!(kept("a\u{2028}b\u{2029}\u{2029}\u{2029}c").unwrap(), "a\nb\n\nc");
+    assert_eq!(kept("\n\n a \n\n").unwrap(), "a");
+    // two letters and 498 line breaks are two lines and a blank one
+    assert_eq!(kept(&format!("a{}b", "\n".repeat(498))).unwrap(), "a\n\nb");
+    let lines = |n: usize| (1..=n).map(|i| i.to_string()).collect::<Vec<_>>().join("\n");
+    assert!(kept(&lines(BODY_LINES)).is_ok());
+    assert!(matches!(kept(&lines(BODY_LINES + 1)), Err(Refusal::BadGuestbookEntry)));
+    // blank lines count once each run: ten lines with one blank line between each pair would be nineteen
+    assert!(matches!(kept(&lines(BODY_LINES).replace('\n', "\n\n\n")), Err(Refusal::BadGuestbookEntry)));
+    assert!(kept(&lines(5).replace('\n', "\n\n\n")).is_ok());
+}
+
 #[test]
 fn nothing_invisible_is_taken() {
     // an emoji family keeps its zero-width joiners, a heart its variation selector and a flag its tags

@@ -5,6 +5,7 @@
 
 export const NICKNAME_MAX = 24;
 export const BODY_MAX = 500;
+export const BODY_LINES = 10;
 
 const size = (s: string) => [...s].length;
 // a nickname's: the line and paragraph separators break a line as a line feed does
@@ -30,8 +31,17 @@ export const nicknameOk = (v: string) => {
   return shown(s, NICKNAME_MAX) && !CONTROL.test(s);
 };
 
-/** The message as the server keeps it: line breaks as line feeds, trimmed. */
-export const normalBody = (v: string) => trim(v.replaceAll("\r\n", "\n"));
+// a line made only of white space, as Rust's `char::is_whitespace` reads it
+const BLANK_LINE = /^\p{White_Space}*$/u;
+
+/** The message as the server keeps it (guestbook.rs `normal_body`): each line break a line feed (the line and
+ *  paragraph separators break a line as one does), trimmed, and each run of blank lines one empty line. */
+export const normalBody = (v: string) =>
+  trim(v.replace(/\r\n|[\u2028\u2029]/g, "\n"))
+    .split("\n")
+    .map((line) => (BLANK_LINE.test(line) ? "" : line))
+    .filter((line, i, lines) => line !== "" || lines[i - 1] !== "")
+    .join("\n");
 
 /** The message's length as the server and the database count it, in Unicode scalar values: the form's counter. */
 export const bodyLength = (v: string) => size(normalBody(v));
@@ -39,5 +49,9 @@ export const bodyLength = (v: string) => size(normalBody(v));
 /** Whether the message is one the server takes. */
 export const bodyOk = (v: string) => {
   const s = normalBody(v);
-  return shown(s, BODY_MAX) && !BODY_CONTROL.test(s);
+  return (
+    shown(s, BODY_MAX) &&
+    !BODY_CONTROL.test(s) &&
+    s.split("\n").length <= BODY_LINES
+  );
 };

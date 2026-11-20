@@ -29,11 +29,13 @@ import { useTurnstile } from "@/lib/turnstile";
 import { MESSAGE_STYLE } from "./message-style";
 import { guestbookError, useGuestbookT } from "./messages";
 import {
+  BODY_LINES,
   BODY_MAX,
   bodyLength,
   bodyOk,
   NICKNAME_MAX,
   nicknameOk,
+  normalBody,
 } from "./rules";
 
 /** the action the API checks the token for (crates/api/src/guestbook.rs ACTION) */
@@ -119,7 +121,10 @@ export function PostForm({
         rows={5}
         status={
           bodyBad
-            ? { type: "error", message: t("bodyRule", { max: BODY_MAX }) }
+            ? {
+                type: "error",
+                message: t("bodyRule", { max: BODY_MAX, lines: BODY_LINES }),
+              }
             : undefined
         }
         value={body}
@@ -153,7 +158,7 @@ export function PostForm({
               <VStack gap={1}>
                 <Text type="label">{nickname.trim()}</Text>
                 <Text type="body" as="p" style={MESSAGE_STYLE}>
-                  {body.trim()}
+                  {normalBody(body)}
                 </Text>
               </VStack>
             </LayoutContent>

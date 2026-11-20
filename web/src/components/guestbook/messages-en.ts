@@ -9,7 +9,7 @@ export const guestbookEn: GuestbookDict = {
   nicknameRule:
     "Your nickname must be 1 to {max} characters, with no invisible characters.",
   bodyRule:
-    "Your message must be 1 to {max} characters, with no invisible characters.",
+    "Your message must be 1 to {max} characters in at most {lines} lines, with no invisible characters.",
   post: "Post",
   confirmTitle: "Post this message?",
   confirmDesc: "You can't change it after you post it.",
@@ -26,7 +26,7 @@ export const guestbookEn: GuestbookDict = {
   "status.completed": "Completed",
   "status.not_planned": "Not planned",
   "error.entry":
-    "Your nickname must be 1 to 24 characters and your message 1 to 500 characters.",
+    "Your nickname must be 1 to 24 characters and your message 1 to 500 characters in at most 10 lines.",
   "error.tooMany": "You're posting too often. Try again later.",
   "error.failed": "Something went wrong. Try again.",
 };

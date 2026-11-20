@@ -7,7 +7,8 @@ export const guestbookKo: GuestbookDict = {
   body: "메시지",
   bodyCount: "{n}/{max}자",
   nicknameRule: "닉네임은 보이지 않는 문자 없이 1~{max}자여야 해요.",
-  bodyRule: "메시지는 보이지 않는 문자 없이 1~{max}자여야 해요.",
+  bodyRule:
+    "메시지는 보이지 않는 문자 없이 {lines}줄 이내, 1~{max}자여야 해요.",
   post: "게시",
   confirmTitle: "이 메시지를 게시할까요?",
   confirmDesc: "게시한 후에는 바꿀 수 없어요.",
@@ -23,7 +24,7 @@ export const guestbookKo: GuestbookDict = {
   retry: "다시 시도",
   "status.completed": "완료됨",
   "status.not_planned": "계획되지 않음",
-  "error.entry": "닉네임은 1~24자, 메시지는 1~500자여야 해요.",
+  "error.entry": "닉네임은 1~24자, 메시지는 10줄 이내 1~500자여야 해요.",
   "error.tooMany": "너무 자주 게시하고 있어요. 나중에 다시 시도하세요.",
   "error.failed": "문제가 발생했어요. 다시 시도하세요.",
 };
