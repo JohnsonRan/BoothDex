@@ -128,6 +128,8 @@ export function GuestbookDrawer({
   };
   const posted = (entry: GuestbookEntry) =>
     setPage((p) => p && { ...p, entries: [entry, ...p.entries] });
+  // the form gives way to the closed state, as the next open would show it
+  const closed = () => setPage((p) => p && { ...p, site_key: null });
 
   let body: React.ReactNode;
   if (!page && failed)
@@ -163,7 +165,11 @@ export function GuestbookDrawer({
     body = (
       <VStack gap={6}>
         {page.site_key ? (
-          <PostForm siteKey={page.site_key} onPosted={posted} />
+          <PostForm
+            siteKey={page.site_key}
+            onPosted={posted}
+            onClosed={closed}
+          />
         ) : (
           <EmptyState
             headingLevel={3}

@@ -72,9 +72,12 @@ export function tokenToSend(
 export function PostForm({
   siteKey,
   onPosted,
+  onClosed,
 }: {
   siteKey: string;
   onPosted: (entry: GuestbookEntry) => void;
+  /** the API answered that the guestbook is not open (an admin cleared a Turnstile key meanwhile) */
+  onClosed: () => void;
 }) {
   const t = useGuestbookT();
   const vt = useVerificationT();
@@ -132,11 +135,13 @@ export function PostForm({
       toast({ body: t("posted"), uniqueID: "guestbook" });
     } catch (e) {
       setConfirming(false);
+      const why = guestbookError(e);
       toast({
         type: "error",
-        body: verificationRefused(e) ? vt("refused") : t(guestbookError(e)),
+        body: verificationRefused(e) ? vt("refused") : t(why),
         uniqueID: "guestbook",
       });
+      if (why === "closed") onClosed();
     } finally {
       verification.reset();
       setBusy(false);

@@ -16,7 +16,7 @@ test("the message's counter counts as the server does, not TextArea's characters
         settings={{ ...DEFAULT_SETTINGS, ui: "en" }}
         messages={MESSAGES.en}
       >
-        <PostForm siteKey="0x-site" onPosted={() => {}} />
+        <PostForm siteKey="0x-site" onPosted={() => {}} onClosed={() => {}} />
       </Providers>
     </AppRouterContext>,
   );
