@@ -22,6 +22,7 @@ export const SERVER_ONLY: readonly MessageKey[] = [
   "list.withoutExpanded",
   "list.related",
   "list.semanticUnavailable",
+  "list.semanticPending",
   "page.nav",
   "page.prev",
   "page.next",

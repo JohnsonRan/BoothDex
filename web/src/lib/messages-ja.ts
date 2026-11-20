@@ -127,6 +127,8 @@ export const ja: Dict = {
   "trace.step.items": "商品の読み込み",
   "list.semanticUnavailable":
     "意味による検索は一時的に利用できないため、キーワードのみで検索しました。少し時間をおいて再検索すると通常は戻ります。",
+  "list.semanticPending":
+    "意味による検索の結果をまだ準備しているため、いまはキーワードのみで検索しています。まもなく結果が更新されます。",
   "list.typoTolerant":
     "入力どおりの語では一致しなかったため、語による一致は長めの語ごとにつづりの誤りを 1 か所まで許しています。",
   "list.searchInstead": "「{q}」をそのまま検索",

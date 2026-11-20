@@ -127,6 +127,8 @@ export const en: Dict = {
   "trace.step.items": "Read items",
   "list.semanticUnavailable":
     "Search by meaning is unavailable right now, so these results match your words only. Searching again in a moment usually brings it back.",
+  "list.semanticPending":
+    "Matches by meaning are still being prepared, so these results match your words only. They will update in a moment.",
   "list.typoTolerant":
     "Your words matched nothing as typed, so word matches here allow one typo in each longer word.",
   "list.searchInstead": 'Search instead for "{q}"',

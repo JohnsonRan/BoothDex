@@ -124,6 +124,8 @@ export const zh = {
   "trace.step.items": "读取商品",
   "list.semanticUnavailable":
     "语义搜索暂时不可用，这次只按关键词查找。稍后再搜一次通常就会恢复。",
+  "list.semanticPending":
+    "语义搜索的结果还在准备中，这次先只按关键词查找。结果稍后会自动更新。",
   "list.typoTolerant": "没有找到完全匹配的关键词，已按相近的拼写为你查找。",
   "list.searchInstead": "按原词搜索“{q}”",
   "list.expandedWith": "同时显示了同义词“{words}”的匹配商品。",

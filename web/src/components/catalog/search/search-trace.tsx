@@ -55,7 +55,7 @@ export function SearchTrace({
       ? cached
         ? "trace.mode.cached"
         : "trace.mode.semantic"
-      : semantic === "unavailable"
+      : semantic === "unavailable" || semantic === "pending"
         ? "trace.mode.unavailable"
         : "trace.mode.words";
   let sum = 0;

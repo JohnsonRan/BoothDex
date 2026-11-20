@@ -9,12 +9,13 @@ import { FilterUrlProvider } from "@/components/catalog/filter/filter-url";
 import { KeepResults } from "@/components/catalog/refresh";
 import { Providers } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
-import { DEFAULT_FILTERS, type Filters } from "@/lib/catalog";
-import { browserMessages, translator } from "@/lib/dictionaries";
+import { DEFAULT_FILTERS, type Filters, filtersToQuery } from "@/lib/catalog";
+import { browserMessages, MESSAGES, translator } from "@/lib/dictionaries";
 import type { SearchOutcome } from "@/lib/server-data";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
 import { FIRST_TILES } from "./item-tile";
 import { ResultPages } from "./result-pages";
+import { PendingNote } from "./result-states";
 import { ExpansionNote, RelatedSearches, Results, TypoNote } from "./results";
 import { ResultsGrid } from "./results-grid";
 
@@ -439,5 +440,60 @@ test("a search the stricter limit refused offers the check from a navigation as 
     })) as { type: unknown; props: Record<string, unknown> };
     expect(shown.type).toBe(KeepResults);
     expect(shown.props).toEqual({ failure: "error", offer });
+  }
+});
+
+test("a pending search gets the note keyed by its search, with results or without", async () => {
+  const filters = { ...DEFAULT_FILTERS, q: "silky strands" };
+  // the PendingNote elements in the tree Results returns
+  const notes = async (semantic: string, count: number) => {
+    const found: { key: string | null; props: Record<string, unknown> }[] = [];
+    const walk = (node: unknown) => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== "object" || !("props" in node)) return;
+      const el = node as {
+        type: unknown;
+        key: string | null;
+        props: Record<string, unknown>;
+      };
+      if (el.type === PendingNote) found.push(el);
+      walk(el.props.children);
+      walk(el.props.related);
+    };
+    walk(
+      await Results({
+        related: Promise.resolve([]),
+        outcome: Promise.resolve({
+          state: "ok",
+          ms: 1,
+          result: {
+            items: count ? [item] : [],
+            count,
+            semantic,
+            page: 1,
+            totalPages: 1,
+            pageSize: 20,
+          },
+        } as unknown as SearchOutcome),
+        rates: Promise.resolve({}),
+        settings: { ...DEFAULT_SETTINGS, ui: "en" },
+        filters,
+        names: { categories: [], avatars: [], tags: {} },
+        noSemantic: false,
+        navigation: false,
+      }),
+    );
+    return found;
+  };
+  for (const count of [0, 3]) {
+    const [note, ...more] = await notes("pending", count);
+    expect(more).toHaveLength(0);
+    expect(note?.key).toBe(filtersToQuery(filters));
+    expect(note?.props).toEqual({
+      pending: MESSAGES.en["list.semanticPending"],
+      unavailable: MESSAGES.en["list.semanticUnavailable"],
+    });
+    expect(await notes("unavailable", count)).toHaveLength(0);
+    expect(await notes("used", count)).toHaveLength(0);
   }
 });
