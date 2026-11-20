@@ -7,6 +7,7 @@ use crate::catalog::FEATURES;
 use crate::params::Params;
 use crate::text::fold_width;
 
+#[derive(Clone)]
 pub struct SearchRequest {
     /// never blank
     pub q: Option<String>,

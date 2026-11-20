@@ -58,6 +58,9 @@ impl Index {
     pub fn len(&self, key: &str) -> u64 {
         self.0.get(key).map_or(0, |b| b.len())
     }
+    pub(crate) fn get(&self, key: &str) -> Option<&RoaringBitmap> {
+        self.0.get(key)
+    }
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.0.keys()
     }
@@ -157,6 +160,57 @@ impl Catalog {
         self.equivalents.of(meaning, &self.text)
     }
 
+    /// The folded BOOTH tags (expansion.rs), which the related searches (related.rs) read too.
+    pub(crate) fn tags(&self) -> &Equivalents {
+        &self.equivalents
+    }
+
+    pub(crate) fn doc(&self, id: i64) -> Option<u32> {
+        self.doc_of.get(&id).copied()
+    }
+
+    /// How many items search can show: all but the re-uploaded ones.
+    pub(crate) fn listed(&self) -> u64 {
+        self.all.len() - self.relisted.len()
+    }
+
+    /// The listed docs `q` matches by its words or as a substring (`TextIndex::search`).
+    pub(crate) fn word_hits(&self, q: &str) -> Result<RoaringBitmap> {
+        Ok(self.text.search(q)?.hits - &self.relisted)
+    }
+
+    /// The listed docs whose title has every word of `q` (`TextIndex::title_hits`).
+    pub(crate) fn title_hits(&self, q: &str) -> Result<RoaringBitmap> {
+        Ok(self.text.title_hits(q)? - &self.relisted)
+    }
+
+    /// The docs `r`'s filters, adult setting and view let through, whatever its text.
+    pub(crate) fn allowed(&self, r: &SearchRequest, now: i64, favourites: Option<&RoaringBitmap>) -> RoaringBitmap {
+        self.intersect(&self.constraints(r, now, None, favourites), None)
+    }
+
+    /// The docs that fit one of `models`.
+    pub(crate) fn fitting(&self, models: &[String]) -> RoaringBitmap {
+        self.avatars.any(models)
+    }
+
+    /// Whether `r` finds anything by its words, without meaning-based matches or the categories its words name: its
+    /// text matches, those of `rest` among the items fitting the `models` its query names, and with `expand` the
+    /// matches of the tags translating it, under its filters, adult setting and view.
+    pub(crate) fn finds_by_words(
+        &self,
+        r: &SearchRequest,
+        now: i64,
+        favourites: Option<&RoaringBitmap>,
+        models: &[String],
+        rest: &str,
+        expand: Option<&str>,
+    ) -> Result<bool> {
+        let semantic = (!models.is_empty()).then_some(Semantic { ids: &[], categories: &[], models, rest });
+        let text = self.text_hits(r, semantic, expand)?;
+        Ok(!self.intersect(&self.constraints(r, now, text.as_ref(), favourites), None).is_empty())
+    }
+
     /// The doc of the item `q` names by itself (`item_reference`): `Some(None)` for a link to an item the catalogue
     /// does not have, `None` when `q` is text (a number that is no item's id included).
     pub(crate) fn referenced(&self, q: &str) -> Option<Option<u32>> {
@@ -216,7 +270,7 @@ impl Catalog {
                 fingerprint,
             )?,
             // built from the BOOTH tags below
-            equivalents: Equivalents::build(&Index::default(), &RoaringBitmap::new(), 0, Default::default()),
+            equivalents: Equivalents::build(&Index::default(), &RoaringBitmap::new(), &[], Default::default()),
         };
 
         let mut by_title: Vec<(String, u32)> = Vec::with_capacity(n);
@@ -277,7 +331,11 @@ impl Catalog {
         for (rank, (_, i)) in by_title.into_iter().enumerate() {
             c.title_rank[i as usize] = rank as u32;
         }
-        c.equivalents = Equivalents::build(&c.booth_tags, &c.relisted, n, titled);
+        let mut shop_of = vec![0; n];
+        for (shop, (_, docs)) in c.authors.entries().enumerate() {
+            docs.iter().for_each(|d| shop_of[d as usize] = shop as u32);
+        }
+        c.equivalents = Equivalents::build(&c.booth_tags, &c.relisted, &shop_of, titled);
         Ok(c)
     }
 

@@ -228,7 +228,7 @@ flowchart TD
 |---|---|
 | `crates/core` | Shared types, BOOTH client and PostgreSQL `migrations/`, applied automatically by services on startup |
 | `crates/limit` | The client IP behind the reverse proxy and the per-IP token bucket, shared by `api` and `imgproxy` |
-| `crates/api` | Search API. Facets are Roaring bitmaps in memory; the Tantivy text index lives on disk (`INDEX_DIR`) and is reused across restarts; page payloads come from PostgreSQL |
+| `crates/api` | Search API. Facets are Roaring bitmaps in memory; the Tantivy text index lives on disk (`INDEX_DIR`) and is reused across restarts; page payloads come from PostgreSQL. Related searches compare the stored query embedding with one centroid per BOOTH tag (the mean embedding of its items), built at startup and carried across reloads for up to 6 hours |
 | `crates/worker` | Job runner across 3 lanes: `incremental` (new items), `sweep` (full listing), `details`, `refresh`, `enrich`, `localize` and `embed` (AI). `worker run` is the daemon; `worker once <kind> [params-json]` runs a single job |
 | `crates/imgproxy` | `/b/{size}/...` (item images), `/u/{size}/...` (shop icons), `/a/{file}` (BOOTH static images) and `/f/{size}/{uuid}/{file}` (pixiv Factory drawings, scaled down to the size by imgproxy) transcode and cache images as AVIF; `/v/{sha1}.webp` serves archived images |
 | `web` | Next.js website and `/admin` console |
@@ -237,7 +237,8 @@ flowchart TD
 
 On a 32-thread machine with 216k items, searches take 2–10 ms inside the API and 5–40 ms per request (~550 req/s
 across 32 concurrent clients). On Linux containers, `api` uses ~0.4–1 GB RSS steady (plus the
-memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while atomically reloading a new catalogue (`mem_limit: 3g`).
+memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while atomically reloading a new catalogue (`mem_limit: 3g`). The tag centroids take 30 MB for
+the 7,396 tags of the development catalogue (an estimated 50 MB for production's ~12,000), one copy across reloads.
 
 ## Development
 
@@ -288,7 +289,7 @@ cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 `/api/search` accepts a VRCatalogue-compatible query string: `v q sort dir page pageSize adult avatars authors
 tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`. Other endpoints:
 `/api/avatars`, `/api/authors`, `/api/tags` and `/api/booth-tags` (`?q=&offset=&limit=`), `/api/categories`,
-`/api/items?ids=`, `/api/palette?q=` and `/api/rss?<search query>`.
+`/api/items?ids=`, `/api/palette?q=`, `/api/related?<search query>` and `/api/rss?<search query>`.
 
 Differences from VRCatalogue: feature facet counts respect the selected category; Trending is likes decayed by
 age; `range` also accepts `7d`, `30d` and `90d`; `fields=card` opts into compact card records (bio, variations,
@@ -303,6 +304,14 @@ was read as an avatar; `typo=0` reads no word as a misspelt avatar, while a name
 among the results; `xl=0` searches the words alone. A `q` that is a BOOTH item link, or an item's number of five or
 more digits, ranks that item first by relevance in any view, relisted or not, and is not embedded (`semantic` is
 `skipped`).
+
+`/api/related` takes the same query string and returns up to four related searches in `searches`, each a `label`
+and the `q` that searches it, avatar names of the query kept. They are BOOTH tags whose items' mean embedding is
+nearest to the query's, minus tags that respell or translate the query, name an avatar, come from a few shops or
+from more than 5% of the items, seldom go with the query's own matches, or find nothing under the same filters,
+adult setting and view. It reads only the embedding a search already stored for the query and never asks the AI
+provider, so it returns none for a query without one, for an item link or number, and while the configured
+embeddings model is not the one the items were embedded with.
 
 ## Acknowledgments
 

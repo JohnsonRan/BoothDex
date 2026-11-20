@@ -146,6 +146,9 @@ pub struct Limits {
     pub search: Tiered,
     /// /api/palette: 2/40, today's 5/40 (above the search field's 250 ms debounce, web search-suggest.tsx)
     pub palette: Tiered,
+    /// /api/related, which the results page asks once per search: 2 req/s, burst 30, today's numbers for search. Not
+    /// tiered, so a refusal offers no check: the page only hides its row of related searches
+    pub related: RateLimiter,
     /// /api/rss: 0.5 req/s, burst 20
     pub rss: RateLimiter,
     /// /api/items: 1 req/s, burst 20
@@ -180,6 +183,7 @@ impl Default for Limits {
         Self {
             search: Tiered::new((1.0, 30.0), (2.0, 30.0)),
             palette: Tiered::new((2.0, 40.0), (5.0, 40.0)),
+            related: RateLimiter::new(2.0, 30.0, 8192),
             rss: RateLimiter::new(0.5, 20.0, 8192),
             items: RateLimiter::new(1.0, 20.0, 8192),
             item: Tiered::new((1.0, 15.0), (4.0, 40.0)),

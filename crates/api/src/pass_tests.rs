@@ -39,6 +39,7 @@ fn limits() -> Limits {
         lookup: tiered(2.0, 4.0),
         items: RateLimiter::new(SLOW, 3.0, 64),
         rss: RateLimiter::new(SLOW, 3.0, 64),
+        related: RateLimiter::new(SLOW, 3.0, 64),
         verify: RateLimiter::new(SLOW, 3.0, 64),
         ..Limits::default()
     }
@@ -54,8 +55,8 @@ const TIERED: [(&str, usize, usize); 6] = [
     ("/api/guestbook", 2, 4),
 ];
 
-/// Routes that keep one bucket whatever the switch: the multi-item read and the feed, burst 3 each.
-const UNTIERED: [&str; 2] = ["/api/items?ids=1+2", "/api/rss"];
+/// Routes that keep one bucket whatever the switch: the multi-item read, the feed and the related searches, burst 3 each.
+const UNTIERED: [&str; 3] = ["/api/items?ids=1+2", "/api/rss", "/api/related?q=x"];
 
 /// A stand-in for siteverify that counts the tokens it is asked about. "pass" passes for this form, "guestbook" for
 /// another and "in" for sign-in; "failing" is answered HTTP 500, "no-secret" as a wrong secret key is and "broken" as

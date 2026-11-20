@@ -287,6 +287,31 @@ pub(crate) struct EmbedProvider {
     pub(crate) model: String,
 }
 
+fn embed_cache_key(model: &str, text: &str) -> String {
+    format!("{model}\n{text}")
+}
+
+async fn stored_embedding(pool: &sqlx::PgPool, model: &str, text: &str) -> Option<Vec<f32>> {
+    sqlx::query_scalar("select embedding::vector::real[] from query_embeddings where model = $1 and query = $2")
+        .bind(model)
+        .bind(text)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| eprintln!("query embedding cache: {e}"))
+        .ok()
+        .flatten()
+}
+
+/// The embedding a search stored for `q` (process memory, then the query_embeddings table), read only: it counts no
+/// use and never asks the provider.
+pub(crate) async fn stored_query_embedding(s: &AppState, model: &str, q: &str) -> Option<Vec<f32>> {
+    let text = normalize_query(q);
+    match s.embed_cache.get(&embed_cache_key(model, &text)) {
+        Some(v) => Some(v),
+        None => stored_embedding(&s.pool, model, &text).await,
+    }
+}
+
 /// Embedding of a search text: process memory, then the query_embeddings table, then the provider.
 pub(crate) async fn query_embedding(
     s: Arc<AppState>,
@@ -298,20 +323,12 @@ pub(crate) async fn query_embedding(
     use boothdex_core::embed;
     let EmbedProvider { base_url: base, api_key: key, model } = provider;
     let text = normalize_query(q);
-    let cache_key = format!("{model}\n{text}");
+    let cache_key = embed_cache_key(&model, &text);
     if let Some(v) = s.embed_cache.get(&cache_key) {
         trace.step("embed_memory");
         return Some(v);
     }
-    let stored: Option<Vec<f32>> = sqlx::query_scalar("select embedding::vector::real[] from query_embeddings where model = $1 and query = $2")
-        .bind(&model)
-        .bind(&text)
-        .fetch_optional(&s.pool)
-        .await
-        .map_err(|e| eprintln!("query embedding cache: {e}"))
-        .ok()
-        .flatten();
-    if let Some(v) = stored {
+    if let Some(v) = stored_embedding(&s.pool, &model, &text).await {
         trace.step("embed_db");
         s.embed_cache.insert(cache_key, v.clone());
         // usage bookkeeping for pruning; the search doesn't wait for it

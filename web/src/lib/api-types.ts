@@ -72,6 +72,22 @@ export type TraceStep = { step: string, ms: number, };
 
 export type Timing = { searchMs: number, totalMs: number, };
 
+export type RelatedResponse = { 
+/**
+ * best first; empty when there is nothing to offer
+ */
+searches: Array<RelatedSearch>, };
+
+export type RelatedSearch = { 
+/**
+ * the tag as most items spell it
+ */
+label: string, 
+/**
+ * the query that searches it: the model names of the asked query, then the tag
+ */
+q: string, };
+
 export type GuestbookPage = { 
 /**
  * newest first

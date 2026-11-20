@@ -137,6 +137,7 @@ pub(crate) fn test_state(pool: PgPool) -> Arc<AppState> {
             crate::Snapshot {
                 catalog: crate::catalog::Catalog::build(Vec::new(), 0, None).unwrap(),
                 category_phrases: Default::default(),
+                related: Default::default(),
                 avatars: crate::Lookup::new(Vec::new()),
                 authors: crate::Lookup::new(Vec::new()),
                 tags: crate::Lookup::new(Vec::new()),

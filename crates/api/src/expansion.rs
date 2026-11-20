@@ -40,12 +40,17 @@ const CACHE_CAP: u64 = 2000;
 /// The languages of item titles, in the bit order of `DocInput::title_languages`.
 pub(crate) const LANGUAGES: [&str; 4] = ["en", "ja", "ko", "zh"];
 
-/// The BOOTH tags of a snapshot that can translate a query, and the equivalents found so far.
+/// The BOOTH tags of a snapshot that can translate a query or be offered as a related search (related.rs), and the
+/// equivalents found so far.
 pub(crate) struct Equivalents {
     /// per tag (folded with `fold`, on at least `MIN_ITEMS` listed items): its most common spelling, ties by the
     /// spelling, so a query shows the same words on every page
     names: Vec<String>,
     items: Vec<u64>,
+    /// per tag: the shops its listed items come from
+    shops: Vec<u32>,
+    /// folded tag -> its index in `names`
+    keys: FxHashMap<String, u32>,
     /// the tags of doc `d`: `ids[starts[d]..starts[d + 1]]`
     starts: Vec<u32>,
     ids: Vec<u32>,
@@ -56,17 +61,20 @@ pub(crate) struct Equivalents {
 }
 
 impl Equivalents {
-    /// From `raw` (spelling -> docs) over `docs` docs, and the docs `titled` in each of `LANGUAGES`; re-uploaded
-    /// items count for nothing.
-    pub(crate) fn build(raw: &Index, relisted: &RoaringBitmap, docs: usize, titled: [RoaringBitmap; 4]) -> Self {
+    /// From `raw` (spelling -> docs), the shop of each doc (`shop_of`, numbered from 0), and the docs `titled` in each
+    /// of `LANGUAGES`; re-uploaded items count for nothing.
+    pub(crate) fn build(raw: &Index, relisted: &RoaringBitmap, shop_of: &[u32], titled: [RoaringBitmap; 4]) -> Self {
+        let docs = shop_of.len();
         let mut folded: FxHashMap<String, Vec<(&String, &RoaringBitmap)>> = FxHashMap::default();
         for (spelling, b) in raw.entries() {
             folded.entry(fold(spelling)).or_default().push((spelling, b));
         }
         let listed = |b: &RoaringBitmap| b.len() - b.intersection_len(relisted);
         let mut doc_tags: Vec<Vec<u32>> = vec![Vec::new(); docs];
-        let (mut names, mut items) = (Vec::new(), Vec::new());
-        for spellings in folded.into_values() {
+        let (mut names, mut items, mut shops, mut keys) = (Vec::new(), Vec::new(), Vec::new(), FxHashMap::default());
+        // per shop, the last tag that counted it
+        let mut counted = vec![u32::MAX; shop_of.iter().max().map_or(0, |&s| s as usize + 1)];
+        for (key, spellings) in folded {
             let tagged = match spellings.as_slice() {
                 [(_, b)] if listed(b) < MIN_ITEMS => continue,
                 [(_, b)] => *b - relisted,
@@ -79,9 +87,17 @@ impl Equivalents {
             let (_, name) = spellings.iter().map(|(s, b)| (listed(b), *s)).max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(a.1))).expect("one spelling");
             names.push(name.clone());
             items.push(tagged.len());
+            keys.insert(key, id);
+            let mut n = 0;
             for d in &tagged {
                 doc_tags[d as usize].push(id);
+                let shop = &mut counted[shop_of[d as usize] as usize];
+                if *shop != id {
+                    *shop = id;
+                    n += 1;
+                }
             }
+            shops.push(n);
         }
         let mut starts = Vec::with_capacity(docs + 1);
         starts.push(0);
@@ -90,11 +106,41 @@ impl Equivalents {
             ids.extend(t);
             starts.push(ids.len() as u32);
         }
-        Self { names, items, starts, ids, titled: titled.map(|b| b - relisted), cache: moka::sync::Cache::new(CACHE_CAP) }
+        Self { names, items, shops, keys, starts, ids, titled: titled.map(|b| b - relisted), cache: moka::sync::Cache::new(CACHE_CAP) }
     }
 
-    fn tags_of(&self, d: u32) -> &[u32] {
+    /// The tags of doc `d`, as indexes.
+    pub(crate) fn tags_of(&self, d: u32) -> &[u32] {
         &self.ids[self.starts[d as usize] as usize..self.starts[d as usize + 1] as usize]
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.names.len()
+    }
+
+    /// The index of a tag folded with `fold`.
+    pub(crate) fn id(&self, key: &str) -> Option<u32> {
+        self.keys.get(key).copied()
+    }
+
+    /// Each folded tag with its index.
+    pub(crate) fn keys(&self) -> impl Iterator<Item = (&str, u32)> {
+        self.keys.iter().map(|(k, &t)| (k.as_str(), t))
+    }
+
+    /// The tag's most common spelling.
+    pub(crate) fn name(&self, t: u32) -> &str {
+        &self.names[t as usize]
+    }
+
+    /// The listed items that carry it.
+    pub(crate) fn items(&self, t: u32) -> u64 {
+        self.items[t as usize]
+    }
+
+    /// The shops of those items.
+    pub(crate) fn shops(&self, t: u32) -> u32 {
+        self.shops[t as usize]
     }
 
     /// The BOOTH tags that translate `meaning` (the query without model names), at most `MAX_EQUIVALENTS`, best

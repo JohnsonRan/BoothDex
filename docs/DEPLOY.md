@@ -68,7 +68,7 @@ flowchart TD
 
 Memory per container, measured in production on 2026-11-20: 222,883 items on 4 GB RAM with 2 GB swap (921 MB of it used, no active paging), `api` up 31 hours through 62 catalogue reloads. Anonymous memory is the process's own; page cache is file data the kernel reclaims first under the limit.
 
-- `api` (`mem_limit: 3g`): 949 MB anonymous and 180 MB page cache; at most 2,542 MB of both together, reloads included, while a reload holds the old and the new catalogue at once. The memory-mapped Tantivy index lives in page cache.
+- `api` (`mem_limit: 3g`): 949 MB anonymous and 180 MB page cache; at most 2,542 MB of both together, reloads included, while a reload holds the old and the new catalogue at once. The memory-mapped Tantivy index lives in page cache. Related searches (added after this measurement) keep one centroid per BOOTH tag: 30 MB for the 7,396 tags of the development catalogue, an estimated 50 MB for production's ~12,000. Both catalogues share one copy during a reload.
 - `postgres` (no limit): 1,192 MB, almost all page cache (6 MB anonymous).
 - `imgproxy` (`mem_limit: 1g`): about 0.76 GB, almost all cold and swapped out (729 MB in swap, 31 MB resident).
 - `web` (no limit): 149 MB resident (92 MB anonymous, 57 MB page cache) and 121 MB in swap.
@@ -203,6 +203,7 @@ Set an embeddings model in `/admin` (or `AI_EMBED_MODEL`), served by the same Op
 
 - **Indexing**: The hourly `embed` job embeds items missing a vector (~70 items/s during development, ~1 hour and a few dollars for ~200k items on `Qwen3-Embedding-4B` at $0.02/M tokens), then only processes new or edited items. Whenever an `enrich` chain finishes, it immediately queues `embed` so enriched items pick up translated English titles without waiting for the hourly tick.
 - **Query caching & fallback**: Each unseen query string makes one provider call (median 0.7 s, p95 1.2 s in development) and caches the vector in memory and in `query_embeddings` (text only, no user/session data; pruned after 90 days unused, capped at 50,000 entries). Repeat searches take milliseconds. If the provider exceeds 2.5 s or errors, `/api/search` falls back to keyword search alone and surfaces a notice above results. Vectors add ~0.5 GB in PostgreSQL plus ~0.5 GB for the HNSW index.
+- **Related searches**: the results page asks `/api/related` once per search for up to four BOOTH tags near the query's meaning. It reads only the vector a search already stored and never calls the provider. `api` builds one centroid per tag from every item vector at startup and again at the first reload after 6 hours or after the worker records a new embeddings model (`app_settings` key `embed_state`); other reloads reuse the centroids. A build streams every item vector from PostgreSQL: 1.0 s for 33,739 vectors on the development host; production holds about 212,000, not yet measured. While the configured model differs from the one the centroids were built from, the row stays hidden.
 
 ## 5. Putting a proxy in front
 

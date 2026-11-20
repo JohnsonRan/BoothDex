@@ -177,14 +177,14 @@ flowchart TD
 |---|---|
 | `crates/core` | 共通型、BOOTH クライアント、および起動時に自動適用される `migrations/` 内の PostgreSQL スキーマ |
 | `crates/limit` | リバースプロキシ越しのクライアント IP と IP ごとのトークンバケット。`api` と `imgproxy` が共用します |
-| `crates/api` | 検索 API。絞り込みにはメモリ上の Roaring ビットマップを使用し、Tantivy 全文検索インデックスはディスク (`INDEX_DIR`) に保持して再起動時も再利用します。ページ表示用の商品データは PostgreSQL から取得します |
+| `crates/api` | 検索 API。絞り込みにはメモリ上の Roaring ビットマップを使用し、Tantivy 全文検索インデックスはディスク (`INDEX_DIR`) に保持して再起動時も再利用します。ページ表示用の商品データは PostgreSQL から取得します。関連検索は、保存済みの検索ベクトルを BOOTH タグごとの重心 (そのタグが付いた商品のベクトルの平均) と比較します。重心は起動時に作成し、再読み込みをまたいで最大 6 時間使い続けます |
 | `crates/worker` | 3 レーン構成のジョブランナー: `incremental` (新着取得)、`sweep` (全件巡回)、`details`、`refresh`、`enrich`、`localize`、`embed` (AI)。`worker run` でデーモン起動、`worker once <kind> [params-json]` で単発実行します |
 | `crates/imgproxy` | `/b/{size}/...` (商品画像)、`/u/{size}/...` (ショップアイコン)、`/a/{file}` (BOOTH の静的画像)、`/f/{size}/{uuid}/{file}` (pixiv Factory の画像。imgproxy がサイズに合わせて縮小) を AVIF に変換・キャッシュ配信し、`/v/{sha1}.webp` でアーカイブ画像を配信します |
 | `web` | Next.js フロントエンドおよび `/admin` 管理画面 |
 | `deploy` | Dockerfile、`docker-bake.hcl`、`compose.yaml`、および `.env.example` |
 | `scripts` | データバンドル作成ツール、モック AI サーバー |
 
-32 スレッド環境で約 21.6 万件の商品を検索した場合、API 内部の処理時間は 2～10 ミリ秒、リクエスト全体では 5～40 ミリ秒で応答し、32 クライアント同時接続時に毎秒約 550 リクエストを処理します。Linux コンテナー上での `api` のメモリ使用量は通常時で約 0.4～1 GB (メモリマップされた Tantivy インデックスはページ キャッシュ側)、カタログ再読み込み時のピークで約 1.8 GB です (`mem_limit: 3g`)。
+32 スレッド環境で約 21.6 万件の商品を検索した場合、API 内部の処理時間は 2～10 ミリ秒、リクエスト全体では 5～40 ミリ秒で応答し、32 クライアント同時接続時に毎秒約 550 リクエストを処理します。Linux コンテナー上での `api` のメモリ使用量は通常時で約 0.4～1 GB (メモリマップされた Tantivy インデックスはページ キャッシュ側)、カタログ再読み込み時のピークで約 1.8 GB です (`mem_limit: 3g`)。タグの重心は開発用カタログの 7,396 タグで 30 MB (本番環境の約 12,000 タグでは推定 50 MB) で、再読み込み中も 1 組だけ保持します。
 
 ## 開発
 
@@ -230,9 +230,11 @@ cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 
 ## API
 
-`/api/search` は VRCatalogue 互換のクエリパラメーターを受け付けます: `v q sort dir page pageSize adult avatars authors tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。その他のエンドポイントとして `/api/avatars`、`/api/authors`、`/api/tags`、`/api/booth-tags` (`?q=&offset=&limit=`)、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、および `/api/rss?<検索クエリ>` があります。
+`/api/search` は VRCatalogue 互換のクエリパラメーターを受け付けます: `v q sort dir page pageSize adult avatars authors tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。その他のエンドポイントとして `/api/avatars`、`/api/authors`、`/api/tags`、`/api/booth-tags` (`?q=&offset=&limit=`)、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、`/api/related?<検索クエリ>`、および `/api/rss?<検索クエリ>` があります。
 
 VRCatalogue との違い: 機能 (Features) のファセット件数が選択中のカテゴリを反映します。「人気」(Trending) 順は経過時間で減衰させた「スキ!」数で算出します。`range` パラメーターでは `7d`、`30d`、`90d` も指定できます。`fields=card` でカード表示用の軽量データを取得できます (bio、variations、booth_tags、linked_avatars、categories を空にし、translations はタイトルのみ保持、booth_images/media は最大 2 枚に制限。デフォルト応答は完全なまま。完全な記録は `/api/items?ids=` で取得)。`expandedWith` は、検索語を訳して一緒に検索した BOOTH タグを示します (それだけで見つかった商品が結果に含まれる場合)。`xl=0` を付けると検索語だけで検索します。`q` が BOOTH の商品リンク、または 5 桁以上の商品番号の場合は、その商品 (再出品されたものを含む) をどのビューでも関連度順の先頭に返し、検索ベクトルは取得しません (`semantic` は `skipped`)。
+
+`/api/related` は同じクエリパラメーターを受け付け、関連検索を最大 4 件 `searches` で返します。各件は表示名 `label` と、それを検索する `q` (検索語に含まれるアバター名を残したもの) です。商品の埋め込みベクトルの平均が検索語のベクトルに最も近い BOOTH タグのうち、検索語の表記揺れや訳語、アバター名を含むタグ、少数のショップだけが付けているタグや全商品の 5% を超える商品に付いているタグ、検索語の検索結果にほとんど付いていないタグ、同じ絞り込み条件・成人向け設定・ビューで何も見つからないタグを除きます。検索時に保存済みの検索ベクトルだけを読み、AI プロバイダーには問い合わせません。そのため、保存済みのベクトルがない検索語、商品リンクや商品番号、および設定中の埋め込みモデルが商品のベクトルを作成したモデルと異なる間は、何も返しません。
 
 ## 謝辞
 

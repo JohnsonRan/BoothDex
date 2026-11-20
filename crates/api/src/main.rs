@@ -22,6 +22,7 @@ mod lookups;
 mod palette;
 mod params;
 mod pass;
+mod related;
 mod rss;
 mod search;
 mod search_request;
@@ -60,7 +61,7 @@ use state::AppState;
 
 async fn build_state(pool: PgPool, admin_names: Option<Vec<String>>) -> Result<AppState> {
     let version = catalog_version(&pool).await?;
-    let snap = build_snapshot(&pool, version).await?;
+    let snap = build_snapshot(&pool, version, None).await?;
     let state = AppState::new(
         pool,
         snap,
@@ -86,9 +87,10 @@ fn app(state: Arc<AppState>) -> Router {
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), lookup_rate_limit));
 
     let routes = Router::new()
-        // public: health, search, the feed, the palette and item records
+        // public: health, search, related searches, the feed, the palette and item records
         .route("/api/health", get(|| async { Json(json!({ "ok": true })) }))
         .route("/api/search", get(search::search))
+        .route("/api/related", get(related::related))
         .route("/api/rss", get(rss_feed))
         .route("/api/palette", get(palette))
         .route("/api/items", get(items_by_id))
