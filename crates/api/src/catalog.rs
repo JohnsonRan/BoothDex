@@ -481,9 +481,6 @@ impl Catalog {
         }
         let expansion: RoaringBitmap = translated.keys().copied().collect();
         if semantic.is_some() || !translated.is_empty() {
-            let mut translated: Vec<(u32, f32)> = translated.into_iter().collect();
-            translated.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
-            let translated: Vec<u32> = translated.into_iter().map(|(d, _)| d).collect();
             let (ids, categories) = semantic.map_or((&[][..], &[][..]), |sem| (sem.ids, sem.categories));
             let docs: Vec<u32> = ids.iter().filter_map(|id| self.doc_of.get(id)).copied().filter(|d| fits.as_ref().is_none_or(|f| f.contains(*d))).collect();
             let mut cat = self.cats.any(categories);
@@ -492,7 +489,7 @@ impl Catalog {
             }
             scores = fuse(&scores, &docs, &translated, &cat);
             hits.extend(docs);
-            hits.extend(translated);
+            hits |= &expansion;
             hits |= cat;
         }
         let pinned = self.referenced(q).flatten();
@@ -627,24 +624,35 @@ pub struct Semantic<'a> {
 /// half: they add recall, but a word match is the stronger signal, so such an item ranks with text hits around
 /// 60th place unless two lists agree on it. Items in a category the query names get a little more than the best
 /// meaning-only match: below the top text hits, above meaning-only ones.
-/// shortcut: category-only items tie with each other (then by load order); rank them by meaning if that shows.
-fn fuse(text: &FxHashMap<u32, f32>, semantic: &[u32], translated: &[u32], category: &RoaringBitmap) -> FxHashMap<u32, f32> {
+/// shortcut: category-only items tie with each other (then by trending); rank them by meaning if that shows.
+fn fuse(text: &FxHashMap<u32, f32>, semantic: &[u32], translated: &FxHashMap<u32, f32>, category: &RoaringBitmap) -> FxHashMap<u32, f32> {
     const K: f32 = 60.0;
-    let mut ranked: Vec<(u32, f32)> = text.iter().map(|(d, s)| (*d, *s)).collect();
-    ranked.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
-    let mut out = FxHashMap::with_capacity_and_hasher(ranked.len() + semantic.len() + translated.len(), Default::default());
-    for (rank, (d, _)) in ranked.iter().enumerate() {
-        *out.entry(*d).or_default() += 1.0 / (K + rank as f32 + 1.0);
+    let mut out = FxHashMap::with_capacity_and_hasher(text.len() + semantic.len() + translated.len(), Default::default());
+    for (d, rank) in ranks(text) {
+        *out.entry(d).or_default() += 1.0 / (K + rank as f32 + 1.0);
     }
-    for list in [semantic, translated] {
-        for (rank, d) in list.iter().enumerate() {
-            *out.entry(*d).or_default() += 0.5 / (K + rank as f32 + 1.0);
-        }
+    // meaning-based matches come nearest first, so their rank is their place
+    for (d, rank) in semantic.iter().enumerate().map(|(rank, d)| (*d, rank)).chain(ranks(translated)) {
+        *out.entry(d).or_default() += 0.5 / (K + rank as f32 + 1.0);
     }
     for d in category {
         *out.entry(d).or_default() += 0.5 / K;
     }
     out
+}
+
+/// Each doc's rank by score, best first. Equal scores share the rank of the first of them (0, 1, 1, 3), so docs
+/// scored alike stay tied after fusion and the relevance order puts the trending one first.
+fn ranks(scores: &FxHashMap<u32, f32>) -> Vec<(u32, usize)> {
+    let mut sorted: Vec<(u32, f32)> = scores.iter().map(|(d, s)| (*d, *s)).collect();
+    sorted.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+    let mut rank = 0;
+    sorted.iter().enumerate().map(|(i, &(d, s))| {
+        if i > 0 && s < sorted[i - 1].1 {
+            rank = i;
+        }
+        (d, rank)
+    }).collect()
 }
 
 #[cfg(test)]
@@ -801,13 +809,13 @@ mod tests {
     #[test]
     fn fusion_rewards_agreement_and_keeps_semantic_only_hits() {
         let text: FxHashMap<u32, f32> = [(1, 9.0), (2, 5.0), (3, 1.0)].into_iter().collect();
-        let f = fuse(&text, &[3, 7], &[], &RoaringBitmap::new());
+        let f = fuse(&text, &[3, 7], &FxHashMap::default(), &RoaringBitmap::new());
         // in both lists beats first in one list; a semantic-only hit stays below the text hits
         assert!(f[&3] > f[&1]);
         assert!(f[&7] > 0.0 && f[&7] < f[&2]);
         assert_eq!(f.len(), 4);
         // a category hit joins, ranks above meaning-only matches, and lifts a text hit inside the category
-        let g = fuse(&text, &[7], &[], &[2, 8].into_iter().collect());
+        let g = fuse(&text, &[7], &FxHashMap::default(), &[2, 8].into_iter().collect());
         assert!(g[&8] > g[&7] && g[&8] < g[&1]);
         assert!(g[&2] > g[&1]);
     }
@@ -1033,6 +1041,26 @@ mod tests {
             r.ids.into_iter().filter(|id| words.contains(id)).collect::<Vec<_>>()
         };
         assert_eq!(order(Some("skirt")), order(None));
+    }
+
+    #[test]
+    fn equal_scores_rank_by_trending_after_fusion() {
+        // the fixture's likes rise with the id, against the load order; 51 and 52 match only by meaning
+        let c = crate::expansion::tests::catalogue();
+        let semantic = Semantic { ids: &[51, 52], categories: &[], models: &[], rest: "skirt" };
+        let order = |q: &str, sem, expand, among: &[i64]| {
+            let r = c.search(&request(&format!("q={q}&sort=relevant&pageSize=100")), 0, None, sem, expand, true).unwrap();
+            r.ids.into_iter().filter(|id| among.contains(id)).collect::<Vec<_>>()
+        };
+        let words: Vec<i64> = (1..=15).chain(26..=33).collect();
+        let plain = order("skirt", None, None, &words);
+        assert_eq!(plain[..3], [7, 6, 5]); // 1-7 score alike, so trending decides
+        // fused with meaning-based matches or with the translation's matches, word matches keep the text order
+        assert_eq!(order("skirt", Some(semantic), None, &words), plain);
+        assert_eq!(order("skirt", None, Some("skirt"), &words), plain);
+        // the matches found only through スカート keep the order a search of スカート gives them
+        let translated: Vec<i64> = (16..=25).chain(34..=50).collect();
+        assert_eq!(order("skirt", None, Some("skirt"), &translated), order("スカート", None, None, &translated));
     }
 
     #[test]
