@@ -10,9 +10,9 @@ flowchart LR
     proxy -- "WEB_LISTEN<br/>(127.0.0.1:3100)" --> web
 
     subgraph compose["Compose Network (boothdex)"]
-      web["web<br/>Next.js :3100"] -- "/api/*" --> api["api (Rust)<br/>:3000 · mem_limit 4g"]
+      web["web<br/>Next.js :3100"] -- "/api/*" --> api["api (Rust)<br/>:3000 · mem_limit 3g"]
       web -- "/img/*" --> imgproxy["imgproxy (Rust)<br/>:3001 · mem_limit 1g"]
-      worker["worker (Rust)<br/>daemon · mem_limit 512m"]
+      worker["worker (Rust)<br/>daemon · mem_limit 256m"]
 
       api --> pg[("postgres<br/>pgvector:pg17")]
       worker --> pg
@@ -61,10 +61,18 @@ flowchart TD
 
 | Resource | Minimum | Recommended | Why |
 |---|---|---|---|
-| RAM | **6 GB** (or 4 GB + 4 GB swap) | **8 GB** | On Linux, `api` uses ~0.4–1 GB steady (plus the memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while hot-reloading a new catalogue (`mem_limit: 4g`); `postgres` ~1 GB; `imgproxy` up to 1 GB; `worker` <512 MB; `web` ~200 MB |
+| RAM | **4 GB** + 2 GB swap | **6 GB** | Production runs on the minimum without active paging; 6 GB keeps the reload peak and the caches in RAM. Per container: see below |
 | CPU | 2 vCPU | 4 vCPU | AVIF transcoding and Tantivy index rebuilds are CPU-bound |
 | Disk | 40 GB SSD | 60 GB+ SSD | Database ~3 GB (~4 GB with embeddings), archived images ~1 GB, `imgcache` 10 GB (configurable), container images and backups |
 | OS | Linux with Docker or Podman (+ Compose) | — | Prebuilt `linux/amd64` images are published to `ghcr.io` |
+
+Memory per container, measured in production on 2026-11-20: 222,883 items on 4 GB RAM with 2 GB swap (921 MB of it used, no active paging), `api` up 31 hours through 62 catalogue reloads. Anonymous memory is the process's own; page cache is file data the kernel reclaims first under the limit.
+
+- `api` (`mem_limit: 3g`): 949 MB anonymous and 180 MB page cache; at most 2,542 MB of both together, reloads included, while a reload holds the old and the new catalogue at once. The memory-mapped Tantivy index lives in page cache.
+- `postgres` (no limit): 1,192 MB, almost all page cache (6 MB anonymous).
+- `imgproxy` (`mem_limit: 1g`): about 0.76 GB, almost all cold and swapped out (729 MB in swap, 31 MB resident).
+- `web` (no limit): 149 MB resident (92 MB anonymous, 57 MB page cache) and 121 MB in swap.
+- `worker` (`mem_limit: 256m`): at most 29 MB over two days, the daily sweep included.
 
 ## 2. Get the stack files (and optional data bundle)
 

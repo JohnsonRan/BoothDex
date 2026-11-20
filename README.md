@@ -25,8 +25,8 @@ VRCatalogue. Item data and images belong to their creators; every item links bac
 
 See the [deployment guide](docs/DEPLOY.md) for full setup, reverse-proxy examples and backup commands. The stack
 runs PostgreSQL 17 (`pgvector`), three Rust services and the Next.js site with Docker or Podman Compose, exposes
-a single port (`WEB_LISTEN`, default `127.0.0.1:3100`) for your TLS reverse proxy, and needs a Linux server with **6 GB+
-RAM** (8 GB recommended, or 4 GB with swap).
+a single port (`WEB_LISTEN`, default `127.0.0.1:3100`) for your TLS reverse proxy, and needs a Linux server with **4 GB+
+RAM** and 2 GB of swap (6 GB recommended).
 
 ```mermaid
 flowchart LR
@@ -237,7 +237,7 @@ flowchart TD
 
 On a 32-thread machine with 216k items, searches take 2–10 ms inside the API and 5–40 ms per request (~550 req/s
 across 32 concurrent clients). On Linux containers, `api` uses ~0.4–1 GB RSS steady (plus the
-memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while atomically reloading a new catalogue (`mem_limit: 4g`).
+memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while atomically reloading a new catalogue (`mem_limit: 3g`).
 
 ## Development
 
