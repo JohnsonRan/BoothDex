@@ -265,9 +265,17 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
         return Ok("skipped: AI provider not configured".into());
     };
     let force: bool = param(params, "force", false);
-    let (written, unique, finished) = localize_names(ctx, &ai, force).await?;
+    let (written, unique, asked, finished) = localize_names(ctx, &ai, force).await?;
     if written > 0 {
         bump_catalog(ctx.pool).await?;
+    }
+    if force && finished && unique == asked {
+        // every name now follows this prompt, so the API stops queuing forced runs for it; a name the reply left out
+        // keeps its old wording, so the next start asks again
+        sqlx::query("insert into app_settings (key, value) values ('localize_state', $1) on conflict (key) do update set value = excluded.value, updated_at = now()")
+            .bind(serde_json::json!({ "prompt_version": boothdex_core::LOCALIZE_PROMPT_VERSION }))
+            .execute(ctx.pool)
+            .await?;
     }
     let names = format!("{written} names translated to Chinese ({unique} unique strings)");
     if force || !finished {
@@ -277,8 +285,9 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     Ok(format!("{names}; {tags}"))
 }
 
-/// The taxonomy part of `localize`: (rows written, unique strings translated, whether it ran to the end).
-async fn localize_names(ctx: &mut Ctx<'_>, ai: &crate::ai::Ai, force: bool) -> Result<(u64, usize, bool)> {
+/// The taxonomy part of `localize`: (rows written, unique strings translated, unique strings asked for, whether it ran
+/// to the end).
+async fn localize_names(ctx: &mut Ctx<'_>, ai: &crate::ai::Ai, force: bool) -> Result<(u64, usize, usize, bool)> {
     // (table, key column, English column, Chinese column)
     let targets = [
         ("smart_categories", "slug", "name_en", "name_zh"),
@@ -318,7 +327,7 @@ async fn localize_names(ctx: &mut Ctx<'_>, ai: &crate::ai::Ai, force: bool) -> R
         let sql = format!("update {table} set {zh_col} = $1 where {key_col} = $2");
         written += sqlx::query(sqlx::AssertSqlSafe(sql)).bind(value).bind(key).execute(ctx.pool).await?.rows_affected();
     }
-    Ok((written, zh.len(), finished))
+    Ok((written, zh.len(), texts.len(), finished))
 }
 
 /// The BOOTH tags on at least $2 listed items without a dictionary row and without $3 failed runs, most used first, at
@@ -1001,8 +1010,8 @@ mod tests {
     /// a refusal's status and body.
     type TagAnswer = std::result::Result<String, (u16, String)>;
 
-    /// A local stand-in for the AI provider: a taxonomy request gets "中 " before each English name, a tag request what
-    /// `answer` gives. Returns every request body it got.
+    /// A local stand-in for the AI provider: a taxonomy request gets "中 " before each English name but those starting
+    /// "omit:", a tag request what `answer` gives. Returns every request body it got.
     async fn stand_in_provider(pool: &PgPool, answer: impl Fn(&Value, &[String]) -> TagAnswer + Send + Sync + 'static) -> std::sync::Arc<std::sync::Mutex<Vec<Value>>> {
         use axum::response::IntoResponse;
         for key in ["AI_BASE_URL", "AI_API_KEY", "AI_MODEL"] {
@@ -1018,7 +1027,7 @@ mod tests {
                 answer(&body, &asked_in(&body))
             } else {
                 let asked: serde_json::Map<String, Value> = serde_json::from_str(body["messages"][1]["content"].as_str().unwrap()).unwrap();
-                Ok(Value::Object(asked.keys().map(|k| (k.clone(), json!(format!("中 {k}")))).collect()).to_string())
+                Ok(Value::Object(asked.keys().filter(|k| !k.starts_with("omit:")).map(|k| (k.clone(), json!(format!("中 {k}")))).collect()).to_string())
             };
             async move {
                 match reply {
@@ -1173,14 +1182,32 @@ mod tests {
         assert!(requests.lock().unwrap().is_empty());
         assert_eq!(dictionary(&pool).await, sorted);
 
-        // a forced run translates every taxonomy name again and leaves the dictionary alone
+        // a forced run (a new localize prompt) translates every taxonomy name again, leaves the dictionary alone and
+        // records the prompt's version; an ordinary run records none
+        let recorded = || async {
+            sqlx::query_scalar::<_, Value>("select value from app_settings where key = 'localize_state'").fetch_optional(&pool).await.unwrap()
+        };
+        assert_eq!(recorded().await, None);
         requests.lock().unwrap().clear();
         let forced = localize_job(&pool, json!({"force": true})).await;
         assert!(forced.ends_with(" unique strings)") && !forced.starts_with("0 "), "{forced}");
         assert!(asked_tags(&requests.lock().unwrap()).is_empty());
         assert_eq!(dictionary(&pool).await, sorted);
-        let untranslated: i64 = sqlx::query_scalar("select count(*) from smart_categories where name_zh not like '中 %'").fetch_one(&pool).await.unwrap();
+        let untranslated: i64 = sqlx::query_scalar(
+            "select (select count(*) from smart_categories where name_zh not like '中 %') + (select count(*) from smart_tags where display_zh not like '中 %')",
+        )
+        .fetch_one(&pool).await.unwrap();
         assert_eq!(untranslated, 0);
+        assert_eq!(recorded().await, Some(json!({"prompt_version": boothdex_core::LOCALIZE_PROMPT_VERSION})));
+
+        // a forced run whose reply leaves a name out records nothing, so the next start asks for every name again
+        sqlx::raw_sql("delete from app_settings where key = 'localize_state'; update smart_tags set display = 'omit: ' || display where id = (select min(id) from smart_tags);")
+            .execute(&pool).await.unwrap();
+        localize_job(&pool, json!({"force": true})).await;
+        assert_eq!(recorded().await, None);
+        sqlx::query("update smart_tags set display = substr(display, 7) where display like 'omit: %'").execute(&pool).await.unwrap();
+        localize_job(&pool, json!({"force": true})).await;
+        assert_eq!(recorded().await, Some(json!({"prompt_version": boothdex_core::LOCALIZE_PROMPT_VERSION})));
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
