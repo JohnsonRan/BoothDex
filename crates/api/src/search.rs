@@ -161,9 +161,11 @@ pub(crate) async fn search(
     let raw = q.as_deref().unwrap_or("");
     let p = Params::parse(raw);
     let req = SearchRequest::from(&p);
+    // one snapshot for the whole request, so a reload during it cannot mix two catalogues
+    let snap = s.snap.load_full();
     let favourites = if matches!(req.view, View::Favourites) {
         let u = account::current_user(&s.pool, &headers).await?.ok_or(Refusal::SignInRequired)?;
-        let f = s.snap().catalog.docs_for(&account::favourite_ids(&s, u.id).await?);
+        let f = snap.catalog.docs_for(&account::favourite_ids(&s, u.id).await?);
         trace.step("favourites");
         Some(f)
     } else {
@@ -174,14 +176,12 @@ pub(crate) async fn search(
     // model names in the query become a requirement for meaning-based matches and are left out of the
     // embedding, so "shinano short hair" adds short hair that fits Shinano, not other Shinano items
     let q = req.q.as_deref().unwrap_or_default();
-    let snap = s.snap();
     // a BOOTH item link, or the number of an item, names that item (catalog.rs): it is neither embedded nor searched
     // as the tags that translate it
     let names_item = snap.catalog.referenced(q).is_some();
     // typo=0 (the site's "search instead for"): every word counts as known, so none is read as a misspelt model
     let typos = p.get("typo").as_deref() != Some("0");
     let (meaning, named, name_typo) = snap.avatars.split_names(q, |w| !typos || snap.catalog.knows_word(w));
-    drop(snap);
     let models: Vec<String> = named.iter().map(|(slug, _)| slug.clone()).collect();
     trace.step("prepare");
     let embed_plan = match req.q {
@@ -210,7 +210,7 @@ pub(crate) async fn search(
     // a query that names a category ("short hair", "shorthair") also matches the items enriched into it, so
     // spellings of one meaning end up with the same results
     let categories: Vec<String> =
-        s.snap().category_phrases.get(&crate::text::fold(&meaning.split_whitespace().collect::<String>())).cloned().into_iter().collect();
+        snap.category_phrases.get(&crate::text::fold(&meaning.split_whitespace().collect::<String>())).cloned().into_iter().collect();
     let recognized = recognized(&named, categories.first(), &meaning);
     let catalog_now = chrono::Utc::now().timestamp();
     let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
@@ -219,7 +219,7 @@ pub(crate) async fn search(
     let expand = (!names_item && p.get("xl").as_deref() != Some("0")).then_some(meaning.as_str());
     let search_start = Instant::now();
     let (r, wider_counts) =
-        tokio::task::block_in_place(|| search_and_wider(&s.snap().catalog, raw, &req, catalog_now, favourites.as_ref(), semantic, expand))?;
+        tokio::task::block_in_place(|| search_and_wider(&snap.catalog, raw, &req, catalog_now, favourites.as_ref(), semantic, expand))?;
     let search_ms = search_start.elapsed().as_secs_f64() * 1e3;
     trace.step("search");
     let items = db::load_items(&s.pool, &r.ids, p.get("fields").as_deref() == Some("card")).await?;

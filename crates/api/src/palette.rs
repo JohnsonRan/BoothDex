@@ -27,7 +27,8 @@ pub(crate) async fn palette(
     let _permit = s.acquire_search().await?;
     let small = Params::parse(&format!("limit=5&{raw}"));
     let needle = crate::text::fold(&text);
-    let snap = s.snap();
+    // one snapshot for the whole request, so a reload during it cannot mix two catalogues
+    let snap = s.snap.load_full();
     let categories: Vec<Value> = snap.categories["categories"]
         .as_array()
         .into_iter()
@@ -40,7 +41,7 @@ pub(crate) async fn palette(
     // items honour the caller's adult setting (default safe) like the main search
     let items_req = SearchRequest { q: Some(text), adult: user.adult, sort: Sort::Relevant, page_size: 8, ..SearchRequest::from(&Params::default()) };
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&items_req, now, None, None, None, false))?;
+    let r = tokio::task::block_in_place(|| snap.catalog.search(&items_req, now, None, None, None, false))?;
     let items: Vec<Value> = db::load_items(&s.pool, &r.ids, true)
         .await?
         .into_iter()
@@ -57,9 +58,9 @@ pub(crate) async fn palette(
     Ok(Json(json!({
         "items": items,
         "itemCount": r.count,
-        "avatars": s.snap().avatars.find(&small)["items"],
-        "authors": s.snap().authors.find(&small)["items"],
-        "tags": s.snap().tags.find(&small)["items"],
+        "avatars": snap.avatars.find(&small)["items"],
+        "authors": snap.authors.find(&small)["items"],
+        "tags": snap.tags.find(&small)["items"],
         "categories": categories,
     }))
     .into_response())

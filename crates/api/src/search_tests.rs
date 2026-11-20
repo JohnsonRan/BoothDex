@@ -27,25 +27,29 @@ fn app(pool: PgPool, catalog: Catalog, avatars: Lookup) -> Arc<AppState> {
     app_with(pool, catalog, avatars, Default::default(), 2)
 }
 
+fn snapshot(catalog: Catalog, avatars: Lookup, related: crate::related::Related) -> Snapshot {
+    Snapshot {
+        catalog,
+        category_phrases: Default::default(),
+        related,
+        avatars,
+        authors: Lookup::new(Vec::new()),
+        tags: Lookup::new(Vec::new()),
+        booth_tags: Lookup::new(Vec::new()),
+        categories: json!({ "categories": [] }),
+        version: 1,
+        loaded_at: chrono::Utc::now(),
+        build_secs: 0.0,
+    }
+}
+
 /// `http_secs`: the timeout of the API's outgoing requests, the embedding provider's included.
 fn app_with(pool: PgPool, catalog: Catalog, avatars: Lookup, related: crate::related::Related, http_secs: u64) -> Arc<AppState> {
     crate::install_tls();
     Arc::new(
         AppState::new(
             pool,
-            Snapshot {
-                catalog,
-                category_phrases: Default::default(),
-                related,
-                avatars,
-                authors: Lookup::new(Vec::new()),
-                tags: Lookup::new(Vec::new()),
-                booth_tags: Lookup::new(Vec::new()),
-                categories: json!({ "categories": [] }),
-                version: 1,
-                loaded_at: chrono::Utc::now(),
-                build_secs: 0.0,
-            },
+            snapshot(catalog, avatars, related),
             Default::default(),
             "http://127.0.0.1:3000".into(),
             None,
@@ -179,6 +183,118 @@ async fn check_pending_embedding(pool: PgPool) {
     assert_eq!(refused["semantic"], "unavailable", "{refused}");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     drop(held);
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_reload_during_a_search_leaves_it_on_the_snapshot_it_started_with(pool: PgPool) {
+    multi_thread(check_reload_mid_search(pool)).await;
+}
+
+async fn check_reload_mid_search(pool: PgPool) {
+    for key in ["AI_BASE_URL", "AI_API_KEY", "AI_EMBED_MODEL"] {
+        assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test's provider is a local stand-in");
+    }
+    sqlx::raw_sql("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at) values
+                   (1, 'ボブカット', 'creator', 'https://example.test', false, 'ok', now()),
+                   (2, 'ボブカット', 'creator', 'https://example.test', false, 'ok', now());")
+        .execute(&pool).await.unwrap();
+    let (one, two): (Vec<_>, Vec<_>) = db::load_docs(&pool).await.unwrap().into_iter().partition(|d| d.id == 1);
+    let (first, second) = (Catalog::build(one, 0, None).unwrap(), Catalog::build(two, 0, None).unwrap());
+    // a local stand-in provider that swaps in the catalogue of item 2, where the words name a category, while the
+    // search waits for the query's embedding, then refuses the request
+    let state_slot: Arc<std::sync::OnceLock<Arc<AppState>>> = Default::default();
+    let reload: Arc<std::sync::Mutex<Option<Catalog>>> = Arc::new(std::sync::Mutex::new(Some(second)));
+    let (slot, next) = (state_slot.clone(), reload.clone());
+    let provider = axum::Router::new().fallback(move || {
+        if let (Some(state), Some(catalog)) = (slot.get(), next.lock().unwrap().take()) {
+            let mut next = snapshot(catalog, Lookup::new(Vec::new()), Default::default());
+            next.category_phrases.insert(crate::text::fold("ボブカット"), "hair--short".into());
+            state.snap.store(Arc::new(next));
+        }
+        async { (StatusCode::BAD_REQUEST, "no") }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, provider).await.unwrap() });
+    sqlx::query("insert into app_settings (key, value) values ('ai', $1)")
+        .bind(json!({ "base_url": base_url, "api_key": "test", "embed_model": "test-model" }))
+        .execute(&pool).await.unwrap();
+    let state = app(pool.clone(), first, Lookup::new(Vec::new()));
+    state_slot.set(state.clone()).ok();
+
+    let during = search_json(&state, "q=%E3%83%9C%E3%83%96%E3%82%AB%E3%83%83%E3%83%88").await;
+    assert!(reload.lock().unwrap().is_none(), "the provider was asked during the search");
+    assert_eq!(during["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>(), [1], "{during}");
+    assert_eq!(during["recognized"], json!([]), "{during}");
+    // the next search reads the new snapshot
+    let after = search_json(&state, "q=%E3%83%9C%E3%83%96%E3%82%AB%E3%83%83%E3%83%88&sem=0").await;
+    assert_eq!(after["items"][0]["id"], 2, "{after}");
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_reload_while_a_request_reads_the_database_leaves_it_on_its_snapshot(pool: PgPool) {
+    multi_thread(check_reload_mid_read(pool)).await;
+}
+
+/// Runs `request` while `lock` holds a table it reads, and swaps in `next` while the request waits for that table.
+async fn reload_while_waiting<T: Send + 'static>(
+    pool: &PgPool,
+    lock: &'static str,
+    state: &Arc<AppState>,
+    next: Snapshot,
+    request: impl Future<Output = T> + Send + 'static,
+) -> T {
+    let mut held = pool.begin().await.unwrap();
+    sqlx::query(lock).execute(&mut *held).await.unwrap();
+    let request = tokio::spawn(request);
+    let waiting = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
+    while sqlx::query_scalar::<_, i64>(waiting).fetch_one(pool).await.unwrap() == 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    state.snap.store(Arc::new(next));
+    held.commit().await.unwrap();
+    request.await.unwrap()
+}
+
+async fn check_reload_mid_read(pool: PgPool) {
+    use axum::body::to_bytes;
+    use axum::http::{HeaderMap, header};
+
+    sqlx::raw_sql("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at) values
+                   (1, 'Rock Tee', 'creator', 'https://example.test', false, 'ok', now()),
+                   (2, 'Rock Hoodie', 'creator', 'https://example.test', false, 'ok', now());")
+        .execute(&pool).await.unwrap();
+    let user: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', 'x') returning id")
+        .fetch_one(&pool).await.unwrap();
+    sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+        .bind(account::token_hash("tok-a")).bind(user).execute(&pool).await.unwrap();
+    sqlx::query("insert into favourites (user_id, item_id) values ($1, 2)").bind(user).execute(&pool).await.unwrap();
+    // both items, and a catalogue where item 2 is the first doc
+    let both = || async { Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap() };
+    let second = || async { Catalog::build(db::load_docs(&pool).await.unwrap().into_iter().filter(|d| d.id == 2).collect(), 0, None).unwrap() };
+    let rocket = || Lookup::new(vec![(vec!["rocket".into()], json!({ "slug": "rocket" }), 1)]);
+    let state = app(pool.clone(), both().await, rocket());
+    let ip = limit::ClientIp("203.0.113.43".parse().unwrap());
+    let body = |r: Result<Response, ApiError>| async move {
+        serde_json::from_slice::<Value>(&to_bytes(r.unwrap_or_else(IntoResponse::into_response).into_body(), 1024 * 1024).await.unwrap()).unwrap()
+    };
+
+    // favourites resolved on the catalogue the search runs on: the reload comes while it reads the session
+    let mut headers = HeaderMap::new();
+    headers.insert(header::COOKIE, "session=tok-a".parse().unwrap());
+    let favourites = search(State(state.clone()), ip, crate::limit::Tier::Base, headers, RawQuery(Some("v=favourites".into())));
+    let next = snapshot(second().await, Lookup::new(Vec::new()), Default::default());
+    let found = body(reload_while_waiting(&pool, "lock table sessions in access exclusive mode", &state, next, favourites).await).await;
+    assert_eq!(found["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>(), [2], "{found}");
+
+    // the palette lists the models of the snapshot its items came from: the reload comes while it reads the items
+    state.snap.store(Arc::new(snapshot(both().await, rocket(), Default::default())));
+    let listed = palette(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some("q=rock".into())));
+    let next = snapshot(second().await, Lookup::new(Vec::new()), Default::default());
+    let found = body(reload_while_waiting(&pool, "lock table items in access exclusive mode", &state, next, listed).await).await;
+    assert_eq!(found["avatars"], json!([{ "slug": "rocket", "item_count": 1 }]), "{found}");
 }
 
 #[sqlx::test(migrations = "../core/migrations")]
