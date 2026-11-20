@@ -34,6 +34,9 @@ const CONTAINMENT: f64 = 0.7;
 /// Share of the query's title matches that the tag matches too; below it the tag is narrower (ミニスカート for skirt).
 const COVERAGE: f64 = 0.25;
 const MAX_EQUIVALENTS: usize = 3;
+/// A tag of fewer characters is no equivalent: one character is part of too many other words and names (尾 for tail
+/// is in 九尾, 龍尾 and 狼尾, a wolf cut).
+const MIN_CHARS: usize = 2;
 /// Queries whose equivalents one snapshot remembers.
 const CACHE_CAP: u64 = 2000;
 
@@ -184,7 +187,7 @@ impl Equivalents {
         let mut out = Vec::new();
         for (_, _, t) in candidates.into_iter().take(CANDIDATES) {
             let name = &self.names[t as usize];
-            if same_word(q, name) {
+            if same_word(q, name) || compact(name).chars().count() < MIN_CHARS {
                 continue;
             }
             let tt = text.title_hits(name)? & titled;
@@ -327,6 +330,10 @@ pub(crate) mod tests {
         for i in 204..=243 {
             d.push(doc(i, format!("围巾 {i}"), &[], &[]));
         }
+        // 244-263: wings titled and tagged in two Japanese words, one of them a single character
+        for i in 244..=263 {
+            d.push(doc(i, format!("翼 羽根 {i}"), &[format!("Wings {i}")], &["翼", "羽根"]));
+        }
         Catalog::build(d, 0, None).unwrap()
     }
 
@@ -388,5 +395,7 @@ pub(crate) mod tests {
         assert_eq!(of(&c, "앞치마"), ["エプロン"]);
         // titles match by words: 앞치마 (apron) does not hold the word 치마 (skirt)
         assert!(of(&c, "치마").is_empty());
+        // 翼 passes every count as 羽根 does, but one character is no equivalent
+        assert_eq!(of(&c, "wings"), ["羽根"]);
     }
 }
