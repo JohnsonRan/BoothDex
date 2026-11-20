@@ -86,8 +86,24 @@ export function TypoNote({
       <Text type="supporting">
         {t("list.typoTolerant")}{" "}
         <SearchInstead
-          href={`?${filtersToQuery({ ...filters, noTypo: true })}`}
+          patch={{ noTypo: true }}
           label={t("list.searchInstead", { q: filters.q })}
+        />
+      </Text>
+    </Center>
+  );
+}
+
+/** The results include what the BOOTH tags that translate the query found (`words`); the link searches the words
+ *  alone. */
+export function ExpansionNote({ words, t }: { words: string[]; t: Translate }) {
+  return (
+    <Center>
+      <Text type="supporting">
+        {t("list.expandedWith", { words: words.join(" · ") })}{" "}
+        <SearchInstead
+          patch={{ noExpand: true }}
+          label={t("list.withoutExpanded")}
         />
       </Text>
     </Center>
@@ -147,6 +163,10 @@ export async function Results({
         <VStack gap={6}>
           {result.typoTolerant && (
             <TypoNote nameTypo={result.nameTypo} filters={filters} t={t} />
+          )}
+          {/* an API from before `expandedWith` leaves it out */}
+          {(result.expandedWith ?? []).length > 0 && (
+            <ExpansionNote words={result.expandedWith} t={t} />
           )}
           <ResultPages
             // a new search starts over, and so do new tile texts or prices (a language, item text or currency

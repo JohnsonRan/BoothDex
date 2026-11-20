@@ -130,6 +130,9 @@ export const en: Dict = {
   "list.typoTolerant":
     "Your words matched nothing as typed, so word matches here allow one typo in each longer word.",
   "list.searchInstead": 'Search instead for "{q}"',
+  "list.expandedWith":
+    'Also showing matches for "{words}", translated from your search.',
+  "list.withoutExpanded": "Search without translated matches",
   "fav.add": "Favourite",
   "fav.needSignIn": "Sign in to save favourites",
   "fav.failed": "Couldn't update favourites",

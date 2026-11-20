@@ -18,7 +18,13 @@ import {
 } from "@/components/catalog/filter/clause-text";
 import { useFilterUrl } from "@/components/catalog/filter/filter-url";
 import { useUi } from "@/components/providers";
-import { activeFilterCount, FILTER_RESET } from "@/lib/catalog";
+import {
+  activeFilterCount,
+  FILTER_RESET,
+  type Filters,
+  filtersToQuery,
+  patched,
+} from "@/lib/catalog";
 import { useApiRecovery } from "@/lib/client-data";
 import { LOCALES } from "@/lib/settings-core";
 
@@ -119,24 +125,25 @@ export function SemanticNote({ text }: { text: string }) {
   );
 }
 
-/** The typo note's "search instead" link (results.tsx TypoNote): a plain click is a filter change, so the refresh
- *  shows its bar and keeps the place as any other does; the address stays for a modified click or a new tab. */
+/** A results note's "search instead" link (results.tsx): a plain click applies `patch` as a filter change, so the
+ *  refresh shows its bar and keeps the place as any other does; the address of the same change serves a modified
+ *  click or a new tab. */
 export function SearchInstead({
-  href,
+  patch,
   label,
 }: {
-  href: string;
+  patch: Partial<Filters>;
   label: string;
 }) {
-  const { apply } = useFilterUrl();
+  const { filters, apply } = useFilterUrl();
   return (
     <Link
-      href={href}
+      href={`?${filtersToQuery(patched(filters, patch))}`}
       onClick={(e) => {
         if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
           return;
         e.preventDefault();
-        apply({ noTypo: true });
+        apply(patch);
       }}
     >
       {label}

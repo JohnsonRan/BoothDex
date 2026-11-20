@@ -130,6 +130,9 @@ export const ko: Dict = {
   "list.typoTolerant":
     "입력한 단어 그대로는 일치하는 결과가 없어, 단어 일치는 긴 단어마다 철자 오류를 한 군데까지 허용했습니다.",
   "list.searchInstead": '"{q}" 그대로 검색',
+  "list.expandedWith":
+    '검색어를 번역한 "{words}"에 해당하는 상품도 함께 표시합니다.',
+  "list.withoutExpanded": "번역어 없이 검색",
   "fav.add": "즐겨찾기",
   "fav.needSignIn": "즐겨찾기는 로그인 후 사용할 수 있습니다",
   "fav.failed": "즐겨찾기를 변경하지 못했습니다",

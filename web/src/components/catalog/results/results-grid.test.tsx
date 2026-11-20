@@ -9,13 +9,13 @@ import { FilterUrlProvider } from "@/components/catalog/filter/filter-url";
 import { KeepResults } from "@/components/catalog/refresh";
 import { Providers } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
-import { DEFAULT_FILTERS } from "@/lib/catalog";
+import { DEFAULT_FILTERS, type Filters } from "@/lib/catalog";
 import { MESSAGES, translator } from "@/lib/dictionaries";
 import type { SearchOutcome } from "@/lib/server-data";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
 import { FIRST_TILES } from "./item-tile";
 import { ResultPages } from "./result-pages";
-import { Results, TypoNote } from "./results";
+import { ExpansionNote, Results, TypoNote } from "./results";
 import { ResultsGrid } from "./results-grid";
 
 const item: ItemResponse = {
@@ -153,14 +153,15 @@ test("before the session is read, favourite buttons are unpressed and no cover i
 });
 
 test("a model read from a misspelt word offers the words as typed, keeping the other filters", () => {
+  const filters = { ...DEFAULT_FILTERS, q: "chifon dress", free: true };
   const note = (nameTypo: boolean) =>
     renderToStaticMarkup(
       <AppRouterContext value={{} as AppRouterInstance}>
         <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
-          <FilterUrlProvider filters={DEFAULT_FILTERS}>
+          <FilterUrlProvider filters={filters}>
             <TypoNote
               nameTypo={nameTypo}
-              filters={{ ...DEFAULT_FILTERS, q: "chifon dress", free: true }}
+              filters={filters}
               t={translator("en")}
             />
           </FilterUrlProvider>
@@ -172,6 +173,67 @@ test("a model read from a misspelt word offers the words as typed, keeping the o
   );
   expect(note(true)).toContain("Search instead for &quot;chifon dress&quot;");
   expect(note(false)).not.toContain("<a ");
+});
+
+test("a search that also matched its translations names them and offers the words alone, keeping the other choices", () => {
+  const note = (filters: Filters) =>
+    renderToStaticMarkup(
+      <AppRouterContext value={{} as AppRouterInstance}>
+        <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+          <FilterUrlProvider filters={filters}>
+            <ExpansionNote words={["尻尾", "しっぽ"]} t={translator("en")} />
+          </FilterUrlProvider>
+        </Providers>
+      </AppRouterContext>,
+    );
+  const filters = { ...DEFAULT_FILTERS, q: "tail", free: true };
+  expect(note(filters)).toContain(
+    "Also showing matches for &quot;尻尾 · しっぽ&quot;",
+  );
+  expect(note(filters)).toContain('href="?q=tail&amp;xl=0&amp;free=1"');
+  expect(note({ ...filters, noTypo: true })).toContain(
+    'href="?q=tail&amp;typo=0&amp;xl=0&amp;free=1"',
+  );
+});
+
+test("the results carry the translation note only when the API names translations", async () => {
+  const notes = async (expandedWith?: string[]) => {
+    const found: unknown[] = [];
+    const walk = (node: unknown) => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== "object" || !("props" in node)) return;
+      const el = node as { type: unknown; props: Record<string, unknown> };
+      if (el.type === ExpansionNote) found.push(el.props.words);
+      walk(el.props.children);
+    };
+    walk(
+      await Results({
+        outcome: Promise.resolve({
+          state: "ok",
+          ms: 1,
+          result: {
+            items: [item],
+            count: 1,
+            page: 1,
+            totalPages: 1,
+            pageSize: 30,
+            expandedWith,
+          },
+        } as unknown as SearchOutcome),
+        rates: Promise.resolve({}),
+        settings: DEFAULT_SETTINGS,
+        filters: { ...DEFAULT_FILTERS, q: "skirt" },
+        names: { categories: [], avatars: [], tags: {} },
+        noSemantic: false,
+        navigation: false,
+      }),
+    );
+    return found;
+  };
+  expect(await notes(["スカート"])).toEqual([["スカート"]]);
+  expect(await notes([])).toEqual([]);
+  // an API from before the field
+  expect(await notes(undefined)).toEqual([]);
 });
 
 test("a tile without a cover shows the no-image state, not a Skeleton that stays", () => {

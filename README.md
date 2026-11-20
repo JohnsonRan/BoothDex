@@ -75,7 +75,7 @@ docker compose pull && docker compose up -d
   searched as up to three BOOTH tags that translate it: tags carried by the items whose titles match the query, whose
   own title matches largely overlap the query's among the items titled in the query's language ("skirt" also finds
   the items only tagged スカート). Those items rank
-  among the word matches at half weight.
+  among the word matches at half weight; the results page names the tags and offers to search without them.
   Optional semantic search finds items by meaning across languages ("哥特裙" finds ゴスロリ dresses) and merges both
   rankings.
 
