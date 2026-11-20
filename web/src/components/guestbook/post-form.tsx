@@ -28,7 +28,13 @@ import type { GuestbookEntry } from "@/lib/api-types";
 import { useTurnstile } from "@/lib/turnstile";
 import { MESSAGE_STYLE } from "./message-style";
 import { guestbookError, useGuestbookT } from "./messages";
-import { BODY_MAX, bodyOk, NICKNAME_MAX, nicknameOk } from "./rules";
+import {
+  BODY_MAX,
+  bodyLength,
+  bodyOk,
+  NICKNAME_MAX,
+  nicknameOk,
+} from "./rules";
 
 /** the action the API checks the token for (crates/api/src/guestbook.rs ACTION) */
 const ACTION = "guestbook";
@@ -50,7 +56,9 @@ export function PostForm({
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const nicknameBad = checked && !nicknameOk(nickname);
-  const bodyBad = checked && !bodyOk(body);
+  const length = bodyLength(body);
+  // a message over the limit shows it at once, as a counter turning red would
+  const bodyBad = (checked && !bodyOk(body)) || length > BODY_MAX;
 
   const review = () => {
     setChecked(true);
@@ -102,11 +110,13 @@ export function PostForm({
         value={nickname}
         onChange={setNickname}
       />
+      {/* the count in the description, not TextArea's maxLength counter: that one counts what a reader sees as one
+          character (an emoji sequence, a letter with its accent), the server counts Unicode scalar values */}
       <TextArea
         label={t("body")}
+        description={t("bodyCount", { n: length, max: BODY_MAX })}
         autoComplete="off"
         rows={5}
-        maxLength={BODY_MAX}
         status={
           bodyBad
             ? { type: "error", message: t("bodyRule", { max: BODY_MAX }) }

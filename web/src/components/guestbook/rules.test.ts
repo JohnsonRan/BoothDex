@@ -3,7 +3,13 @@ import { readFileSync } from "node:fs";
 import { ApiError, errorKey } from "@/lib/api";
 import { API_ERRORS } from "@/lib/messages";
 import { guestbookError } from "./messages";
-import { BODY_MAX, bodyOk, NICKNAME_MAX, nicknameOk } from "./rules";
+import {
+  BODY_MAX,
+  bodyLength,
+  bodyOk,
+  NICKNAME_MAX,
+  nicknameOk,
+} from "./rules";
 
 test("the form takes what the server's validate takes", () => {
   expect(nicknameOk("  Ann  ")).toBe(true);
@@ -20,6 +26,13 @@ test("the form takes what the server's validate takes", () => {
   expect(bodyOk("lone\rreturn")).toBe(false);
   expect(bodyOk(`${"a".repeat(BODY_MAX)}\n`)).toBe(true);
   expect(bodyOk("a".repeat(BODY_MAX + 1))).toBe(false);
+  // the counter counts what the server counts: scalar values of the trimmed text, so a heart with its variation
+  // selector is two (one character to a reader), as Rust's chars() and PostgreSQL's char_length count it
+  expect(bodyLength(" \u2764\ufe0f\r\n")).toBe(2);
+  expect(bodyLength("\u2764\ufe0f".repeat(BODY_MAX / 2))).toBe(BODY_MAX);
+  // and an astral character is one, not its two UTF-16 units
+  expect(bodyLength("\u{1f600}")).toBe(1);
+  expect(bodyOk("\u2764\ufe0f".repeat(BODY_MAX / 2 + 1))).toBe(false);
   // trimmed as Rust trims: the BOM stays and is refused, U+0085 goes
   expect(nicknameOk("\ufeffAnn")).toBe(false);
   expect(nicknameOk("Ann\u0085")).toBe(true);

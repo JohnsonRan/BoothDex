@@ -5,6 +5,7 @@ export const guestbookKo: GuestbookDict = {
   subtitle: "메시지는 공개되며 게시한 후에는 바꿀 수 없어요.",
   nickname: "닉네임",
   body: "메시지",
+  bodyCount: "{n}/{max}자",
   nicknameRule: "닉네임은 보이지 않는 문자 없이 1~{max}자여야 해요.",
   bodyRule: "메시지는 보이지 않는 문자 없이 1~{max}자여야 해요.",
   post: "게시",

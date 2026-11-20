@@ -30,8 +30,14 @@ export const nicknameOk = (v: string) => {
   return shown(s, NICKNAME_MAX) && !CONTROL.test(s);
 };
 
+/** The message as the server keeps it: line breaks as line feeds, trimmed. */
+export const normalBody = (v: string) => trim(v.replaceAll("\r\n", "\n"));
+
+/** The message's length as the server and the database count it, in Unicode scalar values: the form's counter. */
+export const bodyLength = (v: string) => size(normalBody(v));
+
 /** Whether the message is one the server takes. */
 export const bodyOk = (v: string) => {
-  const s = trim(v.replaceAll("\r\n", "\n"));
+  const s = normalBody(v);
   return shown(s, BODY_MAX) && !BODY_CONTROL.test(s);
 };
