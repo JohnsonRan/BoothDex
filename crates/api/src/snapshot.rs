@@ -13,6 +13,7 @@ use crate::AppState;
 use crate::catalog::Catalog;
 use crate::db;
 use crate::params::Params;
+use crate::related::{AvatarNames, Related, TagCentroids};
 use crate::text::{TYPO_MIN, fold, fold_width, one_typo};
 
 /// Name lookup for sidebar pickers and the command palette.
@@ -130,6 +131,7 @@ pub(crate) struct Snapshot {
     pub(crate) catalog: Catalog,
     /// see `category_phrases`
     pub(crate) category_phrases: HashMap<String, String>,
+    pub(crate) related: Related,
     pub(crate) avatars: Lookup,
     pub(crate) authors: Lookup,
     pub(crate) tags: Lookup,
@@ -172,7 +174,7 @@ pub(crate) async fn reloader(state: Arc<AppState>) {
             continue;
         }
         last_build = Instant::now();
-        match build_snapshot(&state.pool, version).await {
+        match build_snapshot(&state.pool, version, state.snap().related.centroids.clone()).await {
             Ok(s) => {
                 println!("catalogue reloaded: version {version}, {} docs", s.catalog.len());
                 state.snap.store(Arc::new(s));
@@ -182,7 +184,8 @@ pub(crate) async fn reloader(state: Arc<AppState>) {
     }
 }
 
-pub(crate) async fn build_snapshot(pool: &PgPool, version: i64) -> Result<Snapshot> {
+/// `centroids`: the previous snapshot's tag centroids, which carry over while they are recent (related.rs).
+pub(crate) async fn build_snapshot(pool: &PgPool, version: i64, centroids: Option<Arc<TagCentroids>>) -> Result<Snapshot> {
     let pool = pool.clone();
     let t0 = Instant::now();
     let docs = db::load_docs(&pool).await?;
@@ -196,7 +199,9 @@ pub(crate) async fn build_snapshot(pool: &PgPool, version: i64) -> Result<Snapsh
 
     let avatars = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>)>("select slug, name_en, name_ja, name_ko, coalesce((select b.images[1] from booth_images b where b.item_id = a.avatar_item_id), a.image_url) from avatars a")
         .fetch_all(&pool)
-        .await?
+        .await?;
+    let avatar_names = AvatarNames::new(avatars.iter().flat_map(|(_, en, ja, ko, _)| [Some(en), ja.as_ref(), ko.as_ref()]).flatten().map(String::as_str));
+    let avatars = avatars
         .into_iter()
         .map(|(slug, en, ja, ko, image_url)| {
             let n = catalog.avatars.len(&slug);
@@ -230,10 +235,17 @@ pub(crate) async fn build_snapshot(pool: &PgPool, version: i64) -> Result<Snapsh
     )
     .fetch_one(&pool)
     .await?;
+    let t2 = Instant::now();
+    let previous = centroids.clone();
+    let centroids = TagCentroids::current(&pool, &catalog, centroids).await?;
+    if let Some(c) = centroids.as_ref().filter(|c| previous.is_none_or(|p| !Arc::ptr_eq(&p, c))) {
+        println!("built {} tag centroids in {:.1}s, ~{} KB", c.len(), t2.elapsed().as_secs_f64(), c.bytes() / 1024);
+    }
 
     Ok(Snapshot {
         catalog,
         category_phrases: category_phrases(&categories),
+        related: Related { avatars: avatar_names, centroids },
         avatars: Lookup::new(avatars),
         authors: Lookup::new(authors),
         tags: Lookup::new(tags),

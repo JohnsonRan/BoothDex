@@ -4,12 +4,18 @@
 import { cacheLife } from "next/cache";
 import { cookies, headers } from "next/headers";
 import type { PassOffer } from "./api";
-import type { ItemResponse, SearchResponse } from "./api-types";
+import type {
+  ItemResponse,
+  RelatedResponse,
+  RelatedSearch,
+  SearchResponse,
+} from "./api-types";
 import { ASTRYX_GAPS } from "./astryx-gaps";
 import {
   type Avatar,
   type Category,
   type Filters,
+  filtersToQuery,
   imgUrl,
   searchQuery,
   tagName,
@@ -27,6 +33,9 @@ const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:3000";
 export const PAGE_SIZE = 100;
 /** How long the rate service may take before prices fall back to yen (the results wait for the rates). */
 const RATES_TIMEOUT_MS = 2000;
+/** How long the related searches may take before the results show without them: /api/related answers within 20 ms
+ *  at p99 under load, but waits up to 2 s for a search permit while the API is busy. */
+const RELATED_TIMEOUT_MS = 300;
 
 async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_ORIGIN}${path}`, init);
@@ -121,6 +130,37 @@ export async function searchItems(
     )
       return { state: "error", limited: true, offer: await passOffer(e) };
     return { state: (await apiReady()) ? "error" : "starting" };
+  }
+}
+
+/**
+ * Related searches for the search `filters` describe (`/api/related`), which reads only an embedding a search already
+ * stored for the query. Asked when the search matched by meaning (`semantic: "used"`), which stored it, and when it
+ * found nothing, where other words help most and an earlier search may have stored it; not when the search had no
+ * query or no embedding provider (`semantic: "off"`). Any failure, a rate limit or a late answer included, gives none:
+ * the results show without them and no check is offered.
+ */
+export async function relatedSearches(
+  outcome: Promise<SearchOutcome>,
+  filters: Filters,
+  forwarded: Record<string, string>,
+): Promise<RelatedSearch[]> {
+  const o = await outcome;
+  if (o.state !== "ok") return [];
+  const { count, semantic } = o.result;
+  if (semantic !== "used" && (count > 0 || semantic === "off")) return [];
+  try {
+    const { searches } = await getJson<RelatedResponse>(
+      `/api/related?${filtersToQuery(filters)}`,
+      {
+        cache: "no-store",
+        headers: forwarded,
+        signal: AbortSignal.timeout(RELATED_TIMEOUT_MS),
+      },
+    );
+    return searches ?? [];
+  } catch {
+    return [];
   }
 }
 

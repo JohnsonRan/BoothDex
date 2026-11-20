@@ -23,7 +23,7 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 ## 快速开始
 
 完整配置、反向代理示例及备份方案请参阅[部署指南](docs/DEPLOY.md)。生产环境通过 Docker 或 Podman Compose 运行
-PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端，仅对外暴露单一端口（`WEB_LISTEN`，默认 `127.0.0.1:3100`）供反向代理接入；建议使用 **6 GB 及以上内存**的 Linux 服务器（推荐 8 GB，或 4 GB 配合 Swap）。
+PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端，仅对外暴露单一端口（`WEB_LISTEN`，默认 `127.0.0.1:3100`）供反向代理接入；需要 **4 GB 及以上内存**并配置 2 GB Swap 的 Linux 服务器（推荐 6 GB）。
 
 ```mermaid
 flowchart LR
@@ -55,7 +55,8 @@ docker compose pull && docker compose up -d
 - 筛选栏包含搜索框和每个筛选条件的选择器；放不下的筛选条件收进“+N”按钮。
 - 输入时，搜索框给出最近搜索、模型、商品、店铺与标签建议。按 `Ctrl+K`（macOS 上为 `Cmd+K`）可聚焦搜索框。
 - 搜索框把每个搜索词显示为可单独删除的词条；识别为模型或分类的词合为一个词条，前面显示模型图片或分类图标。
-- 日文全文检索基于 Lindera（IPADIC），不区分全角与半角、平假名与片假名（搜索“しなの”也能匹配シナノ）。不超过 3 个单词的英文查询没有匹配任何文本时，会对 5 个字母及以上的纯字母单词各容许 1 处拼写错误，在标题、标签和作者名中重新搜索（“shinnano”也能匹配 Shinano）。可选的语义搜索支持跨语言按语义查找（如搜索“哥特裙”即可匹配ゴスロリ连衣裙），并与关键词结果融合排序。
+- 搜索 BOOTH 商品链接（`booth.pm/<lang>/items/<id>` 或 `<shop>.booth.pm/items/<id>`）或 5 位及以上的商品编号时，无论当前是哪个视图，该商品都排在最前：商品列表中也会显示模型本体，已作为新商品重新上架的商品（其他搜索不显示）也会显示。筛选条件和内容分级设置照常生效；按相关度（搜索的默认排序）以外的方式排序时，该商品与其他结果一样按所选顺序排列。这类搜索不会发送给 AI 服务，也不会按译词标签搜索。不是商品 ID 的编号按文本搜索。
+- 日文全文检索基于 Lindera（IPADIC），不区分全角与半角、平假名与片假名（搜索“しなの”也能匹配シナノ）。不超过 3 个单词的英文查询没有匹配任何文本时，会对 5 个字母及以上的纯字母单词各容许 1 处拼写错误，在标题、标签和作者名中重新搜索（“shinnano”也能匹配 Shinano）。标签和简介大多是日文，而且只有标题有翻译，因此不超过 3 个单词的查询还会按译为该查询的 BOOTH 标签（最多 3 个）一并搜索：这些标签来自标题匹配查询的商品，且在带有查询语言标题的商品中，标签本身的标题匹配与查询的标题匹配大部分重合（搜索“skirt”也能找到只带スカート标签的商品）。这些商品按关键词匹配一半的权重参与排序；结果页会列出这些标签，并提供不含译词的搜索。可选的语义搜索支持跨语言按语义查找（如搜索“哥特裙”即可匹配ゴスロリ连衣裙），并与关键词结果融合排序。由语义搜索参与的搜索还会在结果上方列出最多 4 个相关搜索：商品语义与查询词最接近的 BOOTH 标签（搜索“skirt”时如ミニスカート和 long skirt）。点击后以该标签替换查询词，保留模型名和筛选条件。没有找到商品的搜索，只要已保存查询词向量，也会在“没有找到商品”下方列出相关搜索。
 
 <details>
 <summary>输入“manuka”时的建议：先列出模型本体，再列出匹配的商品</summary>
@@ -155,8 +156,8 @@ flowchart LR
 ```mermaid
 flowchart TD
   subgraph query["混合搜索流程 (/api/search)"]
-    q["查询词 + 多维筛选参数"] --> parse["识别模型名与分类短语"]
-    parse --> kw["Lindera (IPADIC) + Tantivy<br/>与 Roaring 内存位图筛选"]
+    q["查询词 + 多维筛选参数"] --> parse["识别商品链接或编号、模型名与分类短语"]
+    parse --> kw["Lindera (IPADIC) + Tantivy<br/>+ 译为查询的标签<br/>与 Roaring 内存位图筛选"]
     parse -. "启用语义搜索时" .-> embq["查询词向量<br/>（内存 → 数据库缓存 → AI 接口，2.5 秒超时回退）"]
     embq -.-> ann["pgvector HNSW 近邻检索"]
     kw --> merge["融合排序与分面统计"]
@@ -179,14 +180,14 @@ flowchart TD
 |---|---|
 | `crates/core` | 公共类型、BOOTH 客户端及 `migrations/` 中的 PostgreSQL 表结构（服务启动时自动执行迁移） |
 | `crates/limit` | 反向代理后的客户端 IP 与按 IP 的令牌桶，由 `api` 和 `imgproxy` 共用 |
-| `crates/api` | 搜索 API。筛选使用内存 Roaring 位图；Tantivy 文本索引持久化在磁盘（`INDEX_DIR`）并在重启间复用；分页详情从 PostgreSQL 读取 |
+| `crates/api` | 搜索 API。筛选使用内存 Roaring 位图；Tantivy 文本索引持久化在磁盘（`INDEX_DIR`）并在重启间复用；分页详情从 PostgreSQL 读取。相关搜索将已保存的查询词向量与每个 BOOTH 标签的中心向量（带有该标签的商品向量的平均值）比较；中心向量在启动时生成，热重载时沿用，最长 6 小时 |
 | `crates/worker` | 分三通道并发执行的后台任务器：`incremental`（增量上新）、`sweep`（全量巡检）、`details`、`refresh`、`enrich`、`localize` 与 `embed`（AI）。`worker run` 为守护进程，`worker once <kind> [params-json]` 单次执行指定任务 |
 | `crates/imgproxy` | `/b/{size}/...`（商品图片）、`/u/{size}/...`（店铺图标）、`/a/{file}`（BOOTH 静态图片）和 `/f/{size}/{uuid}/{file}`（pixiv Factory 图片，由 imgproxy 缩小到该尺寸）转码为 AVIF 并缓存；`/v/{sha1}.webp` 提供下架商品存档图片 |
 | `web` | Next.js 前端站点与 `/admin` 管理后台 |
 | `deploy` | 容器构建文件、`docker-bake.hcl`、`compose.yaml` 与 `.env.example` |
 | `scripts` | 数据包打包校验脚本与模拟 AI 服务 |
 
-在 32 线程机器上面对 21.6 万件商品时，API 内部检索耗时 1–6 毫秒，单次请求端到端耗时 5–40 毫秒，32 并发下吞吐约 550 请求/秒。在 Linux 容器环境中，`api` 常驻内存约 0.4–1 GB（mmap 映射的 Tantivy 索引另计在页缓存中），热重载双份目录快照时峰值约 1.8 GB（容器限制 `4g`）。
+在 32 线程机器上面对 21.6 万件商品时，API 内部检索耗时 2–10 毫秒，单次请求端到端耗时 5–40 毫秒，32 并发下吞吐约 550 请求/秒。在 Linux 容器环境中，`api` 常驻内存约 0.4–1 GB（mmap 映射的 Tantivy 索引另计在页缓存中），热重载双份目录快照时峰值约 1.8 GB（容器限制 `3g`）。标签中心向量在开发用目录的 7,396 个标签上占 30 MB（生产环境约 12,000 个标签，估计 50 MB），热重载期间只保留一份。
 
 ## 开发
 
@@ -234,10 +235,12 @@ cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 
 `/api/search` 接受与 VRCatalogue 兼容的查询参数：`v q sort dir page pageSize adult avatars authors tags extags
 btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。其余公开接口包括：`/api/avatars`、`/api/authors`、
-`/api/tags`、`/api/booth-tags`（均支持 `?q=&offset=&limit=`）、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`
+`/api/tags`、`/api/booth-tags`（均支持 `?q=&offset=&limit=`）、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、`/api/related?<搜索参数>`
 以及 `/api/rss?<搜索参数>`。
 
-与 VRCatalogue 的差异：功能（Features）分面计数会联动当前选中的分类；“热门”（Trending）排序按点赞数随时间衰减计算；`range` 额外支持 `7d`、`30d` 与 `90d`；`fields=card` 可选返回卡片精简记录（bio、variations、booth_tags、linked_avatars 与 categories 置空，translations 仅保留标题，booth_images/media 最多 2 张；默认响应保持完整；完整记录通过 `/api/items?ids=` 获取）。
+与 VRCatalogue 的差异：功能（Features）分面计数会联动当前选中的分类；“热门”（Trending）排序按点赞数随时间衰减计算；`range` 额外支持 `7d`、`30d` 与 `90d`；`fields=card` 可选返回卡片精简记录（bio、variations、booth_tags、linked_avatars 与 categories 置空，translations 仅保留标题，booth_images/media 最多 2 张；默认响应保持完整；完整记录通过 `/api/items?ids=` 获取）。`expandedWith` 列出译为查询并一同搜索的 BOOTH 标签（仅当只由它们找到的商品出现在结果中时）；`xl=0` 只按原词搜索。`q` 为 BOOTH 商品链接或 5 位及以上的商品编号时，该商品（含已重新上架的商品）在任何视图中按相关度排序时都排在最前，且不生成查询词向量（`semantic` 为 `skipped`）。
+
+`/api/related` 接受相同的查询参数，在 `searches` 中最多返回 4 个相关搜索，每项包含显示名 `label` 与用于搜索它的 `q`（保留查询词中的模型名）。它们是商品平均向量与查询词向量最接近的 BOOTH 标签，排除以下标签：只是查询词的另一种写法或译词、含模型名、只由少数店铺使用或带有它的商品超过全部商品的 5%、很少出现在查询词本身的结果中，以及在相同筛选条件、成人内容设置和视图下找不到商品。它只读取搜索时已保存的查询词向量，从不请求 AI 服务，因此对没有已保存向量的查询词、商品链接或编号，以及当前设置的向量模型与生成商品向量的模型不一致时，都不返回结果。
 
 ## 致谢
 

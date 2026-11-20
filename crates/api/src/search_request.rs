@@ -5,7 +5,9 @@ use chrono::NaiveDate;
 
 use crate::catalog::FEATURES;
 use crate::params::Params;
+use crate::text::fold_width;
 
+#[derive(Clone)]
 pub struct SearchRequest {
     /// never blank
     pub q: Option<String>,
@@ -131,6 +133,40 @@ impl From<&Params> for SearchRequest {
     }
 }
 
+/// What a whole text query names when it refers to one item (`item_reference`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ItemReference {
+    /// a BOOTH item link: it names the item whether or not the catalogue has it
+    Link(i64),
+    /// a number of at least `MIN_ITEM_DIGITS` digits: it names an item only when the catalogue has that id
+    Number(i64),
+}
+
+/// Shorter numbers are prices and years ("1000", "2024"), searched as text.
+const MIN_ITEM_DIGITS: usize = 5;
+
+/// Reads the whole query, trimmed and folded (`fold_width`), as a BOOTH item link or an item number. A link is
+/// `booth.pm/<lang>/items/<id>` or `<shop>.booth.pm/items/<id>`, with an optional `http://` or `https://`, `www.`,
+/// trailing `/`, query string and fragment; any other path or host is text.
+pub fn item_reference(q: &str) -> Option<ItemReference> {
+    let q = fold_width(q.trim());
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    if q.len() >= MIN_ITEM_DIGITS && digits(&q) {
+        return q.parse().ok().map(ItemReference::Number);
+    }
+    let rest = q.strip_prefix("https://").or_else(|| q.strip_prefix("http://")).unwrap_or(&q);
+    let rest = rest.strip_prefix("www.").unwrap_or(rest);
+    let rest = rest.split(['?', '#']).next().unwrap_or_default();
+    let path: Vec<&str> = rest.strip_suffix('/').unwrap_or(rest).split('/').collect();
+    let label = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    let id = match path.as_slice() {
+        ["booth.pm", lang, "items", id] if label(lang) => id,
+        [host, "items", id] if host.strip_suffix(".booth.pm").is_some_and(label) => id,
+        _ => return None,
+    };
+    id.parse().ok().map(ItemReference::Link)
+}
+
 /// The filter parameters a `without=` group may name. The text query, the view, the order and the page never
 /// change in a wider search, so its text and meaning-based matches are the original search's.
 const FILTERS: [&str; 19] = [
@@ -178,6 +214,43 @@ mod tests {
         assert!(matches!(request("sort=relevant").sort, Sort::Relevant));
         assert!(matches!(request("q=dress&sort=newest").sort, Sort::Newest));
         assert!(matches!(request("q=dress&sort=nonsense").sort, Sort::Trending));
+    }
+
+    #[test]
+    fn a_booth_item_link_or_a_long_number_is_an_item_reference() {
+        use ItemReference::{Link, Number};
+        for (q, expected) in [
+            ("https://booth.pm/ja/items/8962830", Link(8962830)),
+            ("http://booth.pm/zh-cn/items/8962830/", Link(8962830)),
+            ("booth.pm/ko/items/8962830", Link(8962830)),
+            ("https://www.booth.pm/en/items/8962830?srsltid=abc#gallery", Link(8962830)),
+            ("https://shop-name.booth.pm/items/7164608", Link(7164608)),
+            ("  HTTPS://Shop.BOOTH.pm/items/123/#top ", Link(123)),
+            ("8962830", Number(8962830)),
+            ("１２３４５", Number(12345)),
+        ] {
+            assert_eq!(item_reference(q), Some(expected), "{q}");
+        }
+        for q in [
+            "2024",
+            "1000",
+            "skirt 8962830",
+            "8962830 skirt",
+            "https://booth.pm/ja/items/8962830 skirt",
+            "https://booth.pm/ja/browse/8962830",
+            "https://booth.pm/items/8962830",
+            "https://booth.pm//items/8962830",
+            "https://booth.pm/ja/items/8962830/images",
+            "https://booth.pm/ja/items/89x62830",
+            "https://a.b.booth.pm/items/8962830",
+            "https://booth.pm.example.com/ja/items/8962830",
+            "https://example.com/ja/items/8962830",
+            "https://example.com/?.booth.pm/items/8962830",
+            "ftp://booth.pm/ja/items/8962830",
+            "99999999999999999999",
+        ] {
+            assert_eq!(item_reference(q), None, "{q}");
+        }
     }
 
     #[test]

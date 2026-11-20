@@ -36,6 +36,8 @@ pub struct TextMatches {
 pub struct TextIndex {
     reader: IndexReader,
     parser: QueryParser,
+    /// the title field alone (`title_hits`)
+    title_parser: QueryParser,
     gram: Field,
     /// title, tags and author: the word fields a typo-tolerant retry searches
     named: [Field; 3],
@@ -189,7 +191,7 @@ fn nfkc(s: &str) -> String {
 }
 
 /// Folded letters and digits only: "Short-Hair" and "short hair" both become "shorthair".
-fn compact(s: &str) -> String {
+pub(crate) fn compact(s: &str) -> String {
     fold(s).chars().filter(|c| c.is_alphanumeric()).collect()
 }
 
@@ -300,6 +302,8 @@ impl TextIndex {
             })
             .collect::<Result<_>>()?;
 
+        let mut title_parser = QueryParser::for_index(&index, vec![title]);
+        title_parser.set_conjunction_by_default();
         let mut parser = QueryParser::for_index(&index, vec![title, tags, author, bio, pairs]);
         parser.set_conjunction_by_default();
         parser.set_field_boost(title, 3.0);
@@ -319,7 +323,15 @@ impl TextIndex {
                 }
             }
         }
-        Ok(Self { reader, parser, gram, named: [title, tags, author], bio, seg_docs, haystack })
+        Ok(Self { reader, parser, title_parser, gram, named: [title, tags, author], bio, seg_docs, haystack })
+    }
+
+    /// Docs whose title (original or a translation) has every query word as a word: no substrings, no typo
+    /// retry, unscored. A substring would read "치마" (skirt) inside "앞치마" (apron).
+    pub fn title_hits(&self, q: &str) -> Result<RoaringBitmap> {
+        let searcher = self.reader.searcher();
+        let (query, _errors) = self.title_parser.parse_query_lenient(&query_words(q));
+        Ok(searcher.search(&query, &DocSetCollector)?.into_iter().map(|a| self.seg_docs[a.segment_ord as usize][a.doc_id as usize]).collect())
     }
 
     /// Matching catalog docs with a relevance score (substring-only hits get a small floor score).

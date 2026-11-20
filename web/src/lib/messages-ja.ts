@@ -130,6 +130,10 @@ export const ja: Dict = {
   "list.typoTolerant":
     "入力どおりの語では一致しなかったため、語による一致は長めの語ごとにつづりの誤りを 1 か所まで許しています。",
   "list.searchInstead": "「{q}」をそのまま検索",
+  "list.expandedWith":
+    "検索語を翻訳した「{words}」に一致する商品も表示しています。",
+  "list.withoutExpanded": "訳語を含めずに検索",
+  "list.related": "関連する検索",
   "fav.add": "お気に入り",
   "fav.needSignIn": "お気に入りにはログインが必要です",
   "fav.failed": "お気に入りを更新できませんでした",

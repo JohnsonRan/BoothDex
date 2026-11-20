@@ -25,8 +25,8 @@ VRCatalogue. Item data and images belong to their creators; every item links bac
 
 See the [deployment guide](docs/DEPLOY.md) for full setup, reverse-proxy examples and backup commands. The stack
 runs PostgreSQL 17 (`pgvector`), three Rust services and the Next.js site with Docker or Podman Compose, exposes
-a single port (`WEB_LISTEN`, default `127.0.0.1:3100`) for your TLS reverse proxy, and needs a Linux server with **6 GB+
-RAM** (8 GB recommended, or 4 GB with swap).
+a single port (`WEB_LISTEN`, default `127.0.0.1:3100`) for your TLS reverse proxy, and needs a Linux server with **4 GB+
+RAM** and 2 GB of swap (6 GB recommended).
 
 ```mermaid
 flowchart LR
@@ -65,14 +65,27 @@ docker compose pull && docker compose up -d
   macOS) focuses it.
 - Each search word is its own token, removable on its own; the words read as an avatar or a category join one
   token, led by the avatar's picture or a category icon. An avatar's token shows the avatar's name.
+- A BOOTH item link (`booth.pm/<lang>/items/<id>` or `<shop>.booth.pm/items/<id>`), or an item number of five or
+  more digits, puts that item first in whichever view is open: an avatar shows among the items, and an item relisted
+  as a new one shows although other searches leave it out. The filters and the adult setting still apply, and a sort
+  other than relevance (a search's default) places it like any other result. Such a search is not sent to the AI
+  provider and is not searched as translated tags. A number that is no item's id is searched as text.
 - Japanese text search uses Lindera (IPADIC). Full-width and half-width forms match each other, and so do hiragana
   and katakana ("しなの" finds シナノ). A Latin query of up to three words that matches no text is tried again over
   titles, tags and author names, allowing one typo in each all-letter word of five or more letters ("shinnano" finds
   Shinano), and the results page says so. A word that no title, tag or author name has, one typo from the Latin name
   of exactly one avatar, is read as that avatar ("shinnano short hair" searches like "shinano short hair"); the
   results page then offers to search the words as typed.
+  Tags and descriptions are mostly Japanese and only titles are translated, so a query of up to three words is also
+  searched as up to three BOOTH tags that translate it: tags carried by the items whose titles match the query, whose
+  own title matches largely overlap the query's among the items titled in the query's language ("skirt" also finds
+  the items only tagged スカート). Those items rank
+  among the word matches at half weight; the results page names the tags and offers to search without them.
   Optional semantic search finds items by meaning across languages ("哥特裙" finds ゴスロリ dresses) and merges both
-  rankings.
+  rankings. A search it answered also offers up to four related searches above the results: BOOTH tags whose items
+  are closest to the query in meaning (ミニスカート and long skirt for "skirt"). One replaces the query's words and
+  keeps the avatar names and the filters. A search that found nothing offers them under "No items found" once the
+  query has been embedded.
 
 <details>
 <summary>Suggestions for "manuka": the avatar body, then matching items</summary>
@@ -194,8 +207,8 @@ flowchart LR
 ```mermaid
 flowchart TD
   subgraph query["Hybrid Search (/api/search)"]
-    q["Query + facet filters"] --> parse["Extract avatar names<br/>& category phrases"]
-    parse --> kw["Lindera (IPADIC) + Tantivy<br/>& Roaring bitmap facets"]
+    q["Query + facet filters"] --> parse["Read item links or numbers,<br/>avatar names & category phrases"]
+    parse --> kw["Lindera (IPADIC) + Tantivy<br/>+ tags that translate the query<br/>& Roaring bitmap facets"]
     parse -. "if AI embed enabled" .-> embq["Query vector<br/>(RAM → DB cache → AI API, 2.5 s cap)"]
     embq -.-> ann["pgvector HNSW cosine match"]
     kw --> merge["Merge rankings & facet counts"]
@@ -218,16 +231,17 @@ flowchart TD
 |---|---|
 | `crates/core` | Shared types, BOOTH client and PostgreSQL `migrations/`, applied automatically by services on startup |
 | `crates/limit` | The client IP behind the reverse proxy and the per-IP token bucket, shared by `api` and `imgproxy` |
-| `crates/api` | Search API. Facets are Roaring bitmaps in memory; the Tantivy text index lives on disk (`INDEX_DIR`) and is reused across restarts; page payloads come from PostgreSQL |
+| `crates/api` | Search API. Facets are Roaring bitmaps in memory; the Tantivy text index lives on disk (`INDEX_DIR`) and is reused across restarts; page payloads come from PostgreSQL. Related searches compare the stored query embedding with one centroid per BOOTH tag (the mean embedding of its items), built at startup and carried across reloads for up to 6 hours |
 | `crates/worker` | Job runner across 3 lanes: `incremental` (new items), `sweep` (full listing), `details`, `refresh`, `enrich`, `localize` and `embed` (AI). `worker run` is the daemon; `worker once <kind> [params-json]` runs a single job |
 | `crates/imgproxy` | `/b/{size}/...` (item images), `/u/{size}/...` (shop icons), `/a/{file}` (BOOTH static images) and `/f/{size}/{uuid}/{file}` (pixiv Factory drawings, scaled down to the size by imgproxy) transcode and cache images as AVIF; `/v/{sha1}.webp` serves archived images |
 | `web` | Next.js website and `/admin` console |
 | `deploy` | Dockerfiles, `docker-bake.hcl`, `compose.yaml` and `.env.example` |
 | `scripts` | Data bundle scripts and mock AI server |
 
-On a 32-thread machine with 216k items, searches take 1–6 ms inside the API and 5–40 ms per request (~550 req/s
+On a 32-thread machine with 216k items, searches take 2–10 ms inside the API and 5–40 ms per request (~550 req/s
 across 32 concurrent clients). On Linux containers, `api` uses ~0.4–1 GB RSS steady (plus the
-memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while atomically reloading a new catalogue (`mem_limit: 4g`).
+memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while atomically reloading a new catalogue (`mem_limit: 3g`). The tag centroids take 30 MB for
+the 7,396 tags of the development catalogue (an estimated 50 MB for production's ~12,000), one copy across reloads.
 
 ## Development
 
@@ -278,7 +292,7 @@ cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 `/api/search` accepts a VRCatalogue-compatible query string: `v q sort dir page pageSize adult avatars authors
 tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`. Other endpoints:
 `/api/avatars`, `/api/authors`, `/api/tags` and `/api/booth-tags` (`?q=&offset=&limit=`), `/api/categories`,
-`/api/items?ids=`, `/api/palette?q=` and `/api/rss?<search query>`.
+`/api/items?ids=`, `/api/palette?q=`, `/api/related?<search query>` and `/api/rss?<search query>`.
 
 Differences from VRCatalogue: feature facet counts respect the selected category; Trending is likes decayed by
 age; `range` also accepts `7d`, `30d` and `90d`; `fields=card` opts into compact card records (bio, variations,
@@ -289,6 +303,18 @@ booth_images/media at most 2; default response unchanged; fetch full records via
 group, in order. `typoTolerant` is true when the query's words matched nothing as typed and the typo retry
 found the results, or when a misspelt word was read as an avatar. `nameTypo` is true when a misspelt word
 was read as an avatar; `typo=0` reads no word as a misspelt avatar, while a name spelt right still counts.
+`expandedWith` lists the BOOTH tags that translate the query and were searched too, when items only they found are
+among the results; `xl=0` searches the words alone. A `q` that is a BOOTH item link, or an item's number of five or
+more digits, ranks that item first by relevance in any view, relisted or not, and is not embedded (`semantic` is
+`skipped`).
+
+`/api/related` takes the same query string and returns up to four related searches in `searches`, each a `label`
+and the `q` that searches it, avatar names of the query kept. They are BOOTH tags whose items' mean embedding is
+nearest to the query's, minus tags that respell or translate the query, name an avatar, come from a few shops or
+from more than 5% of the items, seldom go with the query's own matches, or find nothing under the same filters,
+adult setting and view. It reads only the embedding a search already stored for the query and never asks the AI
+provider, so it returns none for a query without one, for an item link or number, and while the configured
+embeddings model is not the one the items were embedded with.
 
 ## Acknowledgments
 

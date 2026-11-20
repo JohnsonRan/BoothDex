@@ -24,6 +24,10 @@ async fn multi_thread(check: impl Future<Output = ()> + Send + 'static) {
 }
 
 fn app(pool: PgPool, catalog: Catalog, avatars: Lookup) -> Arc<AppState> {
+    app_with(pool, catalog, avatars, Default::default())
+}
+
+fn app_with(pool: PgPool, catalog: Catalog, avatars: Lookup, related: crate::related::Related) -> Arc<AppState> {
     crate::install_tls();
     Arc::new(
         AppState::new(
@@ -31,6 +35,7 @@ fn app(pool: PgPool, catalog: Catalog, avatars: Lookup) -> Arc<AppState> {
             Snapshot {
                 catalog,
                 category_phrases: Default::default(),
+                related,
                 avatars,
                 authors: Lookup::new(Vec::new()),
                 tags: Lookup::new(Vec::new()),
@@ -50,13 +55,21 @@ fn app(pool: PgPool, catalog: Catalog, avatars: Lookup) -> Arc<AppState> {
     )
 }
 
+/// Embeddings from a provider at a closed local port, so a search that asks for one fails at once and reaches no
+/// upstream; refuses to run when the environment names another provider.
+async fn closed_provider(pool: &PgPool) {
+    for (key, expected) in [("AI_BASE_URL", "http://127.0.0.1:9"), ("AI_API_KEY", "test"), ("AI_EMBED_MODEL", "test-model")] {
+        assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty() || v.trim() == expected), "unset {key} or use its local test value");
+    }
+    sqlx::query("insert into app_settings (key, value) values ('ai', '{\"base_url\":\"http://127.0.0.1:9\",\"api_key\":\"test\",\"embed_model\":\"test-model\"}')")
+        .execute(pool).await.unwrap();
+}
+
 async fn check_semantic_search(pool: PgPool) {
     use axum::body::to_bytes;
     use axum::http::HeaderMap;
 
-    for (key, expected) in [("AI_BASE_URL", "http://127.0.0.1:9"), ("AI_API_KEY", "test"), ("AI_EMBED_MODEL", "test-model")] {
-        assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty() || v.trim() == expected), "unset {key} or use its local test value");
-    }
+    closed_provider(&pool).await;
     let mut vector = vec![0.0; boothdex_core::embed::DIMS];
     vector[0] = 1.0;
     for (id, title, x, y) in [(1i64, "ボブカット", 1.0, 0.0), (2, "ドレス", 0.0, 1.0), (3, "ヘアセット", 1.0, 0.1)] {
@@ -67,8 +80,7 @@ async fn check_semantic_search(pool: PgPool) {
             .bind(id).bind(title).bind(boothdex_core::embed::HalfVector::from_f32_slice(&v)).execute(&pool).await.unwrap();
     }
     sqlx::raw_sql("insert into avatars (slug, name_en) values ('shinano', 'Shinano'), ('manuka', 'Manuka') on conflict (slug) do nothing;
-                   insert into item_avatars (item_id, avatar_slug) values (1, 'shinano'), (2, 'shinano'), (3, 'manuka');
-                   insert into app_settings (key, value) values ('ai', '{\"base_url\":\"http://127.0.0.1:9\",\"api_key\":\"test\",\"embed_model\":\"test-model\"}');")
+                   insert into item_avatars (item_id, avatar_slug) values (1, 'shinano'), (2, 'shinano'), (3, 'manuka');")
         .execute(&pool).await.unwrap();
     sqlx::query("insert into query_embeddings (model, query, embedding) values ('test-model', 'silky strands', $1::halfvec)")
         .bind(boothdex_core::embed::HalfVector::from_f32_slice(&vector)).execute(&pool).await.unwrap();
@@ -136,6 +148,230 @@ async fn check_feed_and_palette(pool: PgPool) {
     let found = palette(State(state), ip, crate::limit::Tier::Base, RawQuery(Some("q=Rock%26Roll".into()))).await.unwrap_or_else(IntoResponse::into_response);
     let json: Value = serde_json::from_slice(&body(found).await).unwrap();
     assert_eq!(json["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>(), [1]);
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_search_also_finds_what_the_tag_translating_it_finds(pool: PgPool) {
+    multi_thread(check_expansion(pool)).await;
+}
+
+async fn search_json(state: &Arc<AppState>, query: &str) -> Value {
+    use axum::body::to_bytes;
+    use axum::http::HeaderMap;
+
+    let response = search(State(state.clone()), limit::ClientIp("203.0.113.40".parse().unwrap()), crate::limit::Tier::Base, HeaderMap::new(), RawQuery(Some(query.into())))
+        .await
+        .unwrap_or_else(IntoResponse::into_response);
+    assert_eq!(response.status(), StatusCode::OK);
+    serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap()
+}
+
+async fn check_expansion(pool: PgPool) {
+    use axum::body::to_bytes;
+
+    // 1-12 are titled スカート with the title translated as Skirt; 13-22, in another BOOTH category, carry only the tag
+    sqlx::raw_sql(
+        "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_category, booth_tags, translations)
+         select i, 'スカート ' || i, 'creator', 'https://example.test', false, 'ok', now(), '3D Clothing', '{スカート}',
+                jsonb_build_object('en', jsonb_build_object('title', 'Skirt ' || i))
+         from generate_series(1, 12) i;
+         insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_category, booth_tags)
+         select i, 'Item ' || i, 'creator', 'https://example.test', false, 'ok', now(), '3D Accessory', '{スカート}'
+         from generate_series(13, 22) i;
+         insert into avatars (slug, name_en) values ('shinano', 'Shinano') on conflict (slug) do nothing;
+         insert into item_avatars (item_id, avatar_slug) values (1, 'shinano'), (13, 'shinano');",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let avatars = Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 2)]);
+    let state = app(pool.clone(), Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap(), avatars);
+    let ids = |body: &Value| body["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>();
+
+    // sem=0: no embedding is asked for. The words' own matches rank first, the tag's follow and are counted.
+    let both = search_json(&state, "q=skirt&sem=0&pageSize=100").await;
+    assert_eq!((&both["count"], &both["expandedWith"]), (&json!(22), &json!(["スカート"])), "{both}");
+    assert_eq!(both["boothCounts"], json!({ "3D Clothing": 12, "3D Accessory": 10 }));
+    let mut first = ids(&both)[..12].to_vec();
+    first.sort();
+    assert_eq!(first, (1..=12).collect::<Vec<_>>());
+    let words = search_json(&state, "q=skirt&sem=0&xl=0&pageSize=100").await;
+    assert_eq!((&words["count"], &words["expandedWith"], &words["boothCounts"]), (&json!(12), &json!([]), &json!({ "3D Clothing": 12 })), "{words}");
+    // a model named in the query: the other words are translated, and what the tag finds must fit the model
+    let fitting = search_json(&state, "q=shinano%20skirt&sem=0&pageSize=100").await;
+    assert_eq!((ids(&fitting), &fitting["expandedWith"]), (vec![1, 13], &json!(["スカート"])), "{fitting}");
+    // an empty search counts what it finds without its filter from the same matches
+    for (query, wider) in [("q=skirt&sem=0&pmin=100000&without=pmin", 22), ("q=skirt&sem=0&xl=0&pmin=100000&without=pmin", 12)] {
+        let body = search_json(&state, query).await;
+        assert_eq!((&body["count"], &body["widerCounts"], &body["expandedWith"]), (&json!(0), &json!([wider]), &json!([])), "{query}: {body}");
+    }
+
+    // the feed and the palette search the words alone
+    let ip = limit::ClientIp("203.0.113.41".parse().unwrap());
+    let feed = rss_feed(State(state.clone()), ip, RawQuery(Some("q=skirt".into()))).await.unwrap_or_else(IntoResponse::into_response);
+    let xml = String::from_utf8(to_bytes(feed.into_body(), 1024 * 1024).await.unwrap().to_vec()).unwrap();
+    assert_eq!(xml.matches("<item>").count(), 12);
+    let found = palette(State(state), ip, crate::limit::Tier::Base, RawQuery(Some("q=skirt".into()))).await.unwrap_or_else(IntoResponse::into_response);
+    let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+    assert_eq!(json["itemCount"], 12);
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_booth_link_or_an_item_number_finds_the_item_without_an_embedding(pool: PgPool) {
+    multi_thread(check_item_reference(pool)).await;
+}
+
+async fn check_item_reference(pool: PgPool) {
+    use axum::body::to_bytes;
+
+    // 70001 is re-uploaded as 70002. 1-12, titled in English with its number, share the tag Bundle with 13-22, so
+    // the number alone would also be searched as that tag.
+    closed_provider(&pool).await;
+    sqlx::raw_sql(
+        "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, relisted_as) values
+         (70001, 'Ribbon', 'creator', 'https://example.test', false, 'delisted', now(), 70002),
+         (70002, 'Ribbon', 'creator', 'https://example.test', false, 'ok', now(), null);
+         insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, original_language, booth_tags)
+         select i, 'Bundle for 70001 #' || i, 'creator', 'https://example.test', false, 'ok', now(), 'en', '{Bundle}'
+         from generate_series(1, 12) i;
+         insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags)
+         select i, 'Item ' || i, 'creator', 'https://example.test', false, 'ok', now(), '{Bundle}' from generate_series(13, 22) i;",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let state = app(pool.clone(), Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap(), Lookup::new(Vec::new()));
+    let ids = |body: &Value| body["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>();
+    let asked_for_embedding = |body: &Value| body["trace"].as_array().unwrap().iter().any(|s| s["step"] == "settings");
+
+    // the named item first, then what the number finds as text; no embedding is asked for and no tag searched
+    let number = search_json(&state, "q=70001&pageSize=100").await;
+    assert_eq!((&number["count"], &number["semantic"], &number["expandedWith"]), (&json!(13), &json!("skipped"), &json!([])), "{number}");
+    assert_eq!(ids(&number)[0], 70001);
+    assert!(!asked_for_embedding(&number), "{number}");
+    for link in ["https://booth.pm/ko/items/70001", "https://shop.booth.pm/items/70001/"] {
+        let body = search_json(&state, &format!("q={link}")).await;
+        assert_eq!((ids(&body), &body["semantic"]), (vec![70001], &json!("skipped")), "{link}: {body}");
+        assert!(!asked_for_embedding(&body), "{body}");
+    }
+    // a link to an item the catalogue lacks finds nothing, and is not embedded either
+    let missing = search_json(&state, "q=https://booth.pm/ja/items/99999").await;
+    assert_eq!((&missing["count"], &missing["semantic"]), (&json!(0), &json!("skipped")), "{missing}");
+    // a number that is no item's id is searched as today: the embedding is asked for (the closed port refuses it)
+    let text = search_json(&state, "q=99999").await;
+    assert_eq!((&text["count"], &text["semantic"]), (&json!(0), &json!("unavailable")), "{text}");
+    assert!(asked_for_embedding(&text), "{text}");
+
+    // the palette lists it first too
+    let ip = limit::ClientIp("203.0.113.42".parse().unwrap());
+    for q in ["70001", "https://booth.pm/ja/items/70001"] {
+        let found = palette(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some(format!("q={q}")))).await.unwrap_or_else(IntoResponse::into_response);
+        let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+        assert_eq!(json["items"][0]["id"], 70001, "{q}: {json}");
+    }
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn related_searches_come_from_a_stored_query_embedding_only(pool: PgPool) {
+    multi_thread(check_related(pool)).await;
+}
+
+async fn check_related(pool: PgPool) {
+    use axum::body::to_bytes;
+    use axum::http::HeaderMap;
+
+    use crate::related::{AvatarNames, Related, TagCentroids};
+
+    // 1-20 are long skirts that fit Shinano, 21-40 pleated skirts, from five shops each and embedded near the query;
+    // 41-440 are untagged, so neither tag is on 5% of the items
+    closed_provider(&pool).await;
+    let unit = |i: usize, x: f32| {
+        let mut v = vec![0.0; boothdex_core::embed::DIMS];
+        (v[0], v[i]) = (x, (1.0 - x * x).sqrt());
+        boothdex_core::embed::HalfVector::from_f32_slice(&v)
+    };
+    for id in 1..=40i64 {
+        let (tag, near) = if id <= 20 { ("long skirt", unit(1, 0.9)) } else { ("pleats", unit(2, 0.8)) };
+        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags, embedding)
+                     values ($1, 'Skirt ' || $1, 'shop ' || ($1 % 5), 'https://example.test', false, 'ok', now(), array[$2], $3::halfvec)")
+            .bind(id).bind(tag).bind(near).execute(&pool).await.unwrap();
+    }
+    sqlx::raw_sql(
+        "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+         select i, 'Filler ' || i, 'shop ' || (i % 50), 'https://example.test', false, 'ok', now() from generate_series(41, 440) i;
+         insert into avatars (slug, name_en) values ('shinano', 'Shinano') on conflict (slug) do nothing;
+         insert into item_avatars (item_id, avatar_slug) select i, 'shinano' from generate_series(1, 20) i;
+         insert into app_settings (key, value) values ('embed_state', '{\"model\": \"test-model\"}');",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    // stored for skirt, and for an item link as if a search had embedded it before links named items
+    for query in ["skirt", "https://booth.pm/ja/items/1"] {
+        sqlx::query("insert into query_embeddings (model, query, embedding) values ('test-model', $1, $2::halfvec)")
+            .bind(query).bind(unit(3, 1.0)).execute(&pool).await.unwrap();
+    }
+    let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
+    let centroids = TagCentroids::current(&pool, &catalog, None).await.unwrap();
+    let related = Related { avatars: AvatarNames::new(["Shinano"]), centroids };
+    let state = app_with(pool.clone(), catalog, Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 20)]), related);
+    let ip = "203.0.113.50".parse().unwrap();
+    let used = || sqlx::query_as::<_, (i32, chrono::DateTime<chrono::Utc>)>("select hits, last_used_at from query_embeddings where query = 'skirt'").fetch_one(&pool);
+    let before = used().await.unwrap();
+    let searches = |query: &'static str| {
+        let state = state.clone();
+        async move {
+            let response = crate::related::related(State(state), limit::ClientIp(ip), HeaderMap::new(), RawQuery(Some(query.into())))
+                .await
+                .unwrap_or_else(IntoResponse::into_response);
+            assert_eq!(response.status(), StatusCode::OK, "{query}");
+            let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+            body["searches"].clone()
+        }
+    };
+
+    // nearest first; a model named in the query stays in each destination, which finds only what fits it
+    assert_eq!(searches("q=skirt").await, json!([{ "label": "long skirt", "q": "long skirt" }, { "label": "pleats", "q": "pleats" }]));
+    assert_eq!(searches("q=Shinano%20skirt").await, json!([{ "label": "long skirt", "q": "Shinano long skirt" }]));
+    // a misspelt model name is read as the model unless typo=0 asks for the words as typed
+    assert_eq!(searches("q=Shinnano%20skirt").await, json!([{ "label": "long skirt", "q": "Shinnano long skirt" }]));
+    assert_eq!(searches("q=Shinnano%20skirt&typo=0").await, json!([]));
+    // the embedding a search keeps in memory counts as stored
+    let mut kept = vec![0.0; boothdex_core::embed::DIMS];
+    kept[0] = 1.0;
+    state.embed_cache.insert("test-model\ncoat".into(), kept);
+    assert_eq!(searches("q=coat").await, json!([{ "label": "long skirt", "q": "long skirt" }, { "label": "pleats", "q": "pleats" }]));
+    // reading the stored embedding counts no use
+    assert_eq!(used().await.unwrap(), before);
+    // none for a query without a stored embedding, which is not asked for: no row is stored and the embedding budget
+    // of the address is whole
+    assert_eq!(searches("q=dress").await, json!([]));
+    let stored: i64 = sqlx::query_scalar("select count(*) from query_embeddings").fetch_one(&pool).await.unwrap();
+    assert_eq!(stored, 2);
+    assert!((0..8).all(|_| state.limits.embed_ip.take(ip).is_ok()));
+    // none for an item named by its link, for favourites while signed out, or without words
+    for query in ["q=https://booth.pm/ja/items/1", "q=skirt&v=favourites", "q=Shinano", "adult=include"] {
+        assert_eq!(searches(query).await, json!([]), "{query}");
+    }
+    // none once the configured model is not the one of the item embeddings, though searches stored vectors from it,
+    // or no model is configured
+    sqlx::query("insert into query_embeddings (model, query, embedding) values ('other-model', 'skirt', $1::halfvec)")
+        .bind(unit(3, 1.0)).execute(&pool).await.unwrap();
+    let config = (*state.ai_config().await.unwrap()).clone();
+    for model in [Some("other-model".to_owned()), None] {
+        state.ai.store(Some(Arc::new(boothdex_core::settings::AiConfig { embed_model: model.clone(), ..config.clone() })));
+        assert_eq!(searches("q=skirt").await, json!([]), "{model:?}");
+    }
+    // the work waits for a search permit like a search, and gives up after its wait as a search does
+    state.ai.store(Some(Arc::new(config)));
+    let _held = state.search_permits.acquire_many(16).await.unwrap();
+    let response = crate::related::related(State(state.clone()), limit::ClientIp(ip), HeaderMap::new(), RawQuery(Some("q=skirt".into())))
+        .await
+        .unwrap_or_else(IntoResponse::into_response);
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
 }
 
 #[sqlx::test(migrations = "../core/migrations")]
@@ -226,19 +462,25 @@ async fn load_docs_translated_titles(pool: PgPool) {
          (1, 'Original 1', 'creator', 'https://example.test', false, 'ok', now(), '{\"original_language\":\"ja\",\"en\":{\"title\":\"Title EN\"},\"ja\":{\"title\":\"Title JA\"},\"ko\":{\"title\":\"Title KO\"},\"zh\":{\"title\":\"Title ZH\"}}'),
          (2, 'Original 2', 'creator', 'https://example.test', false, 'ok', now(), '{\"en\":{\"title\":\"Title EN 2\"},\"ja\":{\"title\":null},\"ko\":{},\"zh\":{\"title\":\"Title ZH 2\"}}'),
          (3, 'Original 3', 'creator', 'https://example.test', false, 'ok', now(), '{\"fr\":{\"title\":\"Titre FR\"}}'),
-         (4, 'Original 4', 'creator', 'https://example.test', false, 'ok', now(), '42');",
+         (4, 'Original 4', 'creator', 'https://example.test', false, 'ok', now(), '42');
+         insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, original_language, translations) values
+         (5, '原标题', 'creator', 'https://example.test', false, 'ok', now(), 'zh', '{\"en\":{\"title\":\"Title EN 5\"}}');",
     )
     .execute(&pool)
     .await
     .unwrap();
 
     let docs = db::load_docs(&pool).await.unwrap();
+    let languages: HashMap<i64, u8> = docs.iter().map(|d| (d.id, d.title_languages)).collect();
     let by_id: HashMap<i64, Vec<String>> = docs.into_iter().map(|d| (d.id, d.titles_translated)).collect();
 
     assert_eq!(*by_id.get(&1).unwrap(), vec!["Title EN", "Title JA", "Title KO", "Title ZH"]);
     assert_eq!(*by_id.get(&2).unwrap(), vec!["Title EN 2", "Title ZH 2"]);
     assert!(by_id.get(&3).unwrap().is_empty());
     assert!(by_id.get(&4).unwrap().is_empty());
+    // the languages it has a title in (expansion::LANGUAGES: en, ja, ko, zh), a null title not counted, and the
+    // original language too
+    assert_eq!([1, 2, 3, 4, 5].map(|id| languages[&id]), [0b1111, 0b1001, 0, 0, 0b1001]);
 }
 
 #[test]

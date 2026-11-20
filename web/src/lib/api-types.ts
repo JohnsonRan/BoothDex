@@ -51,7 +51,12 @@ typoTolerant: boolean,
 /**
  * a word was read as the model whose name it misspells; `typo=0` asks for the words as typed
  */
-nameTypo: boolean, };
+nameTypo: boolean, 
+/**
+ * BOOTH tags that translate the query, searched too, when items only they found are among the results;
+ * `xl=0` asks for the words alone
+ */
+expandedWith: Array<string>, };
 
 export type SemanticStatus = "used" | "off" | "unavailable" | "skipped";
 
@@ -66,6 +71,22 @@ export type RecognizedKind = "model" | "category";
 export type TraceStep = { step: string, ms: number, };
 
 export type Timing = { searchMs: number, totalMs: number, };
+
+export type RelatedResponse = { 
+/**
+ * best first; empty when there is nothing to offer
+ */
+searches: Array<RelatedSearch>, };
+
+export type RelatedSearch = { 
+/**
+ * the tag as most items spell it
+ */
+label: string, 
+/**
+ * the query that searches it: the model names of the asked query, then the tag
+ */
+q: string, };
 
 export type GuestbookPage = { 
 /**

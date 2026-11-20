@@ -20,7 +20,7 @@ BoothDex は、[BOOTH](https://booth.pm) で販売されている VRChat 向け�
 
 ## はじめに
 
-詳細な構築手順、リバースプロキシの設定例、バックアップ運用については [デプロイガイド](docs/DEPLOY.md) (英語) を参照してください。Docker または Podman Compose を使用して PostgreSQL 17 (`pgvector`)、3 つの Rust サービス、Next.js サイトを起動し、TLS リバースプロキシ向けに単一ポート (`WEB_LISTEN`、既定値 `127.0.0.1:3100`) のみを公開します。**6 GB 以上のメモリ**を備えた Linux サーバーが必要です (8 GB 推奨、スワップ併用時は 4 GB から動作可能)。
+詳細な構築手順、リバースプロキシの設定例、バックアップ運用については [デプロイガイド](docs/DEPLOY.md) (英語) を参照してください。Docker または Podman Compose を使用して PostgreSQL 17 (`pgvector`)、3 つの Rust サービス、Next.js サイトを起動し、TLS リバースプロキシ向けに単一ポート (`WEB_LISTEN`、既定値 `127.0.0.1:3100`) のみを公開します。**4 GB 以上のメモリ**と 2 GB のスワップを備えた Linux サーバーが必要です (6 GB 推奨)。
 
 ```mermaid
 flowchart LR
@@ -52,7 +52,8 @@ docker compose pull && docker compose up -d
 - フィルター行には検索欄とフィルターごとのセレクターが並び、入りきらないフィルターは「+N」ボタンにまとめられます。
 - 検索欄は入力に合わせて最近の検索、アバター、商品、ショップ、タグを候補として表示します。`Ctrl+K` (macOS では `Cmd+K`) で検索欄にフォーカスできます。
 - 検索語は 1 語ずつトークンとして表示され、個別に削除できます。アバターやカテゴリとして認識された語は 1 つのトークンにまとまり、先頭にアバターの画像またはカテゴリのアイコンが付きます。
-- 日本語の全文検索には Lindera (IPADIC) を使用します。全角と半角、ひらがなとカタカナは区別せずに検索します (“しなの” でシナノもヒット)。3 語以内の英字の検索がどのテキストにも一致しない場合は、5 文字以上の英字だけの単語ごとに 1 文字の誤りを許し、タイトル、タグ、作者名を検索し直します (“shinnano” で Shinano もヒット)。オプションのセマンティック検索を有効にすると、言語をまたいで意味の近い商品 (“哥特裙” でゴスロリ衣装がヒットするなど) を検索し、キーワード検索の結果と統合して並べ替えます。
+- BOOTH の商品リンク (`booth.pm/<lang>/items/<id>` または `<shop>.booth.pm/items/<id>`) または 5 桁以上の商品番号で検索すると、表示中のビューにかかわらずその商品を先頭に表示します。商品の一覧にもアバター本体が表示され、新しい商品として再出品された商品 (ほかの検索には表示されません) も表示されます。フィルターと年齢制限の設定はそのまま適用され、関連度 (検索の既定の並び順) 以外で並べ替えた場合はほかの結果と同じく並び順に従います。この検索は AI プロバイダーに送信されず、訳語のタグでも検索しません。商品 ID に一致しない番号はテキストとして検索します。
+- 日本語の全文検索には Lindera (IPADIC) を使用します。全角と半角、ひらがなとカタカナは区別せずに検索します (“しなの” でシナノもヒット)。3 語以内の英字の検索がどのテキストにも一致しない場合は、5 文字以上の英字だけの単語ごとに 1 文字の誤りを許し、タイトル、タグ、作者名を検索し直します (“shinnano” で Shinano もヒット)。タグと説明文の大半は日本語で、翻訳されるのはタイトルだけなので、3 語以内の検索は、それを訳した BOOTH タグ (最大 3 つ) でも検索します。訳語とみなすのは、タイトルが検索語に一致する商品に付いたタグのうち、検索語の言語のタイトルを持つ商品の中で、タグ自身がタイトルに一致する商品と検索語がタイトルに一致する商品が大きく重なるものです (“skirt” で、スカートのタグだけが付いた商品もヒット)。これらの商品はキーワード一致の半分の重みで並びます。検索結果のページはそのタグを示し、訳語を含めない検索を提案します。オプションのセマンティック検索を有効にすると、言語をまたいで意味の近い商品 (“哥特裙” でゴスロリ衣装がヒットするなど) を検索し、キーワード検索の結果と統合して並べ替えます。セマンティック検索で答えた検索では、結果の上に関連する検索を最大 4 つ表示します。商品の意味が検索語に最も近い BOOTH タグ (“skirt” ならミニスカートや long skirt) で、選ぶと検索語をそのタグに置き換え、アバター名と絞り込み条件はそのまま残します。何も見つからなかった検索でも、検索語のベクトルが保存済みであれば「商品が見つかりません」の下に表示します。
 
 <details>
 <summary>「マヌカ」と入力したときの候補: アバター本体、続いて一致する商品が表示されます</summary>
@@ -152,8 +153,8 @@ flowchart LR
 ```mermaid
 flowchart TD
   subgraph query["ハイブリッド検索 (/api/search)"]
-    q["検索クエリ + 絞り込み条件"] --> parse["アバター名・カテゴリ語句の抽出"]
-    parse --> kw["Lindera (IPADIC) + Tantivy<br/>& Roaring ビットマップ絞り込み"]
+    q["検索クエリ + 絞り込み条件"] --> parse["商品リンク・商品番号、アバター名・カテゴリ語句の抽出"]
+    parse --> kw["Lindera (IPADIC) + Tantivy<br/>+ 検索語を訳したタグ<br/>& Roaring ビットマップ絞り込み"]
     parse -. "セマンティック検索有効時" .-> embq["検索ベクトル取得<br/>(メモリ → DB キャッシュ → AI API、上限 2.5 秒)"]
     embq -.-> ann["pgvector HNSW 近傍検索"]
     kw --> merge["スコア統合・ファセット集計"]
@@ -176,14 +177,14 @@ flowchart TD
 |---|---|
 | `crates/core` | 共通型、BOOTH クライアント、および起動時に自動適用される `migrations/` 内の PostgreSQL スキーマ |
 | `crates/limit` | リバースプロキシ越しのクライアント IP と IP ごとのトークンバケット。`api` と `imgproxy` が共用します |
-| `crates/api` | 検索 API。絞り込みにはメモリ上の Roaring ビットマップを使用し、Tantivy 全文検索インデックスはディスク (`INDEX_DIR`) に保持して再起動時も再利用します。ページ表示用の商品データは PostgreSQL から取得します |
+| `crates/api` | 検索 API。絞り込みにはメモリ上の Roaring ビットマップを使用し、Tantivy 全文検索インデックスはディスク (`INDEX_DIR`) に保持して再起動時も再利用します。ページ表示用の商品データは PostgreSQL から取得します。関連検索は、保存済みの検索ベクトルを BOOTH タグごとの重心 (そのタグが付いた商品のベクトルの平均) と比較します。重心は起動時に作成し、再読み込みをまたいで最大 6 時間使い続けます |
 | `crates/worker` | 3 レーン構成のジョブランナー: `incremental` (新着取得)、`sweep` (全件巡回)、`details`、`refresh`、`enrich`、`localize`、`embed` (AI)。`worker run` でデーモン起動、`worker once <kind> [params-json]` で単発実行します |
 | `crates/imgproxy` | `/b/{size}/...` (商品画像)、`/u/{size}/...` (ショップアイコン)、`/a/{file}` (BOOTH の静的画像)、`/f/{size}/{uuid}/{file}` (pixiv Factory の画像。imgproxy がサイズに合わせて縮小) を AVIF に変換・キャッシュ配信し、`/v/{sha1}.webp` でアーカイブ画像を配信します |
 | `web` | Next.js フロントエンドおよび `/admin` 管理画面 |
 | `deploy` | Dockerfile、`docker-bake.hcl`、`compose.yaml`、および `.env.example` |
 | `scripts` | データバンドル作成ツール、モック AI サーバー |
 
-32 スレッド環境で約 21.6 万件の商品を検索した場合、API 内部の処理時間は 1～6 ミリ秒、リクエスト全体では 5～40 ミリ秒で応答し、32 クライアント同時接続時に毎秒約 550 リクエストを処理します。Linux コンテナー上での `api` のメモリ使用量は通常時で約 0.4～1 GB (メモリマップされた Tantivy インデックスはページ キャッシュ側)、カタログ再読み込み時のピークで約 1.8 GB です (`mem_limit: 4g`)。
+32 スレッド環境で約 21.6 万件の商品を検索した場合、API 内部の処理時間は 2～10 ミリ秒、リクエスト全体では 5～40 ミリ秒で応答し、32 クライアント同時接続時に毎秒約 550 リクエストを処理します。Linux コンテナー上での `api` のメモリ使用量は通常時で約 0.4～1 GB (メモリマップされた Tantivy インデックスはページ キャッシュ側)、カタログ再読み込み時のピークで約 1.8 GB です (`mem_limit: 3g`)。タグの重心は開発用カタログの 7,396 タグで 30 MB (本番環境の約 12,000 タグでは推定 50 MB) で、再読み込み中も 1 組だけ保持します。
 
 ## 開発
 
@@ -229,9 +230,11 @@ cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 
 ## API
 
-`/api/search` は VRCatalogue 互換のクエリパラメーターを受け付けます: `v q sort dir page pageSize adult avatars authors tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。その他のエンドポイントとして `/api/avatars`、`/api/authors`、`/api/tags`、`/api/booth-tags` (`?q=&offset=&limit=`)、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、および `/api/rss?<検索クエリ>` があります。
+`/api/search` は VRCatalogue 互換のクエリパラメーターを受け付けます: `v q sort dir page pageSize adult avatars authors tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。その他のエンドポイントとして `/api/avatars`、`/api/authors`、`/api/tags`、`/api/booth-tags` (`?q=&offset=&limit=`)、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、`/api/related?<検索クエリ>`、および `/api/rss?<検索クエリ>` があります。
 
-VRCatalogue との違い: 機能 (Features) のファセット件数が選択中のカテゴリを反映します。「人気」(Trending) 順は経過時間で減衰させた「スキ!」数で算出します。`range` パラメーターでは `7d`、`30d`、`90d` も指定できます。`fields=card` でカード表示用の軽量データを取得できます (bio、variations、booth_tags、linked_avatars、categories を空にし、translations はタイトルのみ保持、booth_images/media は最大 2 枚に制限。デフォルト応答は完全なまま。完全な記録は `/api/items?ids=` で取得)。
+VRCatalogue との違い: 機能 (Features) のファセット件数が選択中のカテゴリを反映します。「人気」(Trending) 順は経過時間で減衰させた「スキ!」数で算出します。`range` パラメーターでは `7d`、`30d`、`90d` も指定できます。`fields=card` でカード表示用の軽量データを取得できます (bio、variations、booth_tags、linked_avatars、categories を空にし、translations はタイトルのみ保持、booth_images/media は最大 2 枚に制限。デフォルト応答は完全なまま。完全な記録は `/api/items?ids=` で取得)。`expandedWith` は、検索語を訳して一緒に検索した BOOTH タグを示します (それだけで見つかった商品が結果に含まれる場合)。`xl=0` を付けると検索語だけで検索します。`q` が BOOTH の商品リンク、または 5 桁以上の商品番号の場合は、その商品 (再出品されたものを含む) をどのビューでも関連度順の先頭に返し、検索ベクトルは取得しません (`semantic` は `skipped`)。
+
+`/api/related` は同じクエリパラメーターを受け付け、関連検索を最大 4 件 `searches` で返します。各件は表示名 `label` と、それを検索する `q` (検索語に含まれるアバター名を残したもの) です。商品の埋め込みベクトルの平均が検索語のベクトルに最も近い BOOTH タグのうち、検索語の表記揺れや訳語、アバター名を含むタグ、少数のショップだけが付けているタグや全商品の 5% を超える商品に付いているタグ、検索語の検索結果にほとんど付いていないタグ、同じ絞り込み条件・成人向け設定・ビューで何も見つからないタグを除きます。検索時に保存済みの検索ベクトルだけを読み、AI プロバイダーには問い合わせません。そのため、保存済みのベクトルがない検索語、商品リンクや商品番号、および設定中の埋め込みモデルが商品のベクトルを作成したモデルと異なる間は、何も返しません。
 
 ## 謝辞
 

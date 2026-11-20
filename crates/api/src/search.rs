@@ -43,6 +43,9 @@ pub(crate) struct SearchResponse {
     typo_tolerant: bool,
     /// a word was read as the model whose name it misspells; `typo=0` asks for the words as typed
     name_typo: bool,
+    /// BOOTH tags that translate the query, searched too, when items only they found are among the results;
+    /// `xl=0` asks for the words alone
+    expanded_with: Vec<String>,
 }
 
 /// Query words the search took as a model (matching what fits it) or a smart category (matching what is in it):
@@ -82,7 +85,7 @@ pub(crate) enum SemanticStatus {
     Off,
     /// the provider is slow or failing
     Unavailable,
-    /// not needed (sem=0 from a later page, or the query only names models)
+    /// not needed (sem=0 from a later page, the query only names models, or it names an item by its link or number)
     Skipped,
 }
 
@@ -157,6 +160,9 @@ pub(crate) async fn search(
     // embedding, so "shinano short hair" adds short hair that fits Shinano, not other Shinano items
     let q = req.q.as_deref().unwrap_or_default();
     let snap = s.snap();
+    // a BOOTH item link, or the number of an item, names that item (catalog.rs): it is neither embedded nor searched
+    // as the tags that translate it
+    let names_item = snap.catalog.referenced(q).is_some();
     // typo=0 (the site's "search instead for"): every word counts as known, so none is read as a misspelt model
     let typos = p.get("typo").as_deref() != Some("0");
     let (meaning, named, name_typo) = snap.avatars.split_names(q, |w| !typos || snap.catalog.knows_word(w));
@@ -165,7 +171,7 @@ pub(crate) async fn search(
     trace.step("prepare");
     let embed_plan = match req.q {
         Some(_) if p.get("sem").as_deref() == Some("0") => EmbedPlan::Skipped,
-        Some(_) if meaning.is_empty() => EmbedPlan::Skipped,
+        Some(_) if meaning.is_empty() || names_item => EmbedPlan::Skipped,
         Some(_) => semantic_vector(s.clone(), ip, &meaning, &mut trace).await,
         None => EmbedPlan::Off,
     };
@@ -193,9 +199,11 @@ pub(crate) async fn search(
     let catalog_now = chrono::Utc::now().timestamp();
     let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
         .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models, rest: &meaning });
+    // xl=0 (the site's "without translated matches"): the words are not also searched as the tags that translate them
+    let expand = (!names_item && p.get("xl").as_deref() != Some("0")).then_some(meaning.as_str());
     let search_start = Instant::now();
     let (r, wider_counts) =
-        tokio::task::block_in_place(|| search_and_wider(&s.snap().catalog, raw, &req, catalog_now, favourites.as_ref(), semantic))?;
+        tokio::task::block_in_place(|| search_and_wider(&s.snap().catalog, raw, &req, catalog_now, favourites.as_ref(), semantic, expand))?;
     let search_ms = search_start.elapsed().as_secs_f64() * 1e3;
     trace.step("search");
     let items = db::load_items(&s.pool, &r.ids, p.get("fields").as_deref() == Some("card")).await?;
@@ -218,6 +226,7 @@ pub(crate) async fn search(
         wider_counts,
         typo_tolerant: r.typo || name_typo,
         name_typo,
+        expanded_with: r.expanded_with,
     })
     .into_response())
 }
@@ -231,13 +240,14 @@ pub(crate) fn search_and_wider(
     now: i64,
     favourites: Option<&roaring::RoaringBitmap>,
     semantic: Option<catalog::Semantic>,
+    expand: Option<&str>,
 ) -> anyhow::Result<(catalog::SearchResult, Vec<u64>)> {
-    let r = catalog.search(req, now, favourites, semantic, true)?;
+    let r = catalog.search(req, now, favourites, semantic, expand, true)?;
     if r.count > 0 {
         return Ok((r, Vec::new()));
     }
     let wider: Vec<SearchRequest> = without_groups(raw).iter().map(|g| SearchRequest::from(&Params::parse(&query_without(raw, g)))).collect();
-    let counts = if wider.is_empty() { Vec::new() } else { catalog.counts(req, &wider, now, favourites, semantic)? };
+    let counts = if wider.is_empty() { Vec::new() } else { catalog.counts(req, &wider, now, favourites, semantic, expand)? };
     Ok((r, counts))
 }
 
@@ -277,6 +287,31 @@ pub(crate) struct EmbedProvider {
     pub(crate) model: String,
 }
 
+fn embed_cache_key(model: &str, text: &str) -> String {
+    format!("{model}\n{text}")
+}
+
+async fn stored_embedding(pool: &sqlx::PgPool, model: &str, text: &str) -> Option<Vec<f32>> {
+    sqlx::query_scalar("select embedding::vector::real[] from query_embeddings where model = $1 and query = $2")
+        .bind(model)
+        .bind(text)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| eprintln!("query embedding cache: {e}"))
+        .ok()
+        .flatten()
+}
+
+/// The embedding a search stored for `q` (process memory, then the query_embeddings table), read only: it counts no
+/// use and never asks the provider.
+pub(crate) async fn stored_query_embedding(s: &AppState, model: &str, q: &str) -> Option<Vec<f32>> {
+    let text = normalize_query(q);
+    match s.embed_cache.get(&embed_cache_key(model, &text)) {
+        Some(v) => Some(v),
+        None => stored_embedding(&s.pool, model, &text).await,
+    }
+}
+
 /// Embedding of a search text: process memory, then the query_embeddings table, then the provider.
 pub(crate) async fn query_embedding(
     s: Arc<AppState>,
@@ -288,20 +323,12 @@ pub(crate) async fn query_embedding(
     use boothdex_core::embed;
     let EmbedProvider { base_url: base, api_key: key, model } = provider;
     let text = normalize_query(q);
-    let cache_key = format!("{model}\n{text}");
+    let cache_key = embed_cache_key(&model, &text);
     if let Some(v) = s.embed_cache.get(&cache_key) {
         trace.step("embed_memory");
         return Some(v);
     }
-    let stored: Option<Vec<f32>> = sqlx::query_scalar("select embedding::vector::real[] from query_embeddings where model = $1 and query = $2")
-        .bind(&model)
-        .bind(&text)
-        .fetch_optional(&s.pool)
-        .await
-        .map_err(|e| eprintln!("query embedding cache: {e}"))
-        .ok()
-        .flatten();
-    if let Some(v) = stored {
+    if let Some(v) = stored_embedding(&s.pool, &model, &text).await {
         trace.step("embed_db");
         s.embed_cache.insert(cache_key, v.clone());
         // usage bookkeeping for pruning; the search doesn't wait for it

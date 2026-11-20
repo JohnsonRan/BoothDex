@@ -19,6 +19,7 @@ import {
   selectAvatar,
   selectedAvatars,
 } from "./catalog";
+import { withPage } from "./result-pages";
 
 test("filters round-trip through the API's + list format", () => {
   const f = {
@@ -115,6 +116,35 @@ test("the words as typed (typo=0) round-trip with the query, and a new query dro
     "q=chifon%20dress&typo=0&avatars=shinano",
   );
   expect(patched({ ...f, view: "recent" }, { q: "a" }).view).toBe("items");
+});
+
+test("the words alone (xl=0) survive a click, a new tab, a reload and later pages, with typo=0 too", () => {
+  const f = { ...DEFAULT_FILTERS, q: "skirt", free: true };
+  // a plain click applies the patch, and a new tab opens the address of the same change (SearchInstead)
+  const alone = patched(f, { noExpand: true });
+  expect(filtersToQuery(alone)).toBe("q=skirt&xl=0&free=1");
+  // a reload reads it back, and later pages ask the API for it
+  expect(parseFilters(`?${filtersToQuery(alone)}`)).toEqual(alone);
+  expect(searchQuery(alone, 2)).toBe(
+    "q=skirt&xl=0&free=1&sort=relevant&page=2&pageSize=30",
+  );
+  expect(withPage(`?${filtersToQuery(alone)}`, 3, true)).toBe(
+    "?q=skirt&xl=0&free=1&page=3&sem=0",
+  );
+  // with the words as typed as well, taken in either order
+  const both = patched(patched(f, { noTypo: true }), { noExpand: true });
+  expect(filtersToQuery(both)).toBe("q=skirt&typo=0&xl=0&free=1");
+  expect(
+    filtersToQuery(patched(patched(f, { noExpand: true }), { noTypo: true })),
+  ).toBe(filtersToQuery(both));
+  expect(parseFilters(`?${filtersToQuery(both)}`)).toEqual(both);
+  expect(searchQuery(both, 2)).toBe(
+    "q=skirt&typo=0&xl=0&free=1&sort=relevant&page=2&pageSize=30",
+  );
+  // without a query there is nothing to translate; new words are translated again, a filter keeps the choice
+  expect(filtersToQuery({ ...DEFAULT_FILTERS, noExpand: true })).toBe("");
+  expect(patched(both, { q: "dress" }).noExpand).toBe(false);
+  expect(patched(both, { tags: ["dress"] }).noExpand).toBe(true);
 });
 
 test("text search ranks by relevance unless a sort is chosen", () => {

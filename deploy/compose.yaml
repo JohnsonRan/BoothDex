@@ -55,9 +55,9 @@ services:
     volumes:
       - textindex:/index # on-disk search index, reused across restarts
     logging: *logging
-    # ~0.4-1 GB steady on Linux with mimalloc, ~1.8 GB peak while reloading (old and new catalogue held at once);
-    # with glibc malloc 3g was OOM-killed, so the limit keeps that headroom
-    mem_limit: 4g
+    # sized from production (docs/DEPLOY.md, "Server requirements"); glibc malloc was OOM-killed at 3g, so keep
+    # mimalloc (crates/api/src/main.rs)
+    mem_limit: 3g
 
   worker:
     image: ghcr.io/johnsonran/boothdex-worker:${BOOTHDEX_TAG:-latest}
@@ -72,7 +72,7 @@ services:
       AI_MODEL: ${AI_MODEL:-}
       AI_REASONING_EFFORT: ${AI_REASONING_EFFORT:-}
       AI_EMBED_MODEL: ${AI_EMBED_MODEL:-}
-    mem_limit: 512m
+    mem_limit: 256m
     logging: *logging
 
   imgproxy:

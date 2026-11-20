@@ -19,7 +19,7 @@ pub(crate) async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip)
     let mut req = SearchRequest::from(&Params::parse(&user_q));
     (req.sort, req.asc, req.page, req.page_size) = (Sort::Newest, false, 1, 50);
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&req, now, None, None, false))?;
+    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&req, now, None, None, None, false))?;
     let items = db::load_items(&s.pool, &r.ids, false).await?;
     let link = format!("{}/?{user_q}", s.site_url);
     Ok(([(axum::http::header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")], render(&s.site_url, &link, &user_q, &items)).into_response())

@@ -14,6 +14,7 @@ import {
 import { ClearAll } from "@/components/catalog/filter/filter-bar";
 import { KeepResults, Swap } from "@/components/catalog/refresh";
 import { SearchTrace } from "@/components/catalog/search/search-trace";
+import type { RelatedSearch } from "@/lib/api-types";
 import { type Filters, filtersToQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
 import { drawnWith, pageQuery } from "@/lib/result-pages";
@@ -27,7 +28,12 @@ import {
 import { FIRST_TILES, tileOf } from "./item-tile";
 import { PageInView } from "./page-in-view";
 import { ResultPages } from "./result-pages";
-import { EmptyResults, SearchInstead, SemanticNote } from "./result-states";
+import {
+  EmptyResults,
+  RelatedSearchLink,
+  SearchInstead,
+  SemanticNote,
+} from "./result-states";
 
 export async function ResultCount({
   outcome,
@@ -86,7 +92,7 @@ export function TypoNote({
       <Text type="supporting">
         {t("list.typoTolerant")}{" "}
         <SearchInstead
-          href={`?${filtersToQuery({ ...filters, noTypo: true })}`}
+          patch={{ noTypo: true }}
           label={t("list.searchInstead", { q: filters.q })}
         />
       </Text>
@@ -94,8 +100,43 @@ export function TypoNote({
   );
 }
 
+/** The results include what the BOOTH tags that translate the query found (`words`); the link searches the words
+ *  alone. */
+export function ExpansionNote({ words, t }: { words: string[]; t: Translate }) {
+  return (
+    <Center>
+      <Text type="supporting">
+        {t("list.expandedWith", { words: words.join(" · ") })}{" "}
+        <SearchInstead
+          patch={{ noExpand: true }}
+          label={t("list.withoutExpanded")}
+        />
+      </Text>
+    </Center>
+  );
+}
+
+/** Related searches (`/api/related`), drawn with the results, so the grid does not move for them. */
+export function RelatedSearches({
+  searches,
+  t,
+}: {
+  searches: RelatedSearch[];
+  t: Translate;
+}) {
+  return (
+    <HStack gap={2} hAlign="center" vAlign="center" wrap="wrap">
+      <Text type="supporting">{t("list.related")}</Text>
+      {searches.map(({ q, label }) => (
+        <RelatedSearchLink key={q} q={q} label={label} />
+      ))}
+    </HStack>
+  );
+}
+
 export async function Results({
   outcome,
+  related,
   rates,
   settings,
   filters,
@@ -104,6 +145,8 @@ export async function Results({
   navigation,
 }: {
   outcome: Promise<SearchOutcome>;
+  /** `relatedSearches` of the same search (server-data.ts) */
+  related: Promise<RelatedSearch[]>;
   rates: Promise<Rates>;
   settings: Settings;
   filters: Filters;
@@ -120,7 +163,8 @@ export async function Results({
   // pages are read the same way, so the result set stays the one the first tiles came from
   const lexical = noSemantic || (!!filters.q && result.semantic !== "used");
   const t = translator(settings.ui);
-  if (result.items.length === 0)
+  if (result.items.length === 0) {
+    const searches = await related;
     return (
       <KeepResults>
         <Swap>
@@ -130,12 +174,18 @@ export async function Results({
             <EmptyResults
               // an API from before `widerCounts` leaves it out
               wider={widerSearches(filters, names, t, result.widerCounts ?? [])}
+              related={
+                searches.length > 0 && (
+                  <RelatedSearches searches={searches} t={t} />
+                )
+              }
             />
           </VStack>
         </Swap>
       </KeepResults>
     );
-  const known = await rates;
+  }
+  const [known, searches] = await Promise.all([rates, related]);
   // The HTML carries the first screen only, the browser reading the rest of the page itself (the size budget,
   // REQUIREMENTS.md "Numbers"); a navigation's payload carries the whole page, so the page is searched once.
   const tiles = result.items.map((item) => tileOf(item, settings, known, t));
@@ -148,6 +198,11 @@ export async function Results({
           {result.typoTolerant && (
             <TypoNote nameTypo={result.nameTypo} filters={filters} t={t} />
           )}
+          {/* an API from before `expandedWith` leaves it out */}
+          {(result.expandedWith ?? []).length > 0 && (
+            <ExpansionNote words={result.expandedWith} t={t} />
+          )}
+          {searches.length > 0 && <RelatedSearches searches={searches} t={t} />}
           <ResultPages
             // a new search starts over, and so do new tile texts or prices (a language, item text or currency
             // change), at the place the history entry keeps; the same search read again (a retry) keeps the pages

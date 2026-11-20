@@ -138,6 +138,7 @@ pub(crate) fn test_state() -> std::sync::Arc<super::AppState> {
     let snap = super::Snapshot {
         catalog,
         category_phrases: Default::default(),
+        related: Default::default(),
         avatars: super::Lookup::new(Vec::new()),
         authors: super::Lookup::new(Vec::new()),
         tags: super::Lookup::new(Vec::new()),
@@ -155,6 +156,7 @@ pub(crate) fn test_state() -> std::sync::Arc<super::AppState> {
             super::limit::Limits {
                 search: super::limit::Tiered::new((1.0, 1.0), (2.0, 3.0)),
                 palette: super::limit::Tiered::new((2.0, 1.0), (5.0, 2.0)),
+                related: super::limit::RateLimiter::new(2.0, 2.0, 64),
                 rss: super::limit::RateLimiter::new(0.5, 2.0, 64),
                 items: super::limit::RateLimiter::new(1.0, 2.0, 64),
                 item: super::limit::Tiered::new((1.0, 1.0), (4.0, 2.0)),

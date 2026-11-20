@@ -126,6 +126,8 @@ export type Filters = {
   q: string;
   /** the query's words as typed (API typo=0): none is read as the model it misspells */
   noTypo: boolean;
+  /** the query's words alone (API xl=0): not also searched as the BOOTH tags that translate them */
+  noExpand: boolean;
   avatar: string;
   sc: string;
   features: Feature[];
@@ -149,6 +151,7 @@ export const DEFAULT_FILTERS: Filters = {
   view: "items",
   q: "",
   noTypo: false,
+  noExpand: false,
   avatar: "",
   sc: "",
   features: [],
@@ -200,6 +203,7 @@ export function parseFilters(search: string): Filters {
     asup: one("asup") === "all" ? "all" : "supported",
     q: one("q"),
     noTypo: one("typo") === "0",
+    noExpand: one("xl") === "0",
     avatar: raw.get("avatars")?.[0] ?? "",
     sc: raw.get("sc")?.[0] ?? "",
     features: (raw.get("if") ?? []).filter((f): f is Feature => f in FEATURES),
@@ -220,6 +224,7 @@ export function filtersToQuery(f: Filters): string {
   if (f.view !== "items") parts.push(`v=${f.view}`);
   if (f.q) parts.push(`q=${enc(f.q)}`);
   if (f.q && f.noTypo) parts.push("typo=0");
+  if (f.q && f.noExpand) parts.push("xl=0");
   if (f.avatar) parts.push(`avatars=${enc(f.avatar)}`);
   if (f.sc) parts.push(`sc=${enc(f.sc)}`);
   if (f.features.length) parts.push(`if=${f.features.map(enc).join("+")}`);
@@ -240,13 +245,13 @@ export function filtersToQuery(f: Filters): string {
 }
 
 /** The filters after a change: a search, shop or avatar picked in the recent view leaves it, as on master; words
- *  the visitor changed read misspelt model names again, while a model picked out of the query (selectAvatar) keeps
- *  the rest as typed. */
+ *  the visitor changed read misspelt model names and are searched in translation again, while a model picked out of
+ *  the query (selectAvatar) leaves the rest searched as before. */
 export function patched(f: Filters, patch: Partial<Filters>): Filters {
   const view = f.view === "recent" && !patch.view && { view: "items" as const };
   const fresh = patch.q !== undefined &&
     patch.q !== f.q &&
-    patch.avatar === undefined && { noTypo: false };
+    patch.avatar === undefined && { noTypo: false, noExpand: false };
   return { ...f, ...view, ...fresh, ...patch };
 }
 

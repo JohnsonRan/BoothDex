@@ -4,7 +4,7 @@
 
 use ts_rs::{Config, TS};
 
-use crate::{db, error, guestbook, search};
+use crate::{db, error, guestbook, related, search};
 
 const OUT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../web/src/lib/api-types.ts");
 
@@ -29,6 +29,8 @@ fn generate() -> String {
         search::RecognizedKind::decl(&cfg),
         search::TraceStep::decl(&cfg),
         search::Timing::decl(&cfg),
+        related::RelatedResponse::decl(&cfg),
+        related::RelatedSearch::decl(&cfg),
         guestbook::GuestbookPage::decl(&cfg),
         guestbook::GuestbookEntry::decl(&cfg),
         guestbook::GuestbookStatus::decl(&cfg),

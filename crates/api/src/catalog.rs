@@ -2,13 +2,15 @@
 //! ranges and sorting. Doc index (u32) = position in `ids`. Item payloads stay in Postgres.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 use anyhow::Result;
 use roaring::RoaringBitmap;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
-use crate::search_request::{Adult, Range, SearchRequest, Sort, Support, View};
+use crate::expansion::Equivalents;
+use crate::search_request::{Adult, ItemReference, Range, SearchRequest, Sort, Support, View, item_reference};
 use crate::text::{TextDoc, TextIndex, TextMatches};
 
 pub const FEATURES: &[&str] = &["quest", "vrcfury", "ma", "liltoon", "poiyomi"];
@@ -20,6 +22,8 @@ pub struct DocInput {
     pub id: i64,
     pub title: String,
     pub titles_translated: Vec<String>,
+    /// the languages it has a title in, translated or original: bit `1 << k` for `expansion::LANGUAGES[k]`
+    pub title_languages: u8,
     pub bio: String,
     pub author: String,
     pub booth_category: Option<String>,
@@ -54,8 +58,14 @@ impl Index {
     pub fn len(&self, key: &str) -> u64 {
         self.0.get(key).map_or(0, |b| b.len())
     }
+    pub(crate) fn get(&self, key: &str) -> Option<&RoaringBitmap> {
+        self.0.get(key)
+    }
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.0.keys()
+    }
+    pub(crate) fn entries(&self) -> impl Iterator<Item = (&String, &RoaringBitmap)> {
+        self.0.iter()
     }
 }
 
@@ -83,6 +93,7 @@ pub struct Catalog {
     features: Index,
     gender: Index,
     text: TextIndex,
+    equivalents: Equivalents,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -124,12 +135,90 @@ pub struct SearchResult {
     pub facets: Facets,
     /// the text query matched nothing as typed and was answered by the typo-tolerant retry (see text.rs)
     pub typo: bool,
+    /// BOOTH tags that translate the query (expansion.rs), when items only they found are among the results
+    pub expanded_with: Vec<String>,
+}
+
+/// What a text query matches (`Catalog::text_hits`).
+struct TextHits {
+    matches: TextMatches,
+    /// the BOOTH tags the query was also searched as, and the docs only they found
+    expanded: Arc<[String]>,
+    expansion: RoaringBitmap,
+    /// the item the query names by its link or number (`Catalog::referenced`)
+    pinned: Option<u32>,
 }
 
 impl Catalog {
     /// Whether some title, tag, author name or description has `word` as a word.
     pub fn knows_word(&self, word: &str) -> bool {
         self.text.knows(word)
+    }
+
+    /// The BOOTH tags that translate `meaning`, the query without model names (expansion.rs).
+    pub(crate) fn equivalents(&self, meaning: &str) -> Result<Arc<[String]>> {
+        self.equivalents.of(meaning, &self.text)
+    }
+
+    /// The folded BOOTH tags (expansion.rs), which the related searches (related.rs) read too.
+    pub(crate) fn tags(&self) -> &Equivalents {
+        &self.equivalents
+    }
+
+    pub(crate) fn doc(&self, id: i64) -> Option<u32> {
+        self.doc_of.get(&id).copied()
+    }
+
+    /// How many items search can show: all but the re-uploaded ones.
+    pub(crate) fn listed(&self) -> u64 {
+        self.all.len() - self.relisted.len()
+    }
+
+    /// The listed docs `q` matches by its words or as a substring (`TextIndex::search`).
+    pub(crate) fn word_hits(&self, q: &str) -> Result<RoaringBitmap> {
+        Ok(self.text.search(q)?.hits - &self.relisted)
+    }
+
+    /// The listed docs whose title has every word of `q` (`TextIndex::title_hits`).
+    pub(crate) fn title_hits(&self, q: &str) -> Result<RoaringBitmap> {
+        Ok(self.text.title_hits(q)? - &self.relisted)
+    }
+
+    /// The docs `r`'s filters, adult setting and view let through, whatever its text.
+    pub(crate) fn allowed(&self, r: &SearchRequest, now: i64, favourites: Option<&RoaringBitmap>) -> RoaringBitmap {
+        self.intersect(&self.constraints(r, now, None, favourites), None)
+    }
+
+    /// The docs that fit one of `models`.
+    pub(crate) fn fitting(&self, models: &[String]) -> RoaringBitmap {
+        self.avatars.any(models)
+    }
+
+    /// Whether `r` finds anything by its words, without meaning-based matches or the categories its words name: its
+    /// text matches, those of `rest` among the items fitting the `models` its query names, and with `expand` the
+    /// matches of the tags translating it, under its filters, adult setting and view.
+    pub(crate) fn finds_by_words(
+        &self,
+        r: &SearchRequest,
+        now: i64,
+        favourites: Option<&RoaringBitmap>,
+        models: &[String],
+        rest: &str,
+        expand: Option<&str>,
+    ) -> Result<bool> {
+        let semantic = (!models.is_empty()).then_some(Semantic { ids: &[], categories: &[], models, rest });
+        let text = self.text_hits(r, semantic, expand)?;
+        Ok(!self.intersect(&self.constraints(r, now, text.as_ref(), favourites), None).is_empty())
+    }
+
+    /// The doc of the item `q` names by itself (`item_reference`): `Some(None)` for a link to an item the catalogue
+    /// does not have, `None` when `q` is text (a number that is no item's id included).
+    pub(crate) fn referenced(&self, q: &str) -> Option<Option<u32>> {
+        let doc = |id| self.doc_of.get(&id).copied();
+        match item_reference(q)? {
+            ItemReference::Link(id) => Some(doc(id)),
+            ItemReference::Number(id) => doc(id).map(Some),
+        }
     }
 
     pub fn build(docs: Vec<DocInput>, now: i64, text_dir: Option<&std::path::Path>) -> Result<Self> {
@@ -180,9 +269,12 @@ impl Catalog {
                 text_dir,
                 fingerprint,
             )?,
+            // built from the BOOTH tags below
+            equivalents: Equivalents::build(&Index::default(), &RoaringBitmap::new(), &[], Default::default()),
         };
 
         let mut by_title: Vec<(String, u32)> = Vec::with_capacity(n);
+        let mut titled: [RoaringBitmap; 4] = Default::default();
         for (i, d) in docs.into_iter().enumerate() {
             let i = i as u32;
             c.ids.push(d.id);
@@ -195,6 +287,11 @@ impl Catalog {
             let age_days = ((now - published).max(0) as f32) / 86_400.0;
             c.trending.push(d.likes as f32 / (age_days + 2.0).powf(1.5));
             by_title.push((d.title.to_lowercase(), i));
+            for (k, b) in titled.iter_mut().enumerate() {
+                if d.title_languages & (1 << k) != 0 {
+                    b.insert(i);
+                }
+            }
 
             c.all.insert(i);
             if d.booth_category.as_deref() == Some(AVATAR_CATEGORY) {
@@ -234,6 +331,11 @@ impl Catalog {
         for (rank, (_, i)) in by_title.into_iter().enumerate() {
             c.title_rank[i as usize] = rank as u32;
         }
+        let mut shop_of = vec![0; n];
+        for (shop, (_, docs)) in c.authors.entries().enumerate() {
+            docs.iter().for_each(|d| shop_of[d as usize] = shop as u32);
+        }
+        c.equivalents = Equivalents::build(&c.booth_tags, &c.relisted, &shop_of, titled);
         Ok(c)
     }
 
@@ -259,20 +361,23 @@ impl Catalog {
         ids.iter().filter_map(|id| self.doc_of.get(id)).copied().collect()
     }
 
-    fn constraints(&self, r: &SearchRequest, now: i64, text: Option<&RoaringBitmap>, favourites: Option<&RoaringBitmap>) -> Vec<(Group, RoaringBitmap)> {
+    fn constraints(&self, r: &SearchRequest, now: i64, text: Option<&TextHits>, favourites: Option<&RoaringBitmap>) -> Vec<(Group, RoaringBitmap)> {
         let mut out = Vec::new();
-        out.push((
-            Group::View,
-            match (r.view, favourites) {
-                (View::Favourites, Some(f)) => f.clone(), // favourites span both items and avatar bodies
-                (View::Avatars(support), _) => &match support {
-                    Support::All => self.avatar_items.clone(),
-                    Support::Unsupported => &self.avatar_items - &self.supported,
-                    Support::Supported => &self.avatar_items & &self.supported,
-                } - &self.relisted,
-                _ => &(&self.all - &self.avatar_items) - &self.relisted,
-            },
-        ));
+        let mut view = match (r.view, favourites) {
+            (View::Favourites, Some(f)) => f.clone(), // favourites span both items and avatar bodies
+            (View::Avatars(support), _) => &match support {
+                Support::All => self.avatar_items.clone(),
+                Support::Unsupported => &self.avatar_items - &self.supported,
+                Support::Supported => &self.avatar_items & &self.supported,
+            } - &self.relisted,
+            _ => &(&self.all - &self.avatar_items) - &self.relisted,
+        };
+        // the item the query names shows in every view, an avatar or a re-uploaded item too: the person asked for that
+        // id, and a re-uploaded item's dialog links the new listing
+        if let Some(d) = text.and_then(|t| t.pinned) {
+            view.insert(d);
+        }
+        out.push((Group::View, view));
         if let (View::Avatars(_), Some(g)) = (r.view, &r.gender) {
             out.push((Group::Gender, self.gender.any(std::slice::from_ref(g))));
         }
@@ -283,7 +388,7 @@ impl Catalog {
             Adult::Safe => out.push((Group::Adult, &self.all - &self.adult_only)), // "safe" keeps Suggestive, as VRCatalogue did
         }
         if let Some(t) = text {
-            out.push((Group::Text, t.clone()));
+            out.push((Group::Text, t.matches.hits.clone()));
         }
         let mut list = |g, ix: &Index, keys: &[String]| {
             if !keys.is_empty() {
@@ -336,51 +441,95 @@ impl Catalog {
         cs.iter().filter(|(g, _)| Some(*g) != skip).fold(self.all.clone(), |acc, (_, b)| acc & b)
     }
 
-    /// The text query's hits and scores, joined by the meaning-based matches when there are any.
-    fn text_hits(&self, r: &SearchRequest, semantic: Option<Semantic>) -> Result<Option<TextMatches>> {
-        let mut text = r.q.as_deref().map(|q| self.text.search(q)).transpose()?;
-        if let (Some(TextMatches { hits, scores, .. }), Some(sem)) = (text.as_mut(), semantic) {
-            // models named in the query: a meaning-based match must fit one of them
-            let fits = (!sem.models.is_empty()).then(|| self.avatars.any(sem.models));
-            if let Some(f) = &fits {
-                // a named model also works like the avatar filter: its compatible items match even when they don't
-                // spell the name (most write it in Japanese), the other words searched among them. Items matching the
-                // whole query stay and score both, so they rank first.
-                if sem.rest.trim().is_empty() {
-                    *hits |= f;
-                } else {
-                    let TextMatches { hits: rest_hits, scores: rest_scores, .. } = self.text.search(sem.rest)?;
-                    let rest_hits = rest_hits & f;
-                    for d in &rest_hits {
-                        *scores.entry(d).or_default() += rest_scores.get(&d).copied().unwrap_or(0.0);
-                    }
-                    *hits |= rest_hits;
+    /// The text query's hits and scores, joined by the meaning-based matches when there are any, by the matches of
+    /// the BOOTH tags that translate `expand` (expansion.rs) when it is given, and by the item the query names by its
+    /// link or number, scored above them all.
+    fn text_hits(&self, r: &SearchRequest, semantic: Option<Semantic>, expand: Option<&str>) -> Result<Option<TextHits>> {
+        let Some(q) = r.q.as_deref() else { return Ok(None) };
+        let TextMatches { mut hits, mut scores, typo } = self.text.search(q)?;
+        // models named in the query: a meaning-based or translated match must fit one of them
+        let fits = semantic.filter(|sem| !sem.models.is_empty()).map(|sem| self.avatars.any(sem.models));
+        if let (Some(sem), Some(f)) = (semantic, &fits) {
+            // a named model also works like the avatar filter: its compatible items match even when they don't
+            // spell the name (most write it in Japanese), the other words searched among them. Items matching the
+            // whole query stay and score both, so they rank first.
+            if sem.rest.trim().is_empty() {
+                hits |= f;
+            } else {
+                let TextMatches { hits: rest_hits, scores: rest_scores, .. } = self.text.search(sem.rest)?;
+                let rest_hits = rest_hits & f;
+                for d in &rest_hits {
+                    *scores.entry(d).or_default() += rest_scores.get(&d).copied().unwrap_or(0.0);
                 }
+                hits |= rest_hits;
             }
-            let docs: Vec<u32> = sem.ids.iter().filter_map(|id| self.doc_of.get(id)).copied().filter(|d| fits.as_ref().is_none_or(|f| f.contains(*d))).collect();
-            let mut cat = self.cats.any(sem.categories);
+        }
+        let expanded = match expand {
+            Some(meaning) => self.equivalents(meaning)?,
+            None => Arc::from([]),
+        };
+        // one vote per item, its best score over the equivalents; the query's own matches take none, so their
+        // order among themselves stays
+        let mut translated: FxHashMap<u32, f32> = FxHashMap::default();
+        for e in expanded.iter() {
+            let m = self.text.search(e)?;
+            for d in m.hits.iter().filter(|d| !hits.contains(*d) && fits.as_ref().is_none_or(|f| f.contains(*d))) {
+                let s = m.scores.get(&d).copied().unwrap_or(0.0);
+                let best = translated.entry(d).or_insert(s);
+                *best = best.max(s);
+            }
+        }
+        let expansion: RoaringBitmap = translated.keys().copied().collect();
+        if semantic.is_some() || !translated.is_empty() {
+            let (ids, categories) = semantic.map_or((&[][..], &[][..]), |sem| (sem.ids, sem.categories));
+            let docs: Vec<u32> = ids.iter().filter_map(|id| self.doc_of.get(id)).copied().filter(|d| fits.as_ref().is_none_or(|f| f.contains(*d))).collect();
+            let mut cat = self.cats.any(categories);
             if let Some(f) = &fits {
                 cat &= f;
             }
-            *scores = fuse(scores, &docs, &cat);
+            scores = fuse(&scores, &docs, &translated, &cat);
             hits.extend(docs);
-            *hits |= cat;
+            hits |= &expansion;
+            hits |= cat;
         }
-        Ok(text)
+        let pinned = self.referenced(q).flatten();
+        if let Some(d) = pinned {
+            hits.insert(d);
+            scores.insert(d, f32::INFINITY);
+        }
+        Ok(Some(TextHits { matches: TextMatches { hits, scores, typo }, expanded, expansion, pinned }))
     }
 
     /// How many items each of `wider` finds: requests that differ from `r` only in their filters (never in the
-    /// text query), so `r`'s text and meaning-based matches hold for all of them. Counts only: no facets, no order.
-    pub fn counts(&self, r: &SearchRequest, wider: &[SearchRequest], now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>) -> Result<Vec<u64>> {
-        let text = self.text_hits(r, semantic)?;
-        Ok(wider.iter().map(|w| self.intersect(&self.constraints(w, now, text.as_ref().map(|t| &t.hits), favourites), None).len()).collect())
+    /// text query), so `r`'s text, meaning-based and translated matches hold for all of them. Counts only: no
+    /// facets, no order.
+    pub fn counts(
+        &self,
+        r: &SearchRequest,
+        wider: &[SearchRequest],
+        now: i64,
+        favourites: Option<&RoaringBitmap>,
+        semantic: Option<Semantic>,
+        expand: Option<&str>,
+    ) -> Result<Vec<u64>> {
+        let text = self.text_hits(r, semantic, expand)?;
+        Ok(wider.iter().map(|w| self.intersect(&self.constraints(w, now, text.as_ref(), favourites), None).len()).collect())
     }
 
     /// `semantic`: item ids nearest to the query by meaning (see search.rs); they join the text hits and, when
-    /// sorting by relevance, the two rankings are merged. Autocomplete and RSS skip facet counts.
-    pub fn search(&self, r: &SearchRequest, now: i64, favourites: Option<&RoaringBitmap>, semantic: Option<Semantic>, count_facets: bool) -> Result<SearchResult> {
-        let text = self.text_hits(r, semantic)?;
-        let cs = self.constraints(r, now, text.as_ref().map(|t| &t.hits), favourites);
+    /// sorting by relevance, the two rankings are merged. `expand`: the words whose translations are searched too
+    /// (expansion.rs), for `/api/search` only. Autocomplete and RSS skip facet counts.
+    pub fn search(
+        &self,
+        r: &SearchRequest,
+        now: i64,
+        favourites: Option<&RoaringBitmap>,
+        semantic: Option<Semantic>,
+        expand: Option<&str>,
+        count_facets: bool,
+    ) -> Result<SearchResult> {
+        let text = self.text_hits(r, semantic, expand)?;
+        let cs = self.constraints(r, now, text.as_ref(), favourites);
         let hits = self.intersect(&cs, None);
 
         // disjunctive facets: each group's counts ignore that group's own selection
@@ -397,7 +546,7 @@ impl Catalog {
 
         let asc = r.asc;
         let (sort, scores) = match (r.sort, &text) {
-            (Sort::Relevant, Some(t)) => ("relevant", Some(&t.scores)),
+            (Sort::Relevant, Some(t)) => ("relevant", Some(&t.matches.scores)),
             (Sort::Newest, _) => ("newest", None),
             (Sort::Price, _) => ("price", None),
             (Sort::Likes, _) => ("likes", None),
@@ -452,7 +601,8 @@ impl Catalog {
             dir: if asc { "asc" } else { "desc" },
             ids,
             facets,
-            typo: text.as_ref().is_some_and(|t| t.typo),
+            typo: text.as_ref().is_some_and(|t| t.matches.typo),
+            expanded_with: text.filter(|t| !t.expansion.is_disjoint(&hits)).map(|t| t.expanded.to_vec()).unwrap_or_default(),
         })
     }
 }
@@ -469,26 +619,40 @@ pub struct Semantic<'a> {
     pub rest: &'a str,
 }
 
-/// Reciprocal rank fusion: each list contributes 1 / (60 + rank), robust to the two scores' different scales.
-/// Meaning-only matches count half: they add recall, but a word match is the stronger signal, so a semantic-only
-/// item ranks with text hits around 60th place unless both lists agree on it. Items in a category the query names
-/// get a little more than the best meaning-only match: below the top text hits, above meaning-only ones.
-/// shortcut: category-only items tie with each other (then by load order); rank them by meaning if that shows.
-fn fuse(text: &FxHashMap<u32, f32>, semantic: &[u32], category: &RoaringBitmap) -> FxHashMap<u32, f32> {
+/// Reciprocal rank fusion: each list contributes 1 / (60 + rank), robust to the scores' different scales.
+/// Meaning-only matches and matches of the query's translations (`translated`, which holds no text hit) count
+/// half: they add recall, but a word match is the stronger signal, so such an item ranks with text hits around
+/// 60th place unless two lists agree on it. Items in a category the query names get a little more than the best
+/// meaning-only match: below the top text hits, above meaning-only ones.
+/// shortcut: category-only items tie with each other (then by trending); rank them by meaning if that shows.
+fn fuse(text: &FxHashMap<u32, f32>, semantic: &[u32], translated: &FxHashMap<u32, f32>, category: &RoaringBitmap) -> FxHashMap<u32, f32> {
     const K: f32 = 60.0;
-    let mut ranked: Vec<(u32, f32)> = text.iter().map(|(d, s)| (*d, *s)).collect();
-    ranked.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
-    let mut out = FxHashMap::with_capacity_and_hasher(ranked.len() + semantic.len(), Default::default());
-    for (rank, (d, _)) in ranked.iter().enumerate() {
-        *out.entry(*d).or_default() += 1.0 / (K + rank as f32 + 1.0);
+    let mut out = FxHashMap::with_capacity_and_hasher(text.len() + semantic.len() + translated.len(), Default::default());
+    for (d, rank) in ranks(text) {
+        *out.entry(d).or_default() += 1.0 / (K + rank as f32 + 1.0);
     }
-    for (rank, d) in semantic.iter().enumerate() {
-        *out.entry(*d).or_default() += 0.5 / (K + rank as f32 + 1.0);
+    // meaning-based matches come nearest first, so their rank is their place
+    for (d, rank) in semantic.iter().enumerate().map(|(rank, d)| (*d, rank)).chain(ranks(translated)) {
+        *out.entry(d).or_default() += 0.5 / (K + rank as f32 + 1.0);
     }
     for d in category {
         *out.entry(d).or_default() += 0.5 / K;
     }
     out
+}
+
+/// Each doc's rank by score, best first. Equal scores share the rank of the first of them (0, 1, 1, 3), so docs
+/// scored alike stay tied after fusion and the relevance order puts the trending one first.
+fn ranks(scores: &FxHashMap<u32, f32>) -> Vec<(u32, usize)> {
+    let mut sorted: Vec<(u32, f32)> = scores.iter().map(|(d, s)| (*d, *s)).collect();
+    sorted.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+    let mut rank = 0;
+    sorted.iter().enumerate().map(|(i, &(d, s))| {
+        if i > 0 && s < sorted[i - 1].1 {
+            rank = i;
+        }
+        (d, rank)
+    }).collect()
 }
 
 #[cfg(test)]
@@ -501,6 +665,7 @@ mod tests {
             id,
             title: format!("item {id}"),
             titles_translated: vec![],
+            title_languages: 0b0111,
             bio: String::new(),
             author: "a".into(),
             booth_category: Some("3D Clothing".into()),
@@ -580,7 +745,7 @@ mod tests {
         ] {
             let p = request(query);
             for sem in [None, Some(semantic)] {
-                assert_eq!(cached.search(&p, 0, Some(&favourites), sem, true).unwrap(), rebuilt.search(&p, 0, Some(&favourites), sem, true).unwrap(), "query {query:?}");
+                assert_eq!(cached.search(&p, 0, Some(&favourites), sem, None, true).unwrap(), rebuilt.search(&p, 0, Some(&favourites), sem, None, true).unwrap(), "query {query:?}");
             }
         }
         // Reusing disk files must not mutate an old snapshot still serving requests.
@@ -620,7 +785,7 @@ mod tests {
         let models = vec!["shinano".to_owned()];
         let run = |q: &str, rest: &str| {
             let sem = Semantic { ids: &[], categories: &[], models: &models, rest };
-            let mut v = c.search(&request(&format!("q={q}&sort=relevant")), 0, None, Some(sem), true).unwrap().ids;
+            let mut v = c.search(&request(&format!("q={q}&sort=relevant")), 0, None, Some(sem), None, true).unwrap().ids;
             let first = v[0];
             v.sort();
             (first, v)
@@ -637,20 +802,20 @@ mod tests {
 
     impl Catalog {
         fn search_plain(&self, query: &str, now: i64, favourites: Option<&RoaringBitmap>) -> Result<SearchResult> {
-            self.search(&request(query), now, favourites, None, true)
+            self.search(&request(query), now, favourites, None, None, true)
         }
     }
 
     #[test]
     fn fusion_rewards_agreement_and_keeps_semantic_only_hits() {
         let text: FxHashMap<u32, f32> = [(1, 9.0), (2, 5.0), (3, 1.0)].into_iter().collect();
-        let f = fuse(&text, &[3, 7], &RoaringBitmap::new());
+        let f = fuse(&text, &[3, 7], &FxHashMap::default(), &RoaringBitmap::new());
         // in both lists beats first in one list; a semantic-only hit stays below the text hits
         assert!(f[&3] > f[&1]);
         assert!(f[&7] > 0.0 && f[&7] < f[&2]);
         assert_eq!(f.len(), 4);
         // a category hit joins, ranks above meaning-only matches, and lifts a text hit inside the category
-        let g = fuse(&text, &[7], &[2, 8].into_iter().collect());
+        let g = fuse(&text, &[7], &FxHashMap::default(), &[2, 8].into_iter().collect());
         assert!(g[&8] > g[&7] && g[&8] < g[&1]);
         assert!(g[&2] > g[&1]);
     }
@@ -671,6 +836,37 @@ mod tests {
         f.sort();
         assert_eq!(f, [1, 3]);
         assert_eq!(c.docs_for(&[1]).len(), 1); // still known, so its page and gallery load
+    }
+
+    #[test]
+    fn an_item_named_by_its_link_or_number_ranks_first_among_the_hits() {
+        // 10001 is named and re-uploaded; 10002 and 10003 mention its number, 10003 re-uploaded too; 10004 is adult;
+        // 10005 is an avatar the site does not support
+        let mut d = (10_001..=10_005).map(doc).collect::<Vec<_>>();
+        for (doc, title) in d.iter_mut().zip(["Ribbon", "Set for 10001", "Old set for 10001", "Adult ribbon", "Avatar"]) {
+            doc.title = title.into();
+        }
+        d[0].relisted = true;
+        d[2].relisted = true;
+        d[3].is_adult = true;
+        d[4].booth_category = Some(AVATAR_CATEGORY.into());
+        let c = Catalog::build(d, 0, None).unwrap();
+        let found = |q: &str| c.search_plain(q, 0, None).unwrap().ids;
+        // the named item first, then what the number finds as text; of the re-uploaded items only the named one shows
+        assert_eq!(found("q=10001"), [10_001, 10_002]);
+        assert_eq!(found("q=https://booth.pm/ja/items/10001"), [10_001]);
+        // it shows in every view: an avatar among the items, an unsupported avatar among the supported ones, an item
+        // that is no favourite among the favourites
+        assert_eq!((found("q=10005"), found("q=10005&v=avatars")), (vec![10_005], vec![10_005]));
+        assert_eq!(c.search_plain("q=10001&v=favourites", 0, Some(&RoaringBitmap::new())).unwrap().ids, [10_001]);
+        // a link names an item the catalogue lacks too; a number that is no item's id is text
+        assert_eq!((c.referenced("booth.pm/ja/items/10009"), c.referenced("10009")), (Some(None), None));
+        // filters and the adult setting apply to it as to any hit, and an empty search counts it without a filter
+        assert!(found("q=10004").is_empty());
+        assert_eq!(found("q=10004&adult=include"), [10_004]);
+        let q = "q=10001&free=1&without=free";
+        let (r, wider) = crate::search::search_and_wider(&c, q, &request(q), 0, None, None, None).unwrap();
+        assert_eq!((r.count, wider), (0, vec![2]));
     }
 
     #[test]
@@ -708,7 +904,7 @@ mod tests {
     fn an_empty_search_counts_what_each_without_group_finds() {
         let c = catalog();
         let wider = |q: &str| {
-            let (r, counts) = crate::search::search_and_wider(&c, q, &request(q), 0, None, None).unwrap();
+            let (r, counts) = crate::search::search_and_wider(&c, q, &request(q), 0, None, None, None).unwrap();
             (r.count, counts)
         };
         // each group dropped alone, in order (only the manuka item has lilToon); an unknown name changes nothing
@@ -743,8 +939,8 @@ mod tests {
         ] {
             let p = request(query);
             for sem in [None, Some(semantic)] {
-                let mut full = c.search(&p, 0, Some(&favourites), sem, true).unwrap();
-                let light = c.search(&p, 0, Some(&favourites), sem, false).unwrap();
+                let mut full = c.search(&p, 0, Some(&favourites), sem, None, true).unwrap();
+                let light = c.search(&p, 0, Some(&favourites), sem, None, false).unwrap();
                 assert_eq!(light.facets, Facets::default());
                 full.facets = Facets::default();
                 assert_eq!(full, light, "query {query:?}");
@@ -778,12 +974,12 @@ mod tests {
                 for dir in ["asc", "desc"] {
                     let base = format!("{query}&sort={sort}&dir={dir}");
                     // Fewer than 100 hits: page 1 sorts the entire set without either partition.
-                    let full = c.search(&request(&format!("{base}&pageSize=100")), 0, None, None, false).unwrap();
+                    let full = c.search(&request(&format!("{base}&pageSize=100")), 0, None, None, None, false).unwrap();
                     for size in [1, 7, 20, 100] {
                         let pages = full.ids.len().div_ceil(size).max(1);
                         for page in [0, 1, 2, 5, pages, pages + 1, usize::MAX] {
                             let params = request(&format!("{base}&pageSize={size}&page={page}"));
-                            let r = c.search(&params, 0, None, None, false).unwrap();
+                            let r = c.search(&params, 0, None, None, None, false).unwrap();
                             let page = page.clamp(1, pages);
                             let expected: Vec<_> = full.ids.iter().skip((page - 1) * size).take(size).copied().collect();
                             assert_eq!(r.ids, expected, "{base}, size {size}, page {page}");
@@ -803,5 +999,78 @@ mod tests {
         let mut ids = r.ids;
         ids.sort();
         assert_eq!(ids, [1, 6]);
+    }
+
+    // The catalogue of expansion.rs: 1-15 and 26-33 match "skirt" by their words, 16-25 and 34-50 only through
+    // the tag スカート that translates it; 71-82 match "tail", 83-90 only through its three equivalents.
+
+    #[test]
+    fn a_search_also_finds_what_the_tags_translating_it_find() {
+        let c = crate::expansion::tests::catalogue();
+        let run = |q: &str, expand| c.search(&request(&format!("{q}&pageSize=100")), 0, None, None, expand, true).unwrap();
+        // no meaning-based matches (sem=0) are needed
+        let (words, both) = (run("q=skirt", None), run("q=skirt", Some("skirt")));
+        let mut added: Vec<i64> = both.ids.iter().filter(|id| !words.ids.contains(id)).copied().collect();
+        added.sort();
+        assert_eq!(added, (16..=25).chain(34..=50).collect::<Vec<_>>());
+        assert_eq!((words.count, both.count), (23, 50));
+        assert_eq!((words.expanded_with, both.expanded_with), (vec![], vec!["スカート".to_owned()]));
+        // filtered down to a word match, the results hold nothing the translation found
+        assert_eq!(run("q=skirt&free=1", Some("skirt")).ids, [1]);
+        assert!(run("q=skirt&free=1", Some("skirt")).expanded_with.is_empty());
+    }
+
+    #[test]
+    fn translated_matches_vote_once_at_half_weight() {
+        let c = crate::expansion::tests::catalogue();
+        let r = c.search(&request("q=tail&sort=relevant&pageSize=100"), 0, None, None, Some("tail"), true).unwrap();
+        // found by three equivalents each, 83-90 still rank below all twelve word matches
+        let mut first = r.ids[..12].to_vec();
+        first.sort();
+        assert_eq!(first, (71..=82).collect::<Vec<_>>());
+        assert_eq!(r.ids.len(), 20);
+    }
+
+    #[test]
+    fn word_matches_keep_their_order_among_themselves() {
+        let c = crate::expansion::tests::catalogue();
+        let semantic = Semantic { ids: &[16, 51, 3, 30], categories: &[], models: &[], rest: "skirt" };
+        let words: Vec<i64> = (1..=15).chain(26..=33).collect();
+        let order = |expand| {
+            let r = c.search(&request("q=skirt&sort=relevant&pageSize=100"), 0, None, Some(semantic), expand, true).unwrap();
+            r.ids.into_iter().filter(|id| words.contains(id)).collect::<Vec<_>>()
+        };
+        assert_eq!(order(Some("skirt")), order(None));
+    }
+
+    #[test]
+    fn equal_scores_rank_by_trending_after_fusion() {
+        // the fixture's likes rise with the id, against the load order; 51 and 52 match only by meaning
+        let c = crate::expansion::tests::catalogue();
+        let semantic = Semantic { ids: &[51, 52], categories: &[], models: &[], rest: "skirt" };
+        let order = |q: &str, sem, expand, among: &[i64]| {
+            let r = c.search(&request(&format!("q={q}&sort=relevant&pageSize=100")), 0, None, sem, expand, true).unwrap();
+            r.ids.into_iter().filter(|id| among.contains(id)).collect::<Vec<_>>()
+        };
+        let words: Vec<i64> = (1..=15).chain(26..=33).collect();
+        let plain = order("skirt", None, None, &words);
+        assert_eq!(plain[..3], [7, 6, 5]); // 1-7 score alike, so trending decides
+        // fused with meaning-based matches or with the translation's matches, word matches keep the text order
+        assert_eq!(order("skirt", Some(semantic), None, &words), plain);
+        assert_eq!(order("skirt", None, Some("skirt"), &words), plain);
+        // the matches found only through スカート keep the order a search of スカート gives them
+        let translated: Vec<i64> = (16..=25).chain(34..=50).collect();
+        assert_eq!(order("skirt", None, Some("skirt"), &translated), order("スカート", None, None, &translated));
+    }
+
+    #[test]
+    fn with_a_model_named_only_fitting_translated_matches_join() {
+        let c = crate::expansion::tests::catalogue();
+        let models = vec!["shinano".to_owned()];
+        let semantic = Semantic { ids: &[], categories: &[], models: &models, rest: "skirt" };
+        let mut ids = c.search(&request("q=shinano%20skirt&pageSize=100"), 0, None, Some(semantic), Some("skirt"), true).unwrap().ids;
+        ids.sort();
+        // 1 and 2 by their words, 16 and 17 through スカート
+        assert_eq!(ids, [1, 2, 16, 17]);
     }
 }
