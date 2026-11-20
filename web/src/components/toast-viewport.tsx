@@ -7,7 +7,8 @@ import {
   ToastViewport,
   useToast,
 } from "@astryxdesign/core/Toast";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { toastClearance } from "./toasts";
 
 type Props = {
   /** toasts raised before this chunk arrived, in order */
@@ -17,8 +18,13 @@ type Props = {
 };
 
 export default function ToastLayer(props: Props) {
+  const bottom = useSyncExternalStore(
+    toastClearance.subscribe,
+    toastClearance.get,
+    () => 0,
+  );
   return (
-    <ToastViewport>
+    <ToastViewport inset={bottom ? { bottom } : undefined}>
       <Flush {...props} />
     </ToastViewport>
   );
