@@ -35,7 +35,7 @@ The public HTTP API of `api`, reached through `web` under `/api/`. What a search
 | Field | Meaning |
 |---|---|
 | `typoTolerant` | True when the query's words matched nothing as typed and the typo retry found the results, or when a misspelt word was read as an avatar |
-| `nameTypo` | True when a misspelt word was read as an avatar |
+| `nameTypo` | True when a misspelt word was read as an avatar; that avatar's entry in `recognized` has `typo` true |
 | `expandedWith` | The BOOTH tags that translate the query and were searched too, listed when items only they found are among the results |
 | `semantic` | See below |
 

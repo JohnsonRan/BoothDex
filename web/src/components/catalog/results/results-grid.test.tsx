@@ -8,7 +8,7 @@ import { AccountProvider } from "@/components/account/session";
 import { FilterUrlProvider } from "@/components/catalog/filter/filter-url";
 import { KeepResults } from "@/components/catalog/refresh";
 import { Providers } from "@/components/providers";
-import type { ItemResponse } from "@/lib/api-types";
+import type { ItemResponse, Recognized } from "@/lib/api-types";
 import { DEFAULT_FILTERS, type Filters, filtersToQuery } from "@/lib/catalog";
 import { browserMessages, MESSAGES, translator } from "@/lib/dictionaries";
 import type { SearchOutcome } from "@/lib/server-data";
@@ -153,15 +153,22 @@ test("before the session is read, favourite buttons are unpressed and no cover i
   expect(html).not.toContain("astryx-overlay");
 });
 
-test("a model read from a misspelt word offers the words as typed, keeping the other filters", () => {
+test("a model read from a misspelt word is named, and the words as typed are offered, keeping the other filters", () => {
   const filters = { ...DEFAULT_FILTERS, q: "chifon dress", free: true };
-  const note = (nameTypo: boolean) =>
+  const chiffon: Recognized = {
+    kind: "model",
+    slug: "chiffon",
+    words: ["chifon"],
+    typo: true,
+  };
+  const note = (nameTypo: boolean, recognized: Recognized[] = []) =>
     renderToStaticMarkup(
       <AppRouterContext value={{} as AppRouterInstance}>
         <Providers settings={DEFAULT_SETTINGS} messages={browserMessages("en")}>
           <FilterUrlProvider filters={filters}>
             <TypoNote
-              nameTypo={nameTypo}
+              result={{ nameTypo, recognized }}
+              avatars={[["chiffon", "Chiffon"]]}
               filters={filters}
               t={translator("en")}
             />
@@ -169,10 +176,20 @@ test("a model read from a misspelt word offers the words as typed, keeping the o
         </Providers>
       </AppRouterContext>,
     );
-  expect(note(true)).toContain(
-    'href="?q=chifon%20dress&amp;typo=0&amp;free=1"',
+  const named = note(true, [chiffon]);
+  expect(named).toContain('href="?q=chifon%20dress&amp;typo=0&amp;free=1"');
+  expect(named).toContain("Search instead for &quot;chifon dress&quot;");
+  // "dress" matched as typed: the note names the model instead of saying the words matched nothing
+  expect(named).toContain(
+    "No item has the word &quot;chifon&quot;, so it was read as the avatar Chiffon.",
   );
-  expect(note(true)).toContain("Search instead for &quot;chifon dress&quot;");
+  expect(named).not.toContain("matched nothing as typed");
+  // an API from before `typo` gets the general note
+  const { typo: _, ...before } = chiffon;
+  expect(note(true, [before as Recognized])).toContain(
+    "matched nothing as typed",
+  );
+  expect(note(false)).toContain("matched nothing as typed");
   expect(note(false)).not.toContain("<a ");
 });
 

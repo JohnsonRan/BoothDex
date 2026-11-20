@@ -169,18 +169,16 @@ function marks(
     ]),
   );
   // an API from before `recognized` leaves it out
-  return (r.recognized ?? []).map(({ kind, slug, words }) => {
-    if (kind === "model") {
-      const a = avatars.find((a) => a.slug === slug);
+  return (r.recognized ?? []).map((m) => {
+    if (m.kind === "model") {
+      const a = avatars.find((a) => a.slug === m.slug);
       return {
-        kind,
-        slug,
-        words,
-        name: a ? avatarName(a, ui) : slug,
+        ...m,
+        name: a ? avatarName(a, ui) : m.slug,
         image: imageSrc(a?.image_url) || undefined,
       };
     }
-    return { kind, slug, words, name: names.get(slug) ?? slug };
+    return { ...m, name: names.get(m.slug) ?? m.slug };
   });
 }
 

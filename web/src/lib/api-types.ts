@@ -64,7 +64,11 @@ export type Recognized = { kind: RecognizedKind, slug: string,
 /**
  * as typed
  */
-words: Array<string>, };
+words: Array<string>, 
+/**
+ * the words misspell the model's name, which no item has as a word
+ */
+typo: boolean, };
 
 export type RecognizedKind = "model" | "category";
 

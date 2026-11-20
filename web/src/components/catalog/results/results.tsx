@@ -14,7 +14,7 @@ import {
 import { ClearAll } from "@/components/catalog/filter/filter-bar";
 import { KeepResults, Swap } from "@/components/catalog/refresh";
 import { SearchTrace } from "@/components/catalog/search/search-trace";
-import type { RelatedSearch } from "@/lib/api-types";
+import type { RelatedSearch, SearchResponse } from "@/lib/api-types";
 import { type Filters, filtersToQuery } from "@/lib/catalog";
 import { translator } from "@/lib/dictionaries";
 import { drawnWith, pageQuery } from "@/lib/result-pages";
@@ -75,23 +75,39 @@ export async function ResultCount({
   );
 }
 
-/** The results allowed a typo; when a model was read from a misspelt word, the link searches the words as typed,
+/** The results allowed a typo. When a model was read from a misspelt word, the note names the model rather than
+ *  saying the words matched nothing as typed, which the other words may have; the link searches the words as typed,
  *  as Google's "Search instead for". */
 export function TypoNote({
-  nameTypo,
+  result: { nameTypo, recognized },
+  avatars,
   filters,
   t,
 }: {
-  nameTypo: boolean;
+  result: Pick<SearchResponse, "nameTypo" | "recognized">;
+  avatars: ClauseNames["avatars"];
   filters: Filters;
   t: Translate;
 }) {
   if (!nameTypo) return <SemanticNote text={t("list.typoTolerant")} />;
+  // an API from before `typo` leaves it out, and one from before `recognized` leaves that out
+  const misread = (recognized ?? []).filter((r) => r.typo);
+  const text =
+    misread.length === 0
+      ? t("list.typoTolerant")
+      : misread
+          .map(({ slug, words }) =>
+            t("list.typoModel", {
+              word: words.join(" "),
+              model: avatars.find(([s]) => s === slug)?.[1] ?? slug,
+            }),
+          )
+          .join(" ");
   // the text is drawn here; only the link, a filter change, needs the browser
   return (
     <Center>
       <Text type="supporting">
-        {t("list.typoTolerant")}{" "}
+        {text}{" "}
         <SearchInstead
           patch={{ noTypo: true }}
           label={t("list.searchInstead", { q: filters.q })}
@@ -180,7 +196,14 @@ export async function Results({
         <Swap>
           <VStack gap={6}>
             {/* a model misread from a typo can be what left nothing: the way back to the words as typed */}
-            {result.nameTypo && <TypoNote nameTypo filters={filters} t={t} />}
+            {result.nameTypo && (
+              <TypoNote
+                result={result}
+                avatars={names.avatars}
+                filters={filters}
+                t={t}
+              />
+            )}
             <EmptyResults
               // an API from before `widerCounts` leaves it out
               wider={widerSearches(filters, names, t, result.widerCounts ?? [])}
@@ -207,7 +230,12 @@ export async function Results({
       <Swap>
         <VStack gap={6}>
           {result.typoTolerant && (
-            <TypoNote nameTypo={result.nameTypo} filters={filters} t={t} />
+            <TypoNote
+              result={result}
+              avatars={names.avatars}
+              filters={filters}
+              t={t}
+            />
           )}
           {/* an API from before `expandedWith` leaves it out */}
           {(result.expandedWith ?? []).length > 0 && (

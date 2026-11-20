@@ -109,7 +109,12 @@ test("the words as typed (typo=0) round-trip with the query, and a new query dro
   // a model picked out of the query leaves the other words as typed
   const both = { ...f, q: "shinano chifon dress" };
   const marks = [
-    { kind: "model" as const, slug: "shinano", words: ["shinano"] },
+    {
+      kind: "model" as const,
+      slug: "shinano",
+      words: ["shinano"],
+      typo: false,
+    },
   ];
   const picked = patched(both, selectAvatar(both.q, "shinano", marks));
   expect(filtersToQuery(picked)).toBe(
@@ -299,11 +304,13 @@ const shinano: Recognized = {
   kind: "model",
   slug: "shinano",
   words: ["shinano"],
+  typo: false,
 };
 const longHair: Recognized = {
   kind: "category",
   slug: "hair--long",
   words: ["long", "hair"],
+  typo: false,
 };
 
 test("the avatar strip selects models recognized in the query, not categories", () => {
@@ -331,11 +338,17 @@ test("All avatars or toggling off a model removes the query's model too", () => 
 });
 
 test("avatar selection removes whole model names, including repeats and translated phrases", () => {
-  const maya: Recognized = { kind: "model", slug: "maya", words: ["舞夜"] };
+  const maya: Recognized = {
+    kind: "model",
+    slug: "maya",
+    words: ["舞夜"],
+    typo: false,
+  };
   const multi: Recognized = {
     kind: "model",
     slug: "inaba",
     words: ["Inaba", "Kohaku"],
+    typo: false,
   };
   expect(
     selectAvatar('Shinano shinano 舞夜 "long hair"', "mayo", [shinano, maya]),

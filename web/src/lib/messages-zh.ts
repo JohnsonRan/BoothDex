@@ -128,6 +128,8 @@ export const zh = {
     "语义搜索的结果还在准备中，这次先只按关键词查找。结果稍后会自动更新。",
   "list.typoTolerant": "没有找到完全匹配的关键词，已按相近的拼写为你查找。",
   "list.searchInstead": "按原词搜索“{q}”",
+  "list.typoModel":
+    "没有商品包含“{word}”这个词，已按虚拟形象“{model}”为你查找。",
   "list.expandedWith": "同时显示了同义词“{words}”的匹配商品。",
   "list.withoutExpanded": "不含同义词搜索",
   "list.related": "相关搜索",

@@ -92,7 +92,7 @@ async fn check_semantic_search(pool: PgPool) {
 
     let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
     let state = app(pool, catalog, Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 2)]));
-    let shinano = |w: &str| json!([{ "kind": "model", "slug": "shinano", "words": [w] }]);
+    let shinano = |w: &str| json!([{ "kind": "model", "slug": "shinano", "words": [w], "typo": w == "Shinnano" }]);
     // a misspelt model name is read as the model, and the site is told a typo was allowed; typo=0 takes the words
     // as typed, while a name spelt right still counts
     for (query, expected, semantic, recognized, typo) in [

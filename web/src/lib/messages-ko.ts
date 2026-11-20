@@ -132,6 +132,8 @@ export const ko: Dict = {
   "list.typoTolerant":
     "입력한 단어 그대로는 일치하는 결과가 없어, 단어 일치는 긴 단어마다 철자 오류를 한 군데까지 허용했습니다.",
   "list.searchInstead": '"{q}" 그대로 검색',
+  "list.typoModel":
+    '"{word}" 단어가 들어간 상품이 없어 아바타 {model}(으)로 검색했습니다.',
   "list.expandedWith":
     '검색어를 번역한 "{words}"에 해당하는 상품도 함께 표시합니다.',
   "list.withoutExpanded": "번역어 없이 검색",
