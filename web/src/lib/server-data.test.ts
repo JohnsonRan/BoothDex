@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { DEFAULT_FILTERS } from "./catalog";
 import {
   passOffer,
@@ -109,13 +111,15 @@ test("related searches are asked once a search matched by meaning or found nothi
         } as unknown as SearchOutcome),
         filters,
         { "x-real-ip": "203.0.113.7" },
+        "ja",
       );
     expect(await found("used")).toEqual([
       { label: "long skirt", q: "long skirt" },
     ]);
+    // the visitor's language labels the searches
     expect(asked).toEqual([
       {
-        url: expect.stringMatching(/\/api\/related\?q=skirt&free=1$/),
+        url: expect.stringMatching(/\/api\/related\?q=skirt&free=1&hl=ja$/),
         headers: { "x-real-ip": "203.0.113.7" },
       },
     ]);
@@ -132,6 +136,7 @@ test("related searches are asked once a search matched by meaning or found nothi
         Promise.resolve({ state: "error", limited: true }),
         filters,
         {},
+        "en",
       ),
     ).toEqual([]);
     expect(asked.length).toBe(1);
@@ -161,6 +166,22 @@ test("related searches are asked once a search matched by meaning or found nothi
   }
 });
 
+test("the home page asks for related searches in the visitor's interface language", () => {
+  // an async server component that reads the request: the call is checked as written
+  const home = readFileSync(
+    join(import.meta.dir, "../components/catalog/home-screen.tsx"),
+    "utf8",
+  );
+  const args = home.match(/= relatedSearches\(([\s\S]*?)\);/)?.[1] ?? "";
+  expect(
+    args
+      .split(",")
+      .map((a) => a.trim())
+      .filter(Boolean)
+      .at(-1),
+  ).toBe("settings.ui");
+});
+
 test("related searches that do not answer in time give none, so the results do not wait for them", async () => {
   const real = globalThis.fetch;
   // an API that never answers, such as one waiting for a search permit, until the request is given up
@@ -177,7 +198,12 @@ test("related searches that do not answer in time give none, so the results do n
       result: { semantic: "used", count: 1 },
     } as unknown as SearchOutcome);
     expect(
-      await relatedSearches(searched, { ...DEFAULT_FILTERS, q: "skirt" }, {}),
+      await relatedSearches(
+        searched,
+        { ...DEFAULT_FILTERS, q: "skirt" },
+        {},
+        "zh",
+      ),
     ).toEqual([]);
   } finally {
     globalThis.fetch = real;

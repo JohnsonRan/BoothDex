@@ -138,12 +138,13 @@ export async function searchItems(
  * stored for the query. Asked when the search matched by meaning (`semantic: "used"`), which stored it, and when it
  * found nothing, where other words help most and an earlier search may have stored it; not when the search had no
  * query or no embedding provider (`semantic: "off"`). Any failure, a rate limit or a late answer included, gives none:
- * the results show without them and no check is offered.
+ * the results show without them and no check is offered. `ui`, the visitor's language, labels the searches.
  */
 export async function relatedSearches(
   outcome: Promise<SearchOutcome>,
   filters: Filters,
   forwarded: Record<string, string>,
+  ui: string,
 ): Promise<RelatedSearch[]> {
   const o = await outcome;
   if (o.state !== "ok") return [];
@@ -151,7 +152,7 @@ export async function relatedSearches(
   if (semantic !== "used" && (count > 0 || semantic === "off")) return [];
   try {
     const { searches } = await getJson<RelatedResponse>(
-      `/api/related?${filtersToQuery(filters)}`,
+      `/api/related?${filtersToQuery(filters)}&hl=${ui}`,
       {
         cache: "no-store",
         headers: forwarded,

@@ -218,6 +218,7 @@ async function Catalog({
     outcome,
     filters,
     visitorHeaders(await headers()),
+    settings.ui,
   );
   const [avatars, categories, tags, railWidth] = await Promise.all([
     listAvatars().catch(() => []),
