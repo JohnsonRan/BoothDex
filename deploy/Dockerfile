@@ -17,7 +17,10 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS build
 COPY --from=planner /src/recipe.json recipe.json
-RUN for i in 1 2 3; do cargo chef cook --release --recipe-path recipe.json -p api -p imgproxy -p worker --features imgproxy/libavif && break; [ $i = 3 ] && exit 1; sleep 10; done
+# Rust 1.100's Cargo lint `cargo::unused_dependencies` takes every dependency of cook's stub crates as unused.
+# CARGO_BUILD_WARNINGS=allow (`build.warnings`, Cargo 1.97+) hides lint warnings of local packages only, here the
+# stubs; the real `cargo build` below keeps its warnings.
+RUN for i in 1 2 3; do CARGO_BUILD_WARNINGS=allow cargo chef cook --release --recipe-path recipe.json -p api -p imgproxy -p worker --features imgproxy/libavif && break; [ $i = 3 ] && exit 1; sleep 10; done
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 RUN cargo build --release -p api -p imgproxy -p worker --features imgproxy/libavif \
