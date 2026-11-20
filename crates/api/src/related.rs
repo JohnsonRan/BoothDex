@@ -1,8 +1,9 @@
 //! `/api/related`: related searches for a text query (owner, 2026-11-20), BOOTH tags near the query's meaning. Each tag
 //! has a centroid, the mean embedding of the items that carry it. The tags nearest the embedding a search already
-//! stored for the query are offered, minus those that respell or translate the query, name an avatar, are spread by a
-//! few shops or by everyone, seldom go with the query's own matches, or find nothing under the current filters. The
-//! rules and numbers were tuned with a prototype on the development catalogue (42 sample queries, 2026-11-20).
+//! stored for the query are offered, minus those that respell, translate or repeat a word of the query, name an
+//! avatar, are spread by a few shops or by everyone, seldom go with the query's own matches, or find nothing under the
+//! current filters. The rules and numbers were tuned with a prototype on the development catalogue (42 sample queries,
+//! 2026-11-20).
 
 use std::sync::Arc;
 
@@ -246,6 +247,7 @@ pub(crate) struct Asked<'a> {
 /// Up to `SEARCHES` related searches for `asked`, whose meaning has the embedding `vector`, best first.
 pub(crate) fn choose(catalog: &Catalog, avatars: &AvatarNames, centroids: &TagCentroids, vector: &[f32], asked: &Asked) -> Result<Vec<RelatedSearch>> {
     let tags = catalog.tags();
+    let words: Vec<&str> = asked.meaning.split_whitespace().collect();
     let equivalents = catalog.equivalents(asked.meaning)?;
     let matches = catalog.word_hits(asked.meaning)?;
     // how many of the query's matches carry each tag, when they are enough to tell
@@ -279,9 +281,11 @@ pub(crate) fn choose(catalog: &Catalog, avatars: &AvatarNames, centroids: &TagCe
             continue;
         }
         let name = tags.name(t);
+        // a word of the query is a wider search, not a related one ("黒髪 ロング" offering ロング)
+        let repeats = |s: &str| respelling(asked.meaning, s) || words.iter().any(|w| respelling(w, s));
         if equivalents.iter().any(|e| fold(e) == key)
             || avatars.named_in(key)
-            || respelling(asked.meaning, name)
+            || repeats(name)
             || chosen.iter().any(|c| respelling(&c.label, name))
         {
             continue;
@@ -540,6 +544,12 @@ mod tests {
         assert_eq!(c.equivalents("Skirt").unwrap().to_vec(), ["スカート"]);
         assert_eq!(labels(related(&c, &["Skirt"], "q=bottoms&bc=3D%20Accessory", &[], None)), ["Skirt"]);
         assert!(related(&c, &["Skirt"], "q=bottoms&bc=3D%20Avatar", &[], None).is_empty());
+    }
+
+    #[test]
+    fn a_word_of_the_query_is_a_wider_search_not_a_related_one() {
+        let c = catalogue(&[(20, "Black Long Hair", &["黒髪"], 5), (20, "Black Long Hair", &["ロング"], 5), (20, "Black Long Hair", &["ponytail"], 5)], |_, _| {});
+        assert_eq!(labels(related(&c, &["黒髪", "ロング", "ponytail"], "q=黒髪%20ロング", &[], None)), ["ponytail"]);
     }
 
     #[test]

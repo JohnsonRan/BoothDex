@@ -324,11 +324,11 @@ slot stayed busy.
 
 `/api/related` takes the same query string and returns up to four related searches in `searches`, each a `label`
 and the `q` that searches it, avatar names of the query kept. They are BOOTH tags whose items' mean embedding is
-nearest to the query's, minus tags that respell or translate the query, name an avatar, come from a few shops or
-from more than 5% of the items, seldom go with the query's own matches, or find nothing under the same filters,
-adult setting and view. It reads only the embedding a search already stored for the query and never asks the AI
-provider, so it returns none for a query without one, for an item link or number, and while the configured
-embeddings model is not the one the items were embedded with.
+nearest to the query's, minus tags that respell or translate the query, repeat one of its words, name an avatar,
+come from a few shops or from more than 5% of the items, seldom go with the query's own matches, or find nothing
+under the same filters, adult setting and view. It reads only the embedding a search already stored for the query
+and never asks the AI provider, so it returns none for a query without one, for an item link or number, and while
+the configured embeddings model is not the one the items were embedded with.
 
 ## Acknowledgments
 
