@@ -15,7 +15,7 @@ import { FilterUrlProvider } from "@/components/catalog/filter/filter-url";
 import { SiteFrame } from "@/components/frame/site-frame";
 import { Providers } from "@/components/providers";
 import { DEFAULT_FILTERS } from "@/lib/catalog";
-import { MESSAGES, translator } from "@/lib/dictionaries";
+import { browserMessages, translator } from "@/lib/dictionaries";
 import {
   contactEmail,
   LEGAL_UPDATED,
@@ -67,7 +67,7 @@ export async function LegalScreen({ kind }: { kind: LegalKind }) {
   return (
     <Providers
       settings={settings}
-      messages={MESSAGES[settings.ui]}
+      messages={browserMessages(settings.ui)}
       catalogue={await componentCatalogue(settings.ui)}
     >
       {/* the account menu's views (favourites, recently viewed) open on the home page from here */}

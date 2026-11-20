@@ -10,7 +10,7 @@ import { KeepResults } from "@/components/catalog/refresh";
 import { Providers } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
 import { DEFAULT_FILTERS, type Filters } from "@/lib/catalog";
-import { MESSAGES, translator } from "@/lib/dictionaries";
+import { browserMessages, translator } from "@/lib/dictionaries";
 import type { SearchOutcome } from "@/lib/server-data";
 import { DEFAULT_SETTINGS } from "@/lib/settings-core";
 import { FIRST_TILES } from "./item-tile";
@@ -60,7 +60,7 @@ const render = (items: ItemResponse[], content = DEFAULT_SETTINGS.content) =>
     <AppRouterContext value={{} as AppRouterInstance}>
       <Providers
         settings={DEFAULT_SETTINGS}
-        messages={MESSAGES[DEFAULT_SETTINGS.ui]}
+        messages={browserMessages(DEFAULT_SETTINGS.ui)}
       >
         <AccountProvider>
           <ResultsGrid
@@ -157,7 +157,7 @@ test("a model read from a misspelt word offers the words as typed, keeping the o
   const note = (nameTypo: boolean) =>
     renderToStaticMarkup(
       <AppRouterContext value={{} as AppRouterInstance}>
-        <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+        <Providers settings={DEFAULT_SETTINGS} messages={browserMessages("en")}>
           <FilterUrlProvider filters={filters}>
             <TypoNote
               nameTypo={nameTypo}
@@ -179,7 +179,7 @@ test("a search that also matched its translations names them and offers the word
   const note = (filters: Filters) =>
     renderToStaticMarkup(
       <AppRouterContext value={{} as AppRouterInstance}>
-        <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+        <Providers settings={DEFAULT_SETTINGS} messages={browserMessages("en")}>
           <FilterUrlProvider filters={filters}>
             <ExpansionNote words={["尻尾", "しっぽ"]} t={translator("en")} />
           </FilterUrlProvider>
@@ -287,7 +287,7 @@ test("a related search replaces the words, keeps the filters and the model names
   };
   const html = renderToStaticMarkup(
     <AppRouterContext value={{} as AppRouterInstance}>
-      <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+      <Providers settings={DEFAULT_SETTINGS} messages={browserMessages("en")}>
         <FilterUrlProvider filters={filters}>
           <RelatedSearches
             searches={[
@@ -329,7 +329,7 @@ test("a model misread from a typo that left no results still offers the words as
   const page = async (nameTypo: boolean) =>
     renderToStaticMarkup(
       <AppRouterContext value={{} as AppRouterInstance}>
-        <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+        <Providers settings={DEFAULT_SETTINGS} messages={browserMessages("en")}>
           <FilterUrlProvider filters={filters}>
             {
               await Results({
@@ -356,7 +356,7 @@ test("a search that found nothing offers its related searches inside the empty s
   const page = async (searches: { label: string; q: string }[]) =>
     renderToStaticMarkup(
       <AppRouterContext value={{} as AppRouterInstance}>
-        <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.en}>
+        <Providers settings={DEFAULT_SETTINGS} messages={browserMessages("en")}>
           <FilterUrlProvider filters={filters}>
             {
               await Results({
