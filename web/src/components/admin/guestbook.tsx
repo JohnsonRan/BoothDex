@@ -5,6 +5,8 @@
 // end. Hide and Show act at once and can be undone; Delete cannot, so it asks first (AlertDialog, as disabling a
 // user does). Close offers "as completed" and "as not planned" and a closed message offers Reopen, as GitHub's
 // issue page does (https://docs.github.com/en/issues/tracking-your-work-with-issues/administering-issues/closing-an-issue).
+// The Close menu and the Reopen button are different elements, so after either goes through, focus moves to the one
+// that replaced it in the same row instead of falling to the page.
 
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -17,7 +19,7 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import { Timestamp } from "@astryxdesign/core/Timestamp";
 import { Token } from "@astryxdesign/core/Token";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MESSAGE_STYLE } from "@/components/guestbook/message-style";
 import { CLOSED_COLOR } from "@/components/guestbook/status";
 import { useToast } from "@/components/toasts";
@@ -38,6 +40,14 @@ function Entries() {
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState<Busy>();
   const [deleting, setDeleting] = useState<AdminGuestbookEntry>();
+  // the row whose Close or Reopen just went through: the control that replaced the old one takes the focus
+  const refocus = useRef<number | null>(null);
+  const statusControl = (id: number) => (el: HTMLButtonElement | null) => {
+    if (el && refocus.current === id) {
+      refocus.current = null;
+      el.focus();
+    }
+  };
 
   const load = useCallback(() => {
     setError(undefined);
@@ -83,6 +93,7 @@ function Entries() {
         `/api/admin/guestbook/${e.id}`,
         { method: "PATCH", json },
       );
+      if (key === "status") refocus.current = e.id;
       setPage(
         (p) =>
           p && {
@@ -159,6 +170,7 @@ function Entries() {
                 {e.status === "open" ? (
                   <DropdownMenu
                     button={{
+                      ref: statusControl(e.id),
                       label: t("guestbook.close"),
                       variant: "secondary",
                       size: "sm",
@@ -183,6 +195,7 @@ function Entries() {
                   />
                 ) : (
                   <Button
+                    ref={statusControl(e.id)}
                     label={t("guestbook.reopen")}
                     variant="secondary"
                     size="sm"
