@@ -255,6 +255,15 @@ export const adminZh = {
   "turnstile.auth": "登录和注册需要人机验证",
   "turnstile.authOn": "登录和注册现在需要人机验证",
   "turnstile.authOff": "登录和注册不再需要人机验证",
+  "turnstile.authDesc":
+    "开启时，或在开启状态下更换密钥时，需要先用这组密钥完成验证",
+  "turnstile.proofTitle": "用这组密钥完成验证",
+  "turnstile.proofDesc":
+    "登录和注册将需要通过这项验证。请先在这里完成验证，以免无效的密钥让所有人都无法登录。如果只想保存密钥，请先关闭登录和注册的人机验证。",
+  "turnstile.proofRefused":
+    "这组密钥未能通过验证。请检查站点密钥和密钥是否属于同一个小组件。",
+  "turnstile.proofUnjudged":
+    "Cloudflare 无法用这组密钥完成验证检查，因此没有保存。请检查密钥，或稍后再试。",
   "turnstile.strict": "对未验证的访客收紧限制",
   "turnstile.strictDesc":
     "未通过人机验证的访客在搜索和查看商品时会更早受到限制；通过验证后 10 分钟内恢复常规限制。登录和注册需要人机验证时，登录或注册时通过了验证的用户使用常规限制",
