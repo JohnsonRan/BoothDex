@@ -11,9 +11,10 @@
 // template's terms line (page.tsx:196-209) links the terms and the privacy policy, which open in a dialog over this
 // one (legal-dialog.tsx), so the form stays as filled.
 // While the registration answer names a Turnstile site key, both forms carry the widget between the fields and the
-// button, for the action the API checks ("sign-in" or "register"); a submit waits for the visitor to pass, unless
-// the widget's script did not load, when the server decides (it lets a request through while Cloudflare is out of
-// reach). The widget is reset after every attempt, since Cloudflare takes each token once.
+// button, for the action the API checks ("sign-in" or "register"); a submit waits for that answer, asking once more
+// when it failed, and then for the visitor to pass, unless the widget's script did not load or no answer came, when
+// the server decides (it lets a request through while Cloudflare is out of reach); sign-in-gate.ts. The widget is
+// reset after every attempt, since Cloudflare takes each token once.
 
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
@@ -42,6 +43,12 @@ import { api, errorKey } from "@/lib/api";
 import { API_ERRORS, type MessageKey } from "@/lib/messages";
 import { rich } from "@/lib/rich";
 import { type TurnstileState, useTurnstile } from "@/lib/turnstile";
+import {
+  askRegistration,
+  type Registration,
+  tokenFor,
+  waitForAnswer,
+} from "./sign-in-gate";
 
 type Mode = "login" | "register";
 type Field = "login" | "password" | "display_name" | "username" | "email";
@@ -116,63 +123,97 @@ export function SignInDialog({
   const [siteKey, setSiteKey] = useState<string | null>(null);
   const verification = useRef<TurnstileState>(null);
   const value = (f: Field) => values[f] ?? "";
+  // this open's registration answer, which a submit waits for; the opens so far; the form shown, renumbered on every
+  // open, close and change between sign-in and registration, which a waiting submit must still be on to go on; a
+  // submit under way, for Enter pressed again while it waits
+  const answer = useRef<Promise<Registration | null>>(Promise.resolve(null));
+  const opens = useRef(0);
+  const form = useRef(0);
+  const sending = useRef(false);
 
+  const apply = (a: Registration | null) => {
+    // unknown: keep offering registration, without the widget
+    setSiteKey(a?.site_key ?? null);
+    setCanRegister(a?.open ?? true);
+    if (a && !a.open) setMode("login");
+  };
+  // every answer of this open goes into the dialog, whether or not the submit that asked is still waiting for it; an
+  // answer of an earlier open changes nothing
+  const ask = () => {
+    const open = opens.current;
+    const p = askRegistration(() =>
+      api<Registration>("/api/account/registration"),
+    );
+    answer.current = p;
+    p.then((a) => opens.current === open && apply(a));
+    return p;
+  };
   // the gate asks too, for the site key only: it never offers registration
+  // biome-ignore lint/correctness/useExhaustiveDependencies: asked once per open; ask only sets state
   useEffect(() => {
     if (!isOpen) return;
-    api<{ open: boolean; site_key: string | null }>(
-      "/api/account/registration",
-    ).then(
-      ({ open, site_key }) => {
-        setSiteKey(site_key);
-        setCanRegister(open);
-        if (!open) setMode("login");
-      },
-      // unknown: keep offering registration, without the widget
-      () => {
-        setSiteKey(null);
-        setCanRegister(true);
-      },
-    );
+    opens.current++;
+    ask();
   }, [isOpen]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: renumbered on each change of either
+  useEffect(() => {
+    form.current++;
+  }, [isOpen, mode]);
   const errorOf = (f: Field) =>
     checked ? problem(mode, f, value(f)) : undefined;
 
   const submit = async () => {
+    if (sending.current) return;
     setChecked(true);
     if (FIELDS[mode].some((f) => problem(mode, f, value(f)))) return;
-    const widget = verification.current;
-    if (widget && !widget.failed && !widget.token) {
-      toast({ type: "error", body: vt("required"), uniqueID: "auth" });
-      return;
-    }
+    sending.current = true;
     setBusy(true);
+    const from = form.current;
     try {
-      await api(
-        mode === "login" ? "/api/account/login" : "/api/account/register",
-        {
-          method: "POST",
-          json: {
-            ...Object.fromEntries(FIELDS[mode].map((f) => [f, value(f)])),
-            keep: true,
-            token: widget?.token ?? "",
-          },
-        },
-      );
-      toast({ body: t("account.signedIn"), uniqueID: "auth" });
-      setValues({});
-      setChecked(false);
-      onSignedIn();
-    } catch (err) {
-      toast({
-        type: "error",
-        body: verificationRefused(err)
-          ? vt("refused")
-          : t(errorKey(err, API_ERRORS, "error.failed")),
-        uniqueID: "auth",
+      const waited = await waitForAnswer({
+        pending: answer.current,
+        ask,
+        still: () => form.current === from,
       });
+      // a registration the answer says is closed is not sent either
+      if (waited === "cancelled") return;
+      if (mode === "register" && waited.answer?.open === false) return;
+      const widget = verification.current;
+      const token = tokenFor(waited.answer, widget);
+      if (token === "required") {
+        toast({ type: "error", body: vt("required"), uniqueID: "auth" });
+        return;
+      }
+      try {
+        await api(
+          mode === "login" ? "/api/account/login" : "/api/account/register",
+          {
+            method: "POST",
+            json: {
+              ...Object.fromEntries(FIELDS[mode].map((f) => [f, value(f)])),
+              keep: true,
+              token,
+            },
+          },
+        );
+        toast({ body: t("account.signedIn"), uniqueID: "auth" });
+        setValues({});
+        setChecked(false);
+        onSignedIn();
+      } catch (err) {
+        toast({
+          type: "error",
+          body: verificationRefused(err)
+            ? vt("refused")
+            : t(errorKey(err, API_ERRORS, "error.failed")),
+          uniqueID: "auth",
+        });
+      } finally {
+        widget?.reset();
+      }
     } finally {
-      widget?.reset();
+      // every way out, a cancelled submit included, leaves the form able to send again
+      sending.current = false;
       setBusy(false);
     }
   };
@@ -224,6 +265,8 @@ export function SignInDialog({
                             key={`${mode}-${f}`}
                             label={t(name)}
                             isLabelHidden
+                            // a submit sends the values it started with, so they cannot change while it waits or sends
+                            isReadOnly={busy}
                             placeholder={
                               f === "password" && mode === "register"
                                 ? t("account.newPassword")
