@@ -33,7 +33,11 @@ jobs:
       - run: cargo test --workspace -- --include-ignored
         env:
           DATABASE_URL: postgres://postgres:dev@localhost:5432/catalogue
+      # deny also turns Cargo's own lints into errors, such as `cargo::unused_dependencies` (Rust 1.100), which clippy's
+      # -D warnings does not reach; deploy/Dockerfile allows them for cargo-chef's stub crates only
       - run: cargo clippy --workspace --all-targets -- -D warnings
+        env:
+          CARGO_BUILD_WARNINGS: deny
       # the container images encode AVIF with libaom (imgproxy's libavif feature); the plain build above uses rav1e
       # The runner's own resolver has failed for the Ubuntu mirrors for half an hour at a time while every other host
       # resolved, and the images wait for these checks: apt asks public resolvers instead, and retries each download.

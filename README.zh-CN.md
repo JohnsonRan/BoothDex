@@ -226,7 +226,7 @@ target/release/worker once incremental '{"max_pages": 3, "full": true}'
 运行测试与静态检查：
 
 ```sh
-cargo test --workspace -- --include-ignored && cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace -- --include-ignored && CARGO_BUILD_WARNINGS=deny cargo clippy --workspace --all-targets -- -D warnings
 python3 scripts/check-requirements.py && python3 scripts/test_check_requirements.py
 cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 ```
