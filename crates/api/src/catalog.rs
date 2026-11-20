@@ -851,6 +851,73 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    /// Fixed samples of what a search finds, so a change to the text search, the tag dictionary's words or the
+    /// expansion shows up here (owner ruling 30, 2026-11-21). Each search runs as `/api/search` runs it without
+    /// meaning-based matches: the words also searched as the tags that translate them.
+    #[test]
+    fn search_quality_samples() {
+        let titled = |d: &mut DocInput, title: &str, translated: &str| {
+            d.title = title.into();
+            d.titles_translated = vec![translated.into()];
+        };
+        let mut docs: Vec<DocInput> = (1..=60).chain([8_962_830]).map(doc).collect();
+        for d in &mut docs {
+            let id = d.id;
+            match id {
+                // skirts: 1-12 titled both ways, 13-22 only tagged スカート
+                1..=12 => (titled(d, &format!("スカート {id}"), &format!("Skirt {id}")), d.booth_tags = vec!["スカート".into()]).1,
+                13..=22 => d.booth_tags = vec!["スカート".into()],
+                // tails: 23-34 titled with 尾 too and tagged 尾, 35-44 only tagged 尾
+                23..=34 => (titled(d, &format!("尾 {id}"), &format!("Tail {id}")), d.booth_tags = vec!["尾".into()]).1,
+                35..=44 => d.booth_tags = vec!["尾".into()],
+                45 => d.booth_tags = vec!["椅子".into()],
+                46 => d.booth_tags = vec!["カクテル".into()],
+                47 => d.title = "Hair Clip".into(),
+                48 => d.booth_tags = vec!["テクスチャ".into()],
+                49 => (d.title, d.title_zh) = ("Water Shader".into(), Some("aleph 9 水着色器".into())),
+                50 => d.title = "水着セット".into(),
+                51 => (d.title, d.title_zh) = ("Fan-made Outfit".into(), Some("粉丝自制服装".into())),
+                52 => (d.title, d.title_zh) = ("Commission".into(), Some("定制服务（委托）".into())),
+                53 => d.title = "制服セット".into(),
+                54 => d.title = "Ribbon for 8962830".into(),
+                _ => {}
+            }
+        }
+        let words = dictionary(&[
+            // no English value, so skirt finds these items through the expansion alone
+            ("スカート", &["スカート", "스커트", "裙子"]),
+            ("椅子", &["chair", "椅子", "의자", "椅子"]),
+            ("カクテル", &["cocktail", "カクテル", "칵테일", "鸡尾酒"]),
+            ("テクスチャ", &["texture", "テクスチャ", "텍스처", "纹理", "贴图"]),
+        ]);
+        let c = Catalog::build_with_tag_words(docs, &words, 0, None).unwrap();
+        let found = |q: &str| {
+            let r = SearchRequest::from(&Params::parse(&format!("q={q}&pageSize=100")));
+            let mut ids = c.search(&r, 0, None, None, Some(q), false).unwrap().ids;
+            ids.sort();
+            ids
+        };
+        let range = |r: std::ops::RangeInclusive<i64>| r.collect::<Vec<_>>();
+        // skirt finds the items only tagged スカート, through the tag that translates it; 裙子 through the dictionary
+        assert_eq!(found("skirt"), range(1..=22));
+        assert_eq!(found("裙子"), range(1..=22));
+        // hair is not read inside the tag translated chair, nor tail inside the one translated cocktail
+        assert_eq!(found("hair"), [47]);
+        assert_eq!(found("cocktail"), [46]);
+        assert_eq!(found("tail"), range(23..=34));
+        // 尾 is one character: not taken as a translation of tail, though its items are titled both ways
+        assert!(c.equivalents("tail").unwrap().is_empty());
+        // the keyword 贴图 finds the items tagged with the tag translated 纹理
+        assert_eq!(found("贴图"), [48]);
+        // 水着 is not read inside the Chinese title 水着色器, nor 制服 inside 自制服装 or 定制服务
+        assert_eq!(found("水着"), [50]);
+        assert_eq!(found("制服"), [53]);
+        // a pasted item link finds that item, and its number ranks it before the items that only mention it
+        let first = |q: &str| c.search(&SearchRequest::from(&Params::parse(&format!("q={q}"))), 0, None, None, None, false).unwrap().ids;
+        assert_eq!(first("https%3A%2F%2Fbooth.pm%2Fja%2Fitems%2F8962830"), [8_962_830]);
+        assert_eq!(first("8962830"), [8_962_830, 54]);
+    }
+
     #[test]
     fn a_changed_chinese_title_rebuilds_the_text_index_on_disk() {
         let root = std::env::temp_dir().join(format!("catalog-title-zh-{}", std::process::id()));
