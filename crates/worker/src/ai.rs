@@ -107,7 +107,9 @@ pub fn parse_json_reply(text: &str) -> Result<Value> {
 }
 
 pub const LOCALIZE_SYSTEM: &str = "You translate UI labels of a shop for VRChat avatar assets (clothing, hair, accessories, shaders, tools) \
-into Simplified Chinese (zh-CN). Use the terms Chinese VRChat users use (e.g. 衣装/服装, 发型, 配饰, 着色器, 模型 for avatar). \
+into Simplified Chinese (zh-CN). Use the terms Chinese VRChat users use (e.g. 衣装/服装, 发型, 配饰; 虚拟形象 for an avatar, \
+3D模型 for a 3D model file) and the terms of Unity's Chinese manual: 纹理 for a texture, X贴图 for an X map (法线贴图 for a normal map), \
+材质 for a material, 着色器 for a shader, 网格 for a mesh. \
 Keep brand and tool names (VRChat, Quest, lilToon, Poiyomi, Modular Avatar, VRCFury, FBX, Unity) untranslated. Labels are short; no trailing punctuation. \
 Reply with a JSON object mapping each given key to its translation, nothing else.";
 
@@ -123,24 +125,49 @@ purpose and description. Always choose at least one listed slug; never return an
 \"quest_compatible\": \"Yes\", \"No\", or \"Non-Applicable\" (not an avatar or avatar asset);\n\
 \"smart_price\": integer yen a typical buyer pays for the main product (ignore support/donation tiers, pick the full set if that is the obvious main item), or null if unclear;\n\
 \"translations\": {\"en\": {\"title\": ...}, \"ja\": {\"title\": ...}, \"ko\": {\"title\": ...}, \"zh\": {\"title\": ...}}: the title only \
-(zh is Simplified Chinese, in the terms Chinese VRChat users use); for the item's own language, copy the original title with proper JSON escaping. \
-Each title must be non-empty and at most 300 characters. Do not translate the description or variations.\n\
+(zh is Simplified Chinese, in the terms Chinese VRChat buyers use: 虚拟形象 for an avatar, 3D模型 for a 3D model file, 贴图 for a \
+texture (眼睛贴图); and in the terms of Unity's Chinese manual: X贴图 for an X map such as 法线贴图 for a normal map, 材质 for a material, \
+着色器 for a shader, 网格 for a mesh); for the item's own language, copy the original title with proper JSON escaping. Each title must be non-empty and at most 300 characters. Do not translate the \
+description or variations. Avatar (character model) names are never translated or transliterated: keep each one as the original title writes \
+it, in Japanese or Latin letters, in every title; the English title uses its romaji. The listing names the avatars found in it, with their romaji.\n\
 \"original_language\": ISO 639-1 code of the listing's main language;\n\
 \"features\": array with any of \"ma\" (Modular Avatar setup), \"liltoon\", \"poiyomi\" (shaders it supports), \"vrcfury\" that the listing states it supports; empty if none.\n\
 Before replying, check that the JSON is syntactically valid, every required key is present, and categories contains at least one exact listed slug.";
 
-/// User message for one item. Long descriptions are cut to keep cost bounded.
-pub fn enrich_prompt(item: &EnrichItem, category_list: &str) -> String {
+/// User message for one item. Long descriptions are cut to keep cost bounded. `avatars`: the avatars the matcher
+/// found in the listing (avatars.rs), named so the model keeps their names as written.
+pub fn enrich_prompt(item: &EnrichItem, category_list: &str, avatars: &[&AvatarName]) -> String {
     let bio: String = item.bio.chars().take(2500).collect();
     let variations: Vec<String> = item.variations.0.iter().map(|v| format!("- {} (¥{})", v.name, v.price_jpy)).collect();
+    let avatars = if avatars.is_empty() {
+        String::new()
+    } else {
+        let names: Vec<String> = avatars.iter().map(|a| a.to_string()).collect();
+        format!("Avatar names (Japanese / romaji): {}\n", names.join(", "))
+    };
     format!(
-        "Categories (slug: meaning):\n{category_list}\n\nListing\nTitle: {}\nBooth category: {}\nListed price: ¥{}\nTags: {}\nVariations:\n{}\nDescription:\n{bio}",
+        "Categories (slug: meaning):\n{category_list}\n\nListing\nTitle: {}\nBooth category: {}\nListed price: ¥{}\nTags: {}\nVariations:\n{}\n{avatars}Description:\n{bio}",
         item.title,
         item.booth_category.as_deref().unwrap_or_default(),
         item.price_jpy.map_or_else(|| "null".to_owned(), |p| p.to_string()),
         item.booth_tags.join(", "),
         if variations.is_empty() { "(none)".to_owned() } else { variations.join("\n") },
     )
+}
+
+/// An avatar's names from the `avatars` table: Japanese (when known) and romaji (`name_en`).
+pub struct AvatarName {
+    pub ja: Option<String>,
+    pub romaji: String,
+}
+
+impl std::fmt::Display for AvatarName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.ja.as_deref().filter(|ja| *ja != self.romaji) {
+            Some(ja) => write!(f, "{ja} / {}", self.romaji),
+            None => f.write_str(&self.romaji),
+        }
+    }
 }
 
 /// One `items` row waiting for enrichment. `price_jpy` is null for a few malformed listings; a variation's
@@ -353,6 +380,13 @@ mod tests {
     }
 
     #[test]
+    fn localize_uses_the_chinese_terms_of_vrchat_users_and_unity() {
+        for term in ["虚拟形象 for an avatar", "3D模型 for a 3D model file", "纹理 for a texture", "法线贴图 for a normal map", "材质 for a material", "着色器 for a shader", "网格 for a mesh"] {
+            assert!(LOCALIZE_SYSTEM.contains(term), "{term}");
+        }
+    }
+
+    #[test]
     fn enrichment_prompt_includes_classification_evidence() {
         let categories = "accessories--rings: Accessories / Rings\nprops--other: Props / Other";
         let item = EnrichItem {
@@ -365,7 +399,7 @@ mod tests {
             bio: "An animated ring accessory for avatar fingers.".into(),
             translations: json!({}),
         };
-        let prompt = enrich_prompt(&item, categories);
+        let prompt = enrich_prompt(&item, categories, &[]);
         for evidence in [
             categories,
             "Title: 【VRChat想定】No Signal Ring【MA対応】",
@@ -373,10 +407,19 @@ mod tests {
             "Listed price: ¥500",
             "Tags: VRChat, Modular Avatar",
             "- Full set (¥500)",
-            "Description:\nAn animated ring accessory for avatar fingers.",
+            "Variations:\n- Full set (¥500)\nDescription:\nAn animated ring accessory for avatar fingers.",
         ] {
             assert!(prompt.contains(evidence), "missing evidence: {evidence}");
         }
+        // the avatars found in the listing, each name once when the dictionary spells it the same in both scripts
+        let manuka = AvatarName { ja: Some("マヌカ".into()), romaji: "Manuka".into() };
+        let adolescent = AvatarName { ja: Some("Adolescent U".into()), romaji: "Adolescent U".into() };
+        let unnamed = AvatarName { ja: None, romaji: "Rusk".into() };
+        let prompt = enrich_prompt(&item, categories, &[&manuka, &adolescent, &unnamed]);
+        assert!(
+            prompt.contains("- Full set (¥500)\nAvatar names (Japanese / romaji): マヌカ / Manuka, Adolescent U, Rusk\nDescription:\n"),
+            "{prompt}"
+        );
     }
 
     #[test]

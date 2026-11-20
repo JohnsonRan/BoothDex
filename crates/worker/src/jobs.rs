@@ -303,11 +303,13 @@ pub async fn localize(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
 const ENRICH_ITEMS_SELECT: &str = "select id, title, bio, booth_category, price_jpy, booth_tags, variations, translations
          from items where needs_enrichment and status = 'ok' and enrich_failures < $2 order by id desc limit $1";
 
-/// What one enrich batch shares: the category list for the prompt, the slugs a reply may use, the avatar matcher.
+/// What one enrich batch shares: the category list for the prompt, the slugs a reply may use, the avatar matcher and
+/// each avatar's names by slug.
 struct EnrichKit {
     category_list: String,
     known: Vec<String>,
     matcher: crate::avatars::Matcher,
+    avatar_names: std::collections::HashMap<String, crate::ai::AvatarName>,
 }
 
 async fn enrich_kit(pool: &PgPool) -> Result<EnrichKit> {
@@ -320,14 +322,17 @@ async fn enrich_kit(pool: &PgPool) -> Result<EnrichKit> {
     let known = leaf.iter().map(|c| c.0.clone()).collect();
     let category_list = leaf.iter().map(|(slug, en, parent)| format!("{slug}: {} / {en}", parent.as_deref().unwrap_or_default())).collect::<Vec<_>>().join("\n");
     let avatars: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as("select slug, name_en, name_ja, name_ko from avatars").fetch_all(pool).await?;
-    let matcher = crate::avatars::Matcher::new(avatars.into_iter().map(|(s, en, ja, ko)| (s, [Some(en), ja, ko].into_iter().flatten().collect())));
-    Ok(EnrichKit { category_list, known, matcher })
+    let matcher = crate::avatars::Matcher::new(avatars.iter().map(|(s, en, ja, ko)| (s.clone(), [Some(en), ja.as_ref(), ko.as_ref()].into_iter().flatten().cloned().collect())));
+    let avatar_names = avatars.into_iter().map(|(slug, romaji, ja, _)| (slug, crate::ai::AvatarName { ja, romaji })).collect();
+    Ok(EnrichKit { category_list, known, matcher, avatar_names })
 }
 
 /// One model call for one item; a reply that parsed but failed validation (e.g. a misspelt category slug) gets one correction round.
-async fn enrich_reply(ai: &crate::ai::Ai, kit: &EnrichKit, item: &crate::ai::EnrichItem) -> Result<crate::ai::Enrichment> {
+/// `linked`: the slugs of the avatars the matcher found in the listing.
+async fn enrich_reply(ai: &crate::ai::Ai, kit: &EnrichKit, item: &crate::ai::EnrichItem, linked: &[String]) -> Result<crate::ai::Enrichment> {
     let system = crate::ai::ENRICH_SYSTEM;
-    let prompt = crate::ai::enrich_prompt(item, &kit.category_list);
+    let names: Vec<&crate::ai::AvatarName> = linked.iter().filter_map(|slug| kit.avatar_names.get(slug)).collect();
+    let prompt = crate::ai::enrich_prompt(item, &kit.category_list, &names);
     let v = ai.json(system, &prompt).await?;
     match crate::ai::validate_enrichment(&v, &kit.known, &item.translations) {
         Err(e) => {
@@ -355,14 +360,16 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let (mut ok, mut failed) = (0i64, 0i64);
     let mut stream = futures_util::stream::iter(items.into_iter().map(|it| {
         let (ai, kit) = (&ai, &kit);
-        async move { (enrich_reply(ai, kit, &it).await, it) }
+        async move {
+            let linked = kit.matcher.find(&it.match_text());
+            (enrich_reply(ai, kit, &it, &linked).await, it, linked)
+        }
     }))
     .buffer_unordered(concurrency);
     use futures_util::StreamExt;
-    while let Some((reply, it)) = stream.next().await {
+    while let Some((reply, it, linked)) = stream.next().await {
         match reply {
             Ok(e) => {
-                let linked = kit.matcher.find(&it.match_text());
                 if write_enrichment(ctx.pool, it.id, &it.title, &it.bio, &e, &linked).await? {
                     ok += 1;
                 } else {
@@ -636,6 +643,7 @@ pub async fn run(ctx: &mut Ctx<'_>, kind: &str, params: &Value) -> Result<String
 mod tests {
     use super::*;
     use boothdex_core::embed::{DIMS, HalfVector};
+    use serde_json::json;
 
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
@@ -716,10 +724,67 @@ mod tests {
         assert_eq!(items.iter().map(|i| i.id).collect::<Vec<_>>(), [2, 1]);
         let ring = &items[1];
         assert_eq!(ring.match_text(), "Ring VRChat MA Full set ");
-        let prompt = crate::ai::enrich_prompt(ring, "cats");
+        let prompt = crate::ai::enrich_prompt(ring, "cats", &[]);
         assert!(prompt.contains("Listed price: ¥500\nTags: VRChat, MA\nVariations:\n- Full set (¥500)\n-  (¥null)"), "{prompt}");
-        let bare = crate::ai::enrich_prompt(&items[0], "cats");
+        let bare = crate::ai::enrich_prompt(&items[0], "cats", &[]);
         assert!(bare.contains("Booth category: \nListed price: ¥null\nTags: \nVariations:\n(none)"), "{bare}");
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn enrich_names_the_listings_avatars_and_keeps_them_in_titles(pool: PgPool) {
+        for key in ["AI_BASE_URL", "AI_API_KEY", "AI_MODEL"] {
+            assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test's provider is a local stand-in");
+        }
+        crate::install_tls();
+        // the stand-in provider records each request and answers with titles that keep the avatar's name as written
+        let titles = json!({
+            "en": {"title": "[For Manuka] Frill Dress"},
+            "ja": {"title": "【マヌカ対応】フリルドレス"},
+            "ko": {"title": "【マヌカ対応】프릴 드레스"},
+            "zh": {"title": "【マヌカ対応】荷叶边连衣裙"},
+        });
+        let reply = json!({
+            "categories": ["clothing--outfit-dresses"], "content_rating": "SFW", "quest_compatible": "No", "smart_price": 1500,
+            "features": [], "translations": titles, "original_language": "ja",
+        });
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+        let seen = requests.clone();
+        let app = axum::Router::new().fallback(move |axum::Json(body): axum::Json<Value>| {
+            seen.lock().unwrap().push(body);
+            let content = reply.to_string();
+            async move { axum::Json(json!({"choices": [{"message": {"content": content}}]})) }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        sqlx::query("insert into app_settings (key, value) values ('ai', $1)")
+            .bind(json!({"base_url": base_url, "model": "stand-in", "api_key": "test"}))
+            .execute(&pool).await.unwrap();
+        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, needs_enrichment, booth_tags)
+                     values (1, '【マヌカ対応】フリルドレス', 'c', 'https://example.test', false, 'ok', now(), true, '{ドレス,VRChat}')")
+            .execute(&pool).await.unwrap();
+        let job: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('enrich', 'running', now()) returning id")
+            .fetch_one(&pool).await.unwrap();
+        let booth = Booth::new().unwrap();
+        let mut ctx = Ctx::new(&pool, &booth, job);
+        assert_eq!(enrich(&mut ctx, &json!({})).await.unwrap(), "1 enriched, 0 failed of 1");
+
+        let requests = requests.lock().unwrap().clone();
+        assert_eq!(requests.len(), 1);
+        let system = requests[0]["messages"][0]["content"].as_str().unwrap();
+        for rule in ["never translated or transliterated", "虚拟形象 for an avatar", "3D模型 for a 3D model file", "贴图 for a texture", "法线贴图 for a normal map", "材质 for a material", "着色器 for a shader", "网格 for a mesh"] {
+            assert!(system.contains(rule), "{rule}: {system}");
+        }
+        let user = requests[0]["messages"][1]["content"].as_str().unwrap();
+        assert!(user.contains("\nAvatar names (Japanese / romaji): マヌカ / Manuka\nDescription:"), "{user}");
+        let (translations, avatars): (Value, Vec<String>) =
+            sqlx::query_as("select translations, array(select avatar_slug from item_avatars where item_id = 1) from items where id = 1")
+                .fetch_one(&pool).await.unwrap();
+        let mut expected = titles.clone();
+        expected["original_language"] = json!("ja");
+        assert_eq!(translations, expected);
+        assert_eq!(avatars, ["manuka"]);
     }
 
     #[sqlx::test(migrations = "../core/migrations")]

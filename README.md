@@ -149,9 +149,9 @@ docker compose pull && docker compose up -d
 - A worker checks BOOTH hourly for new items, sweeps the full listing daily, re-checks popular items and marks
   delisted ones.
 - AI enrichment *(optional, any OpenAI-compatible API, configurable reasoning effort)* adds smart categories,
-  content rating, features and title translations (Chinese, English, Japanese, Korean) to new items, links
-  avatars by name, and localizes category and tag names. Embeddings for semantic search come from the same
-  provider.
+  content rating, features and title translations (Chinese, English, Japanese, Korean; avatar names stay as
+  written) to new items, links avatars by name, and localizes category and tag names. Embeddings for semantic
+  search come from the same provider.
 - A proxy re-encodes BOOTH images and shop icons to AVIF and caches them; archived copies cover delisted items.
 
 ### Administration
