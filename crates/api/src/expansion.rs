@@ -239,6 +239,8 @@ pub(crate) mod tests {
             id,
             title,
             titles_translated: translated.to_vec(),
+            title_zh: None,
+            title_is_zh: false,
             // en, ja and ko, as nearly every production item has; zh only where a test sets it
             title_languages: 0b0111,
             bio: String::new(),
@@ -321,7 +323,7 @@ pub(crate) mod tests {
         for i in 162..=203 {
             let mut scarf = doc(i, format!("マフラー {i}"), &[format!("Scarf {i}")], &["マフラー"]);
             if i <= 173 {
-                scarf.titles_translated.push(format!("围巾 {i}"));
+                scarf.title_zh = Some(format!("围巾 {i}"));
                 scarf.title_languages |= 0b1000;
             }
             d.push(scarf);

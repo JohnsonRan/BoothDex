@@ -1,5 +1,7 @@
 //! Tantivy text index, kept on disk (memory-mapped) when a directory is given, otherwise in RAM. Three ways to match:
-//! - words: Lindera (IPADIC) morphological tokens over title/tags/author/bio, BM25-ranked
+//! - words: Lindera morphological tokens over title/tags/author/bio, BM25-ranked: the Japanese dictionary (IPADIC),
+//!   except for the Chinese titles (`TextDoc::title_zh`), which the Chinese dictionary (CC-CEDICT) segments, so that
+//!   水着 (swimsuit) is not read inside 水着色器 (water shader) nor 制服 (uniform) inside 自制服装 (home-made outfit)
 //! - substring: character bigrams over title/tags with spaces and punctuation removed, verified per query word by
 //!   `contains` (covers partial names like "ミル" → "ミルティナ", and "shorthair" / "short hair" / "short-hair");
 //!   the tags' translations (`TextDoc::tag_words`) are words only
@@ -20,7 +22,10 @@ use unicode_normalization::UnicodeNormalization;
 use tantivy::{DocAddress, DocId, Index, IndexReader, Score, SegmentOrdinal, SegmentReader, TantivyDocument, Term};
 
 pub struct TextDoc {
+    /// the title and its translations, but for the Chinese one
     pub title: String,
+    /// the title in Chinese, when there is one
+    pub title_zh: String,
     pub tags: String,
     /// the tags' translations and keywords (tag_words.rs): searched as words of the tags, never as substrings, where
     /// "chair" would match "hair"
@@ -40,11 +45,11 @@ pub struct TextMatches {
 pub struct TextIndex {
     reader: IndexReader,
     parser: QueryParser,
-    /// the title field alone (`title_hits`)
+    /// the title fields alone (`title_hits`)
     title_parser: QueryParser,
     gram: Field,
-    /// title, tags and author: the word fields a typo-tolerant retry searches
-    named: [Field; 3],
+    /// titles, tags and author: the word fields a typo-tolerant retry searches
+    named: [Field; 4],
     /// the description: with `named`, every field the word query searches (`knows`)
     bio: Field,
     /// per segment: tantivy doc id -> catalog doc index
@@ -146,7 +151,8 @@ fn text_field(tokenizer: &str, positions: bool) -> TextOptions {
 /// Bump when what goes into the index changes, so indexes already on disk are rebuilt.
 /// 3: tantivy 0.27 and Lindera 6 (dictionary and tokenizer versions changed).
 /// 4: NFKC and kana folding (`fold`).
-const FORMAT: u32 = 4;
+/// 5: Chinese titles in a field of their own, segmented as Chinese.
+const FORMAT: u32 = 5;
 
 /// Words shorter than this must match exactly in a typo-tolerant retry: one edit in "hair" reaches "hare" and "pair".
 pub(crate) const TYPO_MIN: usize = 5;
@@ -224,6 +230,13 @@ fn query_words(q: &str) -> String {
     nfkc(q).chars().map(|c| if c.is_alphanumeric() || c == '"' { c } else { ' ' }).collect()
 }
 
+/// What the substring path verifies a doc against: its title, translated titles and tags, compacted. The Chinese title
+/// is left out: there 魔女 (witch) is found inside 恶魔女仆 (demon maid), 眼镜 (glasses) inside 眼镜蛇 (cobra) and 制服
+/// (uniform) inside 定制服务 (made-to-order service) (evaluation on the development catalogue, 2026-11-21).
+fn haystack_of(d: &TextDoc) -> String {
+    compact(&format!("{} {}", d.title, d.tags))
+}
+
 fn bigrams(s: &str) -> Vec<String> {
     let chars: Vec<char> = s.chars().collect();
     chars.windows(2).map(|w| w.iter().collect()).collect()
@@ -238,6 +251,7 @@ impl TextIndex {
         let mut sb = Schema::builder();
         let doc = sb.add_u64_field("doc", FAST);
         let title = sb.add_text_field("title", text_field("ja", true));
+        let title_zh = sb.add_text_field("title_zh", text_field("zh", true));
         let tags = sb.add_text_field("tags", text_field("ja", true));
         let author = sb.add_text_field("author", text_field("ja", true));
         let bio = sb.add_text_field("bio", text_field("ja", true));
@@ -260,10 +274,12 @@ impl TextIndex {
             None => Index::create_in_ram(schema),
         };
 
-        let segmenter = Segmenter::new(Mode::Normal, load_dictionary("embedded://ipadic")?, None);
-        index
-            .tokenizers()
-            .register("ja", TextAnalyzer::builder(LinderaTokenizer::from_segmenter(segmenter)).filter(LowerCaser).filter(KanaFolder).build());
+        for (name, dictionary) in [("ja", "embedded://ipadic"), ("zh", "embedded://cc-cedict")] {
+            let segmenter = Segmenter::new(Mode::Normal, load_dictionary(dictionary)?, None);
+            index
+                .tokenizers()
+                .register(name, TextAnalyzer::builder(LinderaTokenizer::from_segmenter(segmenter)).filter(LowerCaser).filter(KanaFolder).build());
+        }
         index
             .tokenizers()
             .register("bigram", TextAnalyzer::builder(NgramTokenizer::new(2, 2, false)?).filter(LowerCaser).build());
@@ -271,22 +287,23 @@ impl TextIndex {
 
         let mut haystack = Vec::with_capacity(doc_count);
         if reuse {
-            haystack.extend(docs.map(|d| compact(&format!("{} {}", d.title, d.tags))));
+            haystack.extend(docs.map(|d| haystack_of(&d)));
         } else {
             // a smaller indexing heap lowers peak memory during (re)builds
             let mut writer = index.writer::<TantivyDocument>(192 * 1024 * 1024)?;
             for (i, d) in docs.enumerate() {
-                let hay = compact(&format!("{} {}", d.title, d.tags));
+                let hay = haystack_of(&d);
                 let mut td = TantivyDocument::default();
                 td.add_u64(doc, i as u64);
                 let all_tags = if d.tag_words.is_empty() { d.tags } else { format!("{}\n{}", d.tags, d.tag_words) };
-                let (t, g, b) = (nfkc(&d.title), nfkc(&all_tags), nfkc(&d.bio));
+                let (t, z, g, b) = (nfkc(&d.title), nfkc(&d.title_zh), nfkc(&all_tags), nfkc(&d.bio));
                 td.add_text(title, &t);
+                td.add_text(title_zh, &z);
                 td.add_text(tags, &g);
                 td.add_text(author, nfkc(&d.author));
                 td.add_text(bio, &b);
                 td.add_text(gram, &hay);
-                td.add_text(pairs, joined_pairs(&[&t, &g, &b]));
+                td.add_text(pairs, joined_pairs(&[&t, &z, &g, &b]));
                 writer.add_document(td)?;
                 haystack.push(hay);
             }
@@ -307,11 +324,12 @@ impl TextIndex {
             })
             .collect::<Result<_>>()?;
 
-        let mut title_parser = QueryParser::for_index(&index, vec![title]);
+        let mut title_parser = QueryParser::for_index(&index, vec![title, title_zh]);
         title_parser.set_conjunction_by_default();
-        let mut parser = QueryParser::for_index(&index, vec![title, tags, author, bio, pairs]);
+        let mut parser = QueryParser::for_index(&index, vec![title, title_zh, tags, author, bio, pairs]);
         parser.set_conjunction_by_default();
         parser.set_field_boost(title, 3.0);
+        parser.set_field_boost(title_zh, 3.0);
         parser.set_field_boost(tags, 2.0);
         parser.set_field_boost(author, 2.0);
         // Only remove our own obsolete indexes, after the replacement is ready. Mapped files on Windows
@@ -328,7 +346,7 @@ impl TextIndex {
                 }
             }
         }
-        Ok(Self { reader, parser, title_parser, gram, named: [title, tags, author], bio, seg_docs, haystack })
+        Ok(Self { reader, parser, title_parser, gram, named: [title, title_zh, tags, author], bio, seg_docs, haystack })
     }
 
     /// Docs whose title (original or a translation) has every query word as a word: no substrings, no typo
@@ -435,7 +453,7 @@ mod tests {
     use super::*;
 
     fn doc(title: &str, tags: &str) -> TextDoc {
-        TextDoc { title: title.into(), tags: tags.into(), tag_words: String::new(), author: String::new(), bio: String::new() }
+        TextDoc { title: title.into(), title_zh: String::new(), tags: tags.into(), tag_words: String::new(), author: String::new(), bio: String::new() }
     }
 
     fn sample() -> std::vec::IntoIter<TextDoc> {
@@ -495,6 +513,24 @@ mod tests {
     }
 
     #[test]
+    fn an_index_left_on_disk_by_format_4_is_built_again() {
+        let root = std::env::temp_dir().join(format!("textidx-format-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (old, dir) = (root.join("old"), root.join("new"));
+        let fp = fingerprint(&sample().collect::<Vec<_>>());
+        // an index of other docs, where format 4 kept the index of these, marked complete
+        drop(TextIndex::build(vec![doc("Summer Beach Outfit", ""), doc("x", ""), doc("y", "")].into_iter(), Some(&old), fp).unwrap());
+        std::fs::create_dir_all(&dir).unwrap();
+        let v4 = dir.join(format!("text-v4-{fp:016x}"));
+        std::fs::rename(old.join(format!("text-v{FORMAT}-{fp:016x}")), &v4).unwrap();
+        std::fs::write(v4.join("READY"), format!("v4:3:{fp:016x}")).unwrap();
+        let idx = TextIndex::build(sample(), Some(&dir), fp).unwrap();
+        assert_eq!(idx.search("dress").unwrap().hits.iter().collect::<Vec<_>>(), [1]);
+        drop(idx);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn word_and_substring_matches() {
         let idx = TextIndex::build(sample(), None, 0).unwrap();
         let TextMatches { hits, scores, .. } = idx.search("dress").unwrap();
@@ -505,6 +541,29 @@ mod tests {
         assert_eq!(hits.iter().collect::<Vec<_>>(), [0]);
         let hits = idx.search("nothing-here").unwrap().hits;
         assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn chinese_titles_are_segmented_as_chinese_and_matched_as_words_only() {
+        let zh = |title: &str, title_zh: &str| TextDoc { title_zh: title_zh.into(), ..doc(title, "") };
+        let docs = vec![zh("Water Shader", "aleph 9 水着色器"), zh("Summer", "夏日水着"), zh("Order", "定制服务（委托）"), zh("Uniform", "JK制服"), zh("Demon Maid", "恶魔女仆"), zh("ボブ", "Short Hair 短发")];
+        let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
+        let ids = |q: &str| idx.search(q).unwrap().hits.iter().collect::<Vec<_>>();
+        // CC-CEDICT reads 水|着色|器 and 定制|服务, where IPADIC reads 水着|色|器 and 定|制服|务; 魔女 is no substring
+        for (q, expected) in [("水着", vec![1]), ("制服", vec![3]), ("着色器", vec![0]), ("魔女", vec![]), ("aleph", vec![0])] {
+            assert_eq!(ids(q), expected, "query {q:?}");
+            assert_eq!(idx.title_hits(q).unwrap().iter().collect::<Vec<_>>(), expected, "title words {q:?}");
+        }
+        assert!(idx.knows("制服") && !idx.knows("魔女"));
+        // its Latin words are joined like any title's
+        assert_eq!(ids("shorthair"), [5]);
+    }
+
+    #[test]
+    fn a_word_of_a_chinese_title_weighs_more_than_a_tag() {
+        let docs = vec![TextDoc { title_zh: "帽子".into(), ..doc("A", "") }, doc("B", "帽子")];
+        let scores = TextIndex::build(docs.into_iter(), None, 0).unwrap().search("帽子").unwrap().scores;
+        assert!(scores[&0] > scores[&1], "{scores:?}");
     }
 
     #[test]
@@ -537,7 +596,7 @@ mod tests {
     #[test]
     fn author_and_bio_words_ignore_width_and_kana() {
         // author and bio have no substring path: only their words can match
-        let bio = |title: &str, author: &str, bio: &str| TextDoc { title: title.into(), tags: String::new(), tag_words: String::new(), author: author.into(), bio: bio.into() };
+        let bio = |title: &str, author: &str, bio: &str| TextDoc { title: title.into(), title_zh: String::new(), tags: String::new(), tag_words: String::new(), author: author.into(), bio: bio.into() };
         let docs = vec![bio("衣装", "", "しなの対応"), bio("帽子", "", "ＲＥＡＤＭＥ included"), bio("髪型", "ＳＡＫＵＲＡ工房", ""), bio("靴", "", "Works on Kikyo")];
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
         let ids = |q: &str| idx.search(q).unwrap().hits.iter().collect::<Vec<_>>();
@@ -588,7 +647,7 @@ mod tests {
         // words of titles, tags and author names, in any case; never a word with a typo
         assert!(idx.knows("Shinano") && idx.knows("press") && !idx.knows("shinnano"));
         // and the words of descriptions, which the word query searches too
-        let described = TextIndex::build(vec![TextDoc { title: "Hat".into(), tags: String::new(), tag_words: String::new(), author: String::new(), bio: "for Karins".into() }].into_iter(), None, 0).unwrap();
+        let described = TextIndex::build(vec![TextDoc { title: "Hat".into(), title_zh: String::new(), tags: String::new(), tag_words: String::new(), author: String::new(), bio: "for Karins".into() }].into_iter(), None, 0).unwrap();
         assert!(described.knows("karins"));
     }
 
@@ -606,7 +665,7 @@ mod tests {
             doc("short-hair set", "shinano"),
             doc("Long Hair", "Shinano"),
             doc("Shinano Shirt", "hair accessory"),
-            TextDoc { title: "Hair cutting tool".into(), tags: "tool".into(), tag_words: String::new(), author: String::new(), bio: "Works on Shinano, makes short hair.".into() },
+            TextDoc { title: "Hair cutting tool".into(), title_zh: String::new(), tags: "tool".into(), tag_words: String::new(), author: String::new(), bio: "Works on Shinano, makes short hair.".into() },
         ];
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
         let ids = |q: &str| idx.search(q).unwrap().hits.iter().collect::<Vec<_>>();

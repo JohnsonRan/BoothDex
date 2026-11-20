@@ -70,7 +70,8 @@ docker compose pull && docker compose up -d
   as a new one shows although other searches leave it out. The filters and the adult setting still apply, and a sort
   other than relevance (a search's default) places it like any other result. Such a search is not sent to the AI
   provider and is not searched as translated tags. A number that is no item's id is searched as text.
-- Japanese text search uses Lindera (IPADIC). Full-width and half-width forms match each other, and so do hiragana
+- Japanese text search uses Lindera (IPADIC); Chinese titles are segmented with its Chinese dictionary (CC-CEDICT), so
+  水着 (swimsuit) does not find 水着色器 (water shader). Full-width and half-width forms match each other, and so do hiragana
   and katakana ("しなの" finds シナノ). A Latin query of up to three words that matches no text is tried again over
   titles, tags and author names, allowing one typo in each all-letter word of five or more letters ("shinnano" finds
   Shinano), and the results page says so. A word that no title, tag or author name has, one typo from the Latin name
@@ -215,7 +216,7 @@ flowchart LR
 flowchart TD
   subgraph query["Hybrid Search (/api/search)"]
     q["Query + facet filters"] --> parse["Read item links or numbers,<br/>avatar names & category phrases"]
-    parse --> kw["Lindera (IPADIC) + Tantivy<br/>+ tags that translate the query<br/>& Roaring bitmap facets"]
+    parse --> kw["Lindera (IPADIC, CC-CEDICT) + Tantivy<br/>+ tags that translate the query<br/>& Roaring bitmap facets"]
     parse -. "if AI embed enabled" .-> embq["Query vector<br/>(RAM → DB cache → AI API, 2.5 s cap)"]
     embq -.-> ann["pgvector HNSW cosine match"]
     kw --> merge["Merge rankings & facet counts"]
@@ -258,7 +259,7 @@ Requirements: Rust (stable), [Bun](https://bun.sh), and PostgreSQL 17 with `pgve
 podman run -d --name boothdex-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalogue \
   -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql/data docker.io/pgvector/pgvector:pg17
 
-cargo build --release            # first build downloads the IPADIC dictionary; rerun if download fails
+cargo build --release            # first build downloads the IPADIC and CC-CEDICT dictionaries; rerun if download fails
 # the container images encode AVIF with libaom: --features imgproxy/libavif (needs libavif-dev and pkg-config).
 # Without it the encoder is rav1e; with nasm installed, --features imgproxy/asm makes that about three times faster.
 (cd web && bun install)
@@ -331,6 +332,7 @@ embeddings model is not the one the items were embedded with.
 - VRCatalogue: the original site, its search model and the taxonomy this project starts from
 - [BOOTH](https://booth.pm): item data and images
 - [Tantivy](https://github.com/quickwit-oss/tantivy) and [Lindera](https://github.com/lindera/lindera): text search
+- [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cedict) ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)): the Chinese dictionary built into `api`, through Lindera's CC-CEDICT-MeCab, that segments Chinese titles
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs): filter bitmaps
 - [foyer](https://github.com/foyer-rs/foyer): hybrid image cache
 - [Astryx](https://github.com/meta/astryx): design system, components and styles

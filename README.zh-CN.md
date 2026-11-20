@@ -56,7 +56,7 @@ docker compose pull && docker compose up -d
 - 输入时，搜索框给出最近搜索、虚拟形象、商品、店铺与标签建议。按 `Ctrl+K`（macOS 上为 `Cmd+K`）可聚焦搜索框。
 - 搜索框把每个搜索词显示为可单独删除的词条；识别为虚拟形象或分类的词合为一个词条，前面显示虚拟形象图片或分类图标。
 - 搜索 BOOTH 商品链接（`booth.pm/<lang>/items/<id>` 或 `<shop>.booth.pm/items/<id>`）或 5 位及以上的商品编号时，无论当前是哪个视图，该商品都排在最前：商品列表中也会显示虚拟形象本体，已作为新商品重新上架的商品（其他搜索不显示）也会显示。筛选条件和内容分级设置照常生效；按相关度（搜索的默认排序）以外的方式排序时，该商品与其他结果一样按所选顺序排列。这类搜索不会发送给 AI 服务，也不会按同义词标签搜索。不是商品 ID 的编号按文本搜索。
-- 日文全文检索基于 Lindera（IPADIC），不区分全角与半角、平假名与片假名（搜索“しなの”也能匹配シナノ）。不超过 3 个单词的英文查询没有匹配任何文本时，会对 5 个字母及以上的纯字母单词各容许 1 处拼写错误，在标题、标签和作者名中重新搜索（“shinnano”也能匹配 Shinano）。BOOTH 标签还会按标签词典中的英、日、韩、中译词匹配，且只按完整单词匹配（搜索“裙子”能找到带スカート标签的商品，搜索“hair”不会匹配译为“chair”的标签）。简介大多是日文，而且只有标题有翻译，因此不超过 3 个单词的查询还会按译为该查询的 BOOTH 标签（最多 3 个）一并搜索：这些标签来自标题匹配查询的商品，且在带有查询语言标题的商品中，标签本身的标题匹配与查询的标题匹配大部分重合（搜索“skirt”也能找到只带スカート标签的商品）。这些商品按关键词匹配一半的权重参与排序；结果页会把这些标签列为同义词，并提供不含同义词的搜索。可选的语义搜索支持跨语言按语义查找（如搜索“哥特裙”即可匹配ゴスロリ连衣裙），并与关键词结果融合排序。AI 服务响应较慢时，结果页先显示关键词匹配的商品并附上说明，稍后自动重新加载一次；如果语义搜索结果仍未就绪，则显示相应说明，不再重新加载。由语义搜索参与的搜索还会在结果上方列出最多 4 个相关搜索：商品语义与查询词最接近的 BOOTH 标签（搜索“skirt”时如ミニスカート和 long skirt）。点击后以该标签替换查询词，保留虚拟形象名和筛选条件。没有找到商品的搜索，只要已保存查询词向量，也会在“没有找到商品”下方列出相关搜索。
+- 日文全文检索基于 Lindera（IPADIC），中文标题用其中文词典（CC-CEDICT）分词，因此搜索“水着”不会匹配“水着色器”。检索不区分全角与半角、平假名与片假名（搜索“しなの”也能匹配シナノ）。不超过 3 个单词的英文查询没有匹配任何文本时，会对 5 个字母及以上的纯字母单词各容许 1 处拼写错误，在标题、标签和作者名中重新搜索（“shinnano”也能匹配 Shinano）。BOOTH 标签还会按标签词典中的英、日、韩、中译词匹配，且只按完整单词匹配（搜索“裙子”能找到带スカート标签的商品，搜索“hair”不会匹配译为“chair”的标签）。简介大多是日文，而且只有标题有翻译，因此不超过 3 个单词的查询还会按译为该查询的 BOOTH 标签（最多 3 个）一并搜索：这些标签来自标题匹配查询的商品，且在带有查询语言标题的商品中，标签本身的标题匹配与查询的标题匹配大部分重合（搜索“skirt”也能找到只带スカート标签的商品）。这些商品按关键词匹配一半的权重参与排序；结果页会把这些标签列为同义词，并提供不含同义词的搜索。可选的语义搜索支持跨语言按语义查找（如搜索“哥特裙”即可匹配ゴスロリ连衣裙），并与关键词结果融合排序。AI 服务响应较慢时，结果页先显示关键词匹配的商品并附上说明，稍后自动重新加载一次；如果语义搜索结果仍未就绪，则显示相应说明，不再重新加载。由语义搜索参与的搜索还会在结果上方列出最多 4 个相关搜索：商品语义与查询词最接近的 BOOTH 标签（搜索“skirt”时如ミニスカート和 long skirt）。点击后以该标签替换查询词，保留虚拟形象名和筛选条件。没有找到商品的搜索，只要已保存查询词向量，也会在“没有找到商品”下方列出相关搜索。
 
 <details>
 <summary>输入“manuka”时的建议：先列出虚拟形象本体，再列出匹配的商品</summary>
@@ -157,7 +157,7 @@ flowchart LR
 flowchart TD
   subgraph query["混合搜索流程 (/api/search)"]
     q["查询词 + 多维筛选参数"] --> parse["识别商品链接或编号、虚拟形象名与分类短语"]
-    parse --> kw["Lindera (IPADIC) + Tantivy<br/>+ 译为查询的标签<br/>与 Roaring 内存位图筛选"]
+    parse --> kw["Lindera (IPADIC, CC-CEDICT) + Tantivy<br/>+ 译为查询的标签<br/>与 Roaring 内存位图筛选"]
     parse -. "启用语义搜索时" .-> embq["查询词向量<br/>（内存 → 数据库缓存 → AI 接口，2.5 秒超时回退）"]
     embq -.-> ann["pgvector HNSW 近邻检索"]
     kw --> merge["融合排序与分面统计"]
@@ -197,7 +197,7 @@ flowchart TD
 podman run -d --name boothdex-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalogue \
   -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql/data docker.io/pgvector/pgvector:pg17
 
-cargo build --release            # 首次构建会下载 IPADIC 词典；若网络失败重试即可
+cargo build --release            # 首次构建会下载 IPADIC 和 CC-CEDICT 词典；若网络失败重试即可
 # 容器镜像改用 libaom 编码 AVIF：--features imgproxy/libavif（需要 libavif-dev 和 pkg-config）。
 # 不加时使用 rav1e；已安装 nasm 时可加上 --features imgproxy/asm，编码速度约为原来的三倍。
 (cd web && bun install)
@@ -246,7 +246,8 @@ btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。�
 
 - VRCatalogue：原站点、其搜索交互模型，以及本项目起步时沿用的分类体系
 - [BOOTH](https://booth.pm)：商品数据与图片源站
-- [Tantivy](https://github.com/quickwit-oss/tantivy) 与 [Lindera](https://github.com/lindera/lindera)：全文检索引擎与日文分词
+- [Tantivy](https://github.com/quickwit-oss/tantivy) 与 [Lindera](https://github.com/lindera/lindera)：全文检索引擎与日文、中文分词
+- [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cedict)（[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)）：内置于 `api` 的中文词典（经由 Lindera 的 CC-CEDICT-MeCab），用于中文标题分词
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs)：内存筛选位图
 - [foyer](https://github.com/foyer-rs/foyer)：混合图片缓存
 - [Astryx](https://github.com/meta/astryx)：设计系统、界面组件与风格

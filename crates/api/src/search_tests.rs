@@ -525,7 +525,7 @@ async fn load_docs_translated_titles(pool: PgPool) {
          (3, 'Original 3', 'creator', 'https://example.test', false, 'ok', now(), '{\"fr\":{\"title\":\"Titre FR\"}}'),
          (4, 'Original 4', 'creator', 'https://example.test', false, 'ok', now(), '42');
          insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, original_language, translations) values
-         (5, '原标题', 'creator', 'https://example.test', false, 'ok', now(), 'zh', '{\"en\":{\"title\":\"Title EN 5\"}}');",
+         (5, '原标题', 'creator', 'https://example.test', false, 'ok', now(), 'zh', '{\"en\":{\"title\":\"Title EN 5\"},\"zh\":{\"title\":\"标题\"}}');",
     )
     .execute(&pool)
     .await
@@ -533,12 +533,16 @@ async fn load_docs_translated_titles(pool: PgPool) {
 
     let docs = db::load_docs(&pool).await.unwrap();
     let languages: HashMap<i64, u8> = docs.iter().map(|d| (d.id, d.title_languages)).collect();
+    let zh: HashMap<i64, (Option<String>, bool)> = docs.iter().map(|d| (d.id, (d.title_zh.clone(), d.title_is_zh))).collect();
     let by_id: HashMap<i64, Vec<String>> = docs.into_iter().map(|d| (d.id, d.titles_translated)).collect();
 
-    assert_eq!(*by_id.get(&1).unwrap(), vec!["Title EN", "Title JA", "Title KO", "Title ZH"]);
-    assert_eq!(*by_id.get(&2).unwrap(), vec!["Title EN 2", "Title ZH 2"]);
+    assert_eq!(*by_id.get(&1).unwrap(), vec!["Title EN", "Title JA", "Title KO"]);
+    assert_eq!(*by_id.get(&2).unwrap(), vec!["Title EN 2"]);
     assert!(by_id.get(&3).unwrap().is_empty());
     assert!(by_id.get(&4).unwrap().is_empty());
+    // the Chinese title apart, searched as Chinese; a Chinese listing's own title, whatever its translation says
+    let chinese = |title: Option<&str>, own: bool| (title.map(str::to_owned), own);
+    assert_eq!([1, 2, 3, 5].map(|id| zh[&id].clone()), [chinese(Some("Title ZH"), false), chinese(Some("Title ZH 2"), false), chinese(None, false), chinese(Some("原标题"), true)]);
     // the languages it has a title in (expansion::LANGUAGES: en, ja, ko, zh), a null title not counted, and the
     // original language too
     assert_eq!([1, 2, 3, 4, 5].map(|id| languages[&id]), [0b1111, 0b1001, 0, 0, 0b1001]);

@@ -373,6 +373,8 @@ mod tests {
                     id,
                     title: format!("{title} {id}"),
                     titles_translated: vec![],
+                    title_zh: None,
+                    title_is_zh: false,
                     title_languages: 0b0111,
                     bio: String::new(),
                     author: format!("{title} {}", i % shops),

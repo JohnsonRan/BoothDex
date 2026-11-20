@@ -22,7 +22,13 @@ const PRICE_CAP: i32 = 15_000;
 pub struct DocInput {
     pub id: i64,
     pub title: String,
+    /// its title in English, Japanese and Korean, where that differs from `title`
     pub titles_translated: Vec<String>,
+    /// its title in Chinese, searched as Chinese (text.rs): `title` itself when the listing is Chinese, else the
+    /// Chinese translation
+    pub title_zh: Option<String>,
+    /// the listing is Chinese: `title` is searched as Chinese only, in `title_zh`
+    pub title_is_zh: bool,
     /// the languages it has a title in, translated or original: bit `1 << k` for `expansion::LANGUAGES[k]`
     pub title_languages: u8,
     pub bio: String,
@@ -238,6 +244,8 @@ impl Catalog {
             d.id.hash(&mut hasher);
             d.title.hash(&mut hasher);
             d.titles_translated.hash(&mut hasher);
+            d.title_zh.hash(&mut hasher);
+            d.title_is_zh.hash(&mut hasher);
             d.booth_tags.hash(&mut hasher);
             d.author.hash(&mut hasher);
             d.bio.hash(&mut hasher);
@@ -270,7 +278,8 @@ impl Catalog {
             gender: Index::default(),
             text: TextIndex::build(
                 docs.iter().map(|d| TextDoc {
-                    title: std::iter::once(&d.title).chain(&d.titles_translated).cloned().collect::<Vec<_>>().join("\n"),
+                    title: std::iter::once(&d.title).filter(|_| !d.title_is_zh).chain(&d.titles_translated).cloned().collect::<Vec<_>>().join("\n"),
+                    title_zh: d.title_zh.clone().unwrap_or_default(),
                     tags: d.booth_tags.join("\n"),
                     tag_words: tag_words.text(&d.booth_tags),
                     author: d.author.clone(),
@@ -675,6 +684,8 @@ mod tests {
             id,
             title: format!("item {id}"),
             titles_translated: vec![],
+            title_zh: None,
+            title_is_zh: false,
             title_languages: 0b0111,
             bio: String::new(),
             author: "a".into(),
@@ -804,6 +815,22 @@ mod tests {
     }
 
     #[test]
+    fn chinese_titles_are_searched_as_chinese() {
+        let mut d = (1..=4).map(doc).collect::<Vec<_>>();
+        // a Japanese listing translated as a water shader, a Chinese listing (made-to-order services), and two titled
+        // with the words themselves
+        (d[0].title, d[0].title_zh) = ("水シェーダー".into(), Some("水着色器".into()));
+        (d[1].title, d[1].title_zh, d[1].title_is_zh) = ("定制服务".into(), Some("定制服务".into()), true);
+        (d[2].title, d[2].title_zh) = ("スク水".into(), Some("夏日水着".into()));
+        (d[3].title, d[3].title_zh) = ("学生服".into(), Some("学生制服套装".into()));
+        let c = Catalog::build(d, 0, None).unwrap();
+        for (q, expected) in [("水着", vec![3]), ("制服", vec![4]), ("着色器", vec![1]), ("定制", vec![2]), ("水シェーダー", vec![1])] {
+            assert_eq!(ids(&c, &format!("q={q}")), expected, "query {q:?}");
+            assert_eq!(c.title_hits(q).unwrap().iter().map(|d| d as i64 + 1).collect::<Vec<_>>(), expected, "title words {q:?}");
+        }
+    }
+
+    #[test]
     fn a_changed_dictionary_rebuilds_the_text_index_on_disk() {
         let root = std::env::temp_dir().join(format!("catalog-tag-words-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -821,6 +848,40 @@ mod tests {
         assert_eq!((second.search_plain("q=jupe", 0, None).unwrap().ids, second.search_plain("q=skirt", 0, None).unwrap().ids), (vec![1], vec![]));
         assert_ne!(index_dirs(), first_dir);
         drop(second);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_changed_chinese_title_rebuilds_the_text_index_on_disk() {
+        let root = std::env::temp_dir().join(format!("catalog-title-zh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let docs = |zh: &str| {
+            let mut d = doc(1);
+            d.title_zh = Some(zh.into());
+            vec![d]
+        };
+        drop(Catalog::build(docs("裙子"), 0, Some(&root)).unwrap());
+        let changed = Catalog::build(docs("帽子"), 0, Some(&root)).unwrap();
+        assert_eq!((ids(&changed, "q=帽子"), ids(&changed, "q=裙子")), (vec![1], vec![]));
+        drop(changed);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_listing_no_longer_read_as_chinese_rebuilds_the_text_index_on_disk() {
+        let root = std::env::temp_dir().join(format!("catalog-title-is-zh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // the Chinese title repeats the title, so only the listing's language changes, and with it the title's field
+        let docs = |zh: bool| {
+            let mut d = doc(1);
+            (d.title, d.title_zh, d.title_is_zh) = ("定制服务".into(), Some("定制服务".into()), zh);
+            vec![d]
+        };
+        drop(Catalog::build(docs(true), 0, Some(&root)).unwrap());
+        let changed = Catalog::build(docs(false), 0, Some(&root)).unwrap();
+        // read as Japanese, IPADIC finds 制服 in it (chinese_titles_are_searched_as_chinese)
+        assert_eq!(ids(&changed, "q=制服"), [1]);
+        drop(changed);
         let _ = std::fs::remove_dir_all(root);
     }
 

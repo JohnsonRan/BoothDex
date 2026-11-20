@@ -2035,6 +2035,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acdfde95c0360c7214c7f97cbd52f293c41da5c7f215979b065b2b41772d199f"
 dependencies = [
  "anyhow",
+ "lindera-cc-cedict",
  "lindera-dictionary",
  "lindera-ipadic",
  "log",
@@ -2063,6 +2064,15 @@ dependencies = [
  "unicode-blocks",
  "unicode-normalization",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "lindera-cc-cedict"
+version = "6.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce9bb2d9b03414ced8f197fc79449658fcb0122526f75d3a5430b00bfc306500"
+dependencies = [
+ "lindera-dictionary",
 ]
 
 [[package]]
