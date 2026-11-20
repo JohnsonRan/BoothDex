@@ -28,6 +28,7 @@ mod search;
 mod search_request;
 mod snapshot;
 mod state;
+mod tag_words;
 mod text;
 mod turnstile;
 

@@ -11,6 +11,7 @@ use serde::Serialize;
 
 use crate::expansion::Equivalents;
 use crate::search_request::{Adult, ItemReference, Range, SearchRequest, Sort, Support, View, item_reference};
+use crate::tag_words::TagWords;
 use crate::text::{TextDoc, TextIndex, TextMatches};
 
 pub const FEATURES: &[&str] = &["quest", "vrcfury", "ma", "liltoon", "poiyomi"];
@@ -221,7 +222,14 @@ impl Catalog {
         }
     }
 
+    /// A catalogue without tag translations, for tests.
+    #[cfg(test)]
     pub fn build(docs: Vec<DocInput>, now: i64, text_dir: Option<&std::path::Path>) -> Result<Self> {
+        Self::build_with_tag_words(docs, &TagWords::default(), now, text_dir)
+    }
+
+    /// `tag_words`: the BOOTH tag dictionary, whose words of each item's tags its text search matches as words.
+    pub fn build_with_tag_words(docs: Vec<DocInput>, tag_words: &TagWords, now: i64, text_dir: Option<&std::path::Path>) -> Result<Self> {
         let n = docs.len();
         use std::hash::{DefaultHasher, Hash, Hasher};
         let mut hasher = DefaultHasher::new();
@@ -234,6 +242,7 @@ impl Catalog {
             d.author.hash(&mut hasher);
             d.bio.hash(&mut hasher);
         }
+        tag_words.fingerprint().hash(&mut hasher);
         let fingerprint = hasher.finish();
 
         let mut c = Catalog {
@@ -263,6 +272,7 @@ impl Catalog {
                 docs.iter().map(|d| TextDoc {
                     title: std::iter::once(&d.title).chain(&d.titles_translated).cloned().collect::<Vec<_>>().join("\n"),
                     tags: d.booth_tags.join("\n"),
+                    tag_words: tag_words.text(&d.booth_tags),
                     author: d.author.clone(),
                     bio: d.bio.clone(),
                 }),
@@ -768,6 +778,49 @@ mod tests {
             assert_eq!(c.search_plain(&format!("q={title}"), 0, None).unwrap().ids, [id]);
             last = Some(current);
         }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn dictionary(rows: &[(&str, &[&str])]) -> TagWords {
+        TagWords::new(rows.iter().map(|(tag, words)| (tag.to_string(), words.iter().map(|w| w.to_string()).collect())))
+    }
+
+    #[test]
+    fn tag_translations_match_as_words_of_the_tags_only() {
+        let mut d = (1..=4).map(doc).collect::<Vec<_>>();
+        for (doc, tag) in d.iter_mut().zip(["スカート", "椅子", "Hair Clip", "テクスチャ"]) {
+            doc.booth_tags = vec![tag.into()];
+        }
+        let words = dictionary(&[("スカート", &["skirt", "裙子"]), ("椅子", &["chair", "의자"]), ("テクスチャ", &["texture", "纹理", "贴图"])]);
+        let c = Catalog::build_with_tag_words(d, &words, 0, None).unwrap();
+        for (q, expected) in [("skirt", vec![1]), ("裙子", vec![1]), ("chair", vec![2]), ("hair", vec![3]), ("贴图", vec![4]), ("纹理", vec![4])] {
+            assert_eq!(ids(&c, &format!("q={q}")), expected, "query {q:?}");
+        }
+        // the tag filter, the tag lists and the expansion keep the BOOTH tags as written
+        let mut tags = c.booth_tags.keys().cloned().collect::<Vec<_>>();
+        tags.sort();
+        assert_eq!(tags, ["Hair Clip", "スカート", "テクスチャ", "椅子"]);
+        assert!(ids(&c, "btags=skirt").is_empty());
+    }
+
+    #[test]
+    fn a_changed_dictionary_rebuilds_the_text_index_on_disk() {
+        let root = std::env::temp_dir().join(format!("catalog-tag-words-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let docs = || {
+            let mut d = doc(1);
+            d.booth_tags = vec!["スカート".into()];
+            vec![d]
+        };
+        let index_dirs = || std::fs::read_dir(&root).unwrap().map(|e| e.unwrap().path()).filter(|p| p.join("READY").exists()).collect::<Vec<_>>();
+        let first = Catalog::build_with_tag_words(docs(), &dictionary(&[("スカート", &["skirt"])]), 0, Some(&root)).unwrap();
+        assert_eq!(first.search_plain("q=skirt", 0, None).unwrap().ids, [1]);
+        let first_dir = index_dirs();
+        drop(first);
+        let second = Catalog::build_with_tag_words(docs(), &dictionary(&[("スカート", &["jupe"])]), 0, Some(&root)).unwrap();
+        assert_eq!((second.search_plain("q=jupe", 0, None).unwrap().ids, second.search_plain("q=skirt", 0, None).unwrap().ids), (vec![1], vec![]));
+        assert_ne!(index_dirs(), first_dir);
+        drop(second);
         let _ = std::fs::remove_dir_all(root);
     }
 

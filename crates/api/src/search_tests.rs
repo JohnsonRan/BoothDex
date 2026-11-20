@@ -544,6 +544,34 @@ async fn load_docs_translated_titles(pool: PgPool) {
     assert_eq!([1, 2, 3, 4, 5].map(|id| languages[&id]), [0b1111, 0b1001, 0, 0, 0b1001]);
 }
 
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn search_finds_items_by_the_words_of_the_tag_dictionary(pool: PgPool) {
+    sqlx::raw_sql(
+        "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags) values
+         (1, 'Item 1', 'creator', 'https://example.test', false, 'ok', now(), '{テクスチャ}'),
+         (2, 'Item 2', 'creator', 'https://example.test', false, 'ok', now(), '{椅子}'),
+         (3, 'Item 3', 'creator', 'https://example.test', false, 'ok', now(), '{Hair Clip}');
+         insert into booth_tag_translations (tag, en, ja, ko, zh, keywords, source) values
+         ('テクスチャ', 'texture', 'テクスチャ', null, '纹理', '{贴图}', 'import'),
+         ('椅子', 'chair', '椅子', '의자', '椅子', '{}', 'localize');",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let words = db::load_tag_words(&pool).await.unwrap();
+    assert_eq!(words.len(), 2);
+    let catalog = Catalog::build_with_tag_words(db::load_docs(&pool).await.unwrap(), &words, 0, None).unwrap();
+    let found = |q: &str| {
+        let request = crate::search_request::SearchRequest::from(&crate::params::Params::parse(&format!("q={q}")));
+        let mut ids = catalog.search(&request, 0, None, None, None, false).unwrap().ids;
+        ids.sort();
+        ids
+    };
+    // a translation and a keyword find the item; "hair" finds the tag that has the word, not the one translated "chair"
+    assert_eq!([found("texture"), found("贴图"), found("chair"), found("의자"), found("hair")], [vec![1], vec![1], vec![2], vec![2], vec![3]]);
+}
+
 #[test]
 fn nearest_binds_only_parameters_used_by_each_query() {
     use sqlx::{Arguments, Execute};

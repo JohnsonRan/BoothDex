@@ -76,8 +76,10 @@ docker compose pull && docker compose up -d
   Shinano), and the results page says so. A word that no title, tag or author name has, one typo from the Latin name
   of exactly one avatar, is read as that avatar ("shinnano short hair" searches like "shinano short hair"); the
   results page then offers to search the words as typed.
-  Tags and descriptions are mostly Japanese and only titles are translated, so a query of up to three words is also
-  searched as up to three BOOTH tags that translate it: tags carried by the items whose titles match the query, whose
+  BOOTH tags also match by their English, Japanese, Korean and Chinese words in a tag dictionary, as whole words
+  only ("裙子" finds the items tagged スカート; "hair" does not find a tag translated as "chair"). Descriptions are
+  mostly Japanese and only titles are translated, so a query of up to three words is also searched as up to three
+  BOOTH tags that translate it: tags carried by the items whose titles match the query, whose
   own title matches largely overlap the query's among the items titled in the query's language ("skirt" also finds
   the items only tagged スカート). Those items rank
   among the word matches at half weight; the results page names the tags and offers to search without them.
@@ -173,7 +175,7 @@ docker compose pull && docker compose up -d
 
 Standalone item pages, price history, social logins and password-reset emails are intentionally omitted
 (administrators reset passwords). Item descriptions and variation names are kept in the original language; only
-titles are translated for cross-language search.
+titles and BOOTH tags are translated for cross-language search.
 
 ## Architecture
 

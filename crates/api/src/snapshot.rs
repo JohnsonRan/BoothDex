@@ -189,12 +189,13 @@ pub(crate) async fn build_snapshot(pool: &PgPool, version: i64, centroids: Optio
     let pool = pool.clone();
     let t0 = Instant::now();
     let docs = db::load_docs(&pool).await?;
-    println!("loaded {} docs in {:.1}s", docs.len(), t0.elapsed().as_secs_f64());
+    let tag_words = db::load_tag_words(&pool).await?;
+    println!("loaded {} docs and {} tag translations in {:.1}s", docs.len(), tag_words.len(), t0.elapsed().as_secs_f64());
     let t1 = Instant::now();
     // Text content selects the disk index; metadata-only reloads reuse it. INDEX_DIR="" keeps it in RAM.
     let index_root = std::env::var("INDEX_DIR").unwrap_or_else(|_| "textindex".into());
     let dir = (!index_root.is_empty()).then(|| std::path::PathBuf::from(index_root));
-    let catalog = tokio::task::spawn_blocking(move || Catalog::build(docs, chrono::Utc::now().timestamp(), dir.as_deref())).await??;
+    let catalog = tokio::task::spawn_blocking(move || Catalog::build_with_tag_words(docs, &tag_words, chrono::Utc::now().timestamp(), dir.as_deref())).await??;
     println!("built index in {:.1}s, bitmaps ~{} KB", t1.elapsed().as_secs_f64(), catalog.bitmap_bytes() / 1024);
 
     let avatars = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>)>("select slug, name_en, name_ja, name_ko, coalesce((select b.images[1] from booth_images b where b.item_id = a.avatar_item_id), a.image_url) from avatars a")

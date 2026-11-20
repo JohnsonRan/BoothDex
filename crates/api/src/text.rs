@@ -1,7 +1,8 @@
 //! Tantivy text index, kept on disk (memory-mapped) when a directory is given, otherwise in RAM. Three ways to match:
 //! - words: Lindera (IPADIC) morphological tokens over title/tags/author/bio, BM25-ranked
 //! - substring: character bigrams over title/tags with spaces and punctuation removed, verified per query word by
-//!   `contains` (covers partial names like "ミル" → "ミルティナ", and "shorthair" / "short hair" / "short-hair")
+//!   `contains` (covers partial names like "ミル" → "ミルティナ", and "shorthair" / "short hair" / "short-hair");
+//!   the tags' translations (`TextDoc::tag_words`) are words only
 //! - typos: a Latin query that matches nothing either way is tried once more allowing one typo per word (`typo_tolerant`)
 
 use std::path::Path;
@@ -21,6 +22,9 @@ use tantivy::{DocAddress, DocId, Index, IndexReader, Score, SegmentOrdinal, Segm
 pub struct TextDoc {
     pub title: String,
     pub tags: String,
+    /// the tags' translations and keywords (tag_words.rs): searched as words of the tags, never as substrings, where
+    /// "chair" would match "hair"
+    pub tag_words: String,
     pub author: String,
     pub bio: String,
 }
@@ -275,7 +279,8 @@ impl TextIndex {
                 let hay = compact(&format!("{} {}", d.title, d.tags));
                 let mut td = TantivyDocument::default();
                 td.add_u64(doc, i as u64);
-                let (t, g, b) = (nfkc(&d.title), nfkc(&d.tags), nfkc(&d.bio));
+                let all_tags = if d.tag_words.is_empty() { d.tags } else { format!("{}\n{}", d.tags, d.tag_words) };
+                let (t, g, b) = (nfkc(&d.title), nfkc(&all_tags), nfkc(&d.bio));
                 td.add_text(title, &t);
                 td.add_text(tags, &g);
                 td.add_text(author, nfkc(&d.author));
@@ -430,7 +435,7 @@ mod tests {
     use super::*;
 
     fn doc(title: &str, tags: &str) -> TextDoc {
-        TextDoc { title: title.into(), tags: tags.into(), author: String::new(), bio: String::new() }
+        TextDoc { title: title.into(), tags: tags.into(), tag_words: String::new(), author: String::new(), bio: String::new() }
     }
 
     fn sample() -> std::vec::IntoIter<TextDoc> {
@@ -532,7 +537,7 @@ mod tests {
     #[test]
     fn author_and_bio_words_ignore_width_and_kana() {
         // author and bio have no substring path: only their words can match
-        let bio = |title: &str, author: &str, bio: &str| TextDoc { title: title.into(), tags: String::new(), author: author.into(), bio: bio.into() };
+        let bio = |title: &str, author: &str, bio: &str| TextDoc { title: title.into(), tags: String::new(), tag_words: String::new(), author: author.into(), bio: bio.into() };
         let docs = vec![bio("衣装", "", "しなの対応"), bio("帽子", "", "ＲＥＡＤＭＥ included"), bio("髪型", "ＳＡＫＵＲＡ工房", ""), bio("靴", "", "Works on Kikyo")];
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
         let ids = |q: &str| idx.search(q).unwrap().hits.iter().collect::<Vec<_>>();
@@ -583,7 +588,7 @@ mod tests {
         // words of titles, tags and author names, in any case; never a word with a typo
         assert!(idx.knows("Shinano") && idx.knows("press") && !idx.knows("shinnano"));
         // and the words of descriptions, which the word query searches too
-        let described = TextIndex::build(vec![TextDoc { title: "Hat".into(), tags: String::new(), author: String::new(), bio: "for Karins".into() }].into_iter(), None, 0).unwrap();
+        let described = TextIndex::build(vec![TextDoc { title: "Hat".into(), tags: String::new(), tag_words: String::new(), author: String::new(), bio: "for Karins".into() }].into_iter(), None, 0).unwrap();
         assert!(described.knows("karins"));
     }
 
@@ -601,7 +606,7 @@ mod tests {
             doc("short-hair set", "shinano"),
             doc("Long Hair", "Shinano"),
             doc("Shinano Shirt", "hair accessory"),
-            TextDoc { title: "Hair cutting tool".into(), tags: "tool".into(), author: String::new(), bio: "Works on Shinano, makes short hair.".into() },
+            TextDoc { title: "Hair cutting tool".into(), tags: "tool".into(), tag_words: String::new(), author: String::new(), bio: "Works on Shinano, makes short hair.".into() },
         ];
         let idx = TextIndex::build(docs.into_iter(), None, 0).unwrap();
         let ids = |q: &str| idx.search(q).unwrap().hits.iter().collect::<Vec<_>>();
