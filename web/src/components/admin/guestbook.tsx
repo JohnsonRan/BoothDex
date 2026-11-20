@@ -6,7 +6,8 @@
 // user does). Close offers "as completed" and "as not planned" and a closed message offers Reopen, as GitHub's
 // issue page does (https://docs.github.com/en/issues/tracking-your-work-with-issues/administering-issues/closing-an-issue).
 // The Close menu and the Reopen button are different elements, so after either goes through, focus moves to the one
-// that replaced it in the same row instead of falling to the page.
+// that replaced it in the same row instead of falling to the page. When every loaded row was deleted and older
+// messages remain, the next page is read at once from the last row that was loaded.
 
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -29,7 +30,22 @@ import { errorText, useAdminT } from "./messages";
 import { PageFrame } from "./page-frame";
 import type { AdminGuestbookEntry } from "./types";
 
-type Page = { entries: AdminGuestbookEntry[]; more: boolean };
+/** The rows loaded so far, whether older ones remain, and the id the next page is read from: the last row loaded,
+ *  kept when rows are deleted. */
+type Page = { entries: AdminGuestbookEntry[]; more: boolean; cursor?: number };
+
+/** An answer of the API as a page, read on from its last row, or from `cursor` when it has none. */
+export const pageOf = (
+  r: { entries: AdminGuestbookEntry[]; more: boolean },
+  cursor?: number,
+): Page => ({ ...r, cursor: r.entries.at(-1)?.id ?? cursor });
+
+/** What the list shows: its rows; the next page, when every loaded row was deleted and older messages remain; or the
+ *  empty state. */
+export function listView(page: Page): "rows" | "next" | "empty" {
+  if (page.entries.length > 0) return "rows";
+  return page.more ? "next" : "empty";
+}
 /** The action in flight: loading more, or one of a row's three. */
 type Busy = "more" | `${number}:${"hidden" | "status" | "delete"}`;
 
@@ -51,7 +67,7 @@ function Entries() {
 
   const load = useCallback(() => {
     setError(undefined);
-    api<Page>("/api/admin/guestbook").then(setPage, setError);
+    api<Page>("/api/admin/guestbook").then((r) => setPage(pageOf(r)), setError);
   }, []);
   useEffect(() => load(), [load]);
 
@@ -75,14 +91,28 @@ function Entries() {
   };
   const more = () =>
     act("more", async () => {
-      const last = page?.entries.at(-1);
-      if (!last) return;
-      const next = await api<Page>(`/api/admin/guestbook?before=${last.id}`);
+      const from = page?.cursor;
+      if (from === undefined) return;
+      const next = await api<Page>(`/api/admin/guestbook?before=${from}`);
       setPage(
         (p) =>
-          p && { entries: [...p.entries, ...next.entries], more: next.more },
+          p &&
+          pageOf(
+            { entries: [...p.entries, ...next.entries], more: next.more },
+            p.cursor,
+          ),
       );
     });
+  // every loaded row deleted while older ones remain: the next page is read once by itself; after a failure, Load
+  // more stays for the admin
+  const auto = useRef<number | undefined>(undefined);
+  const view = page && listView(page);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read once per cursor; more reads the page state itself
+  useEffect(() => {
+    if (view !== "next" || auto.current === page?.cursor) return;
+    auto.current = page?.cursor;
+    more();
+  }, [view, page?.cursor]);
   const change = (
     e: AdminGuestbookEntry,
     key: "hidden" | "status",
@@ -135,7 +165,7 @@ function Entries() {
       />
     );
   if (!page) return <Spinner label={t("nav.guestbook")} />;
-  if (page.entries.length === 0)
+  if (view === "empty")
     return (
       <EmptyState
         title={t("guestbook.empty")}
