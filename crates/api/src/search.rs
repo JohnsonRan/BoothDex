@@ -14,7 +14,18 @@ use crate::search_request::{SearchRequest, View, query_without, without_groups};
 use crate::{ApiError, AppState, account, catalog, db, limit};
 
 pub(crate) const EMBED_CACHE_CAP: u64 = 2000;
-pub(crate) type EmbedWatch = tokio::sync::watch::Receiver<Option<Option<Vec<f32>>>>;
+pub(crate) type EmbedWatch = tokio::sync::watch::Receiver<Embedding>;
+
+/// Where a query embedding's provider request stands; the searches waiting for it watch this.
+#[derive(Clone)]
+pub(crate) enum Embedding {
+    /// waiting for one of the provider slots (`embed_permits`)
+    Queued,
+    /// the provider has the request
+    Asking,
+    /// the vector, or none: the request failed or no slot came free in time
+    Done(Option<Vec<f32>>),
+}
 
 /// The `/api/search` response. The site's `SearchResult` type is generated from this (see `api_types`).
 #[derive(serde::Serialize)]
@@ -83,8 +94,11 @@ pub(crate) enum SemanticStatus {
     Used,
     /// no embeddings model, or no text query
     Off,
-    /// the provider is slow or failing
+    /// the provider failed, an embedding budget refused the request, or no provider slot came free in time
     Unavailable,
+    /// the provider is still working on the query's embedding after the search's wait; the request runs on and fills
+    /// the caches, so the same search a moment later uses it
+    Pending,
     /// not needed (sem=0 from a later page, the query only names models, or it names an item by its link or number)
     Skipped,
 }
@@ -130,6 +144,7 @@ pub(crate) enum EmbedPlan {
     Off,
     Skipped,
     Unavailable,
+    Pending,
 }
 
 pub(crate) async fn search(
@@ -190,6 +205,7 @@ pub(crate) async fn search(
         EmbedPlan::Off => (None, SemanticStatus::Off),
         EmbedPlan::Skipped => (None, SemanticStatus::Skipped),
         EmbedPlan::Unavailable => (None, SemanticStatus::Unavailable),
+        EmbedPlan::Pending => (None, SemanticStatus::Pending),
     };
     // a query that names a category ("short hair", "shorthair") also matches the items enriched into it, so
     // spellings of one meaning end up with the same results
@@ -257,10 +273,7 @@ pub(crate) async fn semantic_vector(s: Arc<AppState>, ip: std::net::IpAddr, q: &
     trace.step("settings");
     let Ok(c) = config else { return EmbedPlan::Unavailable };
     let (Some(base_url), Some(api_key), Some(model)) = (c.base_url.clone(), c.api_key.clone(), c.embed_model.clone()) else { return EmbedPlan::Off };
-    match query_embedding(s, ip, q, EmbedProvider { base_url, api_key, model }, trace).await {
-        Some(v) => EmbedPlan::Vector(v),
-        None => EmbedPlan::Unavailable,
-    }
+    query_embedding(s, ip, q, EmbedProvider { base_url, api_key, model }, trace).await
 }
 
 /// The search text the embedding is cached under: case and spacing don't change the meaning.
@@ -312,21 +325,22 @@ pub(crate) async fn stored_query_embedding(s: &AppState, model: &str, q: &str) -
     }
 }
 
-/// Embedding of a search text: process memory, then the query_embeddings table, then the provider.
+/// Embedding of a search text: process memory, then the query_embeddings table, then the provider. `Vector`,
+/// `Unavailable`, or `Pending` when the provider request outlasts the wait.
 pub(crate) async fn query_embedding(
     s: Arc<AppState>,
     ip: std::net::IpAddr,
     q: &str,
     provider: EmbedProvider,
     trace: &mut Trace,
-) -> Option<Vec<f32>> {
+) -> EmbedPlan {
     use boothdex_core::embed;
     let EmbedProvider { base_url: base, api_key: key, model } = provider;
     let text = normalize_query(q);
     let cache_key = embed_cache_key(&model, &text);
     if let Some(v) = s.embed_cache.get(&cache_key) {
         trace.step("embed_memory");
-        return Some(v);
+        return EmbedPlan::Vector(v);
     }
     if let Some(v) = stored_embedding(&s.pool, &model, &text).await {
         trace.step("embed_db");
@@ -340,7 +354,7 @@ pub(crate) async fn query_embedding(
                 .execute(&pool)
                 .await;
         });
-        return Some(v);
+        return EmbedPlan::Vector(v);
     }
     let mut rx = {
         let mut inflight = s.embed_inflight.lock().unwrap();
@@ -348,13 +362,13 @@ pub(crate) async fn query_embedding(
             existing.clone()
         } else if let Some(v) = s.embed_cache.get(&cache_key) {
             trace.step("embed_memory");
-            return Some(v);
+            return EmbedPlan::Vector(v);
         } else if s.limits.embed_ip.take(ip).is_err() || s.limits.embed_global.take_global().is_err() {
             // per-IP checked first so one noisy IP never drains the global uncached budget; search falls back to words
             trace.step("embed_failed");
-            return None;
+            return EmbedPlan::Unavailable;
         } else {
-            let (tx, rx) = tokio::sync::watch::channel(None);
+            let (tx, rx) = tokio::sync::watch::channel(Embedding::Queued);
             inflight.insert(cache_key.clone(), rx.clone());
             let input = vec![format!("{}{text}", embed::QUERY_PREFIX)];
             // the request runs on: if it outlasts the wait below, it still fills both caches for the next page or visitor
@@ -364,16 +378,17 @@ pub(crate) async fn query_embedding(
                 let _guard = ClearInflight { state: state.clone(), key: key_owned.clone() };
                 // abandon before calling the provider if all 4 slots stay busy past the search timeout
                 let Ok(Ok(_permit)) = tokio::time::timeout(std::time::Duration::from_millis(2500), state.embed_permits.acquire()).await else {
-                    let _ = tx.send(Some(None));
+                    let _ = tx.send(Embedding::Done(None));
                     return;
                 };
+                let _ = tx.send(Embedding::Asking);
                 match embed::embed(&state.http, &base, &key, &model, &input, 1)
                     .await
                     .and_then(|mut v| v.pop().ok_or_else(|| anyhow::anyhow!("no embedding")))
                 {
                     Ok(v) => {
                         state.embed_cache.insert(key_owned, v.clone());
-                        let _ = tx.send(Some(Some(v.clone())));
+                        let _ = tx.send(Embedding::Done(Some(v.clone())));
                         if let Err(e) = sqlx::query(
                             "insert into query_embeddings (model, query, embedding) values ($1, $2, $3::halfvec) on conflict (model, query) do nothing",
                         )
@@ -388,7 +403,7 @@ pub(crate) async fn query_embedding(
                     }
                     Err(e) => {
                         eprintln!("query embedding: {e:#}");
-                        let _ = tx.send(Some(None));
+                        let _ = tx.send(Embedding::Done(None));
                     }
                 }
             });
@@ -396,23 +411,29 @@ pub(crate) async fn query_embedding(
         }
     };
     // measured on the development provider: median 0.7 s, 95th percentile 1.2 s, occasional spikes past 3 s
-    match tokio::time::timeout(std::time::Duration::from_millis(2500), async {
-        rx.wait_for(Option::is_some).await.ok().and_then(|r| r.clone().flatten())
+    let done = tokio::time::timeout(std::time::Duration::from_millis(2500), async {
+        let done = rx.wait_for(|e| matches!(e, Embedding::Done(_))).await.ok()?;
+        match &*done {
+            Embedding::Done(v) => v.clone(),
+            _ => None,
+        }
     })
-    .await
-    {
+    .await;
+    match done {
         Ok(Some(v)) => {
             trace.step("embed_provider");
-            Some(v)
+            EmbedPlan::Vector(v)
         }
         Ok(None) => {
             trace.step("embed_failed");
-            None
+            EmbedPlan::Unavailable
         }
         Err(_) => {
             trace.step("embed_timeout");
             eprintln!("query embedding: still waiting after 2.5 s; searching by words only this time");
-            None
+            // with the provider, the request fills both caches for the same search a moment later; still waiting for a
+            // slot, it gives up at about this time and nothing comes
+            if matches!(*rx.borrow(), Embedding::Asking) { EmbedPlan::Pending } else { EmbedPlan::Unavailable }
         }
     }
 }

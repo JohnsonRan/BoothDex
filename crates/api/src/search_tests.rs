@@ -24,10 +24,11 @@ async fn multi_thread(check: impl Future<Output = ()> + Send + 'static) {
 }
 
 fn app(pool: PgPool, catalog: Catalog, avatars: Lookup) -> Arc<AppState> {
-    app_with(pool, catalog, avatars, Default::default())
+    app_with(pool, catalog, avatars, Default::default(), 2)
 }
 
-fn app_with(pool: PgPool, catalog: Catalog, avatars: Lookup, related: crate::related::Related) -> Arc<AppState> {
+/// `http_secs`: the timeout of the API's outgoing requests, the embedding provider's included.
+fn app_with(pool: PgPool, catalog: Catalog, avatars: Lookup, related: crate::related::Related, http_secs: u64) -> Arc<AppState> {
     crate::install_tls();
     Arc::new(
         AppState::new(
@@ -49,7 +50,7 @@ fn app_with(pool: PgPool, catalog: Catalog, avatars: Lookup, related: crate::rel
             "http://127.0.0.1:3000".into(),
             None,
             String::new(),
-            Some(std::time::Duration::from_secs(2)),
+            Some(std::time::Duration::from_secs(http_secs)),
         )
         .unwrap(),
     )
@@ -118,6 +119,66 @@ async fn check_semantic_search(pool: PgPool) {
         .unwrap_or_else(IntoResponse::into_response);
     let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
     assert_eq!((&body["count"], &body["semantic"], &body["widerCounts"], &body["typoTolerant"]), (&json!(0), &json!("used"), &json!([0, 1]), &json!(false)), "{body}");
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_slow_query_embedding_is_pending_and_the_next_search_uses_it(pool: PgPool) {
+    multi_thread(check_pending_embedding(pool)).await;
+}
+
+async fn check_pending_embedding(pool: PgPool) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    for key in ["AI_BASE_URL", "AI_API_KEY", "AI_EMBED_MODEL"] {
+        assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test's provider is a local stand-in");
+    }
+    let mut vector = vec![0.0; boothdex_core::embed::DIMS];
+    vector[0] = 1.0;
+    sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, embedding)
+                 values (1, 'ボブカット', 'creator', 'https://example.test', false, 'ok', now(), $1::halfvec)")
+        .bind(boothdex_core::embed::HalfVector::from_f32_slice(&vector)).execute(&pool).await.unwrap();
+    // a local stand-in provider that answers after 2.8 s, past the search's 2.5 s wait
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = calls.clone();
+    let reply = json!({ "data": [{ "index": 0, "embedding": vector }] });
+    let provider = axum::Router::new().fallback(move || {
+        counted.fetch_add(1, Ordering::SeqCst);
+        let reply = reply.clone();
+        async move {
+            tokio::time::sleep(std::time::Duration::from_millis(2800)).await;
+            axum::Json(reply)
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, provider).await.unwrap() });
+    sqlx::query("insert into app_settings (key, value) values ('ai', $1)")
+        .bind(json!({ "base_url": base_url, "api_key": "test", "embed_model": "test-model" }))
+        .execute(&pool).await.unwrap();
+    let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
+    let state = app_with(pool, catalog, Lookup::new(Vec::new()), Default::default(), 10);
+
+    // the first search answers with words only while the provider works on; the same search within the provider's
+    // time waits for that request instead of sending another, and uses its vector
+    let first = search_json(&state, "q=silky%20strands").await;
+    assert_eq!(first["semantic"], "pending", "{first}");
+    let second = search_json(&state, "q=silky%20strands").await;
+    assert_eq!(second["semantic"], "used", "{second}");
+    assert_eq!(second["items"][0]["id"], 1, "{second}");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    // with every provider slot taken, a search that waits in vain is unavailable, not pending, and asks nothing
+    let held = state.embed_permits.clone().acquire_many_owned(4).await.unwrap();
+    let no_slot = search_json(&state, "q=wavy%20bangs").await;
+    assert_eq!(no_slot["semantic"], "unavailable", "{no_slot}");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    // so is a search the address's embedding budget refuses
+    while state.limits.embed_ip.take("203.0.113.40".parse().unwrap()).is_ok() {}
+    let refused = search_json(&state, "q=curly%20bangs").await;
+    assert_eq!(refused["semantic"], "unavailable", "{refused}");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    drop(held);
 }
 
 #[sqlx::test(migrations = "../core/migrations")]
@@ -317,7 +378,7 @@ async fn check_related(pool: PgPool) {
     let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
     let centroids = TagCentroids::current(&pool, &catalog, None).await.unwrap();
     let related = Related { avatars: AvatarNames::new(["Shinano"]), centroids };
-    let state = app_with(pool.clone(), catalog, Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 20)]), related);
+    let state = app_with(pool.clone(), catalog, Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 20)]), related, 2);
     let ip = "203.0.113.50".parse().unwrap();
     let used = || sqlx::query_as::<_, (i32, chrono::DateTime<chrono::Utc>)>("select hits, last_used_at from query_embeddings where query = 'skirt'").fetch_one(&pool);
     let before = used().await.unwrap();

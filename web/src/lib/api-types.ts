@@ -58,7 +58,7 @@ nameTypo: boolean,
  */
 expandedWith: Array<string>, };
 
-export type SemanticStatus = "used" | "off" | "unavailable" | "skipped";
+export type SemanticStatus = "used" | "off" | "unavailable" | "pending" | "skipped";
 
 export type Recognized = { kind: RecognizedKind, slug: string, 
 /**

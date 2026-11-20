@@ -306,7 +306,10 @@ was read as an avatar; `typo=0` reads no word as a misspelt avatar, while a name
 `expandedWith` lists the BOOTH tags that translate the query and were searched too, when items only they found are
 among the results; `xl=0` searches the words alone. A `q` that is a BOOTH item link, or an item's number of five or
 more digits, ranks that item first by relevance in any view, relisted or not, and is not embedded (`semantic` is
-`skipped`).
+`skipped`). `semantic` is `pending` when the AI provider is still embedding the query after the search's 2.5 s
+wait: the request runs on and caches the vector, so the same search a moment later uses it. It is `unavailable`
+when the provider failed, an embedding rate limit refused the request, or every concurrent provider request
+slot stayed busy.
 
 `/api/related` takes the same query string and returns up to four related searches in `searches`, each a `label`
 and the `q` that searches it, avatar names of the query kept. They are BOOTH tags whose items' mean embedding is
