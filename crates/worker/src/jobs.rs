@@ -388,7 +388,8 @@ struct TagTally {
 
 /// The tag part of `localize`. A tag that is an avatar's name in any language gets its romaji in English and the tag as
 /// written in the other languages, without a request. The others are asked in batches of `TAG_BATCH`; a value that
-/// fails `ai::tag_values` is left out and logged, and a tag with no valid value gets no row and one more failed run.
+/// fails `ai::tag_values` is left out and logged, and a tag with no valid value, or whose answer copies back another
+/// tag (`ai::answers_tag`), gets no row and one more failed run.
 async fn localize_tags(ctx: &mut Ctx<'_>, ai: &crate::ai::Ai, max: i64) -> Result<String> {
     let missing: Vec<TagAsk> = sqlx::query_as(MISSING_TAGS_SELECT).bind(max).bind(TAG_MIN_ITEMS).bind(TAG_MAX_FAILURES).fetch_all(ctx.pool).await?;
     if missing.is_empty() {
@@ -422,7 +423,13 @@ async fn ask_tags(ctx: &mut Ctx<'_>, ai: &crate::ai::Ai, avatars: &AvatarKit, as
         let reply = ask_batch(ctx, ai, avatars, batch, &mut schema).await?;
         let (mut rows, mut failed) = (Vec::new(), Vec::new());
         for (i, (tag, titles)) in batch.iter().enumerate() {
-            let values = crate::ai::tag_values(&reply[crate::ai::tag_id(i)], tag, titles, &avatars.held_names(tag), &avatars.japanese);
+            let answer = &reply[crate::ai::tag_id(i)];
+            if !answer.is_null() && !crate::ai::answers_tag(answer, tag) {
+                ctx.log(&format!("tag {tag}: the answer under its id copies back {} instead; a later run asks again", answer["tag"])).await?;
+                failed.push(tag.clone());
+                continue;
+            }
+            let values = crate::ai::tag_values(answer, tag, titles, &avatars.held_names(tag), &avatars.japanese);
             let left_out: Vec<String> = crate::ai::TAG_LANGUAGES.iter().zip(&values).filter_map(|(lang, v)| v.as_ref().err().map(|why| format!("{lang} {why}"))).collect();
             if left_out.len() == values.len() {
                 let why = if values.iter().all(|v| v.as_ref().is_err_and(|why| why == "no value")) { "no answer".to_owned() } else { left_out.join("; ") };
@@ -1067,10 +1074,18 @@ mod tests {
             .collect()
     }
 
-    /// A reply keyed by id with each asked tag's raw JSON answer from `answers` (none for a tag it lacks).
+    /// A reply keyed by id with each asked tag's raw JSON answer from `answers` (none for a tag it lacks), the tag
+    /// copied into each answer object as the reply format asks.
     fn by_id(tags: &[String], answers: &[(&str, &str)]) -> String {
-        let entries: Vec<String> =
-            tags.iter().enumerate().filter_map(|(i, tag)| answers.iter().find(|(t, _)| t == tag).map(|(_, raw)| format!("\"{}\": {raw}", crate::ai::tag_id(i)))).collect();
+        let echoed = |tag: &str, raw: &str| match raw.strip_prefix('{') {
+            Some(rest) => format!("{{\"tag\": {}, {rest}", json!(tag)),
+            None => raw.to_owned(),
+        };
+        let entries: Vec<String> = tags
+            .iter()
+            .enumerate()
+            .filter_map(|(i, tag)| answers.iter().find(|(t, _)| t == tag).map(|(_, raw)| format!("\"{}\": {}", crate::ai::tag_id(i), echoed(tag, raw))))
+            .collect();
         format!("{{{}}}", entries.join(", "))
     }
 
@@ -1171,7 +1186,7 @@ mod tests {
         let texture = items.iter().find(|i| i["tag"] == "テクスチャ").unwrap();
         assert_eq!(texture["context"], json!(["Item 5", "Item 4", "Item 3"]));
         let system = sent[0]["messages"][0]["content"].as_str().unwrap();
-        for rule in ["never translate it or copy it", "never translated or transliterated", "Product, app, tool, brand and shop names stay as written", "白模", "虚拟形象 for an avatar", "纹理 for a texture"] {
+        for rule in ["tag copies the item's tag", "never translate it or copy it", "never translated or transliterated", "Product, app, tool, brand and shop names stay as written", "白模", "虚拟形象 for an avatar", "纹理 for a texture"] {
             assert!(system.contains(rule), "{rule}: {system}");
         }
 
@@ -1247,6 +1262,35 @@ mod tests {
         assert_eq!(asked, [("json_schema", 40), ("json_object", 40), ("json_object", 1)]);
         let zh: Option<String> = sqlx::query_scalar("select zh from booth_tag_translations where tag = 'タグ40'").fetch_one(&pool).await.unwrap();
         assert_eq!(zh.as_deref(), Some("标签 40"));
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn localize_discards_an_answer_filed_under_another_tags_id(pool: PgPool) {
+        sqlx::raw_sql("update smart_categories set name_zh = 'x', group_zh = 'x'; update smart_tags set display_zh = 'x';").execute(&pool).await.unwrap();
+        for id in 1..=5i64 {
+            sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags) values ($1, 'Item', 'c', 'https://example.test', false, 'ok', now(), '{スカート,ドレス,帽子}')")
+                .bind(id).execute(&pool).await.unwrap();
+        }
+        // the answers of the first two tags asked swap ids; the third is in its place
+        let requests = stand_in_provider(&pool, |_, tags| {
+            let answer = |tag: &str| json!({"tag": tag, "en": format!("en {tag}"), "ja": tag, "ko": format!("ko {tag}"), "zh": tag});
+            let mut reply: serde_json::Map<String, Value> = tags.iter().enumerate().map(|(i, t)| (crate::ai::tag_id(i), answer(t))).collect();
+            let (first, second) = (reply["t1"].clone(), reply["t2"].clone());
+            (reply["t1"], reply["t2"]) = (second, first);
+            Ok(Value::Object(reply).to_string())
+        })
+        .await;
+        let summary = localize_job(&pool, json!({})).await;
+        assert_eq!(summary, "0 names translated to Chinese (0 unique strings); 1 tags added to the dictionary (0 avatar names, 0 with a language left empty), 2 without a valid translation");
+        let asked = asked_in(&requests.lock().unwrap()[0]);
+        let rows: Vec<String> = sqlx::query_scalar("select tag from booth_tag_translations").fetch_all(&pool).await.unwrap();
+        assert_eq!(rows, [asked[2].clone()]);
+        // each swapped tag counts one failed run, so a later run asks again
+        let failures: Vec<(String, i32)> = sqlx::query_as("select tag, failures from booth_tag_failures order by tag").fetch_all(&pool).await.unwrap();
+        let mut swapped = vec![(asked[0].clone(), 1), (asked[1].clone(), 1)];
+        swapped.sort();
+        assert_eq!(failures, swapped);
     }
 
     #[sqlx::test(migrations = "../core/migrations")]

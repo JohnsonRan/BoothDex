@@ -150,8 +150,9 @@ Reply with a JSON object mapping each given key to its translation, nothing else
 pub const TAG_SYSTEM: &str = "You translate BOOTH tags for a catalogue of VRChat avatar assets (clothing, hair, accessories, shaders, tools, avatars). \
 The user message may first name the avatars the tags hold; then it is a JSON array of items {\"id\", \"tag\", \"context\"}. \
 Translate only \"tag\". \"context\" holds titles of listings that carry the tag: never translate it or copy it into an answer. \
-For every item give an object with keys en, ja, ko and zh: the tag as a short search keyword in English, Japanese, Korean and \
-Simplified Chinese. Copy the tag where it already is in that language. Translate the tag itself: add nothing it does not say. \
+For every item give an object with keys tag, en, ja, ko and zh: tag copies the item's tag character for character; en, ja, ko \
+and zh give the tag as a short search keyword in English, Japanese, Korean and Simplified Chinese. Copy the tag where it \
+already is in that language. Translate the tag itself: add nothing it does not say. \
 Avatar (character model) names are never translated or transliterated: keep each one as the tag writes it, in Japanese or Latin \
 letters, in every value; the English value uses its romaji. Product, app, tool, brand and shop names stay as written (VRChat, \
 Quest, lilToon, Poiyomi, Modular Avatar, VRCFury, FBX, Unity, GIFTuber). Community jargon is translated by its meaning, not \
@@ -159,7 +160,8 @@ word by word: 白モデル is an untextured base model (zh 白模), 地雷系 is
 users use (衣装/服装, 发型, 配饰; 虚拟形象 for an avatar, 3D模型 for a 3D model file, 虚拟主播 for a VTuber) and the terms of \
 Unity's Chinese manual: 纹理 for a texture, X贴图 for an X map (法线贴图 for a normal map), 材质 for a material, 着色器 for a \
 shader, 网格 for a mesh. Each value is one line of at most 60 characters, in the script of its language. \
-Reply with one JSON object whose keys are the ids and whose values are objects with exactly the keys en, ja, ko and zh, nothing else.";
+Reply with one JSON object whose keys are the ids and whose values are objects with exactly the keys tag, en, ja, ko and zh, \
+nothing else.";
 
 /// User message for one batch of BOOTH tags: the avatars the matcher found in the tags (avatars.rs), so the model keeps
 /// their names, then the tags as a JSON array of {id, tag, context}, the ids `tag_id`, the context up to 3 titles of
@@ -179,15 +181,17 @@ pub fn tag_id(i: usize) -> String {
     format!("t{}", i + 1)
 }
 
-/// The reply schema for a batch of `n` tags (`Ai::json_schema`): an object with every id, each an object with the four
-/// languages as strings of 1 to 60 characters, and nothing else at either level.
+/// The reply schema for a batch of `n` tags (`Ai::json_schema`): an object with every id, each an object with the tag
+/// copied back (`answers_tag`) and the four languages as strings of 1 to 60 characters, and nothing else at either level.
 pub fn tag_schema(n: usize) -> Value {
     let value = json!({ "type": "string", "minLength": 1, "maxLength": 60 });
+    let mut properties: serde_json::Map<String, Value> = TAG_LANGUAGES.iter().map(|k| (k.to_string(), value.clone())).collect();
+    properties.insert("tag".into(), json!({ "type": "string" }));
     let tag = json!({
         "type": "object",
         "additionalProperties": false,
-        "required": TAG_LANGUAGES,
-        "properties": TAG_LANGUAGES.iter().map(|k| (k.to_string(), value.clone())).collect::<serde_json::Map<_, _>>(),
+        "required": ["tag", "en", "ja", "ko", "zh"],
+        "properties": properties,
     });
     let ids: Vec<String> = (0..n).map(tag_id).collect();
     json!({
@@ -205,6 +209,13 @@ fn avatar_names_line(avatars: &[&AvatarName]) -> String {
     }
     let names: Vec<String> = avatars.iter().map(|a| a.to_string()).collect();
     format!("Avatar names (Japanese / romaji): {}\n", names.join(", "))
+}
+
+/// Whether `answer` (the reply's entry under a tag's id) copies `tag` back, ignoring case, width and surrounding space:
+/// a model that loses its place in a batch files a tag's translation under another tag's id (Rira -> 花鸟风月巫女礼服 in
+/// the local backfill; owner ruling 29, 2026-11-21).
+pub fn answers_tag(answer: &Value, tag: &str) -> bool {
+    answer["tag"].as_str().is_some_and(|echo| crate::avatars::norm(echo.trim()) == crate::avatars::norm(tag.trim()))
 }
 
 /// The languages of a tag's dictionary row, in the column order of `booth_tag_translations`.
@@ -649,13 +660,23 @@ mod tests {
     }
 
     #[test]
-    fn the_reply_schema_asks_for_every_id_with_four_short_values() {
+    fn the_reply_schema_asks_for_every_id_with_the_tag_and_four_short_values() {
         let schema = tag_schema(2);
         assert_eq!(schema["required"], json!(["t1", "t2"]));
         assert_eq!(schema["additionalProperties"], json!(false));
         let tag = &schema["properties"]["t2"];
-        assert_eq!((tag["required"].clone(), tag["additionalProperties"].clone()), (json!(["en", "ja", "ko", "zh"]), json!(false)));
+        assert_eq!((tag["required"].clone(), tag["additionalProperties"].clone()), (json!(["tag", "en", "ja", "ko", "zh"]), json!(false)));
         assert_eq!(tag["properties"]["zh"], json!({"type": "string", "minLength": 1, "maxLength": 60}));
+        assert_eq!(tag["properties"]["tag"], json!({"type": "string"}));
+    }
+
+    #[test]
+    fn an_answer_is_for_the_tag_it_copies_back() {
+        assert!(answers_tag(&json!({"tag": " ｽｶｰﾄ ", "en": "skirt"}), "スカート"));
+        assert!(answers_tag(&json!({"tag": "SKIRT"}), "skirt"));
+        for wrong in [json!({"tag": "ドレス"}), json!({"en": "skirt"}), json!({"tag": 1}), json!(["skirt"]), Value::Null] {
+            assert!(!answers_tag(&wrong, "スカート"), "{wrong}");
+        }
     }
 
     #[test]
