@@ -68,7 +68,7 @@ flowchart TD
 
 Memory per container, measured in production on 2026-11-20: 222,883 items on 4 GB RAM with 2 GB swap (921 MB of it used, no active paging), `api` up 31 hours through 62 catalogue reloads. Anonymous memory is the process's own; page cache is file data the kernel reclaims first under the limit.
 
-- `api` (`mem_limit: 3g`): 949 MB anonymous and 180 MB page cache; at most 2,542 MB of both together, reloads included, while a reload holds the old and the new catalogue at once. The memory-mapped Tantivy index lives in page cache. Related searches (added after this measurement) keep one centroid per BOOTH tag: 30 MB for the 7,396 tags of the development catalogue, an estimated 50 MB for production's ~12,000. Both catalogues share one copy during a reload.
+- `api` (`mem_limit: 3g`): 949 MB anonymous and 180 MB page cache; at most 2,542 MB of both together, reloads included, while a reload holds the old and the new catalogue at once. The memory-mapped Tantivy index lives in page cache. Related searches (added after this measurement) keep one centroid per BOOTH tag: 30 MB for the 7,396 tags of the development catalogue, an estimated 50 MB for production's ~12,000. Both catalogues share one copy during a reload. Each catalogue also keeps up to about 20 MB of the matches of the BOOTH tags that translate queries (added after the measurement too).
 - `postgres` (no limit): 1,192 MB, almost all page cache (6 MB anonymous).
 - `imgproxy` (`mem_limit: 1g`): about 0.76 GB, almost all cold and swapped out (729 MB in swap, 31 MB resident).
 - `web` (no limit): 149 MB resident (92 MB anonymous, 57 MB page cache) and 121 MB in swap.

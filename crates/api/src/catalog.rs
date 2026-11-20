@@ -491,7 +491,7 @@ impl Catalog {
         // order among themselves stays
         let mut translated: FxHashMap<u32, f32> = FxHashMap::default();
         for e in expanded.iter() {
-            let m = self.text.search(e)?;
+            let m = self.equivalents.matches(e, &self.text)?;
             for d in m.hits.iter().filter(|d| !hits.contains(*d) && fits.as_ref().is_none_or(|f| f.contains(*d))) {
                 let s = m.scores.get(&d).copied().unwrap_or(0.0);
                 let best = translated.entry(d).or_insert(s);

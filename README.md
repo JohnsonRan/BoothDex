@@ -251,6 +251,7 @@ On a 32-thread machine with 216k items, searches take 2–10 ms inside the API a
 across 32 concurrent clients). On Linux containers, `api` uses ~0.4–1 GB RSS steady (plus the
 memory-mapped Tantivy index in page cache) and peaks at ~1.8 GB while atomically reloading a new catalogue (`mem_limit: 3g`). The tag centroids take 30 MB for
 the 7,396 tags of the development catalogue (an estimated 50 MB for production's ~12,000), one copy across reloads.
+Each catalogue keeps up to about 20 MB of the matches of the tags that translate queries.
 
 ## Development
 

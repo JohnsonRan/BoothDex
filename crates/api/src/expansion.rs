@@ -16,7 +16,7 @@ use roaring::RoaringBitmap;
 use rustc_hash::FxHashMap;
 
 use crate::catalog::Index;
-use crate::text::{TextIndex, compact, fold};
+use crate::text::{TextIndex, TextMatches, compact, fold};
 
 // The thresholds were tuned on the development catalogue (216k items, 42 sample queries, 2026-11-20).
 /// A longer query describes something rather than naming one thing to translate.
@@ -39,6 +39,11 @@ const MAX_EQUIVALENTS: usize = 3;
 const MIN_CHARS: usize = 2;
 /// Queries whose equivalents one snapshot remembers.
 const CACHE_CAP: u64 = 2000;
+/// What one snapshot holds of the equivalents' matches, in bytes (owner, 2026-11-21: about 20 MB): the matches of the
+/// tags searched least lately and least often give way first.
+const MATCHES_CAP: u64 = 20 * 1024 * 1024;
+/// Bytes one hit of the cached matches costs: its score in the map and its share of the bitmap, rounded up.
+const BYTES_PER_HIT: u64 = 16;
 
 /// The languages of item titles, in the bit order of `DocInput::title_languages`.
 pub(crate) const LANGUAGES: [&str; 4] = ["en", "ja", "ko", "zh"];
@@ -61,6 +66,13 @@ pub(crate) struct Equivalents {
     titled: [RoaringBitmap; 4],
     /// keyed by the query as the title parser gets it; `fold` is no key, as it folds kana before Lindera segments
     cache: moka::sync::Cache<String, Arc<[String]>>,
+    /// what each equivalent searched so far matches, keyed by the tag (`matches`)
+    matches: moka::sync::Cache<String, Arc<TextMatches>>,
+}
+
+/// What a tag's cached matches weigh against `MATCHES_CAP`.
+fn weight(tag: &str, matches: &TextMatches) -> u32 {
+    u32::try_from(tag.len() as u64 + matches.hits.len() * BYTES_PER_HIT).unwrap_or(u32::MAX)
 }
 
 impl Equivalents {
@@ -109,7 +121,19 @@ impl Equivalents {
             ids.extend(t);
             starts.push(ids.len() as u32);
         }
-        Self { names, items, shops, keys, starts, ids, titled: titled.map(|b| b - relisted), cache: moka::sync::Cache::new(CACHE_CAP) }
+        let matches = moka::sync::Cache::builder().max_capacity(MATCHES_CAP).weigher(|tag: &String, m: &Arc<TextMatches>| weight(tag, m)).build();
+        Self { names, items, shops, keys, starts, ids, titled: titled.map(|b| b - relisted), cache: moka::sync::Cache::new(CACHE_CAP), matches }
+    }
+
+    /// What `TextIndex::search` finds for the equivalent `tag`, remembered for this snapshot within `MATCHES_CAP`: an
+    /// expanded search, and the palette on every keystroke, would search each equivalent again.
+    pub(crate) fn matches(&self, tag: &str, text: &TextIndex) -> Result<Arc<TextMatches>> {
+        if let Some(found) = self.matches.get(tag) {
+            return Ok(found);
+        }
+        let found = Arc::new(text.search(tag)?);
+        self.matches.insert(tag.to_owned(), found.clone());
+        Ok(found)
     }
 
     /// The tags of doc `d`, as indexes.
@@ -373,6 +397,21 @@ pub(crate) mod tests {
     fn equivalents_are_remembered_for_the_snapshot() {
         let c = catalogue();
         assert!(Arc::ptr_eq(&c.equivalents("skirt").unwrap(), &c.equivalents(" skirt ").unwrap()));
+    }
+
+    #[test]
+    fn an_equivalents_matches_are_remembered_by_their_weight() {
+        let c = catalogue();
+        let r = crate::search_request::SearchRequest::from(&crate::params::Params::parse("q=skirt&pageSize=100"));
+        let skirt = c.search(&r, 0, None, None, Some("skirt"), false).unwrap();
+        assert_eq!(skirt.expanded_with, ["スカート"]);
+        // the expanded search remembered what スカート matches, weighed by its bytes and 16 per hit; a second search uses it
+        let tags = c.tags();
+        tags.matches.run_pending_tasks();
+        let cached = tags.matches.get("スカート").expect("remembered by the search");
+        assert_eq!((tags.matches.entry_count(), tags.matches.weighted_size()), (1, "スカート".len() as u64 + cached.hits.len() * 16));
+        assert_eq!(c.search(&r, 0, None, None, Some("skirt"), false).unwrap(), skirt);
+        assert!(Arc::ptr_eq(&cached, &tags.matches.get("スカート").unwrap()));
     }
 
     #[test]
