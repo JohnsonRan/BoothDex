@@ -1,9 +1,10 @@
 //! `/api/related`: related searches for a text query (owner, 2026-11-20), BOOTH tags near the query's meaning. Each tag
 //! has a centroid, the mean embedding of the items that carry it. The tags nearest the embedding a search already
-//! stored for the query are offered, minus those that respell or translate the query or one of its words, name an
-//! avatar, are spread by a few shops or by everyone, seldom go with the query's own matches, or find nothing under the
-//! current filters. The rules and numbers were tuned with a prototype on the development catalogue (42 sample queries,
-//! 2026-11-20). A chip reads in the visitor's language when the tag dictionary has the tag in it (owner, 2026-11-21).
+//! stored for the query are offered, minus those that respell or translate the query or one of its words, make the
+//! same search as a nearer one, name an avatar, are spread by a few shops or by everyone, seldom go with the query's
+//! own matches, or find nothing under the current filters. The rules and numbers were tuned with a prototype on the
+//! development catalogue (42 sample queries, 2026-11-20). A chip reads in the visitor's language when the tag
+//! dictionary has the tag in it (owner, 2026-11-21).
 
 use std::sync::Arc;
 
@@ -282,8 +283,8 @@ pub(crate) struct Asked<'a> {
 }
 
 /// Up to `SEARCHES` related searches for `asked`, whose meaning has the embedding `vector`, best first. A search is
-/// labelled with the tag in the visitor's language (`labels`) unless that respells a search already chosen; its `q` uses
-/// that label when the label has two or more characters and its own words find something, else the tag.
+/// labelled with the tag in the visitor's language (`labels`); its `q` uses that label when the label has two or more
+/// characters and its own words find something, else the tag.
 pub(crate) fn choose(catalog: &Catalog, related: &Related, centroids: &TagCentroids, vector: &[f32], asked: &Asked) -> Result<Vec<RelatedSearch>> {
     let (avatars, labels) = (&related.avatars, &related.labels);
     let tags = catalog.tags();
@@ -332,11 +333,20 @@ pub(crate) fn choose(catalog: &Catalog, related: &Related, centroids: &TagCentro
         // a tag that is the query or a word of it, or that the dictionary translates as one, is the same search or a
         // wider one, not a related one ("黒髪 ロング" offering ロング; long hair offering ロング, which reads long)
         let repeats = |s: &str| respelling(asked.meaning, s) || words.iter().any(|w| respelling(w, s));
+        let label = asked.language.and_then(|k| labels.label(name, k)).unwrap_or(name);
+        // a nearer search already chosen is the same one when it reads the same, or when either tag is the other or one
+        // of its values (ウェーブヘア, which reads wavy hair, before wavy hair)
+        let same = |(tag, search): &(&str, RelatedSearch)| {
+            respelling(&search.label, label)
+                || respelling(tag, name)
+                || labels.reads_as(tag, |v| respelling(v, name))
+                || labels.reads_as(name, |v| respelling(v, tag))
+        };
         if equivalents.iter().any(|e| fold(e) == key)
             || labels.reads_as(name, repeats)
             || avatars.named_in(key)
             || repeats(name)
-            || chosen.iter().any(|(tag, _)| respelling(tag, name))
+            || chosen.iter().any(same)
         {
             continue;
         }
@@ -353,11 +363,6 @@ pub(crate) fn choose(catalog: &Catalog, related: &Related, centroids: &TagCentro
             continue;
         }
         chosen_titles.push(titles);
-        let label = asked
-            .language
-            .and_then(|k| labels.label(name, k))
-            .filter(|l| !chosen.iter().any(|(tag, c)| respelling(tag, l) || respelling(&c.label, l)))
-            .unwrap_or(name);
         // one character matches only where a segmenter leaves it a word of its own (长 for ロング); the expansion skips
         // such tags too
         let q = if label != name && compact(label).chars().count() >= MIN_CHARS && finds(label)? { destination(label) } else { destination(name) };
@@ -686,12 +691,9 @@ mod tests {
             )
         };
         let pair = |label: &str, q: &str| (label.to_owned(), q.to_owned());
-        // the label in Chinese; its words as the destination only when they find something; a label another search
-        // already shows, or no row, keeps the tag
-        assert_eq!(
-            related_in(&c, &tags, "q=skirt", &[], None, dictionary(), Some("zh")),
-            [pair("荷叶边", "荷叶边"), pair("百褶", "pleats"), pair("pleated", "pleated"), pair("lace", "lace")]
-        );
+        // the label in Chinese, its words as the destination only when they find something, and no row keeps the tag;
+        // pleated reads 百褶 as pleats does, so it is the same search
+        assert_eq!(related_in(&c, &tags, "q=skirt", &[], None, dictionary(), Some("zh")), [pair("荷叶边", "荷叶边"), pair("百褶", "pleats"), pair("lace", "lace")]);
         // a language without a value keeps the tag, as does a request that names no language
         assert_eq!(related_in(&c, &tags, "q=skirt", &[], None, dictionary(), Some("ko"))[2], pair("pleated", "pleated"));
         assert_eq!(related_in(&c, &tags, "q=skirt", &[], None, dictionary(), None)[0], pair("frills", "frills"));
@@ -719,15 +721,56 @@ mod tests {
     }
 
     #[test]
-    fn a_label_that_repeats_another_searchs_tag_keeps_the_tag() {
-        let pair = |label: &str, q: &str| (label.to_owned(), q.to_owned());
-        // pleats reads 百褶 in Chinese, the tag of the search before it, which shows 百褶裙 and searches 百褶
+    fn a_search_a_nearer_one_already_makes_is_left_out_and_the_next_takes_its_place() {
+        // ウェーブヘア reads wavy hair in English; the tag wavy hair reads ウェーブヘア and 波浪发 as ウェーブヘア does. Their
+        // items are titled differently, so the title rule keeps both
+        let shinano = vec![("shinano".to_owned(), vec!["Shinano"])];
+        let groups: &[(usize, &str, &[&str], usize)] = &[
+            (20, "Straight", &["ストレートヘア"], 5),
+            (20, "ウェーブヘア", &["ウェーブヘア"], 5),
+            (20, "Wavy Hair", &["wavy hair"], 5),
+            (20, "Ponytail", &["ponytail"], 5),
+            (20, "Twin Tails", &["twin tails"], 5),
+        ];
+        let c = catalogue(groups, |_, d| d.avatars = vec!["shinano".into()]);
+        let tags = ["ストレートヘア", "ウェーブヘア", "wavy hair", "ponytail", "twin tails"];
+        let rows = |wavy: bool| {
+            let mut rows = vec![
+                row("ストレートヘア", [Some("Straight Hair"), Some("ストレートヘア"), None, Some("直发")], &[]),
+                row("ウェーブヘア", [Some("wavy hair"), Some("ウェーブヘア"), Some("웨이브헤어"), Some("波浪发")], &[]),
+            ];
+            if wavy {
+                rows.push(row("wavy hair", [Some("wavy hair"), Some("ウェーブヘア"), Some("웨이브 헤어"), Some("波浪发")], &[]));
+            }
+            rows
+        };
+        let query = "q=Shinano%20long%20hair";
+        assert_eq!(labels(related(&c, &tags, query, &shinano, None)), ["ストレートヘア", "ウェーブヘア", "wavy hair", "ponytail"]);
+        // wavy hair is ウェーブヘア's search in every language, with a row of its own or without one, and twin tails
+        // takes its place
+        for wavy in [true, false] {
+            for (hl, first) in [(None, ["ストレートヘア", "ウェーブヘア"]), (Some("en"), ["Straight Hair", "wavy hair"]), (Some("ja"), ["ストレートヘア", "ウェーブヘア"]), (Some("zh"), ["直发", "波浪发"])] {
+                let dictionary = TagLabels::new(&rows(wavy), c.tags());
+                assert_eq!(labels(related_in(&c, &tags, query, &shinano, None, dictionary, hl)), [first[0], first[1], "ponytail", "twin tails"], "{hl:?} {wavy}");
+            }
+        }
+        // pleats reads 百褶 in Chinese, the tag of the search before it
         let c = catalogue(&[(20, "Skirt", &["百褶"], 5), (20, "Skirt", &["pleats"], 5)], |_, _| {});
         let dictionary = TagLabels::new(
             &[row("百褶", [Some("pleated"), None, None, Some("百褶裙")], &[]), row("pleats", [Some("pleats"), None, None, Some("百褶")], &[])],
             c.tags(),
         );
-        assert_eq!(related_in(&c, &["百褶", "pleats"], "q=skirt", &[], None, dictionary, Some("zh")), [pair("百褶裙", "百褶"), pair("pleats", "pleats")]);
+        assert_eq!(related_in(&c, &["百褶", "pleats"], "q=skirt", &[], None, dictionary, Some("zh")), [("百褶裙".to_owned(), "百褶".to_owned())]);
+        // a search left out as the same one takes none of the twelve checks against the catalogue: after wavy hair, ten
+        // tags find nothing in the safe view, and the twelfth check still reaches twin tails
+        let names: Vec<[String; 1]> = (0..10).map(|i| [format!("adult {i}")]).collect();
+        let adult: Vec<[&str; 1]> = names.iter().map(|[n]| [n.as_str()]).collect();
+        let mut groups: Vec<(usize, &str, &[&str], usize)> = vec![(20, "ウェーブヘア", &["ウェーブヘア"], 5), (20, "Wavy Hair", &["wavy hair"], 5)];
+        groups.extend(adult.iter().map(|t| (20, "Hair", &t[..], 5)));
+        groups.push((20, "Twin Tails", &["twin tails"], 5));
+        let c = catalogue(&groups, |id, d| d.is_adult = (41..=240).contains(&id));
+        let order: Vec<&str> = ["ウェーブヘア", "wavy hair"].into_iter().chain(adult.iter().map(|[t]| *t)).chain(["twin tails"]).collect();
+        assert_eq!(labels(related_in(&c, &order, "q=long%20hair", &[], None, TagLabels::new(&rows(false), c.tags()), None)), ["ウェーブヘア", "twin tails"]);
     }
 
     #[test]

@@ -59,11 +59,12 @@ They are BOOTH tags whose items' mean embedding is nearest to the query's. These
 
 - tags that respell or translate the query, as the tag dictionary or the expansion reads it;
 - tags that repeat one of the query's words, or that the tag dictionary translates as one (ロング, which reads "long", for "long hair");
+- tags that make the same search as a nearer one: their labels respell each other, or one tag respells the other or one of its dictionary values (wavy hair after ウェーブヘア, which reads "wavy hair");
 - tags that name an avatar;
 - tags that come from a few shops or from more than 5% of the items;
 - tags that seldom go with the query's own matches;
 - tags that find nothing under the same filters, adult setting and view.
 
-With `hl`, `label` is the tag in that language when the tag dictionary has it and no other search reads the same. `q` uses that label when it has two or more letters or digits and its words find items, and the tag otherwise: one character, such as 长 for ロング, matches only where text segmentation leaves it a word of its own.
+With `hl`, `label` is the tag in that language when the tag dictionary has it. `q` uses that label when it has two or more letters or digits and its words find items, and the tag otherwise: one character, such as 长 for ロング, matches only where text segmentation leaves it a word of its own.
 
 The endpoint reads only the embedding a search already stored for the query and never asks the AI provider. It returns none for a query without a stored embedding, for an item link or number, and while the configured embeddings model is not the one the items were embedded with.
