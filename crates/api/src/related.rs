@@ -1,10 +1,10 @@
 //! `/api/related`: related searches for a text query (owner, 2026-11-20), BOOTH tags near the query's meaning. Each tag
 //! has a centroid, the mean embedding of the items that carry it. The tags nearest the embedding a search already
-//! stored for the query are offered, minus those that respell or translate the query or one of its words, make the
-//! same search as a nearer one, name an avatar, are spread by a few shops or by everyone, seldom go with the query's
-//! own matches, or find nothing under the current filters. The rules and numbers were tuned with a prototype on the
-//! development catalogue (42 sample queries, 2026-11-20). A chip reads in the visitor's language when the tag
-//! dictionary has the tag in it (owner, 2026-11-21).
+//! stored for the query are offered, minus those that respell or translate the query or one of its words, read as
+//! such a translation in the visitor's language, make the same search as a nearer one, name an avatar, are spread by a
+//! few shops or by everyone, seldom go with the query's own matches, or find nothing under the current filters. The
+//! rules and numbers were tuned with a prototype on the development catalogue (42 sample queries, 2026-11-20). A chip
+//! reads in the visitor's language when the tag dictionary has the tag in it (owner, 2026-11-21).
 
 use std::sync::Arc;
 
@@ -55,7 +55,14 @@ pub(crate) struct Related {
 /// The tag dictionary's rows (`booth_tag_translations`) of the tags a related search can be: those spelt as a tag on
 /// enough listed items (`Equivalents::name`).
 #[derive(Default)]
-pub(crate) struct TagLabels(FxHashMap<String, Label>);
+pub(crate) struct TagLabels {
+    /// per tag, its row in `rows`
+    tags: FxHashMap<String, u32>,
+    rows: Vec<Label>,
+    /// per form (`forms`) of a compacted value or keyword, the rows holding it: the tags that respell a query's words,
+    /// found without reading every row
+    spelt: FxHashMap<Box<str>, Vec<u32>>,
+}
 
 /// A tag's values in the languages of `LANGUAGES`, and its keywords.
 struct Label {
@@ -63,25 +70,61 @@ struct Label {
     keywords: Box<[Box<str>]>,
 }
 
+impl Label {
+    /// Its keywords count: search finds the tag's items by them as by its values (tag_words.rs).
+    fn spellings(&self) -> impl Iterator<Item = &str> {
+        self.values.iter().flatten().chain(self.keywords.iter()).map(|v| &**v)
+    }
+}
+
 impl TagLabels {
     pub(crate) fn new(rows: &[TagRow], tags: &Equivalents) -> Self {
         let names: FxHashSet<&str> = (0..tags.len() as u32).map(|t| tags.name(t)).collect();
-        let kept = rows.iter().filter(|r| names.contains(r.tag.as_str())).map(|r| {
+        let mut out = Self::default();
+        for r in rows.iter().filter(|r| names.contains(r.tag.as_str())) {
+            let row = out.rows.len() as u32;
             let values = std::array::from_fn(|k| r.values[k].as_deref().map(Box::from));
-            (r.tag.clone(), Label { values, keywords: r.keywords.iter().map(|k| Box::from(k.as_str())).collect() })
-        });
-        Self(kept.collect())
+            let label = Label { values, keywords: r.keywords.iter().map(|k| Box::from(k.as_str())).collect() };
+            for spelling in label.spellings().map(compact) {
+                for form in forms(&spelling) {
+                    let rows = out.spelt.entry(form.into()).or_default();
+                    if rows.last() != Some(&row) {
+                        rows.push(row);
+                    }
+                }
+            }
+            out.tags.insert(r.tag.clone(), row);
+            out.rows.push(label);
+        }
+        out
+    }
+
+    fn row(&self, tag: &str) -> Option<&Label> {
+        self.tags.get(tag).map(|&row| &self.rows[row as usize])
     }
 
     /// The tag in the language `LANGUAGES[k]`.
     fn label(&self, tag: &str, k: usize) -> Option<&str> {
-        self.0.get(tag)?.values[k].as_deref()
+        self.row(tag)?.values[k].as_deref()
     }
 
-    /// Whether `like` accepts some value of the tag. Its keywords count: search finds the tag's items by them as by its
-    /// values (tag_words.rs).
+    /// Whether `like` accepts some value or keyword of the tag.
     fn reads_as(&self, tag: &str, like: impl Fn(&str) -> bool) -> bool {
-        self.0.get(tag).is_some_and(|l| l.values.iter().flatten().chain(l.keywords.iter()).any(|v| like(v)))
+        self.row(tag).is_some_and(|l| l.spellings().any(like))
+    }
+
+    /// The forms (`forms`) of the values in `LANGUAGES[k]` of the tags with a value or keyword that respells one of
+    /// `phrases`: what that language calls them.
+    fn translations<'p>(&self, k: usize, phrases: impl IntoIterator<Item = &'p str>) -> FxHashSet<String> {
+        let mut out = FxHashSet::default();
+        for phrase in phrases.into_iter().map(compact) {
+            for &row in forms(&phrase).filter_map(|form| self.spelt.get(form)).flatten() {
+                if let Some(value) = self.rows[row as usize].values[k].as_deref().map(compact) {
+                    out.extend(forms(&value).map(str::to_owned));
+                }
+            }
+        }
+        out
     }
 }
 
@@ -263,12 +306,17 @@ impl AvatarNames {
 }
 
 /// The same word spelt again: equal once case, width, spaces and symbols are gone, or but for a plural `s` or `es`
-/// (gothic girl / gothic girls). Unlike `expansion::same_word`, one holding the other does not count: ミニスカート is a
-/// related search for スカート.
+/// (gothic girl / gothic girls, eye / eyes, dress / dresses). Unlike `expansion::same_word`, one holding the other does
+/// not count: ミニスカート is a related search for スカート.
 fn respelling(a: &str, b: &str) -> bool {
     let (a, b) = (compact(a), compact(b));
-    let singular = |s: &str| s.strip_suffix("es").or_else(|| s.strip_suffix('s')).unwrap_or(s).to_owned();
-    a == b || singular(&a) == singular(&b) || singular(&a) == b || a == singular(&b)
+    forms(&a).any(|x| forms(&b).any(|y| x == y))
+}
+
+/// A compacted word, and the word without a plural `s` or `es`: the spelling alone cannot tell which one a plural
+/// added (eyes gives eyes, eye and ey; dresses gives dresses, dresse and dress).
+fn forms(s: &str) -> impl Iterator<Item = &str> {
+    [Some(s), s.strip_suffix('s'), s.strip_suffix("es")].into_iter().flatten()
 }
 
 /// What related searches are chosen for: a search whose query `Lookup::split_names` read as `meaning` and the models
@@ -314,6 +362,11 @@ pub(crate) fn choose(catalog: &Catalog, related: &Related, centroids: &TagCentro
         Ok(catalog.booth_tags.get(words).is_some_and(|b| !b.is_disjoint(&allowed)) || found(None)? || found(Some(words))?)
     };
     let destination = |words: &str| kept.iter().copied().chain([words]).collect::<Vec<_>>().join(" ");
+    // in the visitor's language, a label that respells what a tag translating the query or a word of it reads there is
+    // that translation, whatever the label's tag reads elsewhere (one-piece reads 连衣裙 in Chinese, as ドレス does, which
+    // reads dress; in Japanese it reads ワンピース)
+    let translated = asked.language.map(|k| labels.translations(k, std::iter::once(asked.meaning).chain(words.iter().copied()))).unwrap_or_default();
+    let translation = |label: &str| !translated.is_empty() && forms(&compact(label)).any(|form| translated.contains(form));
     let (mut chosen, mut chosen_titles, mut validated): (Vec<(&str, RelatedSearch)>, Vec<RoaringBitmap>, usize) = (Vec::new(), Vec::new(), 0);
     for key in centroids.ranked(vector) {
         if chosen.len() == SEARCHES || validated == VALIDATE {
@@ -346,6 +399,7 @@ pub(crate) fn choose(catalog: &Catalog, related: &Related, centroids: &TagCentro
             || labels.reads_as(name, repeats)
             || avatars.named_in(key)
             || repeats(name)
+            || translation(label)
             || chosen.iter().any(same)
         {
             continue;
@@ -674,6 +728,41 @@ mod tests {
     }
 
     #[test]
+    fn a_label_reading_in_the_visitors_language_as_the_querys_translation_is_not_offered() {
+        // ドレス reads dress in English and 连衣裙 in Chinese; one-piece reads 连衣裙 too, but ワンピース in Japanese
+        let c = catalogue(&[(20, "ドレス", &["ドレス"], 5), (20, "One-piece", &["one-piece"], 5), (20, "Frills", &["frills"], 5)], |_, _| {});
+        let tags = ["ドレス", "one-piece", "frills"];
+        let dictionary = || {
+            TagLabels::new(
+                &[
+                    row("ドレス", [Some("dress"), Some("ドレス"), Some("드레스"), Some("连衣裙")], &[]),
+                    row("one-piece", [Some("one-piece dress"), Some("ワンピース"), Some("원피스"), Some("连衣裙")], &[]),
+                    row("frills", [Some("frills"), Some("フリル"), Some("프릴"), Some("荷叶边")], &[]),
+                ],
+                c.tags(),
+            )
+        };
+        for (hl, offered) in [(None, &["one-piece", "frills"][..]), (Some("en"), &["one-piece dress", "frills"]), (Some("ja"), &["ワンピース", "フリル"]), (Some("zh"), &["荷叶边"])] {
+            assert_eq!(labels(related_in(&c, &tags, "q=dress", &[], None, dictionary(), hl)), offered, "{hl:?}");
+        }
+        // dress is a word of "gothic dress", and dresses its plural
+        for query in ["q=gothic%20dress", "q=dresses"] {
+            assert_eq!(labels(related_in(&c, &tags, query, &[], None, dictionary(), Some("zh"))), ["荷叶边"], "{query}");
+        }
+        // Dresses reads ドレス in Japanese and dresses in English, the plural of what gown reads there
+        let c = catalogue(&[(20, "Dress", &["Dresses"], 5), (20, "Gown", &["gown"], 5), (20, "Frills", &["frills"], 5)], |_, _| {});
+        let dictionary = TagLabels::new(&[row("Dresses", [Some("dresses"), Some("ドレス"), None, None], &[]), row("gown", [Some("dress"), Some("ガウン"), None, None], &[])], c.tags());
+        assert_eq!(labels(related_in(&c, &["Dresses", "gown", "frills"], "q=ドレス", &[], None, dictionary, Some("en"))), ["frills"]);
+        // a keyword translates too: テクスチャ has the keyword 贴图 and reads texture in English, where Textures, without a
+        // row, is labelled with its own spelling
+        let c = catalogue(&[(20, "テクスチャ", &["テクスチャ"], 5), (20, "Textures", &["Textures"], 5), (20, "Frills", &["frills"], 5)], |_, _| {});
+        let dictionary = || TagLabels::new(&[row("テクスチャ", [Some("texture"), Some("テクスチャ"), None, Some("纹理")], &["贴图"])], c.tags());
+        let tags = ["テクスチャ", "Textures", "frills"];
+        assert_eq!(labels(related_in(&c, &tags, "q=贴图", &[], None, dictionary(), Some("en"))), ["frills"]);
+        assert_eq!(labels(related_in(&c, &tags, "q=贴图", &[], None, dictionary(), None)), ["Textures", "frills"]);
+    }
+
+    #[test]
     fn a_search_reads_in_the_visitors_language_and_searches_its_label_when_that_finds_items() {
         // the text search knows frills as 荷叶边 (a dictionary word of the catalogue) but not pleats as 百褶
         let words = crate::tag_words::TagWords::new([("frills".to_owned(), vec!["frills".to_owned(), "荷叶边".to_owned()])]);
@@ -782,8 +871,29 @@ mod tests {
     }
 
     #[test]
+    fn a_plural_of_a_word_ending_in_e_repeats_the_query_or_a_nearer_search() {
+        // Eyes is the query's word, and Eye Textures the search eye texture makes; no title says texture, so the title
+        // rule keeps every tag
+        let groups: &[(usize, &str, &[&str], usize)] = &[
+            (20, "Eye Set", &["eye texture set"], 5),
+            (20, "Eye Iris", &["eye texture"], 5),
+            (20, "Eye Pupil", &["Eye Textures"], 5),
+            (20, "Eye Highlight", &["Eyes"], 5),
+            (20, "Eye Lash", &["pupil"], 5),
+        ];
+        let c = catalogue(groups, |_, _| {});
+        let tags = ["eye texture set", "eye texture", "Eye Textures", "Eyes", "pupil"];
+        assert_eq!(labels(related(&c, &tags, "q=eye", &[], None)), ["eye texture set", "eye texture", "pupil"]);
+        // Hoodies is the plural of the query's word, so it is not offered in any language (パーカー in Japanese)
+        let c = catalogue(&[(20, "Hoodie", &["Hoodies"], 5), (20, "Hoodie", &["zip"], 5)], |_, _| {});
+        let dictionary = TagLabels::new(&[row("Hoodies", [Some("hoodies"), Some("パーカー"), Some("후드티"), Some("连帽衫")], &[])], c.tags());
+        assert_eq!(labels(related_in(&c, &["Hoodies", "zip"], "q=hoodie", &[], None, dictionary, Some("ja"))), ["zip"]);
+    }
+
+    #[test]
     fn respellings_are_the_same_word_but_containment_is_not() {
-        for (a, b) in [("skirt", "Skirts"), ("gothic girl", "gothic girls"), ("dress", "Dresses"), ("short hair", "ShortHair"), ("ドレス", "ﾄﾞﾚｽ")] {
+        let plurals = [("skirt", "Skirts"), ("gothic girl", "gothic girls"), ("dress", "Dresses"), ("eye", "Eyes"), ("eye texture", "Eye Textures"), ("hoodie", "Hoodies"), ("shoe", "shoes")];
+        for (a, b) in plurals.into_iter().chain([("short hair", "ShortHair"), ("ドレス", "ﾄﾞﾚｽ")]) {
             assert!(respelling(a, b) && respelling(b, a), "{a} / {b}");
         }
         for (a, b) in [("スカート", "ミニスカート"), ("skirt", "long skirt"), ("hair", "chair")] {

@@ -53,6 +53,7 @@ A search that semantic search answered offers up to four related searches above 
 - They are BOOTH tags whose items are closest to the query in meaning (ミニスカート and long skirt for "skirt").
 - Each is shown in the site's language when the tag dictionary has it.
 - None repeats or translates the query or one of its words: "long hair" does not offer ロング, which reads "long".
+- None reads in the site's language as a translation of the query or one of its words: in Chinese, "dress" does not offer one-piece, which reads 连衣裙 there as ドレス does; in Japanese it offers it as ワンピース.
 - No two make the same search: wavy hair is left out after ウェーブヘア, which reads "wavy hair".
 - Choosing one replaces the query's words and keeps the avatar names and the filters.
 - The row reads only the embedding a search already stored. It never asks the AI provider, so there is none for a query without a stored vector, for an item link or number, or while the configured embeddings model is not the one the items were embedded with.
