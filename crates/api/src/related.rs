@@ -18,7 +18,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use sqlx::PgPool;
 
 use crate::catalog::Catalog;
-use crate::expansion::{Equivalents, LANGUAGES};
+use crate::expansion::{Equivalents, LANGUAGES, MIN_CHARS};
 use crate::params::Params;
 use crate::search_request::{SearchRequest, View};
 use crate::tag_words::TagRow;
@@ -283,7 +283,7 @@ pub(crate) struct Asked<'a> {
 
 /// Up to `SEARCHES` related searches for `asked`, whose meaning has the embedding `vector`, best first. A search is
 /// labelled with the tag in the visitor's language (`labels`) unless that respells a search already chosen; its `q` uses
-/// that label when the label's own words find something, else the tag.
+/// that label when the label has two or more characters and its own words find something, else the tag.
 pub(crate) fn choose(catalog: &Catalog, related: &Related, centroids: &TagCentroids, vector: &[f32], asked: &Asked) -> Result<Vec<RelatedSearch>> {
     let (avatars, labels) = (&related.avatars, &related.labels);
     let tags = catalog.tags();
@@ -358,7 +358,9 @@ pub(crate) fn choose(catalog: &Catalog, related: &Related, centroids: &TagCentro
             .and_then(|k| labels.label(name, k))
             .filter(|l| !chosen.iter().any(|(tag, c)| respelling(tag, l) || respelling(&c.label, l)))
             .unwrap_or(name);
-        let q = if label != name && finds(label)? { destination(label) } else { destination(name) };
+        // one character matches only where a segmenter leaves it a word of its own (长 for ロング); the expansion skips
+        // such tags too
+        let q = if label != name && compact(label).chars().count() >= MIN_CHARS && finds(label)? { destination(label) } else { destination(name) };
         chosen.push((name, RelatedSearch { label: label.to_owned(), q }));
     }
     Ok(chosen.into_iter().map(|(_, search)| search).collect())
@@ -697,6 +699,23 @@ mod tests {
         let shinano = vec![("shinano".to_owned(), vec!["Shinano"])];
         let c = catalogue_with_words(groups, |_, d| d.avatars = vec!["shinano".into()], &words);
         assert_eq!(related_in(&c, &tags, "q=Shinano%20skirt", &shinano, None, dictionary(), Some("zh"))[0], pair("荷叶边", "Shinano 荷叶边"));
+    }
+
+    #[test]
+    fn a_label_of_one_character_is_shown_but_the_tag_is_searched() {
+        // ロング reads 长 in Chinese and ストレートヘア 直发, and the text search knows both as words of their tags
+        let words = crate::tag_words::TagWords::new([("ロング".to_owned(), vec!["长".to_owned()]), ("ストレートヘア".to_owned(), vec!["直发".to_owned()])]);
+        let shinano = vec![("shinano".to_owned(), vec!["Shinano"])];
+        let c = catalogue_with_words(&[(20, "Hair", &["ロング"], 5), (20, "Hair", &["ストレートヘア"], 5)], |_, d| d.avatars = vec!["shinano".into()], &words);
+        let dictionary = TagLabels::new(
+            &[row("ロング", [Some("Long"), Some("ロング"), Some("롱"), Some("长")], &[]), row("ストレートヘア", [Some("Straight Hair"), None, None, Some("直发")], &[])],
+            c.tags(),
+        );
+        let pair = |label: &str, q: &str| (label.to_owned(), q.to_owned());
+        assert_eq!(
+            related_in(&c, &["ロング", "ストレートヘア"], "q=Shinano%20黒髪", &shinano, None, dictionary, Some("zh")),
+            [pair("长", "Shinano ロング"), pair("直发", "Shinano 直发")]
+        );
     }
 
     #[test]

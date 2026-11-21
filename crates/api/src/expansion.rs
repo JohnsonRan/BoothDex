@@ -36,7 +36,7 @@ const COVERAGE: f64 = 0.25;
 const MAX_EQUIVALENTS: usize = 3;
 /// A tag of fewer characters is no equivalent: one character is part of too many other words and names (尾 for tail
 /// is in 九尾, 龍尾 and 狼尾, a wolf cut).
-const MIN_CHARS: usize = 2;
+pub(crate) const MIN_CHARS: usize = 2;
 /// Queries whose equivalents one snapshot remembers.
 const CACHE_CAP: u64 = 2000;
 /// What one snapshot holds of the equivalents' matches, in bytes (owner, 2026-11-21: about 20 MB): the matches of the
