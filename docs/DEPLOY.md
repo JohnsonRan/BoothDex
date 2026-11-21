@@ -42,7 +42,7 @@ Run exactly one `api` container; do not scale it ([why](SERVICES.md#one-api-cont
 flowchart TD
   prep["1. Place compose.yaml + .env on server<br/>Set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN"] --> choice{"Use published<br/>data bundle?"}
 
-  choice -- "Yes (~5 min, ~217k items)" --> dl["2a. Download & verify data-2026-11-04<br/>Extract images.tar → set ARCHIVE_IMAGES_DIR"]
+  choice -- "Yes (~5 min, ~223k items)" --> dl["2a. Download & verify data-2026-11-21<br/>Extract images.tar → set ARCHIVE_IMAGES_DIR"]
   dl --> pgup["docker compose pull<br/>docker compose up -d postgres"]
   pgup --> restore["Stream catalogue.dump into pg_restore"]
   restore --> up["docker compose up -d"]
@@ -88,22 +88,23 @@ cp .env.example .env
 
 Without a data bundle, skip to [3. Configure](#3-configure) and follow [Starting without a data bundle](#starting-without-a-data-bundle) in step 4.
 
-A data bundle is a snapshot of an existing instance created with `scripts/make-bundle.sh <out-dir>`. A ready-made bundle is published as the GitHub release [data-2026-11-04](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04): 217,494 items (VRCatalogue archive plus BOOTH crawls up to that day), with semantic-search vectors from `Qwen/Qwen3-Embedding-4B`.
+A data bundle is a snapshot of an existing instance created with `scripts/make-bundle.sh <out-dir>`. A ready-made bundle is published as the GitHub release [data-2026-11-21](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-21): 223,259 items (VRCatalogue archive plus BOOTH crawls up to that day), with semantic-search vectors from `Qwen/Qwen3-Embedding-4B`. It needs images from 2026-11-21 or later: an older `api` refuses a database with migrations it does not know.
 
 - Services apply newer migrations automatically at startup, and the hourly crawl catches up from there.
-- A bundle carries its instance's BOOTH tag dictionary and title translations. data-2026-11-04 predates the dictionary; the daily `localize` job translates the tags it lacks.
+- A bundle carries its instance's BOOTH tag dictionary and title translations: data-2026-11-21 has 31,775 translated tags and a Chinese title on every item. The daily `localize` job translates tags added after the snapshot.
+- Job schedules come from the instance the bundle was made from: in data-2026-11-21 every job is on, `refresh` included. Change them in the admin console after the restore.
 - If you configure a different embeddings model, clear the bundled vectors once so the `embed` job rebuilds them with yours: `docker compose exec postgres psql -U catalogue catalogue -c 'update items set embedding = null'`.
 
 | File | Contents | Size |
 |---|---|---|
-| `catalogue.dump` | PostgreSQL custom-format dump: all items, crawled BOOTH image links, taxonomy and schema. **No user accounts, sessions, favourites, viewed history, job history, AI settings or guestbook messages.** | ~1.1 GB |
+| `catalogue.dump` | PostgreSQL custom-format dump: all items, crawled BOOTH image links, taxonomy, avatars, the tag dictionary and schema. **No user accounts, sessions, favourites, viewed history, job history, AI settings or guestbook messages.** | ~1.2 GB |
 | `images.tar` | Archived WebP images of delisted items (`images/<sha1>.webp`) no longer served by BOOTH | ~1 GB |
 | `SHA256SUMS` | SHA-256 checksums | — |
 
 ```sh
 mkdir -p /srv/boothdex/bundle && cd /srv/boothdex/bundle
 for f in catalogue.dump images.tar SHA256SUMS; do
-  curl -fLO https://github.com/JohnsonRan/BoothDex/releases/download/data-2026-11-04/$f
+  curl -fLO https://github.com/JohnsonRan/BoothDex/releases/download/data-2026-11-21/$f
 done
 sha256sum -c SHA256SUMS
 tar -xf images.tar -C /srv/boothdex    # extracts to /srv/boothdex/images/*.webp
