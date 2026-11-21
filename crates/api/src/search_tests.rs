@@ -316,7 +316,7 @@ async fn check_feed_and_palette(pool: PgPool) {
     let body = |r: Response| async { to_bytes(r.into_body(), 1024 * 1024).await.unwrap() };
 
     // a saved search's own order and page size do not change the feed: newest first, all of them
-    let feed = rss_feed(State(state.clone()), ip, RawQuery(Some("sort=price&dir=asc&pageSize=1&page=2".into()))).await.unwrap_or_else(IntoResponse::into_response);
+    let feed = rss_feed(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some("sort=price&dir=asc&pageSize=1&page=2".into()))).await.unwrap_or_else(IntoResponse::into_response);
     let xml = String::from_utf8(body(feed).await.to_vec()).unwrap();
     let titles: Vec<&str> = xml.split("<item><title>").skip(1).map(|t| t.split('<').next().unwrap()).collect();
     assert_eq!(titles, ["Rock Band Tee", "Rock&amp;Roll Hoodie", "Plain Socks"]);
@@ -387,7 +387,7 @@ async fn check_expansion(pool: PgPool) {
     // the feed searches the words alone, without the tag chosen to translate them; the palette searches the tag too,
     // held to a model it names; a link names its item alone
     let ip = limit::ClientIp("203.0.113.41".parse().unwrap());
-    let feed = rss_feed(State(state.clone()), ip, RawQuery(Some("q=skirt".into()))).await.unwrap_or_else(IntoResponse::into_response);
+    let feed = rss_feed(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some("q=skirt".into()))).await.unwrap_or_else(IntoResponse::into_response);
     let xml = String::from_utf8(to_bytes(feed.into_body(), 1024 * 1024).await.unwrap().to_vec()).unwrap();
     assert_eq!(xml.matches("<item>").count(), 12);
     for (query, count) in [("q=skirt", 22), ("q=shinano%20skirt", 2), ("q=https%3A%2F%2Fbooth.pm%2Fja%2Fitems%2F13", 1)] {

@@ -274,7 +274,13 @@ async fn every_shape_of_the_item_read_is_tiered(pool: PgPool) {
 /// Request bursts above what the record tests need (8 strict, 12 today's) and a record bucket of 250.
 fn record_limits() -> Limits {
     let tiered = |strict: f64, base: f64| Tiered::new((SLOW, strict), (SLOW, base));
-    Limits { search: tiered(8.0, 12.0), items: tiered(8.0, 12.0), records: RateLimiter::new(SLOW, 250.0, 64), ..limits() }
+    Limits {
+        search: tiered(8.0, 12.0),
+        items: tiered(8.0, 12.0),
+        rss: RateLimiter::new(SLOW, 8.0, 64),
+        records: RateLimiter::new(SLOW, 250.0, 64),
+        ..limits()
+    }
 }
 
 /// Without a pass, a search and a read of several items also pay the records they ask for, from one bucket per address
@@ -310,6 +316,45 @@ async fn without_a_pass_requests_pay_their_records(pool: PgPool) {
         let off = site_with(&pool, json!({}), record_limits()).await;
         assert_eq!(off.count("/api/search?pageSize=100", "198.51.100.8", None).await, (12, PLAIN));
         assert_eq!(off.count(&ids(100), "198.51.100.9", None).await, (12, PLAIN));
+    });
+}
+
+/// Without a pass, a feed's 50 records come from the same record bucket as the searches, and a refusal is the plain 429
+/// a feed reader can wait out: it cannot pass the check. With a pass or the switch off, only the feed's own bucket
+/// (burst 8 here) counts.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_feed_shares_the_record_budget_and_offers_no_check(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        let site = site_with(&pool, strict(), record_limits()).await;
+        // five feeds of 50 fill the 250; the sixth is refused, plain
+        assert_eq!(site.count("/api/rss", "198.51.100.20", None).await, (5, PLAIN));
+        // a search of 100 from the same address leaves room for three feeds
+        let at = [("x-forwarded-for", "198.51.100.21")];
+        assert_eq!(site.send("/api/search?pageSize=100", &at).await.status(), StatusCode::OK);
+        assert_eq!(site.count("/api/rss", "198.51.100.21", None).await, (3, PLAIN));
+        // a pass, or the switch off: the feed's own 8
+        let pass = site.pass("198.51.100.22").await;
+        assert_eq!(site.count("/api/rss", "198.51.100.22", Some(&pass)).await, (8, PLAIN));
+        let off = site_with(&pool, json!({}), record_limits()).await;
+        assert_eq!(off.count("/api/rss", "198.51.100.23", None).await, (8, PLAIN));
+    });
+}
+
+/// A feed reads no session: a session whose sign-in passed the check, which a search would admit at today's numbers once
+/// the strict buckets refuse, pays a feed's records like any visitor without a pass.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_feed_reads_no_session(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        sqlx::query("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', $1)")
+            .bind(account::hash_password(PASSWORD.into()).await.ok().unwrap())
+            .execute(&pool)
+            .await
+            .unwrap();
+        let site = site_with(&pool, checked_sign_in(), record_limits()).await;
+        let session = site.sign_in("in", "198.51.100.30").await;
+        assert_eq!(site.count("/api/rss", "198.51.100.31", Some(&session)).await, (5, PLAIN));
     });
 }
 

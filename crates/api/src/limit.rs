@@ -163,13 +163,14 @@ pub struct Limits {
     /// /api/related, which the results page asks once per search: 2 req/s, burst 30, today's numbers for search. Not
     /// tiered, so a refusal offers no check: the page only hides its row of related searches
     pub related: RateLimiter,
-    /// /api/rss: 0.5 req/s, burst 20
+    /// /api/rss: 0.5 req/s, burst 20; without a pass while the switch is on, each request also pays 50 `records`
     pub rss: RateLimiter,
     /// /api/items with several ids, a list's (the recent view's, other clients'): 0.5/10, today's 1/20
     pub items: Tiered,
-    /// The records a visitor without a pass may read while the switch is on, shared by /api/search (its `pageSize`)
-    /// and /api/items with several ids (its ids): 15 a second, burst 1,200 (owner, 2026-11-21, from measured browsing:
-    /// REQUIREMENTS.md "Intentional designs"). The burst is at least the largest request, 100 records
+    /// The records a visitor without a pass may read while the switch is on, shared by /api/search (its `pageSize`),
+    /// /api/items with several ids (its ids) and /api/rss (its 50 items, rss.rs): 15 a second, burst 1,200 (owner,
+    /// 2026-11-21, from measured browsing: REQUIREMENTS.md "Intentional designs"). The burst is at least the largest
+    /// request, 100 records
     pub records: RateLimiter,
     /// /api/items with one id, the item dialog's record, also fetched when a tile is pointed at: 1/15, today's 4/40
     pub item: Tiered,
