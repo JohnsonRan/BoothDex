@@ -33,7 +33,7 @@ flowchart LR
 | `sweep` | booth | daily, 03:00 JST | Walks the full listing, updates prices, marks delisted items |
 | `details` | booth | daily | Fetches missing galleries |
 | `refresh` | booth | by schedule | Re-checks popular items |
-| `enrich` | ai | hourly; does nothing until an AI provider is set | AI enrichment of items (below) |
+| `enrich` | ai | hourly; without an AI provider it only links avatar names an update added | AI enrichment of items and [avatar links](#avatar-links) (below) |
 | `localize` | ai | daily | Translates category, smart tag and BOOTH tag names (below) |
 | `embed` | embed | hourly | Embeds items that lack a vector, then only new or edited ones |
 
@@ -44,7 +44,7 @@ Any OpenAI-compatible API works, with configurable reasoning effort. Without a p
 `enrich` processes items in batches of 200 and chains itself until the backlog is empty. For each new item it:
 
 - adds the smart categories, content rating and features;
-- links the avatars the item fits, by name;
+- links the avatars the item fits, by name ([Avatar links](#avatar-links));
 - translates the title into Chinese, English, Japanese and Korean.
 
 Rules for translated titles:
@@ -55,6 +55,19 @@ Rules for translated titles:
 An item that has failed 3 times is skipped (`items.enrich_failures`), until a crawl finds its title or description changed, which sets the count back to 0. A provider outage stops the batch without counting against any item. `/admin/jobs/given-up` lists the skipped items; Retry or Retry all sets their count to 0 and queues `enrich`. The overview's "Waiting for AI" tile says how many of its items were given up.
 
 Pausing the schedule does not stop a chain that is already running. Cancel the active or queued `enrich` job in `/admin` to halt it at once.
+
+## Avatar links
+
+`enrich` links an item to each avatar whose name its title, tags or variation names write. The names are those in `avatars` (`name_en`, `name_ja`, `name_ko`) and its aliases: other forms listings write, such as クマリ for ひきくまりのクマリ, and each character of a listing that sells several. Avatar names stay as written.
+
+When an update adds avatars or aliases, the worker links every item to the added names once:
+
+- At startup it queues `enrich`: an ordinary run while the enrich schedule is enabled, and one with `{"relink_only": true}` while it is disabled. A `relink_only` run makes no AI request and does not chain.
+- Either run first matches every item, listed or delisted, against the added names only, inserts the links it finds and records the names in `catalog_meta.avatar_names`. Links by earlier names, VRCatalogue's among them, stay as they are.
+- A cancelled run starts again with the next `enrich`.
+- It never deletes a link. A migration that removes a name deletes that name's links itself.
+- A data bundle carries the record, so a restored bundle finishes a relink its source left pending.
+- To match every item against every name, see "Match every item against every avatar name again" in the [deployment guide](DEPLOY.md#6-operations).
 
 ## Tag and category translation (`localize`)
 

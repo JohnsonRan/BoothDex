@@ -544,6 +544,9 @@ struct EnrichKit {
     category_list: String,
     known: Vec<String>,
     avatars: AvatarKit,
+    /// finds the avatars an item fits by their names and aliases (`avatars::names`); translated titles keep to the names
+    /// themselves (`avatars`)
+    links: crate::avatars::Matcher,
 }
 
 async fn enrich_kit(pool: &PgPool) -> Result<EnrichKit> {
@@ -555,7 +558,8 @@ async fn enrich_kit(pool: &PgPool) -> Result<EnrichKit> {
     let leaf: Vec<&(String, String, Option<String>)> = cats.iter().filter(|c| c.2.is_some()).collect();
     let known = leaf.iter().map(|c| c.0.clone()).collect();
     let category_list = leaf.iter().map(|(slug, en, parent)| format!("{slug}: {} / {en}", parent.as_deref().unwrap_or_default())).collect::<Vec<_>>().join("\n");
-    Ok(EnrichKit { category_list, known, avatars: avatar_kit(pool).await? })
+    let links = crate::avatars::Matcher::new(crate::avatars::names(pool).await?);
+    Ok(EnrichKit { category_list, known, avatars: avatar_kit(pool).await?, links })
 }
 
 /// One model call for one item. A reply that parsed but failed validation (e.g. a misspelt category slug), or whose
@@ -592,10 +596,21 @@ async fn enrich_reply(ai: &crate::ai::Ai, kit: &EnrichKit, item: &crate::ai::Enr
 /// AI enrichment for items our crawler ingested (needs_enrichment): categories, rating, Quest, smart price,
 /// translations and features via the model; avatar links by name matching (see avatars.rs).
 pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
+    // avatar names were added (a migration added avatars or aliases): every item is linked to them first, provider or not
+    let relinked = match crate::relink::relink(ctx).await? {
+        Some(r) if !r.finished => return Ok(format!("cancelled while linking avatars, {} links added", r.added)),
+        Some(r) => Some(format!("{} avatar links added", r.added)),
+        None => None,
+    };
+    // queued at startup while the enrich schedule is off (relink::queue): no AI request
+    if param(params, "relink_only", false) {
+        return Ok(relinked.unwrap_or_else(|| "no avatar names added".into()));
+    }
+    let relinked = relinked.map(|r| format!("{r}; ")).unwrap_or_default();
     // scheduled hourly by default; without a provider there is nothing to do, which isn't a failure
     let cfg = boothdex_core::settings::ai(ctx.pool).await?;
     let Some(ai) = crate::ai::Ai::from_config(&cfg)? else {
-        return Ok("skipped: AI provider not configured".into());
+        return Ok(format!("{relinked}skipped: AI provider not configured"));
     };
     let batch: i64 = param(params, "batch", 200);
     let concurrency: usize = param(params, "concurrency", 4usize).clamp(1, 16);
@@ -607,7 +622,7 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     let mut stream = futures_util::stream::iter(items.into_iter().map(|it| {
         let (ai, kit) = (&ai, &kit);
         async move {
-            let linked = kit.avatars.matcher.find(&it.match_text());
+            let linked = kit.links.find(&it.match_text());
             (enrich_reply(ai, kit, &it, &linked).await, it, linked)
         }
     }))
@@ -657,7 +672,7 @@ pub async fn enrich(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     if !ctx.again && cfg.embed_model.is_some() {
         queue_embed(ctx.pool).await?;
     }
-    Ok(format!("{ok} enriched, {failed} failed of {total}"))
+    Ok(format!("{relinked}{ok} enriched, {failed} failed of {total}"))
 }
 
 async fn queue_embed(pool: &PgPool) -> Result<()> {
@@ -1012,6 +1027,7 @@ mod tests {
             .execute(&pool).await.unwrap();
         let job: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('enrich', 'running', now()) returning id")
             .fetch_one(&pool).await.unwrap();
+        crate::relink::record_current(&pool).await;
         let booth = Booth::new().unwrap();
         let mut ctx = Ctx::new(&pool, &booth, job);
         assert_eq!(enrich(&mut ctx, &json!({})).await.unwrap(), "1 enriched, 0 failed of 1");
@@ -1080,6 +1096,7 @@ mod tests {
             .execute(&pool).await.unwrap();
         let job: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('enrich', 'running', now()) returning id")
             .fetch_one(&pool).await.unwrap();
+        crate::relink::record_current(&pool).await;
         let booth = Booth::new().unwrap();
         let mut ctx = Ctx::new(&pool, &booth, job);
         assert_eq!(enrich(&mut ctx, &json!({"concurrency": 1})).await.unwrap(), "3 enriched, 0 failed of 3");
@@ -1436,6 +1453,162 @@ mod tests {
         let (enabled, minutes, later): (bool, i32, bool) =
             sqlx::query_as("select enabled, interval_minutes, next_run_at > now() + interval '23 hours' from job_schedules where kind = 'localize'").fetch_one(&pool).await.unwrap();
         assert_eq!((enabled, minutes, later), (true, 1440, true));
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn enrich_links_items_to_added_avatar_names_before_any_ai_request(pool: PgPool) {
+        for key in ["AI_BASE_URL", "AI_MODEL", "AI_API_KEY"] {
+            assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test must reach no provider");
+        }
+        crate::install_tls();
+        crate::relink::record_current(&pool).await;
+        // an alias added after the names were recorded
+        sqlx::query("update avatars set aliases = aliases || '{ぬぺぽ}' where slug = 'manuka'").execute(&pool).await.unwrap();
+        sqlx::query(
+            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, needs_enrichment)
+             values (1, '【ぬぺぽ対応】服', 's', 'u', false, 'ok', now(), true), (2, 'nothing', 's', 'u', false, 'ok', now(), true)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let booth = Booth::new().unwrap();
+        let enrich_job = |params: Value| {
+            let (pool, booth) = (&pool, &booth);
+            async move {
+                sqlx::query("update jobs set status = 'succeeded' where status = 'running'").execute(pool).await.unwrap();
+                let id: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('enrich', 'running', now()) returning id").fetch_one(pool).await.unwrap();
+                enrich(&mut Ctx::new(pool, booth, id), &params).await.unwrap()
+            }
+        };
+        let linked = || async { sqlx::query_as::<_, (i64, String)>("select item_id, avatar_slug from item_avatars order by 1").fetch_all(&pool).await.unwrap() };
+        // relink only, as queued at startup: a provider at a closed port would fail the job if it were asked
+        sqlx::query("insert into app_settings (key, value) values ('ai', '{\"base_url\": \"http://127.0.0.1:9\", \"model\": \"m\", \"api_key\": \"k\"}')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(enrich_job(serde_json::json!({ "relink_only": true })).await, "1 avatar links added");
+        assert_eq!(linked().await, [(1, "manuka".to_owned())]);
+        assert_eq!(enrich_job(serde_json::json!({ "relink_only": true })).await, "no avatar names added");
+        // an ordinary run links first, then goes on to the provider
+        sqlx::query("delete from app_settings where key = 'ai'").execute(&pool).await.unwrap();
+        sqlx::query("update avatars set aliases = aliases || '{nothing}' where slug = 'shinano'").execute(&pool).await.unwrap();
+        assert_eq!(enrich_job(serde_json::json!({})).await, "1 avatar links added; skipped: AI provider not configured");
+        assert_eq!(linked().await, [(1, "manuka".to_owned()), (2, "shinano".to_owned())]);
+        // cancelled while linking: the job ends there
+        sqlx::query("update avatars set aliases = aliases || '{ぬぺ}' where slug = 'shinano'").execute(&pool).await.unwrap();
+        sqlx::query("update jobs set status = 'succeeded' where status = 'running'").execute(&pool).await.unwrap();
+        let id: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('enrich', 'cancelling', now()) returning id").fetch_one(&pool).await.unwrap();
+        let summary = enrich(&mut Ctx::new(&pool, &booth, id), &serde_json::json!({})).await.unwrap();
+        assert_eq!(summary, "cancelled while linking avatars, 1 links added");
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn enrich_links_an_alias_without_holding_it_in_titles(pool: PgPool) {
+        for key in ["AI_BASE_URL", "AI_API_KEY", "AI_MODEL"] {
+            assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test's provider is a local stand-in");
+        }
+        crate::install_tls();
+        // an alias recorded with the names, so the item gets its link from enrichment, not from a relink
+        sqlx::query("update avatars set aliases = aliases || '{ぬぺぽ}' where slug = 'manuka'").execute(&pool).await.unwrap();
+        crate::relink::record_current(&pool).await;
+        // titles that leave the alias out pass at once: translated titles keep only the avatars' names themselves
+        let titles = json!({
+            "en": {"title": "Frill Dress"},
+            "ja": {"title": "【ぬぺぽ対応】フリルドレス"},
+            "ko": {"title": "프릴 드레스"},
+            "zh": {"title": "荷叶边连衣裙"},
+        });
+        let reply = json!({
+            "categories": ["clothing--outfit-dresses"], "content_rating": "SFW", "quest_compatible": "No", "smart_price": 1500,
+            "features": [], "translations": titles, "original_language": "ja",
+        });
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+        let seen = requests.clone();
+        let app = axum::Router::new().fallback(move |axum::Json(body): axum::Json<Value>| {
+            seen.lock().unwrap().push(body);
+            let content = reply.to_string();
+            async move { axum::Json(json!({"choices": [{"message": {"content": content}}]})) }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        sqlx::query("insert into app_settings (key, value) values ('ai', $1)")
+            .bind(json!({"base_url": base_url, "model": "stand-in", "api_key": "test"}))
+            .execute(&pool).await.unwrap();
+        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, needs_enrichment, booth_tags)
+                     values (1, '【ぬぺぽ対応】フリルドレス', 'c', 'https://example.test', false, 'ok', now(), true, '{ドレス}')")
+            .execute(&pool).await.unwrap();
+        let job: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('enrich', 'running', now()) returning id")
+            .fetch_one(&pool).await.unwrap();
+        let booth = Booth::new().unwrap();
+        assert_eq!(enrich(&mut Ctx::new(&pool, &booth, job), &json!({})).await.unwrap(), "1 enriched, 0 failed of 1");
+        assert_eq!(requests.lock().unwrap().len(), 1);
+        let (translations, avatars): (Value, Vec<String>) =
+            sqlx::query_as("select translations, array(select avatar_slug from item_avatars where item_id = 1) from items where id = 1")
+                .fetch_one(&pool).await.unwrap();
+        let mut expected = titles.clone();
+        expected["original_language"] = json!("ja");
+        assert_eq!(translations, expected);
+        assert_eq!(avatars, ["manuka"]);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn enrich_links_items_to_the_names_migration_0032_added(pool: PgPool) {
+        for key in ["AI_BASE_URL", "AI_MODEL", "AI_API_KEY"] {
+            assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test must reach no provider");
+        }
+        crate::install_tls();
+        // nothing recorded by hand: 0032's names are missing from the record 0031 wrote, as right after the update.
+        // 1 a new avatar (薄荷) in a tag, 2 an alias of a starter avatar (クマリ), 3 a starter name (ライム) not linked so far
+        sqlx::query(
+            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags) values
+               (1, 'ドレス', 's', 'u', false, 'ok', now(), '{薄荷}'),
+               (2, '【クマリ対応】ワンピース', 's', 'u', false, 'ok', now(), '{}'),
+               (3, 'ライム用 髪', 's', 'u', false, 'ok', now(), '{}')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let job: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('enrich', 'running', now()) returning id").fetch_one(&pool).await.unwrap();
+        let booth = Booth::new().unwrap();
+        assert_eq!(enrich(&mut Ctx::new(&pool, &booth, job), &json!({})).await.unwrap(), "2 avatar links added; skipped: AI provider not configured");
+        let linked: Vec<(i64, String)> = sqlx::query_as("select item_id, avatar_slug from item_avatars order by 1").fetch_all(&pool).await.unwrap();
+        assert_eq!(linked, [(1, "hakka".to_owned()), (2, "kumaly".to_owned())]);
+        // every name is recorded now, so the next start queues nothing
+        let pending: bool = sqlx::query_scalar(
+            "select exists (select 1 from avatars a, unnest(array_remove(array[a.name_en, a.name_ja, a.name_ko], null) || a.aliases) n
+                            where not coalesce((select avatar_names from catalog_meta) -> a.slug ? n, false))",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(!pending);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn localize_asks_for_a_tag_that_is_an_alias_like_any_word(pool: PgPool) {
+        sqlx::raw_sql(
+            "update smart_categories set name_zh = 'x', group_zh = 'x'; update smart_tags set display_zh = 'x';
+             update avatars set aliases = aliases || '{ぬぺぽ}' where slug = 'manuka';",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        for id in 1..=5i64 {
+            sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags) values ($1, 'Item', 'c', 'https://example.test', false, 'ok', now(), '{ぬぺぽ}')")
+                .bind(id).execute(&pool).await.unwrap();
+        }
+        let answers = [("ぬぺぽ", r#"{"en": "nupepo", "ja": "ぬぺぽ", "ko": "누페포", "zh": "ぬぺぽ"}"#)];
+        let requests = stand_in_provider(&pool, move |_, tags| Ok(by_id(tags, &answers))).await;
+        localize_job(&pool, json!({})).await;
+        // the provider is asked, and its English value kept: the tag dictionary's romaji is for the names themselves
+        assert_eq!(asked_tags(&requests.lock().unwrap()), [vec!["ぬぺぽ"]]);
+        let row = dictionary(&pool).await.into_iter().find(|r| r.0 == "ぬぺぽ").unwrap();
+        assert_eq!(row.1.as_deref(), Some("nupepo"));
     }
 
     #[sqlx::test(migrations = "../core/migrations")]

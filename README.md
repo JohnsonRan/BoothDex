@@ -45,7 +45,7 @@ docker compose up -d
 Start the stack, the last line, only after `pg_restore` finishes without an error: `api` migrates whatever database it
 finds. Without the bundle, leave out the `pg_restore` command and crawl BOOTH, which takes 2–3 days
 ([Starting without a data bundle](docs/DEPLOY.md#starting-without-a-data-bundle)); a fresh database already holds the
-category tree, smart tags and ~380 avatar bodies.
+category tree, smart tags and ~600 avatar bodies.
 
 Then open the site through your proxy, register an account, add its name to `ADMIN_USERNAMES` in `.env`, and run
 `docker compose up -d api`. The admin console is at `/admin`.

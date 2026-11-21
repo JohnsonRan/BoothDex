@@ -38,7 +38,7 @@ docker compose exec -T postgres pg_restore -U catalogue -d catalogue --no-owner 
 docker compose up -d
 ```
 
-请在 `pg_restore` 无错误完成后再执行最后一行启动服务栈，因为 `api` 会直接迁移它找到的数据库。不使用数据包时，省略 `pg_restore` 命令，改为抓取 BOOTH，需要 2–3 天（参见[无数据包首次启动](docs/DEPLOY.md#starting-without-a-data-bundle)）。新建数据库已包含分类树、智能标签和约 380 个虚拟形象本体。
+请在 `pg_restore` 无错误完成后再执行最后一行启动服务栈，因为 `api` 会直接迁移它找到的数据库。不使用数据包时，省略 `pg_restore` 命令，改为抓取 BOOTH，需要 2–3 天（参见[无数据包首次启动](docs/DEPLOY.md#starting-without-a-data-bundle)）。新建数据库已包含分类树、智能标签和约 600 个虚拟形象本体。
 
 然后通过反向代理打开网站，注册账号，把该用户名写入 `.env` 的 `ADMIN_USERNAMES`，再运行 `docker compose up -d api`。管理后台位于 `/admin`。
 

@@ -9,6 +9,7 @@ mod ai;
 mod avatars;
 mod booth;
 mod jobs;
+mod relink;
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -138,10 +139,16 @@ fn lane(kind: &str) -> &str {
     }
 }
 
+/// Before the daemon claims jobs: jobs a previous process left running fail, since they can't be resumed, and a relink
+/// is queued when avatar names were added (relink.rs).
+async fn start(pool: &PgPool) -> Result<()> {
+    sqlx::query("update jobs set status = 'failed', finished_at = now(), error = 'worker restarted' where status in ('running', 'cancelling')").execute(pool).await?;
+    sqlx::query("update worker_status set started_at = now(), version = $1").bind(env!("CARGO_PKG_VERSION")).execute(pool).await?;
+    relink::queue(pool).await
+}
+
 async fn daemon(pool: PgPool, booth: Arc<Booth>) -> Result<()> {
-    // jobs left running by a previous process can't be resumed
-    sqlx::query("update jobs set status = 'failed', finished_at = now(), error = 'worker restarted' where status in ('running', 'cancelling')").execute(&pool).await?;
-    sqlx::query("update worker_status set started_at = now(), version = $1").bind(env!("CARGO_PKG_VERSION")).execute(&pool).await?;
+    start(&pool).await?;
     tokio::spawn(heartbeat(pool.clone(), booth.clone()));
     tokio::spawn(housekeeping(pool.clone()));
     println!("worker running");
@@ -230,6 +237,23 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn start_fails_jobs_left_running_and_queues_a_relink(pool: sqlx::PgPool) {
+        sqlx::raw_sql(
+            "insert into jobs (kind, status, started_at) values ('refresh', 'running', now());
+             update avatars set aliases = aliases || '{nothing}' where slug = 'manuka';
+             update job_schedules set enabled = false where kind = 'enrich';",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        super::start(&pool).await.unwrap();
+        let jobs: Vec<(String, String, serde_json::Value)> = sqlx::query_as("select kind, status, params from jobs order by id").fetch_all(&pool).await.unwrap();
+        let expected = [("refresh", "failed", serde_json::json!({})), ("enrich", "queued", serde_json::json!({ "relink_only": true }))];
+        assert_eq!(jobs, expected.map(|(k, s, p)| (k.to_owned(), s.to_owned(), p)));
+    }
+
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
     async fn cleanup_drops_only_expired_sessions_and_old_jobs(pool: sqlx::PgPool) {
