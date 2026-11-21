@@ -132,6 +132,8 @@ export const ja: Dict = {
   "list.typoTolerant":
     "入力どおりの語では一致しなかったため、語による一致は長めの語ごとにつづりの誤りを 1 か所まで許しています。",
   "list.searchInstead": "「{q}」をそのまま検索",
+  "list.typoModel":
+    "「{word}」という語を含む商品がないため、アバター「{model}」として検索しました。",
   "list.expandedWith":
     "検索語を翻訳した「{words}」に一致する商品も表示しています。",
   "list.withoutExpanded": "訳語を含めずに検索",

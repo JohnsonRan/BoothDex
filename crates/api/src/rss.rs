@@ -1,23 +1,47 @@
 //! Saved-search feeds: `/api/rss?<any search query string>` returns the newest matching items as RSS 2.0.
 //! Stateless on purpose: the subscription *is* the URL, so it works without an account.
 
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse, Response};
 
-use crate::limit::Check;
+use crate::limit::{Check, Limits, RateLimited, Tier, own_server, take_all};
 use crate::params::Params;
 use crate::search_request::{SearchRequest, Sort};
 use crate::{ApiError, AppState, db, limit};
 
-pub(crate) async fn rss_feed(State(s): State<Arc<AppState>>, limit::ClientIp(ip): limit::ClientIp, RawQuery(q): RawQuery) -> Result<Response, ApiError> {
-    s.limits.rss.check(ip)?;
+/// The items a feed holds, its newest.
+const FEED_SIZE: usize = 50;
+
+/// The feed's own bucket, and, for a request without a pass while the stricter limits are on, its `FEED_SIZE` records
+/// from the bucket a visitor's searches draw from too (`Limits::records`), all or nothing: any filter slices the
+/// catalogue `FEED_SIZE` items at a time. A refusal is the plain 429, since a feed reader cannot pass the check, and no
+/// session is read for it. A feed reader behind the same address as a browsing visitor shares that budget.
+fn check(limits: &Limits, ip: IpAddr, tier: &Tier) -> Result<(), RateLimited> {
+    if own_server(ip) {
+        return Ok(());
+    }
+    if !matches!(tier, Tier::Strict { .. }) {
+        return limits.rss.check(ip);
+    }
+    take_all(ip, &[(&limits.rss, 1.0), (&limits.records, FEED_SIZE as f64)])
+        .map_err(|short| RateLimited::after(short.iter().map(|(_, wait)| *wait).max().unwrap_or(1)))
+}
+
+pub(crate) async fn rss_feed(
+    State(s): State<Arc<AppState>>,
+    limit::ClientIp(ip): limit::ClientIp,
+    tier: Tier,
+    RawQuery(q): RawQuery,
+) -> Result<Response, ApiError> {
+    check(&s.limits, ip, &tier)?;
     let _permit = s.acquire_search().await?;
     let user_q = q.unwrap_or_default();
     // the feed pins ordering and size, whatever the saved search sorts by
     let mut req = SearchRequest::from(&Params::parse(&user_q));
-    (req.sort, req.asc, req.page, req.page_size) = (Sort::Newest, false, 1, 50);
+    (req.sort, req.asc, req.page, req.page_size) = (Sort::Newest, false, 1, FEED_SIZE);
     let now = chrono::Utc::now().timestamp();
     let r = tokio::task::block_in_place(|| s.snap().catalog.search(&req, now, None, None, None, false))?;
     let items = db::load_items(&s.pool, &r.ids, false).await?;

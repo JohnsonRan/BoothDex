@@ -17,6 +17,9 @@ use crate::related::{AvatarNames, Related, TagCentroids, TagLabels};
 use crate::tag_words::{TagRow, TagWords};
 use crate::text::{TYPO_MIN, fold, fold_width, one_typo};
 
+/// Model slugs read from a query, each with the query words it was read from, as typed (`Lookup::split_names`).
+pub(crate) type Names<'q> = Vec<(String, Vec<&'q str>)>;
+
 /// Name lookup for sidebar pickers and the command palette.
 pub(crate) struct Lookup(Vec<(Vec<String>, Value, u64)>);
 
@@ -27,8 +30,9 @@ impl Lookup {
     /// entry, with the first one's words.
     ///
     /// A word that is not a name, and not a word the catalogue knows (`known`), is also read as the one model whose
-    /// Latin name it misspells by one typo, as the text search allows ("shinnano" -> shinano); the `bool` says so.
-    pub(crate) fn split_names<'q>(&self, q: &'q str, known: impl Fn(&str) -> bool) -> (String, Vec<(String, Vec<&'q str>)>, bool) {
+    /// Latin name it misspells by one typo, as the text search allows ("shinnano" -> shinano); the last value lists
+    /// those words, as typed.
+    pub(crate) fn split_names<'q>(&self, q: &'q str, known: impl Fn(&str) -> bool) -> (String, Names<'q>, Vec<&'q str>) {
         let words: Vec<&str> = q.split_whitespace().collect();
         let slug = |e: &(Vec<String>, Value, u64)| e.1["slug"].as_str().map(str::to_owned);
         let slug_of = |w: &str| {
@@ -45,7 +49,7 @@ impl Lookup {
             let first = near.next()?;
             near.all(|s| s == first).then_some(first)
         };
-        let (mut rest, mut slugs, mut typo, mut i) = (Vec::new(), Vec::new(), false, 0);
+        let (mut rest, mut slugs, mut typos, mut i) = (Vec::new(), Vec::new(), Vec::new(), 0);
         while i < words.len() {
             if let Some(slug) = words.get(i + 1).and_then(|next| slug_of(&format!("{} {next}", words[i]))) {
                 slugs.push((slug, words[i..i + 2].to_vec()));
@@ -56,7 +60,9 @@ impl Lookup {
                 slugs.push((slug, vec![words[i]]));
             } else if let Some(slug) = misspelt(words[i]) {
                 // a name repeated in a row is kept as its first spelling (below): a dropped misspelling is no typo
-                typo |= slugs.last().is_none_or(|(s, _)| *s != slug);
+                if slugs.last().is_none_or(|(s, _)| *s != slug) {
+                    typos.push(words[i]);
+                }
                 slugs.push((slug, vec![words[i]]));
             } else {
                 rest.push(words[i]);
@@ -64,7 +70,7 @@ impl Lookup {
             i += 1;
         }
         slugs.dedup_by(|b, a| a.0 == b.0);
-        (rest.join(" "), slugs, typo)
+        (rest.join(" "), slugs, typos)
     }
 
     pub(crate) fn new(mut entries: Vec<(Vec<String>, Value, u64)>) -> Self {
@@ -324,20 +330,21 @@ mod name_tests {
             (rest, names, typo)
         };
         // a letter added, swapped, changed; the words as typed
-        assert_eq!(split("shinnano short hair", &[]), ("short hair".into(), vec![("shinano".into(), vec!["shinnano"])], true));
-        assert_eq!(split("Mnauka dress", &[]), ("dress".into(), vec![("manuka".into(), vec!["Mnauka"])], true));
-        assert!(split("shinaxo", &[]).2);
-        // a name spelt right is no typo
-        assert!(!split("shinano bob", &[]).2);
+        assert_eq!(split("shinnano short hair", &[]), ("short hair".into(), vec![("shinano".into(), vec!["shinnano"])], vec!["shinnano"]));
+        assert_eq!(split("Mnauka dress", &[]), ("dress".into(), vec![("manuka".into(), vec!["Mnauka"])], vec!["Mnauka"]));
+        assert_eq!(split("shinaxo", &[]).2, ["shinaxo"]);
+        // a name spelt right is no typo; only the misspelt one of two names is
+        assert!(split("shinano bob", &[]).2.is_empty());
+        assert_eq!(split("shinano mnauka", &[]).2, ["mnauka"]);
         // a word the catalogue has is that word, not a model one typo away
-        assert_eq!(split("shinnano bob", &["shinnano"]), ("shinnano bob".into(), vec![], false));
+        assert_eq!(split("shinnano bob", &["shinnano"]), ("shinnano bob".into(), vec![], vec![]));
         // two models one typo away: neither; under 5 letters or two typos: not a name
-        assert_eq!(split("karon", &[]), ("karon".into(), vec![], false));
-        assert_eq!(split("lume", &[]), ("lume".into(), vec![], false));
-        assert_eq!(split("shinnanoo", &[]), ("shinnanoo".into(), vec![], false));
+        assert_eq!(split("karon", &[]), ("karon".into(), vec![], vec![]));
+        assert_eq!(split("lume", &[]), ("lume".into(), vec![], vec![]));
+        assert_eq!(split("shinnanoo", &[]), ("shinnanoo".into(), vec![], vec![]));
         // a misspelling after the right name is dropped with its repeat, so no typo was read
-        assert_eq!(split("shinano shinnano bob", &[]), ("bob".into(), vec![("shinano".into(), vec!["shinano"])], false));
-        assert!(split("shinnano shinano bob", &[]).2);
+        assert_eq!(split("shinano shinnano bob", &[]), ("bob".into(), vec![("shinano".into(), vec!["shinano"])], vec![]));
+        assert_eq!(split("shinnano shinano bob", &[]).2, ["shinnano"]);
     }
 
     /// Fixed samples of what a typo reading turns into, so a change to it shows up here (owner, 2026-11-15). The
@@ -352,12 +359,12 @@ mod name_tests {
         };
         let model = |slug: &str, words: &str| vec![(slug.to_string(), words.to_string())];
         // an ordinary misspelt word becomes a model filter: "chifon" is in no title, so it reads as Chiffon
-        assert_eq!(split("chifon dress", &["dress"]), ("dress".into(), model("chiffon", "chifon"), true));
-        assert_eq!(split("shinnano", &[]), (String::new(), model("shinano", "shinnano"), true));
-        assert_eq!(split("Chiffon dress", &["dress"]), ("dress".into(), model("chiffon", "Chiffon"), false));
+        assert_eq!(split("chifon dress", &["dress"]), ("dress".into(), model("chiffon", "chifon"), vec!["chifon"]));
+        assert_eq!(split("shinnano", &[]), (String::new(), model("shinano", "shinnano"), vec!["shinnano"]));
+        assert_eq!(split("Chiffon dress", &["dress"]), ("dress".into(), model("chiffon", "Chiffon"), vec![]));
         // a word the catalogue has is that word, not the model one typo away
-        assert_eq!(split("chifon dress", &["chifon", "dress"]), ("chifon dress".into(), vec![], false));
+        assert_eq!(split("chifon dress", &["chifon", "dress"]), ("chifon dress".into(), vec![], vec![]));
         // one typo from both Karin and Karen
-        assert_eq!(split("karan skirt", &[]), ("karan skirt".into(), vec![], false));
+        assert_eq!(split("karan skirt", &[]), ("karan skirt".into(), vec![], vec![]));
     }
 }

@@ -98,7 +98,7 @@ async fn data_json(pool: &PgPool) -> Result<Value, sqlx::Error> {
             'items', count(*),
             'listed', count(*) filter (where status = 'ok'),
             'delisted', count(*) filter (where status = 'delisted'),
-            'needs_enrichment', count(*) filter (where needs_enrichment),
+            'needs_enrichment', count(*) filter (where needs_enrichment and status = 'ok'),
             'enrich_given_up', count(*) filter (where {}),
             'published_24h', count(*) filter (where published_at > now() - interval '24 hours'),
             'refreshed_24h', count(*) filter (where scraped_at > now() - interval '24 hours'),
@@ -638,7 +638,7 @@ mod tests {
 
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
-    async fn overview_counts_items_once_and_only_listed_items_missing_images(pool: sqlx::PgPool) {
+    async fn overview_counts_items_once_and_only_listed_items_missing_images_or_waiting_for_ai(pool: sqlx::PgPool) {
         let empty = super::data_json(&pool).await.unwrap();
         for key in ["items", "listed", "delisted", "needs_enrichment", "enrich_given_up", "published_24h", "refreshed_24h", "missing_images"] {
             assert_eq!(empty[key], 0, "empty {key}");
@@ -655,7 +655,7 @@ mod tests {
         ).execute(&pool).await.unwrap();
         let data = super::data_json(&pool).await.unwrap();
         for (key, count) in [
-            ("items", 5), ("listed", 3), ("delisted", 2), ("needs_enrichment", 2), ("enrich_given_up", 1),
+            ("items", 5), ("listed", 3), ("delisted", 2), ("needs_enrichment", 1), ("enrich_given_up", 1),
             ("published_24h", 1), ("refreshed_24h", 4), ("missing_images", 1),
             ("users", 0), ("favourites", 0), ("saved_searches", 0),
         ] {

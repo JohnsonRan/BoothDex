@@ -72,8 +72,8 @@ Browsing and accounts:
 - An item opens in a dialog with the full BOOTH gallery, variations, title translations and image download.
 - Favourites, recently viewed items, a remembered avatar, and saved searches you can rename and follow by RSS.
 - Display name and password in Settings; a new password signs your other devices out.
-- A guestbook in the top bar that needs no account (a nickname, up to 500 characters and a Cloudflare Turnstile
-  check). An admin hides or deletes messages and closes one as completed or as not planned.
+- A guestbook in the top bar that needs no account (a nickname, up to 500 characters in 10 lines and a
+  Cloudflare Turnstile check). An admin hides or deletes messages and closes one as completed or as not planned.
 - An admin can ask for the Turnstile check at sign-in and registration, and can give visitors who haven't passed it
   stricter limits ([Turnstile](docs/SERVICES.md#cloudflare-turnstile)).
 

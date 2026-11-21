@@ -61,13 +61,16 @@ pub(crate) enum Refusal {
     /// a 429 from the stricter limit of a visitor without a pass, with the site key of the check that lifts it
     /// (limit.rs `RateLimited`, which answers it with `Retry-After`)
     VerificationOffered,
+    /// a save that would put Turnstile in front of sign-in with keys no check has proved; the body names the site key
+    /// to prove (admin/turnstile.rs `proof_required`)
+    VerificationRequired,
     BadTurnstileSettings,
     BadGuestbookEntry,
     NoSuchEntry,
 }
 
 impl Refusal {
-    fn parts(self) -> (StatusCode, &'static str) {
+    pub(crate) fn parts(self) -> (StatusCode, &'static str) {
         use StatusCode as S;
         match self {
             Self::SignInRequired => (S::UNAUTHORIZED, "Sign in required"),
@@ -109,6 +112,7 @@ impl Refusal {
             Self::VerificationUnavailable => (S::SERVICE_UNAVAILABLE, "This form isn't open yet."),
             Self::VerificationFailed => (S::FORBIDDEN, "Verification failed. Try again."),
             Self::VerificationOffered => (S::TOO_MANY_REQUESTS, crate::limit::TOO_MANY),
+            Self::VerificationRequired => (S::FORBIDDEN, "Pass the verification with these keys first."),
             Self::BadTurnstileSettings => (S::BAD_REQUEST, "Keys must be 1-200 printable ASCII characters."),
             Self::BadGuestbookEntry => (S::BAD_REQUEST, "Nickname must be 1-24 characters and message 1-500 characters."),
             Self::NoSuchEntry => (S::NOT_FOUND, "No such message"),

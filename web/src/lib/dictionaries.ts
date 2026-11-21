@@ -17,6 +17,7 @@ export const translator = (ui: UiLang): Translate => translate(MESSAGES[ui]);
  *  links. The dictionary the browser gets leaves them out; dictionaries.test.ts keeps every other file off them. */
 export const SERVER_ONLY: readonly MessageKey[] = [
   "list.typoTolerant",
+  "list.typoModel",
   "list.searchInstead",
   "list.expandedWith",
   "list.withoutExpanded",

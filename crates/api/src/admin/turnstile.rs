@@ -1,4 +1,9 @@
 //! The Turnstile keys in the admin console. The secret is write-only: the console sees whether one is set and its hint.
+//!
+//! A save that would put Turnstile in front of sign-in and registration with a key pair no check has proved (the switch
+//! turned on, or a key changed while it is on) first needs a token from the widget with the new site key, passed with
+//! the new secret, from the admin's own browser: a site key and secret that do not belong together refuse every
+//! sign-in, and nobody could sign in to turn the switch off again.
 
 use std::sync::Arc;
 
@@ -11,8 +16,12 @@ use serde_json::{Value, json};
 
 use super::{key_hint, require_admin};
 use crate::error::Refusal;
-use crate::turnstile::{self, TurnstileConfig};
+use crate::limit::ClientIp;
+use crate::turnstile::{self, TurnstileConfig, Verdict};
 use crate::{ApiError, AppState};
+
+/// The action the console's widget names; a token for another form does not prove the keys.
+pub(crate) const SETTINGS_ACTION: &str = "settings";
 
 pub(super) fn public(c: &TurnstileConfig) -> Value {
     json!({
@@ -38,13 +47,45 @@ pub(super) struct TurnstileSettings {
     auth: Option<bool>,
     /// whether visitors without a pass get the stricter limits; missing keeps the stored choice
     strict_limits: Option<bool>,
+    /// the console widget's token, needed when the save puts unproved keys in front of sign-in
+    #[serde(default)]
+    token: String,
+    /// the site key the token's widget was drawn with, as `proof_required` named it
+    proved_site_key: Option<String>,
+}
+
+/// The refusal that asks for a token from the widget with `site_key`, the key the save would put in effect.
+fn proof_required(site_key: &str) -> Response {
+    let (status, error) = Refusal::VerificationRequired.parts();
+    (status, Json(json!({ "ok": false, "code": Refusal::VerificationRequired, "error": error, "site_key": site_key }))).into_response()
+}
+
+/// The settings in effect before and after `change` is merged into the stored row (the same top-level merge as the save's
+/// SQL), as `resolve` reads them with `env`: a key the environment sets wins over the stored one either way.
+fn before_after(stored: &Value, change: &Value, env: impl Fn(&str) -> Option<String>) -> (TurnstileConfig, TurnstileConfig) {
+    let mut merged = stored.clone();
+    if let (Some(row), Some(change)) = (merged.as_object_mut(), change.as_object()) {
+        row.extend(change.clone());
+    }
+    (turnstile::resolve(stored, &env), turnstile::resolve(&merged, &env))
+}
+
+/// The key pair a save puts in front of sign-in that was not there before, which needs proof; turning the switch off,
+/// or a save that leaves sign-in unchecked or its pair as it was, needs none.
+fn unproved<'a>(before: &TurnstileConfig, after: &'a TurnstileConfig) -> Option<(&'a str, &'a str)> {
+    after.auth_keys().filter(|keys| Some(*keys) != before.auth_keys())
 }
 
 fn valid_key(k: &str) -> bool {
     k.len() <= 200 && k.bytes().all(|b| b.is_ascii_graphic())
 }
 
-pub(super) async fn put(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(b): Json<TurnstileSettings>) -> Result<Response, ApiError> {
+pub(super) async fn put(
+    State(s): State<Arc<AppState>>,
+    ClientIp(ip): ClientIp,
+    headers: HeaderMap,
+    Json(b): Json<TurnstileSettings>,
+) -> Result<Response, ApiError> {
     let who = require_admin(&s, &headers).await?;
     let site_key = b.site_key.map(|k| k.trim().to_owned());
     let secret = b.secret.map(|k| k.trim().to_owned()).filter(|k| !k.is_empty());
@@ -64,8 +105,23 @@ pub(super) async fn put(State(s): State<Arc<AppState>>, headers: HeaderMap, Json
     if let Some(on) = b.strict_limits {
         change["strict_limits"] = json!(on);
     }
-    // held until the saved settings are in the API's copy, so a slower save cannot put older settings there
+    // held from reading the row until the saved settings are in the API's copy: a slower save cannot put older settings
+    // there, and two saves (one a key, one the switch) are each judged against the other's result
     let _save = s.turnstile_save.lock().await;
+    let stored = turnstile::stored(&s.pool).await?;
+    let (before, after) = before_after(&stored, &change, |k| std::env::var(k).ok());
+    if let Some((site_key, secret)) = unproved(&before, &after) {
+        if b.token.is_empty() || b.proved_site_key.as_deref() != Some(site_key) {
+            return Ok(proof_required(site_key));
+        }
+        match turnstile::verdict(&s, secret, &b.token, ip, SETTINGS_ACTION).await {
+            Verdict::Passed => {}
+            Verdict::Refused => return Err(Refusal::VerificationFailed.into()),
+            Verdict::Unjudged => {
+                return Err(Refusal::ProviderFailed.with("Cloudflare could not check the token with these keys, so nothing was saved. Check the secret key, or try again."));
+            }
+        }
+    }
     // merged in one statement, so two saves of different fields both land
     sqlx::query(
         "insert into app_settings (key, value) values ('turnstile', $1)
@@ -93,95 +149,5 @@ pub(super) async fn test(State(s): State<Arc<AppState>>, headers: HeaderMap) -> 
 }
 
 #[cfg(test)]
-mod tests {
-    use axum::extract::State;
-    use axum::http::{StatusCode, header};
-
-    use super::*;
-    use crate::account;
-
-    async fn admin(pool: &sqlx::PgPool) -> HeaderMap {
-        let boss: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash, is_admin) values ('boss', 'boss@example.test', 'Boss', 'x', true) returning id")
-            .fetch_one(pool)
-            .await
-            .unwrap();
-        sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
-            .bind(account::token_hash("tok-boss"))
-            .bind(boss)
-            .execute(pool)
-            .await
-            .unwrap();
-        let mut h = HeaderMap::new();
-        h.insert(header::COOKIE, "session=tok-boss".parse().unwrap());
-        h
-    }
-
-    /// siteverify as it answers a token no widget made: the secret "0x-right" is known, any other is not.
-    async fn stand_in() -> String {
-        let app = axum::Router::new().route(
-            "/",
-            axum::routing::post(|Json(b): Json<Value>| async move {
-                let code = if b["secret"] == "0x-right" { "invalid-input-response" } else { "invalid-input-secret" };
-                Json(json!({ "success": false, "error-codes": [code] }))
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = format!("http://{}/", listener.local_addr().unwrap());
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        url
-    }
-
-    async fn body(r: Result<Response, ApiError>) -> (StatusCode, Value) {
-        let r = r.into_response();
-        (r.status(), serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap())
-    }
-
-    #[sqlx::test(migrations = "../core/migrations")]
-    #[ignore = "requires PostgreSQL with pgvector"]
-    async fn the_secret_is_write_only_and_tested(pool: sqlx::PgPool) {
-        let h = admin(&pool).await;
-        let s = Arc::try_unwrap(account::test_state(pool.clone())).ok().unwrap();
-        let s = Arc::new(AppState { siteverify_url: stand_in().await, ..s });
-        let save = |site_key: Option<&str>, secret: Option<&str>| {
-            put(State(s.clone()), h.clone(), Json(TurnstileSettings { site_key: site_key.map(Into::into), secret: secret.map(Into::into), auth: None, strict_limits: None }))
-        };
-
-        assert_eq!(body(test(State(s.clone()), h.clone()).await).await.1["code"], "verification_unavailable");
-        let (status, saved) = body(save(Some(" 0x-site "), Some("0x-wrong-secret")).await).await;
-        assert_eq!((status, &saved["site_key"], &saved["secret_set"]), (StatusCode::OK, &json!("0x-site"), &json!(true)));
-        assert!(!saved.to_string().contains("0x-wrong-secret"), "{saved}");
-        assert_eq!(body(test(State(s.clone()), h.clone()).await).await.1, json!({ "ok": false, "codes": ["invalid-input-secret"] }));
-
-        // a blank secret keeps the stored one; a new one replaces it
-        assert_eq!(body(save(Some("0x-site"), Some(" ")).await).await.1["secret_hint"], saved["secret_hint"]);
-        body(save(None, Some("0x-right")).await).await;
-        assert_eq!(body(test(State(s.clone()), h.clone()).await).await.1, json!({ "ok": true, "codes": ["invalid-input-response"] }));
-        assert_eq!(turnstile::stored(&pool).await.unwrap(), json!({ "site_key": "0x-site", "secret": "0x-right" }));
-
-        for (site_key, secret) in [(Some("0x site"), None), (None, Some("0x\0")), (Some(&*"k".repeat(201)), None)] {
-            assert_eq!(body(save(site_key, secret).await).await.1["code"], "bad_turnstile_settings");
-        }
-        // the switch for sign-in and registration is saved alone, beside the keys, and a save without it keeps it
-        let switch = |on: bool| put(State(s.clone()), h.clone(), Json(TurnstileSettings { site_key: None, secret: None, auth: Some(on), strict_limits: None }));
-        assert_eq!(body(save(None, None).await).await.1["auth"], false);
-        assert_eq!(body(switch(true).await).await.1["auth"], true);
-        assert_eq!(turnstile::stored(&pool).await.unwrap(), json!({ "site_key": "0x-site", "secret": "0x-right", "auth": true }));
-        assert_eq!(body(save(Some("0x-site"), None).await).await.1["auth"], true);
-        assert!(turnstile::config(&pool).await.unwrap().auth_keys().is_some());
-        assert_eq!(body(switch(false).await).await.1["auth"], false);
-        // the switch for stricter limits is saved the same way, apart from the other, and reaches the API's copy that
-        // the rate limits read
-        let strict = |on: bool| put(State(s.clone()), h.clone(), Json(TurnstileSettings { site_key: None, secret: None, auth: None, strict_limits: Some(on) }));
-        assert!(s.turnstile_config().await.unwrap().strict_keys().is_none());
-        let (_, saved) = body(strict(true).await).await;
-        assert_eq!((&saved["strict_limits"], &saved["auth"]), (&json!(true), &json!(false)));
-        assert!(s.turnstile_config().await.unwrap().strict_keys().is_some());
-        assert_eq!(body(save(Some("0x-site"), None).await).await.1["strict_limits"], true);
-        assert_eq!(body(strict(false).await).await.1["strict_limits"], false);
-        assert!(s.turnstile_config().await.unwrap().strict_keys().is_none());
-
-        // an empty site key closes the guestbook again
-        assert_eq!(body(save(Some(""), None).await).await.1["site_key"], Value::Null);
-        assert_eq!(turnstile::config(&pool).await.unwrap().keys(), None);
-    }
-}
+#[path = "turnstile_tests.rs"]
+mod tests;

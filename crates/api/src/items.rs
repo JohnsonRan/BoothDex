@@ -7,11 +7,11 @@ use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
 
-use crate::limit::Check;
 use crate::{ApiError, AppState, db, limit};
 
-/// Full records by id (favourites list, palette picks, the item dialog): `/api/items?ids=1+2+3`, at most 100.
-/// One id is the item dialog's record, limited by tier; more are a list's, which is not.
+/// Full records by id (the item dialog, the recent view, other clients): `/api/items?ids=1+2+3`, at most 100. One id is
+/// the item dialog's record and every other shape (none, several, duplicates) a list's; each has a tiered bucket of its
+/// own.
 pub(crate) async fn items_by_id(
     State(s): State<Arc<AppState>>,
     limit::ClientIp(ip): limit::ClientIp,
@@ -19,7 +19,12 @@ pub(crate) async fn items_by_id(
     RawQuery(q): RawQuery,
 ) -> Result<Response, ApiError> {
     let ids = item_ids(q.as_deref().unwrap_or(""));
-    if ids.len() == 1 { s.limits.item.check(ip, &tier).await } else { s.limits.items.check(ip) }?;
+    // a list's ids count as records for a visitor without a pass, each as asked (duplicates and unknown ids too)
+    if ids.len() == 1 {
+        s.limits.item.check(ip, &tier).await
+    } else {
+        s.limits.items.check_records(ip, &tier, Some((&s.limits.records, ids.len()))).await
+    }?;
     if ids.is_empty() {
         return Ok(Json(json!({ "items": [] })).into_response());
     }

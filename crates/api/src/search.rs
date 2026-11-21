@@ -69,6 +69,8 @@ pub(crate) struct Recognized {
     slug: String,
     /// as typed
     words: Vec<String>,
+    /// the words misspell the model's name, which no item has as a word
+    typo: bool,
 }
 
 #[derive(serde::Serialize, Debug, PartialEq)]
@@ -79,11 +81,12 @@ pub(crate) enum RecognizedKind {
     Category,
 }
 
-/// `models`: as `split_names` returns them; `category`: the smart category `meaning` names as a whole, all its words.
-fn recognized(models: &[(String, Vec<&str>)], category: Option<&String>, meaning: &str) -> Vec<Recognized> {
-    let entry = |kind, slug: &String, words: Vec<&str>| Recognized { kind, slug: slug.clone(), words: words.into_iter().map(str::to_owned).collect() };
-    let models = models.iter().map(|(slug, words)| entry(RecognizedKind::Model, slug, words.clone()));
-    models.chain(category.map(|c| entry(RecognizedKind::Category, c, meaning.split_whitespace().collect()))).collect()
+/// `models` and `typos`: as `split_names` returns them; `category`: the smart category `meaning` names as a whole,
+/// all its words.
+fn recognized(models: &[(String, Vec<&str>)], typos: &[&str], category: Option<&String>, meaning: &str) -> Vec<Recognized> {
+    let entry = |kind, slug: &String, words: Vec<&str>, typo| Recognized { kind, slug: slug.clone(), words: words.into_iter().map(str::to_owned).collect(), typo };
+    let models = models.iter().map(|(slug, words)| entry(RecognizedKind::Model, slug, words.clone(), words.iter().all(|w| typos.contains(w))));
+    models.chain(category.map(|c| entry(RecognizedKind::Category, c, meaning.split_whitespace().collect(), false))).collect()
 }
 
 /// Whether meaning-based matches were used for this search.
@@ -154,13 +157,14 @@ pub(crate) async fn search(
     headers: axum::http::HeaderMap,
     RawQuery(q): RawQuery,
 ) -> Result<Response, ApiError> {
-    s.limits.search.check(ip, &tier).await?;
-    let t0 = Instant::now();
-    let mut trace = Trace::default();
-    trace.start();
     let raw = q.as_deref().unwrap_or("");
     let p = Params::parse(raw);
     let req = SearchRequest::from(&p);
+    // without a pass the page's records count too, as many as asked for, before any work for them
+    s.limits.search.check_records(ip, &tier, Some((&s.limits.records, req.page_size))).await?;
+    let t0 = Instant::now();
+    let mut trace = Trace::default();
+    trace.start();
     // one snapshot for the whole request, so a reload during it cannot mix two catalogues
     let snap = s.snap.load_full();
     let favourites = if matches!(req.view, View::Favourites) {
@@ -181,7 +185,8 @@ pub(crate) async fn search(
     let names_item = snap.catalog.referenced(q).is_some();
     // typo=0 (the site's "search instead for"): every word counts as known, so none is read as a misspelt model
     let typos = p.get("typo").as_deref() != Some("0");
-    let (meaning, named, name_typo) = snap.avatars.split_names(q, |w| !typos || snap.catalog.knows_word(w));
+    let (meaning, named, misspelt) = snap.avatars.split_names(q, |w| !typos || snap.catalog.knows_word(w));
+    let name_typo = !misspelt.is_empty();
     let models: Vec<String> = named.iter().map(|(slug, _)| slug.clone()).collect();
     trace.step("prepare");
     let embed_plan = match req.q {
@@ -211,7 +216,7 @@ pub(crate) async fn search(
     // spellings of one meaning end up with the same results
     let categories: Vec<String> =
         snap.category_phrases.get(&crate::text::fold(&meaning.split_whitespace().collect::<String>())).cloned().into_iter().collect();
-    let recognized = recognized(&named, categories.first(), &meaning);
+    let recognized = recognized(&named, &misspelt, categories.first(), &meaning);
     let catalog_now = chrono::Utc::now().timestamp();
     let semantic = (semantic.is_some() || !categories.is_empty() || !models.is_empty())
         .then(|| catalog::Semantic { ids: semantic.as_deref().unwrap_or_default(), categories: &categories, models: &models, rest: &meaning });
@@ -494,15 +499,16 @@ mod recognized_tests {
 
     #[test]
     fn models_then_the_category_with_their_words() {
-        let named = vec![("mao".to_owned(), vec!["Mao"])];
-        let r = serde_json::to_value(recognized(&named, Some(&"hair--short".to_owned()), "short hair")).unwrap();
+        let named = vec![("mao".to_owned(), vec!["Mao"]), ("shinano".to_owned(), vec!["shinnano"])];
+        let r = serde_json::to_value(recognized(&named, &["shinnano"], Some(&"hair--short".to_owned()), "short hair")).unwrap();
         assert_eq!(
             r,
             json!([
-                { "kind": "model", "slug": "mao", "words": ["Mao"] },
-                { "kind": "category", "slug": "hair--short", "words": ["short", "hair"] },
+                { "kind": "model", "slug": "mao", "words": ["Mao"], "typo": false },
+                { "kind": "model", "slug": "shinano", "words": ["shinnano"], "typo": true },
+                { "kind": "category", "slug": "hair--short", "words": ["short", "hair"], "typo": false },
             ])
         );
-        assert_eq!(recognized(&[], None, "dress"), vec![]);
+        assert_eq!(recognized(&[], &[], None, "dress"), vec![]);
     }
 }

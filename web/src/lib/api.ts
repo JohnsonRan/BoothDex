@@ -8,6 +8,8 @@ export class ApiError extends Error {
     message: string,
     /** why the API refused; none for a rate limit, a failure inside the API or an answer that is not the API's */
     public code?: Refusal,
+    /** the site key of the check the refusal asks for (`verification_offered`, `verification_required`) */
+    public siteKey?: string,
   ) {
     super(message);
   }
@@ -84,7 +86,12 @@ async function send<T>(
       (await passCheck.open(body.site_key))
     )
       return send<T>(path, init, false);
-    throw new ApiError(res.status, body?.error ?? res.statusText, body?.code);
+    throw new ApiError(
+      res.status,
+      body?.error ?? res.statusText,
+      body?.code,
+      body?.site_key,
+    );
   }
   return body as T;
 }

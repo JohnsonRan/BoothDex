@@ -132,6 +132,8 @@ export const en: Dict = {
   "list.typoTolerant":
     "Your words matched nothing as typed, so word matches here allow one typo in each longer word.",
   "list.searchInstead": 'Search instead for "{q}"',
+  "list.typoModel":
+    'No item has the word "{word}", so it was read as the avatar {model}.',
   "list.expandedWith":
     'Also showing matches for "{words}", translated from your search.',
   "list.withoutExpanded": "Search without translated matches",

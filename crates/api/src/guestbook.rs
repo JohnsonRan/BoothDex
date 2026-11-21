@@ -17,6 +17,7 @@ use crate::{ApiError, AppState, turnstile};
 
 pub(crate) const NICKNAME_MAX: usize = 24;
 pub(crate) const BODY_MAX: usize = 500;
+pub(crate) const BODY_LINES: usize = 10;
 const PAGE: i64 = 50;
 /// The action the site's widget names; a token for another form does not pass here.
 pub(crate) const ACTION: &str = "guestbook";
@@ -106,22 +107,38 @@ fn blank(s: &str) -> bool {
     s.chars().all(|c| c.is_whitespace() || within(SHAPING, c))
 }
 
-/// The trimmed nickname and message, or the refusal they deserve. A line break and a tab are the only control
-/// characters a message keeps; a nickname keeps none, nor the line and paragraph separators, which break a line as a
-/// line feed does.
+/// The message as it is kept: each line break a line feed (the line and paragraph separators break a line as one
+/// does), trimmed, and each run of blank lines one empty line, so a message cannot be a tall block of nothing.
+/// `web/src/components/guestbook/rules.ts` (`normalBody`) does the same.
+fn normal_body(body: &str) -> String {
+    let body = body.replace("\r\n", "\n").replace(['\u{2028}', '\u{2029}'], "\n");
+    let mut lines: Vec<&str> = Vec::new();
+    for line in body.trim().split('\n') {
+        if !line.chars().all(char::is_whitespace) {
+            lines.push(line);
+        } else if lines.last() != Some(&"") {
+            lines.push("");
+        }
+    }
+    lines.join("\n")
+}
+
+/// The trimmed nickname and the message as it is kept (`normal_body`), or the refusal they deserve. A line break and a
+/// tab are the only control characters a message keeps, in at most `BODY_LINES` lines; a nickname keeps none, nor the
+/// line and paragraph separators, which break a line as a line feed does.
 fn validate(nickname: &str, body: &str) -> Result<(String, String), Refusal> {
     let nickname = nickname.trim();
-    let body = body.replace("\r\n", "\n");
-    let body = body.trim();
+    let body = normal_body(body);
     let shown = |s: &str, max: usize| (1..=max).contains(&s.chars().count()) && !blank(s) && !s.chars().any(|c| within(INVISIBLE, c));
     if !shown(nickname, NICKNAME_MAX)
-        || !shown(body, BODY_MAX)
+        || !shown(&body, BODY_MAX)
+        || body.split('\n').count() > BODY_LINES
         || nickname.chars().any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
         || body.chars().any(|c| c.is_control() && c != '\n' && c != '\t')
     {
         return Err(Refusal::BadGuestbookEntry);
     }
-    Ok((nickname.to_owned(), body.to_owned()))
+    Ok((nickname.to_owned(), body))
 }
 
 #[derive(Deserialize)]

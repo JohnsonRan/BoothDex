@@ -50,9 +50,9 @@ async fn search_allows_burst_and_throttles_one_ip_without_affecting_others() {
     assert!(state.limits.lookup.check(ip_of(ip).await.0, &crate::limit::Tier::Base).await.is_err());
 
     for _ in 0..2 {
-        assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::OK);
+        assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, crate::limit::Tier::Base, RawQuery(None)).await.into_response().status(), StatusCode::OK);
     }
-    assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, RawQuery(None)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(super::rss_feed(State(state.clone()), ip_of(ip).await, crate::limit::Tier::Base, RawQuery(None)).await.into_response().status(), StatusCode::TOO_MANY_REQUESTS);
 
     for _ in 0..2 {
         assert_eq!(super::items_by_id(State(state.clone()), ip_of(ip).await, crate::limit::Tier::Base, RawQuery(None)).await.into_response().status(), StatusCode::OK);
@@ -224,7 +224,7 @@ async fn the_feed_the_palette_and_item_records_wait_for_a_search_permit() {
     state.search_permits.close();
     let ip = super::limit::ClientIp("203.0.113.70".parse().unwrap());
     let answers = [
-        super::rss_feed(State(state.clone()), ip, RawQuery(None)).await.into_response(),
+        super::rss_feed(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(None)).await.into_response(),
         super::palette(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some("q=dress".into()))).await.into_response(),
         super::items_by_id(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some("ids=1".into()))).await.into_response(),
     ];

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-pub use boothdex_limit::{ClientIp, RateLimiter, is_internal};
+pub use boothdex_limit::{ClientIp, RateLimiter, is_internal, take_all};
 use serde_json::json;
 
 use crate::error::Refusal;
@@ -102,15 +102,18 @@ pub enum Tier {
 /// Two per-address buckets for one group of routes: `base` holds today's numbers and counts every request, so no
 /// address gets more than today's numbers, with or without a pass; `strict` counts, and refuses first, the requests
 /// without a pass while the switch is on. A pass therefore draws from `base` alone: drawing from `strict` too would
-/// refuse a visitor who has just passed until `strict` refilled. A request with a session cookie draws from `strict`
-/// while `strict` admits it, as any request without a pass does. Once `strict` refuses, it draws from `base` first and
-/// only then reads the session: a request `strict` admits costs no database read, the reads per address are bounded
-/// by today's numbers however many made-up cookies arrive, and `base` counts each request once. A session whose
-/// sign-in passed a Turnstile check is then admitted; any other is refused with the check offered, and that request
-/// stays counted in `base`. When `base` refuses such a request it offers the check too, as `strict` would have, with
-/// the longer of the two waits: without a pass the request goes through only once both buckets have refilled. The
-/// session is not read then, so a checked session is offered the check as well; passing it changes nothing, since a
-/// pass draws from `base` too. A strict refusal without a session cookie draws from nothing.
+/// refuse a visitor who has just passed until `strict` refilled.
+///
+/// A request without a pass while the switch is on is one draw, all or nothing (`take_all`): a token of `strict`, the
+/// records it asks for from the shared record bucket when its route pays them (`check_records`), and a token of
+/// `base`. When every part is covered, all are taken. Otherwise none is: when only `base` fell short the answer is the
+/// plain 429 with `base`'s wait, as for any visitor; when `strict` or the records fell short, the check is offered
+/// with the longest wait. A request with a session cookie then draws one token from `base` and only then reads the
+/// session: a request the draw admits costs no database read, the reads per address are bounded by today's numbers
+/// however many made-up cookies arrive, and that token stays counted. A session whose sign-in passed a Turnstile check
+/// is then admitted, paying no strict token and no records; any other is refused with the check offered. When `base`
+/// refuses that token, the check is offered too, with the longer wait, and the session is not read, so a checked session
+/// is offered the check as well; passing it changes nothing, since a pass draws from `base` too.
 pub struct Tiered {
     pub strict: RateLimiter,
     pub base: RateLimiter,
@@ -123,18 +126,29 @@ impl Tiered {
     }
 
     pub async fn check(&self, ip: IpAddr, tier: &Tier) -> Result<(), RateLimited> {
+        self.check_records(ip, tier, None).await
+    }
+
+    /// `check` for a route whose requests without a pass also pay records from the shared bucket: `records` is that
+    /// bucket and the request's count (`Limits::records`). A route that pays none passes `None`.
+    pub async fn check_records(&self, ip: IpAddr, tier: &Tier, records: Option<(&RateLimiter, usize)>) -> Result<(), RateLimited> {
         if own_server(ip) {
             return Ok(());
         }
-        if let Tier::Strict { config, session } = tier
-            && let Err(retry_after) = self.strict.take(ip)
-        {
-            let offer = |after| RateLimited { retry_after: after, offer: config.site_key.clone() };
-            let Some(session) = session else { return Err(offer(retry_after)) };
-            self.base.take(ip).map_err(|base_after| offer(retry_after.max(base_after)))?;
-            return if session.checked().await { Ok(()) } else { Err(offer(retry_after)) };
+        let Tier::Strict { config, session } = tier else { return self.base.check(ip) };
+        let mut draw = vec![(&self.strict, 1.0)];
+        draw.extend(records.map(|(bucket, count)| (bucket, count as f64)));
+        draw.push((&self.base, 1.0));
+        let base = draw.len() - 1;
+        let Err(short) = take_all(ip, &draw) else { return Ok(()) };
+        let retry_after = short.iter().map(|(_, wait)| *wait).max().unwrap_or(1);
+        if short.iter().all(|(part, _)| *part == base) {
+            return Err(RateLimited::after(retry_after));
         }
-        self.base.check(ip)
+        let offer = |after| RateLimited { retry_after: after, offer: config.site_key.clone() };
+        let Some(session) = session else { return Err(offer(retry_after)) };
+        self.base.take(ip).map_err(|base_after| offer(retry_after.max(base_after)))?;
+        if session.checked().await { Ok(()) } else { Err(offer(retry_after)) }
     }
 }
 
@@ -149,10 +163,15 @@ pub struct Limits {
     /// /api/related, which the results page asks once per search: 2 req/s, burst 30, today's numbers for search. Not
     /// tiered, so a refusal offers no check: the page only hides its row of related searches
     pub related: RateLimiter,
-    /// /api/rss: 0.5 req/s, burst 20
+    /// /api/rss: 0.5 req/s, burst 20; without a pass while the switch is on, each request also pays 50 `records`
     pub rss: RateLimiter,
-    /// /api/items: 1 req/s, burst 20
-    pub items: RateLimiter,
+    /// /api/items with several ids, a list's (the recent view's, other clients'): 0.5/10, today's 1/20
+    pub items: Tiered,
+    /// The records a visitor without a pass may read while the switch is on, shared by /api/search (its `pageSize`),
+    /// /api/items with several ids (its ids) and /api/rss (its 50 items, rss.rs): 15 a second, burst 1,200 (owner,
+    /// 2026-11-21, from measured browsing: REQUIREMENTS.md "Intentional designs"). The burst is at least the largest
+    /// request, 100 records
+    pub records: RateLimiter,
     /// /api/items with one id, the item dialog's record, also fetched when a tile is pointed at: 1/15, today's 4/40
     pub item: Tiered,
     /// /api/items/{id}/gallery: 0.5/12, today's 1/20
@@ -185,7 +204,8 @@ impl Default for Limits {
             palette: Tiered::new((2.0, 40.0), (5.0, 40.0)),
             related: RateLimiter::new(2.0, 30.0, 8192),
             rss: RateLimiter::new(0.5, 20.0, 8192),
-            items: RateLimiter::new(1.0, 20.0, 8192),
+            items: Tiered::new((0.5, 10.0), (1.0, 20.0)),
+            records: RateLimiter::new(15.0, 1200.0, 8192),
             item: Tiered::new((1.0, 15.0), (4.0, 40.0)),
             gallery: Tiered::new((0.5, 12.0), (1.0, 20.0)),
             lookup: Tiered::new((2.0, 20.0), (5.0, 40.0)),
@@ -223,7 +243,41 @@ mod tests {
         assert_eq!(numbers(&l.search), ((1.0, 30.0), (2.0, 30.0)));
         assert_eq!(numbers(&l.palette), ((2.0, 40.0), (5.0, 40.0)));
         assert_eq!(numbers(&l.item), ((1.0, 15.0), (4.0, 40.0)));
+        // the owner's numbers of 2026-11-21 for the multi-id read and for the records a visitor without a pass reads
+        assert_eq!(numbers(&l.items), ((0.5, 10.0), (1.0, 20.0)));
+        assert_eq!(l.records.numbers(), (15.0, 1200.0));
+        // the largest request, 100 records, can always be admitted once the bucket refills
+        assert!(l.records.numbers().1 >= 100.0);
         assert_eq!(numbers(&l.gallery), ((0.5, 12.0), (1.0, 20.0)));
         assert_eq!(numbers(&l.lookup), ((2.0, 20.0), (5.0, 40.0)));
+    }
+
+    fn strict() -> Tier {
+        let config = crate::turnstile::resolve(&json!({ "site_key": "0x-site", "secret": "0x-secret", "strict_limits": true }), |_| None);
+        Tier::Strict { config: Arc::new(config), session: None }
+    }
+
+    const SLOW: f64 = 0.001;
+    const IP: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(203, 0, 113, 1));
+
+    /// The check is offered when the strict bucket or the records fell short; when only today's bucket did, the answer
+    /// is the plain 429 any visitor gets, and the strict token is not spent on a refused request.
+    #[tokio::test]
+    async fn only_a_strict_shortfall_offers_the_check() {
+        let records = RateLimiter::new(SLOW, 150.0, 64);
+        let offered = |r: Result<(), RateLimited>| r.unwrap_err().offer.is_some();
+        // the strict bucket short
+        let t = Tiered::new((SLOW, 1.0), (SLOW, 5.0));
+        assert!(t.check(IP, &strict()).await.is_ok());
+        assert!(offered(t.check(IP, &strict()).await));
+        // the records short
+        let t = Tiered::new((SLOW, 5.0), (SLOW, 5.0));
+        assert!(t.check_records(IP, &strict(), Some((&records, 100))).await.is_ok());
+        assert!(offered(t.check_records(IP, &strict(), Some((&records, 100))).await));
+        // only today's bucket short: plain, and the strict token stays for the next request
+        let t = Tiered::new((SLOW, 2.0), (SLOW, 1.0));
+        assert!(t.check(IP, &strict()).await.is_ok());
+        assert!(!offered(t.check(IP, &strict()).await));
+        assert!(t.strict.take(IP).is_ok() && t.strict.take(IP).is_err());
     }
 }

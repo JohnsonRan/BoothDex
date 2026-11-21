@@ -37,7 +37,9 @@ fn limits() -> Limits {
         item: tiered(2.0, 6.0),
         gallery: tiered(1.0, 3.0),
         lookup: tiered(2.0, 4.0),
-        items: RateLimiter::new(SLOW, 3.0, 64),
+        items: tiered(3.0, 7.0),
+        // no record limit here: the per-record tests set one of their own
+        records: RateLimiter::new(SLOW, 1e9, 64),
         rss: RateLimiter::new(SLOW, 3.0, 64),
         related: RateLimiter::new(SLOW, 3.0, 64),
         verify: RateLimiter::new(SLOW, 3.0, 64),
@@ -46,17 +48,18 @@ fn limits() -> Limits {
 }
 
 /// Each tiered route, with the burst of its strict and of its base bucket in `limits`.
-const TIERED: [(&str, usize, usize); 6] = [
+const TIERED: [(&str, usize, usize); 7] = [
     ("/api/search", 2, 4),
     ("/api/palette?q=x", 3, 5),
     ("/api/items?ids=1", 2, 6),
+    ("/api/items?ids=1+2", 3, 7),
     ("/api/items/1/gallery", 1, 3),
     ("/api/tags", 2, 4),
     ("/api/guestbook", 2, 4),
 ];
 
-/// Routes that keep one bucket whatever the switch: the multi-item read, the feed and the related searches, burst 3 each.
-const UNTIERED: [&str; 3] = ["/api/items?ids=1+2", "/api/rss", "/api/related?q=x"];
+/// Routes that keep one bucket whatever the switch: the feed and the related searches, burst 3 each.
+const UNTIERED: [&str; 2] = ["/api/rss", "/api/related?q=x"];
 
 /// A stand-in for siteverify that counts the tokens it is asked about. "pass" passes for this form, "guestbook" for
 /// another and "in" for sign-in; "failing" is answered HTTP 500, "no-secret" as a wrong secret key is and "broken" as
@@ -245,6 +248,113 @@ async fn without_a_pass_the_strict_bucket_refuses_and_offers_the_check(pool: PgP
         for path in UNTIERED {
             assert_eq!(site.count(path, "203.0.113.1", None).await, (3, PLAIN), "{path}");
         }
+    });
+}
+
+/// No shape of `/api/items` reaches an untiered bucket: exactly one id (ids that do not parse are dropped) is the item
+/// record's, strict burst 2 here; none, several, duplicates and more than 100 are the list's, strict burst 3. A
+/// refusal carries no Cache-Control, so neither a browser nor the CDN keeps it.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn every_shape_of_the_item_read_is_tiered(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        let site = site(&pool, strict()).await;
+        let many = format!("/api/items?ids={}", (1..=101).map(|i| i.to_string()).collect::<Vec<_>>().join(","));
+        let shapes = [("/api/items?ids=", 3), ("/api/items?ids=1", 2), ("/api/items?ids=1,x", 2), ("/api/items?ids=1,1", 3), ("/api/items?ids=1+2", 3), (&*many, 3)];
+        for (i, (path, burst)) in shapes.into_iter().enumerate() {
+            let ip = format!("192.0.2.{i}");
+            assert_eq!(site.count(path, &ip, None).await, (burst, offered()), "{path}");
+            let refused = site.send(path, &[("x-forwarded-for", &ip)]).await;
+            assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS, "{path}");
+            assert!(refused.headers().get("cache-control").is_none(), "{path}");
+        }
+    });
+}
+
+/// Request bursts above what the record tests need (8 strict, 12 today's) and a record bucket of 250.
+fn record_limits() -> Limits {
+    let tiered = |strict: f64, base: f64| Tiered::new((SLOW, strict), (SLOW, base));
+    Limits {
+        search: tiered(8.0, 12.0),
+        items: tiered(8.0, 12.0),
+        rss: RateLimiter::new(SLOW, 8.0, 64),
+        records: RateLimiter::new(SLOW, 250.0, 64),
+        ..limits()
+    }
+}
+
+/// Without a pass, a search and a read of several items also pay the records they ask for, from one bucket per address
+/// that both routes share; a refusal there offers the check. Request buckets still count every request, so asking for
+/// fewer records buys no more requests than today. A pass, or the switch off, pays no records.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn without_a_pass_requests_pay_their_records(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        let site = site_with(&pool, strict(), record_limits()).await;
+        let ids = |n: usize| format!("/api/items?ids={}", (1..=n).map(|i| i.to_string()).collect::<Vec<_>>().join(","));
+        // pages of 100 records: two fit in 250, the third is refused at the records, and waits until 100 are back
+        // (the 50 left refill at 0.001 a second here); pages of 50: five
+        assert_eq!(site.count("/api/search?pageSize=100", "198.51.100.1", None).await, (2, offered()));
+        assert_eq!(site.refusal("/api/search?pageSize=100", &[("x-forwarded-for", "198.51.100.1")]).await, (offered(), 50_000));
+        // no ids pay no records: the request still passes with the records spent
+        assert_eq!(site.send("/api/items?ids=", &[("x-forwarded-for", "198.51.100.1")]).await.status(), StatusCode::OK);
+        assert_eq!(site.count("/api/search?pageSize=50", "198.51.100.2", None).await, (5, offered()));
+        // a page of one record: the strict request bucket refuses first, after its 8
+        assert_eq!(site.count("/api/search?pageSize=1", "198.51.100.3", None).await, (8, offered()));
+        // one budget for both routes: after a search of 100 and a read of 100 ids, the next 100 ids are refused
+        let at = |ip: &'static str| [("x-forwarded-for", ip)];
+        assert_eq!(site.send("/api/search?pageSize=100", &at("198.51.100.4")).await.status(), StatusCode::OK);
+        assert_eq!(site.send(&ids(100), &at("198.51.100.4")).await.status(), StatusCode::OK);
+        assert_eq!(site.refusal(&ids(100), &at("198.51.100.4")).await.0, offered());
+        // each id counts as asked, duplicates included; no ids pay a request token and no records
+        assert_eq!(site.count(&format!("/api/items?ids={}", vec!["1"; 100].join(",")), "198.51.100.5", None).await, (2, offered()));
+        assert_eq!(site.count("/api/items?ids=", "198.51.100.6", None).await, (8, offered()));
+        // a pass pays no records: today's 12 requests of 100 each
+        let pass = site.pass("198.51.100.7").await;
+        assert_eq!(site.count("/api/search?pageSize=100", "198.51.100.7", Some(&pass)).await, (12, PLAIN));
+        // nor does anyone with the switch off
+        let off = site_with(&pool, json!({}), record_limits()).await;
+        assert_eq!(off.count("/api/search?pageSize=100", "198.51.100.8", None).await, (12, PLAIN));
+        assert_eq!(off.count(&ids(100), "198.51.100.9", None).await, (12, PLAIN));
+    });
+}
+
+/// Without a pass, a feed's 50 records come from the same record bucket as the searches, and a refusal is the plain 429
+/// a feed reader can wait out: it cannot pass the check. With a pass or the switch off, only the feed's own bucket
+/// (burst 8 here) counts.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_feed_shares_the_record_budget_and_offers_no_check(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        let site = site_with(&pool, strict(), record_limits()).await;
+        // five feeds of 50 fill the 250; the sixth is refused, plain
+        assert_eq!(site.count("/api/rss", "198.51.100.20", None).await, (5, PLAIN));
+        // a search of 100 from the same address leaves room for three feeds
+        let at = [("x-forwarded-for", "198.51.100.21")];
+        assert_eq!(site.send("/api/search?pageSize=100", &at).await.status(), StatusCode::OK);
+        assert_eq!(site.count("/api/rss", "198.51.100.21", None).await, (3, PLAIN));
+        // a pass, or the switch off: the feed's own 8
+        let pass = site.pass("198.51.100.22").await;
+        assert_eq!(site.count("/api/rss", "198.51.100.22", Some(&pass)).await, (8, PLAIN));
+        let off = site_with(&pool, json!({}), record_limits()).await;
+        assert_eq!(off.count("/api/rss", "198.51.100.23", None).await, (8, PLAIN));
+    });
+}
+
+/// A feed reads no session: a session whose sign-in passed the check, which a search would admit at today's numbers once
+/// the strict buckets refuse, pays a feed's records like any visitor without a pass.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_feed_reads_no_session(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        sqlx::query("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', $1)")
+            .bind(account::hash_password(PASSWORD.into()).await.ok().unwrap())
+            .execute(&pool)
+            .await
+            .unwrap();
+        let site = site_with(&pool, checked_sign_in(), record_limits()).await;
+        let session = site.sign_in("in", "198.51.100.30").await;
+        assert_eq!(site.count("/api/rss", "198.51.100.31", Some(&session)).await, (5, PLAIN));
     });
 }
 

@@ -28,7 +28,7 @@ A BOOTH item link (`booth.pm/<lang>/items/<id>` or `<shop>.booth.pm/items/<id>`)
 ## Typo handling
 
 - A Latin query of up to three words that matches no text is tried again over titles, tags and author names. Each all-letter word of five or more letters may have one typo ("shinnano" finds Shinano). The results page says so.
-- A word that no title, tag or author name has, one typo from the Latin name of exactly one avatar, is read as that avatar ("shinnano short hair" searches like "shinano short hair"). The results page then offers to search the words as typed.
+- A word that no title, tag or author name has, one typo from the Latin name of exactly one avatar, is read as that avatar ("shinnano short hair" searches like "shinano short hair"). The results page then names that avatar and offers to search the words as typed.
 
 ## Tags and translations
 

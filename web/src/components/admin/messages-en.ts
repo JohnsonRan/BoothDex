@@ -270,6 +270,15 @@ export const adminEn: AdminDict = {
   "turnstile.auth": "Sign-in and registration need verification",
   "turnstile.authOn": "Sign-in and registration now need verification",
   "turnstile.authOff": "Sign-in and registration no longer need verification",
+  "turnstile.authDesc":
+    "Turning this on, or changing a key while it's on, asks you to pass the verification with those keys first",
+  "turnstile.proofTitle": "Verify these keys",
+  "turnstile.proofDesc":
+    "Sign-in and registration will need this verification. Pass it here first, so keys that don't work can't lock anyone out. To save keys without it, turn off sign-in verification first.",
+  "turnstile.proofRefused":
+    "The verification didn't pass with these keys. Check that the site key and the secret key belong to the same widget.",
+  "turnstile.proofUnjudged":
+    "Cloudflare couldn't check the verification with these keys, so nothing was saved. Check the secret key, or try again in a moment.",
   "turnstile.strict": "Stricter limits for visitors who haven't verified",
   "turnstile.strictDesc":
     "Search and item pages slow down sooner for visitors without a pass; passing the verification restores the usual limits for 10 minutes. While sign-in and registration need verification, users who passed it when they signed in or registered keep the usual limits",
