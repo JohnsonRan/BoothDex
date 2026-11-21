@@ -215,6 +215,7 @@ boothdex.example.com {
 | Lift a sign-in lockout | in `/admin`, reset the password, or disable then re-enable the account (signs the member out) |
 | Turn off the Turnstile check at sign-in and registration | `docker compose exec postgres psql -U catalogue catalogue -c "update app_settings set value = value - 'auth' where key = 'turnstile'"` (needs no restart; use it when a wrong site key leaves nobody able to sign in) |
 | Restart one service | `docker compose restart worker` |
+| Match every item against every avatar name again | `docker compose stop worker && docker compose exec -T postgres psql -U catalogue -d catalogue -c "update catalog_meta set avatar_names = '{}'" && docker compose start worker` (the worker stops first, so a relink still running cannot record the names again; [details](WORKER.md#avatar-links)) |
 | Backup database | `docker compose exec -T postgres pg_dump -U catalogue -Fc catalogue > backup-$(date +%F).dump` (schedule daily, keep off-server) |
 | Backup archived images | Copy `/srv/boothdex/images` once (changes only if you archive newly delisted items) |
 | Restore database | `docker compose stop api worker && docker compose exec -T postgres pg_restore -U catalogue -d catalogue --clean --if-exists --no-owner --role=catalogue < backup.dump && docker compose start api worker` |

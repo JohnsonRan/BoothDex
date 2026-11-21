@@ -503,10 +503,8 @@ pub struct Variation {
 }
 
 impl EnrichItem {
-    /// Text the avatar matcher searches: title, tags and variation names.
     pub fn match_text(&self) -> String {
-        let variation_names: Vec<&str> = self.variations.0.iter().map(|v| v.name.as_str()).collect();
-        format!("{} {} {}", self.title, self.booth_tags.join(" "), variation_names.join(" "))
+        crate::avatars::match_text(&self.title, &self.booth_tags, self.variations.0.iter().map(|v| v.name.as_str()))
     }
 }
 

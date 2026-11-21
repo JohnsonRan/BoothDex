@@ -3,6 +3,19 @@
 //! precision 0.87, recall 0.88. Descriptions are left out: they mention many avatars in passing and cut
 //! precision to 0.74.
 
+use anyhow::Result;
+use sqlx::PgPool;
+
+/// Every name the matcher reads, per avatar: the names in each language and the aliases.
+pub async fn names(pool: &PgPool) -> Result<Vec<(String, Vec<String>)>> {
+    Ok(sqlx::query_as("select slug, array_remove(array[name_en, name_ja, name_ko], null) || aliases from avatars order by slug").fetch_all(pool).await?)
+}
+
+/// Text the matcher searches: title, tags and variation names.
+pub fn match_text<'a>(title: &str, tags: &[String], variation_names: impl IntoIterator<Item = &'a str>) -> String {
+    format!("{} {} {}", title, tags.join(" "), variation_names.into_iter().collect::<Vec<_>>().join(" "))
+}
+
 pub struct Matcher {
     keys: Vec<(String, Vec<Name>)>,
 }
