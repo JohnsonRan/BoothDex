@@ -180,8 +180,19 @@ impl RateLimiter {
     }
 
     fn take_at(&self, ip: IpAddr, now: Instant) -> Result<(), u64> {
-        let key = bucket_key(ip);
         let mut map = self.buckets.lock().unwrap();
+        let entry = self.entry(&mut map, bucket_key(ip), now);
+        let available = self.available(entry, now);
+        if available < 1.0 {
+            *entry = (available, now);
+            return Err(self.wait(available, 1.0));
+        }
+        *entry = (available - 1.0, now);
+        Ok(())
+    }
+
+    /// The bucket of `key`, made full if new; at the cap, full buckets go first, then the oldest one.
+    fn entry<'m>(&self, map: &'m mut HashMap<IpAddr, (f64, Instant)>, key: IpAddr, now: Instant) -> &'m mut (f64, Instant) {
         if !map.contains_key(&key) && map.len() >= self.cap {
             map.retain(|_, (tokens, at)| (*tokens + now.saturating_duration_since(*at).as_secs_f64() * self.rate) < self.burst);
             if map.len() >= self.cap
@@ -190,17 +201,48 @@ impl RateLimiter {
                 map.remove(&oldest);
             }
         }
-        let (tokens, at) = map.entry(key).or_insert((self.burst, now));
-        let available = (*tokens + now.saturating_duration_since(*at).as_secs_f64() * self.rate).min(self.burst);
-        if available < 1.0 {
-            *tokens = available;
-            *at = now;
-            return Err(((1.0 - available) / self.rate).ceil().max(1.0) as u64);
-        }
-        *tokens = available - 1.0;
-        *at = now;
-        Ok(())
+        map.entry(key).or_insert((self.burst, now))
     }
+
+    fn available(&self, (tokens, at): &(f64, Instant), now: Instant) -> f64 {
+        (tokens + now.saturating_duration_since(*at).as_secs_f64() * self.rate).min(self.burst)
+    }
+
+    /// Whole seconds until `available` tokens become `n` (`Retry-After`).
+    fn wait(&self, available: f64, n: f64) -> u64 {
+        ((n - available) / self.rate).ceil().max(1.0) as u64
+    }
+}
+
+/// Takes `n` tokens from each `(bucket, n)` of `draws` for `ip`, all or none, at one instant. The buckets are locked in
+/// the order given, which every caller keeps the same (a route's own bucket, then a bucket several routes share, then a
+/// fallback), so two draws never wait on each other in a circle; a bucket appears once per draw. A part of 0 is left
+/// out: its bucket is neither locked nor given an entry. On a refusal nothing is written: no token is taken and no entry
+/// made, so a refused draw never evicts another address's bucket. The error names each bucket that fell short, by its
+/// index in `draws`, with the whole seconds until it covers its part. The clock is read once all the locks are held, so
+/// no draw writes back an instant older than one another draw wrote.
+pub fn take_all(ip: IpAddr, draws: &[(&RateLimiter, f64)]) -> Result<(), Vec<(usize, u64)>> {
+    let key = bucket_key(ip);
+    let draws: Vec<(usize, &RateLimiter, f64)> = draws.iter().enumerate().filter(|(_, (_, n))| *n > 0.0).map(|(i, (b, n))| (i, *b, *n)).collect();
+    let mut maps: Vec<_> = draws.iter().map(|(_, bucket, _)| bucket.buckets.lock().unwrap()).collect();
+    let now = Instant::now();
+    let mut short = Vec::new();
+    let mut levels = Vec::with_capacity(draws.len());
+    for ((i, bucket, n), map) in draws.iter().zip(maps.iter()) {
+        // an address without a bucket has a full one
+        let available = map.get(&key).map_or(bucket.burst, |entry| bucket.available(entry, now));
+        if available < *n {
+            short.push((*i, bucket.wait(available, *n)));
+        }
+        levels.push(available);
+    }
+    if !short.is_empty() {
+        return Err(short);
+    }
+    for (((_, bucket, n), map), available) in draws.iter().zip(maps.iter_mut()).zip(levels) {
+        *bucket.entry(map, key, now) = (available - n, now);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -211,6 +253,66 @@ mod tests {
 
     fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
+    }
+
+    /// Too slow to refill within a test.
+    const SLOW: f64 = 0.001;
+
+    #[test]
+    fn a_draw_from_several_buckets_takes_all_or_nothing() {
+        let (own, shared) = (RateLimiter::new(SLOW, 2.0, 64), RateLimiter::new(SLOW, 5.0, 64));
+        let a = ip("203.0.113.1");
+        assert_eq!(take_all(a, &[(&own, 1.0), (&shared, 5.0)]), Ok(()));
+        // the shared bucket is empty: refused, and the own bucket keeps the token it would have given
+        let refused = take_all(a, &[(&own, 1.0), (&shared, 1.0)]).unwrap_err();
+        assert_eq!(refused.iter().map(|(i, _)| *i).collect::<Vec<_>>(), [1]);
+        assert!(own.take(a).is_ok() && own.take(a).is_err());
+        // every bucket that falls short is named, with its own wait; the wait covers the whole part
+        let b = ip("203.0.113.2");
+        let (slow, slower) = (RateLimiter::new(1.0, 1.0, 64), RateLimiter::new(0.5, 10.0, 64));
+        assert_eq!(take_all(b, &[(&slow, 1.0), (&slower, 10.0)]), Ok(()));
+        assert_eq!(take_all(b, &[(&slow, 1.0), (&slower, 4.0)]), Err(vec![(0, 1), (1, 8)]));
+        // a part above a bucket's burst is never admitted, however long the bucket waits
+        assert!(take_all(ip("203.0.113.3"), &[(&shared, 6.0)]).is_err());
+    }
+
+    #[test]
+    fn a_part_of_zero_leaves_its_bucket_alone() {
+        let (own, shared) = (RateLimiter::new(SLOW, 2.0, 64), RateLimiter::new(SLOW, 5.0, 64));
+        assert_eq!(take_all(ip("203.0.113.1"), &[(&own, 1.0), (&shared, 0.0)]), Ok(()));
+        assert!(shared.buckets.lock().unwrap().is_empty());
+    }
+
+    /// A refused draw makes no entry, so at a bucket's cap it evicts no other address's bucket.
+    #[test]
+    fn a_refused_draw_leaves_other_addresses_alone() {
+        let (own, shared) = (RateLimiter::new(SLOW, 3.0, 1), RateLimiter::new(SLOW, 1.0, 64));
+        let (a, b) = (ip("203.0.113.1"), ip("203.0.113.2"));
+        assert!(own.take(a).is_ok() && own.take(a).is_ok());
+        // b's shared bucket is empty, so b's draw is refused before it touches the own bucket, which holds a alone
+        assert!(shared.take(b).is_ok());
+        assert!(take_all(b, &[(&own, 1.0), (&shared, 1.0)]).is_err());
+        assert!(own.take(a).is_ok() && own.take(a).is_err());
+    }
+
+    #[test]
+    fn concurrent_draws_never_share_tokens() {
+        let (own, shared) = (RateLimiter::new(SLOW, 1000.0, 64), RateLimiter::new(SLOW, 100.0, 64));
+        let admitted = std::sync::atomic::AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    for _ in 0..10 {
+                        if take_all(ip("203.0.113.1"), &[(&own, 1.0), (&shared, 10.0)]).is_ok() {
+                            admitted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        }
+                    }
+                });
+            }
+        });
+        // the shared bucket covers ten draws of 10; each refusal left the own bucket as it was
+        assert_eq!(admitted.into_inner(), 10);
+        assert_eq!(own.available(&own.buckets.lock().unwrap()[&ip("203.0.113.1")], Instant::now()).round(), 990.0);
     }
 
     #[test]

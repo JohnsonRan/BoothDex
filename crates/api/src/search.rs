@@ -157,13 +157,14 @@ pub(crate) async fn search(
     headers: axum::http::HeaderMap,
     RawQuery(q): RawQuery,
 ) -> Result<Response, ApiError> {
-    s.limits.search.check(ip, &tier).await?;
-    let t0 = Instant::now();
-    let mut trace = Trace::default();
-    trace.start();
     let raw = q.as_deref().unwrap_or("");
     let p = Params::parse(raw);
     let req = SearchRequest::from(&p);
+    // without a pass the page's records count too, as many as asked for, before any work for them
+    s.limits.search.check_records(ip, &tier, Some((&s.limits.records, req.page_size))).await?;
+    let t0 = Instant::now();
+    let mut trace = Trace::default();
+    trace.start();
     // one snapshot for the whole request, so a reload during it cannot mix two catalogues
     let snap = s.snap.load_full();
     let favourites = if matches!(req.view, View::Favourites) {
