@@ -276,6 +276,7 @@ The [API reference](docs/API.md) lists the differences from VRCatalogue, the add
 - [BOOTH](https://booth.pm): item data and images
 - [Tantivy](https://github.com/quickwit-oss/tantivy) and [Lindera](https://github.com/lindera/lindera): text search
 - [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cedict) ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)): the Chinese dictionary built into `api`, through Lindera's CC-CEDICT-MeCab, that segments Chinese titles
+- IPADIC (Nara Institute of Science and Technology): the Japanese dictionary built into `api`. Both dictionaries' licence texts are in [deploy/licenses](deploy/licenses), and the `api` image carries them in `/usr/share/doc/boothdex-api/`
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs): filter bitmaps
 - [foyer](https://github.com/foyer-rs/foyer): hybrid image cache
 - [Astryx](https://github.com/meta/astryx): design system, components and styles

@@ -251,6 +251,7 @@ cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 - [BOOTH](https://booth.pm)：商品数据与图片源站
 - [Tantivy](https://github.com/quickwit-oss/tantivy) 与 [Lindera](https://github.com/lindera/lindera)：全文检索引擎与日文、中文分词
 - [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cedict)（[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)）：内置于 `api` 的中文词典（经由 Lindera 的 CC-CEDICT-MeCab），用于中文标题分词
+- IPADIC（奈良先端科学技术大学院大学）：内置于 `api` 的日文词典。两部词典的许可文本见 [deploy/licenses](deploy/licenses)，`api` 镜像也将其放在 `/usr/share/doc/boothdex-api/`
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs)：内存筛选位图
 - [foyer](https://github.com/foyer-rs/foyer)：混合图片缓存
 - [Astryx](https://github.com/meta/astryx)：设计系统、界面组件与风格

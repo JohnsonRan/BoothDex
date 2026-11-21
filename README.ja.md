@@ -249,6 +249,7 @@ cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 - [BOOTH](https://booth.pm): 商品データおよび画像配信元
 - [Tantivy](https://github.com/quickwit-oss/tantivy) および [Lindera](https://github.com/lindera/lindera): 全文検索と日本語・中国語の形態素解析
 - [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cedict) ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)): 中国語タイトルの分かち書きに使う、`api` に組み込まれた中国語辞書 (Lindera の CC-CEDICT-MeCab 経由)
+- IPADIC (奈良先端科学技術大学院大学): `api` に組み込まれた日本語辞書。両辞書のライセンス文は [deploy/licenses](deploy/licenses) にあり、`api` イメージの `/usr/share/doc/boothdex-api/` にも含まれます
 - [roaring-rs](https://github.com/RoaringBitmap/roaring-rs): 絞り込み用ビットマップ
 - [foyer](https://github.com/foyer-rs/foyer): ハイブリッド画像キャッシュ
 - [Astryx](https://github.com/meta/astryx): デザインシステム、UI コンポーネント、スタイル

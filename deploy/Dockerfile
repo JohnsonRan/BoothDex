@@ -37,6 +37,8 @@ USER app
 
 FROM runtime AS api
 COPY --from=build /out/api /usr/local/bin/api
+# the binary embeds IPADIC and CC-CEDICT; both licences require their notices in every copy (deploy/licenses)
+COPY deploy/licenses/ /usr/share/doc/boothdex-api/
 # the api uses mimalloc (see main.rs), so glibc malloc tuning such as MALLOC_ARENA_MAX does not apply
 ENV BIND=0.0.0.0:3000 INDEX_DIR=/index
 EXPOSE 3000
