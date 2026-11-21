@@ -36,7 +36,7 @@ docker compose exec -T postgres pg_restore -U catalogue -d catalogue --no-owner 
 docker compose up -d
 ```
 
-最後の行でスタックを起動するのは、`pg_restore` がエラーなく終わってからにします。`api` は見つけたデータベースをそのままマイグレーションするためです。バンドルを使わない場合は `pg_restore` のコマンドを省き、BOOTH をクロールします。2～3 日かかります ([データバンドルを使わない起動手順](docs/DEPLOY.md#starting-without-a-data-bundle))。新規データベースには、カテゴリツリー、スマートタグ、約 380 体のアバター本体があらかじめ登録されています。
+最後の行でスタックを起動するのは、`pg_restore` がエラーなく終わってからにします。`api` は見つけたデータベースをそのままマイグレーションするためです。バンドルを使わない場合は `pg_restore` のコマンドを省き、BOOTH をクロールします。2～3 日かかります ([データバンドルを使わない起動手順](docs/DEPLOY.md#starting-without-a-data-bundle))。新規データベースには、カテゴリツリー、スマートタグ、約 600 体のアバター本体があらかじめ登録されています。
 
 その後、プロキシ経由でサイトを開いてアカウントを登録し、そのユーザー名を `.env` の `ADMIN_USERNAMES` に追加して `docker compose up -d api` を実行します。管理画面は `/admin` です。
 

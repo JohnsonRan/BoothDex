@@ -100,4 +100,66 @@ mod tests {
         // full-width text is normalised
         assert_eq!(m.find("ＭＡＮＵＫＡ"), ["manuka"]);
     }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn every_avatar_has_a_body_listing_and_names_of_its_own(pool: PgPool) {
+        let incomplete: Vec<String> = sqlx::query_scalar("select slug from avatars where avatar_item_id is null or name_ko is null").fetch_all(&pool).await.unwrap();
+        assert!(incomplete.is_empty(), "{incomplete:?}");
+        // an alias the matcher skips (too short) would be stored and never matched
+        let aliases: Vec<(String, String)> = sqlx::query_as("select slug, unnest(aliases) from avatars").fetch_all(&pool).await.unwrap();
+        assert!(!aliases.is_empty());
+        for (slug, alias) in aliases {
+            assert!(!Matcher::new([(slug.clone(), vec![alias.clone()])]).keys.is_empty(), "{slug}: {alias}");
+        }
+        // a name the matcher reads for two avatars would link both
+        let mut owner: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        for (slug, keys) in Matcher::new(names(&pool).await.unwrap()).keys {
+            for key in keys {
+                let (Name::Word(k) | Name::Sub(k)) = key;
+                if let Some(other) = owner.insert(k.clone(), slug.clone()) {
+                    panic!("{k} names {other} and {slug}");
+                }
+            }
+        }
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn migration_0032_marks_body_listings_and_runs_again(pool: PgPool) {
+        const SQL: &str = include_str!("../../core/migrations/0032_avatar_bodies.sql");
+        // body listings of a new avatar (hakka), of a starter avatar without one until 0032 (miro, which VRCatalogue
+        // marked supported) and of a starter avatar marked already (manuka); 1 is no body
+        let manuka: i64 = sqlx::query_scalar("select avatar_item_id from avatars where slug = 'manuka'").fetch_one(&pool).await.unwrap();
+        sqlx::query(
+            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, avatar_slug, supported, gender) values
+               (2215270, 'hakka', 's', 'u', false, 'ok', now(), null, false, null),
+               (7413817, 'miro', 's', 'u', false, 'ok', now(), null, true, 'male'),
+               ($1, 'manuka', 's', 'u', false, 'ok', now(), 'manuka', true, 'female'),
+               (1, 'outfit', 's', 'u', false, 'ok', now(), null, false, null)",
+        )
+        .bind(manuka)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let state = || async {
+            let items: Vec<(i64, Option<String>, bool, Option<String>)> =
+                sqlx::query_as("select id, avatar_slug, supported, gender from items order by id").fetch_all(&pool).await.unwrap();
+            let avatars: (i64, i64) = sqlx::query_as("select count(*), count(*) filter (where aliases <> '{}') from avatars").fetch_one(&pool).await.unwrap();
+            (items, avatars)
+        };
+        sqlx::raw_sql(SQL).execute(&pool).await.unwrap();
+        let after = state().await;
+        let mut expected = vec![
+            (1, None, false, None),
+            (2215270, Some("hakka".to_owned()), true, Some("female".to_owned())),
+            (7413817, Some("miro".to_owned()), true, Some("male".to_owned())),
+            (manuka, Some("manuka".to_owned()), true, Some("female".to_owned())),
+        ];
+        expected.sort();
+        assert_eq!(after.0, expected);
+        assert_eq!(after.1, (598, 39));
+        sqlx::raw_sql(SQL).execute(&pool).await.unwrap();
+        assert_eq!(state().await, after);
+    }
 }

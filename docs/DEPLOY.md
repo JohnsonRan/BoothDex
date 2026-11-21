@@ -162,7 +162,7 @@ Then complete onboarding:
 
 ### Starting without a data bundle
 
-Database migrations seed the category tree, smart tags and ~380 avatar bodies automatically. Populate items with one full crawl of BOOTH's `VRChat` tag listing. It takes 2–3 days for ~200k items, so BOOTH is not overloaded ([Measurements](MEASUREMENTS.md#start-up-and-crawling)):
+Database migrations seed the category tree, smart tags and ~600 avatar bodies automatically. Populate items with one full crawl of BOOTH's `VRChat` tag listing. It takes 2–3 days for ~200k items, so BOOTH is not overloaded ([Measurements](MEASUREMENTS.md#start-up-and-crawling)):
 
 ```sh
 docker compose exec worker worker once incremental '{"max_pages": 5000, "full": true}'

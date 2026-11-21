@@ -114,6 +114,14 @@ pub async fn queue(pool: &PgPool) -> Result<()> {
     Ok(())
 }
 
+/// Records the avatars table's names as matched, as a finished relink does, so a test of `enrich` starts with no
+/// relink pending (migration 0032 adds names to those 0031 recorded).
+#[cfg(test)]
+pub(crate) async fn record_current(pool: &PgPool) {
+    let current: NamesBySlug = names(pool).await.unwrap().into_iter().collect();
+    sqlx::query(RECORD).bind(serde_json::json!(current)).execute(pool).await.unwrap();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,12 +134,6 @@ mod tests {
 
     async fn links(pool: &PgPool) -> Vec<(i64, String)> {
         sqlx::query_as("select item_id, avatar_slug from item_avatars order by 1, 2").fetch_all(pool).await.unwrap()
-    }
-
-    /// Records the avatars table's names as matched, as a finished relink does.
-    async fn record_current(pool: &PgPool) {
-        let current: NamesBySlug = names(pool).await.unwrap().into_iter().collect();
-        sqlx::query(RECORD).bind(serde_json::json!(current)).execute(pool).await.unwrap();
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
