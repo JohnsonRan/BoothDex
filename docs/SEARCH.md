@@ -7,7 +7,7 @@ Reference for what a search does with the words you type. Parameters and respons
 - The filter row holds the search field and one selector per filter. The filters that do not fit fold behind a "+N" button.
 - The field suggests recent searches, avatars, items, shops and tags as you type. `Ctrl+K` (`Cmd+K` on macOS) focuses it.
 - Each search word is its own token, removable on its own. Words read as an avatar or a category join one token, led by the avatar's picture or a category icon. An avatar's token shows the avatar's name.
-- A word, or two words, of three or more characters that equal an avatar's slug, a name or an alias (クマリ for ひきくまりのクマリ) are read as that avatar, once it has items.
+- A word, or two words, of three or more characters that equal an avatar's slug, a name or an alias (クマリ for ひきくまりのクマリ) are read as that avatar, once it has items. A name two avatars with items share (Mio) is read as neither.
 
 ## Item links and numbers
 

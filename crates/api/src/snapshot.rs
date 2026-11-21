@@ -37,7 +37,13 @@ impl Lookup {
         let slug = |e: &(Vec<String>, Value, u64)| e.1["slug"].as_str().map(str::to_owned);
         let slug_of = |w: &str| {
             let w = fold_width(w);
-            (w.chars().count() >= 3).then(|| self.0.iter().find(|(keys, _, _)| keys.contains(&w))).flatten().and_then(slug)
+            if w.chars().count() < 3 {
+                return None;
+            }
+            // a name two models share ("mio") names neither
+            let mut named = self.0.iter().filter(|(keys, _, _)| keys.contains(&w)).filter_map(slug);
+            let first = named.next()?;
+            named.all(|s| s == first).then_some(first)
         };
         let latin = |w: &str| w.len() >= TYPO_MIN && w.bytes().all(|b| b.is_ascii_lowercase());
         let misspelt = |w: &str| {
@@ -326,6 +332,24 @@ mod name_tests {
         assert_eq!(words("しなの ボブ"), vec![("shinano".into(), vec!["しなの"])]);
         assert_eq!(words("Rusk Dragon wings"), vec![("rusk".into(), vec!["Rusk", "Dragon"])]);
         assert_eq!(words("shinano Shinano bob"), vec![("shinano".into(), vec!["shinano"])]);
+    }
+
+    #[test]
+    fn a_name_two_models_share_names_neither() {
+        let entry = |slug: &str, name: &str| (vec![name.to_string(), slug.to_string()], json!({ "slug": slug }), 10u64);
+        // the other one has no item yet, so it is no model name
+        let unused = (vec!["Mio".to_string(), "mio-alca".to_string()], json!({ "slug": "mio-alca" }), 0u64);
+        let one = Lookup::new(vec![entry("mio-minato", "Mio"), unused]);
+        assert_eq!(one.split_names("mio dress", |_| false).1, vec![("mio-minato".to_string(), vec!["mio"])]);
+        let two = Lookup::new(vec![entry("mio-minato", "Mio"), entry("mio-alca", "Mio")]);
+        assert_eq!(two.split_names("mio dress", |_| false), ("mio dress".to_string(), vec![], vec![]));
+        // each still answers to its own slug
+        assert_eq!(two.split_names("mio-alca dress", |_| false).1, vec![("mio-alca".to_string(), vec!["mio-alca"])]);
+        // a word one typo from a name reads as that model, but from a name two models share as neither
+        let alone = Lookup::new(vec![entry("shirona-a", "Shirona")]);
+        assert_eq!(alone.split_names("shiron coat", |_| false).2, ["shiron"]);
+        let shared = Lookup::new(vec![entry("shirona-a", "Shirona"), entry("shirona-b", "Shirona")]);
+        assert_eq!(shared.split_names("shiron coat", |_| false), ("shiron coat".to_string(), vec![], vec![]));
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
