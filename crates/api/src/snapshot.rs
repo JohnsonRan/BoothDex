@@ -174,7 +174,7 @@ pub(crate) async fn reloader(state: Arc<AppState>) {
             continue;
         }
         last_build = Instant::now();
-        match build_snapshot(&state.pool, version, state.snap().related.centroids.clone()).await {
+        match build_snapshot(&state.pool, version, state.snap().related.centroids.clone(), index_dir()).await {
             Ok(s) => {
                 println!("catalogue reloaded: version {version}, {} docs", s.catalog.len());
                 state.snap.store(Arc::new(s));
@@ -184,17 +184,21 @@ pub(crate) async fn reloader(state: Arc<AppState>) {
     }
 }
 
-/// `centroids`: the previous snapshot's tag centroids, which carry over while they are recent (related.rs).
-pub(crate) async fn build_snapshot(pool: &PgPool, version: i64, centroids: Option<Arc<TagCentroids>>) -> Result<Snapshot> {
+/// Where the text index is kept: `INDEX_DIR`, by default `textindex`; `INDEX_DIR=""` keeps it in RAM.
+pub(crate) fn index_dir() -> Option<std::path::PathBuf> {
+    let root = std::env::var("INDEX_DIR").unwrap_or_else(|_| "textindex".into());
+    (!root.is_empty()).then(|| root.into())
+}
+
+/// `centroids`: the previous snapshot's tag centroids, which carry over while they are recent (related.rs). `dir`:
+/// the text index's directory (`index_dir`); text content selects the index there, so metadata-only reloads reuse it.
+pub(crate) async fn build_snapshot(pool: &PgPool, version: i64, centroids: Option<Arc<TagCentroids>>, dir: Option<std::path::PathBuf>) -> Result<Snapshot> {
     let pool = pool.clone();
     let t0 = Instant::now();
     let docs = db::load_docs(&pool).await?;
     let tag_words = db::load_tag_words(&pool).await?;
     println!("loaded {} docs and {} tag translations in {:.1}s", docs.len(), tag_words.len(), t0.elapsed().as_secs_f64());
     let t1 = Instant::now();
-    // Text content selects the disk index; metadata-only reloads reuse it. INDEX_DIR="" keeps it in RAM.
-    let index_root = std::env::var("INDEX_DIR").unwrap_or_else(|_| "textindex".into());
-    let dir = (!index_root.is_empty()).then(|| std::path::PathBuf::from(index_root));
     let catalog = tokio::task::spawn_blocking(move || Catalog::build_with_tag_words(docs, &tag_words, chrono::Utc::now().timestamp(), dir.as_deref())).await??;
     println!("built index in {:.1}s, bitmaps ~{} KB", t1.elapsed().as_secs_f64(), catalog.bitmap_bytes() / 1024);
 
