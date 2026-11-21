@@ -252,7 +252,7 @@ impl AvatarNames {
     }
 
     /// Whether the folded tag names an avatar.
-    fn named_in(&self, tag: &str) -> bool {
+    pub(crate) fn named_in(&self, tag: &str) -> bool {
         let chars: Vec<char> = tag.chars().collect();
         self.exact.contains(tag)
             || tag.split(|c: char| !c.is_alphanumeric()).any(|w| self.words.contains(w))

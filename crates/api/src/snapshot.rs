@@ -25,7 +25,7 @@ pub(crate) struct Lookup(Vec<(Vec<String>, Value, u64)>);
 
 impl Lookup {
     /// Splits model names out of a search ("shinano short hair" -> "short hair" + [shinano]); a name is a whole
-    /// word (or two) equal to a model's slug or name in any language, at least 3 characters. Each slug comes with
+    /// word (or two) equal to a model's slug, name in any language or alias, at least 3 characters. Each slug comes with
     /// the query words it was read from, as typed (the site marks those tokens); a name repeated in a row is one
     /// entry, with the first one's words.
     ///
@@ -197,6 +197,26 @@ pub(crate) fn index_dir() -> Option<std::path::PathBuf> {
     (!root.is_empty()).then(|| root.into())
 }
 
+/// The avatars as search reads them: the model names, keyed by slug, names and aliases, and the names related searches
+/// leave out (related.rs).
+async fn avatar_lookup(pool: &PgPool, catalog: &Catalog) -> Result<(Lookup, AvatarNames)> {
+    let avatars = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Vec<String>, Option<String>)>(
+        "select slug, name_en, name_ja, name_ko, aliases, coalesce((select b.images[1] from booth_images b where b.item_id = a.avatar_item_id), a.image_url) from avatars a",
+    )
+    .fetch_all(pool)
+    .await?;
+    let names = AvatarNames::new(avatars.iter().flat_map(|(_, en, ja, ko, aliases, _)| [Some(en), ja.as_ref(), ko.as_ref()].into_iter().flatten().chain(aliases)).map(String::as_str));
+    let lookup = avatars
+        .into_iter()
+        .map(|(slug, en, ja, ko, aliases, image_url)| {
+            let n = catalog.avatars.len(&slug);
+            let keys = [Some(slug.clone()), Some(en.clone()), ja.clone(), ko.clone()].into_iter().flatten().chain(aliases).collect();
+            (keys, json!({ "slug": slug, "en": en, "ja": ja, "ko": ko, "image_url": image_url }), n)
+        })
+        .collect();
+    Ok((Lookup::new(lookup), names))
+}
+
 /// `centroids`: the previous snapshot's tag centroids, which carry over while they are recent (related.rs). `dir`:
 /// the text index's directory (`index_dir`); text content selects the index there, so metadata-only reloads reuse it.
 pub(crate) async fn build_snapshot(pool: &PgPool, version: i64, centroids: Option<Arc<TagCentroids>>, dir: Option<std::path::PathBuf>) -> Result<Snapshot> {
@@ -212,18 +232,7 @@ pub(crate) async fn build_snapshot(pool: &PgPool, version: i64, centroids: Optio
     drop(tag_rows);
     println!("built index in {:.1}s, bitmaps ~{} KB", t1.elapsed().as_secs_f64(), catalog.bitmap_bytes() / 1024);
 
-    let avatars = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>)>("select slug, name_en, name_ja, name_ko, coalesce((select b.images[1] from booth_images b where b.item_id = a.avatar_item_id), a.image_url) from avatars a")
-        .fetch_all(&pool)
-        .await?;
-    let avatar_names = AvatarNames::new(avatars.iter().flat_map(|(_, en, ja, ko, _)| [Some(en), ja.as_ref(), ko.as_ref()]).flatten().map(String::as_str));
-    let avatars = avatars
-        .into_iter()
-        .map(|(slug, en, ja, ko, image_url)| {
-            let n = catalog.avatars.len(&slug);
-            let keys = [Some(slug.clone()), Some(en.clone()), ja.clone(), ko.clone()].into_iter().flatten().collect();
-            (keys, json!({ "slug": slug, "en": en, "ja": ja, "ko": ko, "image_url": image_url }), n)
-        })
-        .collect();
+    let (avatars, avatar_names) = avatar_lookup(&pool, &catalog).await?;
     let authors = sqlx::query_as::<_, (String, Option<String>)>("select distinct on (author_name) author_name, author_icon from items order by author_name, scraped_at desc")
         .fetch_all(&pool)
         .await?
@@ -261,7 +270,7 @@ pub(crate) async fn build_snapshot(pool: &PgPool, version: i64, centroids: Optio
         catalog,
         category_phrases: category_phrases(&categories),
         related: Related { avatars: avatar_names, centroids, labels },
-        avatars: Lookup::new(avatars),
+        avatars,
         authors: Lookup::new(authors),
         tags: Lookup::new(tags),
         booth_tags: Lookup::new(booth_tags),
@@ -317,6 +326,26 @@ mod name_tests {
         assert_eq!(words("しなの ボブ"), vec![("shinano".into(), vec!["しなの"])]);
         assert_eq!(words("Rusk Dragon wings"), vec![("rusk".into(), vec!["Rusk", "Dragon"])]);
         assert_eq!(words("shinano Shinano bob"), vec![("shinano".into(), vec!["shinano"])]);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn model_names_include_the_aliases(pool: PgPool) {
+        // kumaly is ひきくまりのクマリ / Kumaly; a model is a name once it has items
+        sqlx::raw_sql(
+            "update avatars set aliases = '{クマリ}' where slug = 'kumaly';
+             insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at) values (1, 'ドレス', 's', 'u', false, 'ok', now());
+             insert into item_avatars (item_id, avatar_slug) values (1, 'kumaly');",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
+        let (models, names) = avatar_lookup(&pool, &catalog).await.unwrap();
+        assert_eq!(models.split_names("クマリ ドレス", |_| false).1, vec![("kumaly".to_string(), vec!["クマリ"])]);
+        assert_eq!(models.split_names("Kumaly", |_| false).1, vec![("kumaly".to_string(), vec!["Kumaly"])]);
+        // related searches leave out a tag that is an alias
+        assert!(names.named_in(&fold("クマリ")));
     }
 
     #[test]
