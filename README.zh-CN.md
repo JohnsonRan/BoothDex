@@ -10,7 +10,7 @@
 
 [English](README.md) / 简体中文 / [日本語](README.ja.md)
 
-[快速开始](#快速开始) / [功能](#功能) / [架构](#架构) / [开发](#开发)
+[快速开始](#快速开始) / [功能](#功能) / [文档](#文档) / [架构](#架构) / [开发](#开发)
 
 </div>
 
@@ -22,41 +22,46 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 
 ## 快速开始
 
-完整配置、反向代理示例及备份方案请参阅[部署指南](docs/DEPLOY.md)。生产环境通过 Docker 或 Podman Compose 运行
-PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端，仅对外暴露单一端口（`WEB_LISTEN`，默认 `127.0.0.1:3100`）供反向代理接入；需要 **4 GB 及以上内存**并配置 2 GB Swap 的 Linux 服务器（推荐 6 GB）。
+BoothDex 通过 Docker 或 Podman Compose 运行 PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端。服务器需运行 Linux，并有 **4 GB 及以上内存**和 2 GB Swap（推荐 6 GB）。整个服务栈只暴露一个端口（`WEB_LISTEN`，默认 `127.0.0.1:3100`），供反向代理接入。
 
-```mermaid
-flowchart LR
-  env["1. 下载 compose.yaml 与 .env<br/>（填写密码与 SITE_URL）"] --> data{"2. 准备初始数据"}
-
-  data -- "使用数据包（约 5 分钟）" --> bundle["解压 images.tar<br/>pg_restore 导入 catalogue.dump"]
-  data -- "空库抓取（约 2–3 天）" --> crawl["自动写入分类与约 380 个虚拟形象<br/>运行首次全量 incremental 抓取"]
-
-  bundle --> up["3. docker compose up -d"]
-  crawl --> up
-  up --> admin["4. 注册账号并写入 ADMIN_USERNAMES<br/>在 /admin 配置可选 AI 服务"]
-```
-
-新建数据库会自动初始化分类树、智能标签和约 380 个虚拟形象本体。若想跳过耗时数天的首次全量抓取（参见[无数据包首次启动](docs/DEPLOY.md#starting-without-a-data-bundle)），可直接恢复[已发布的数据包](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04)（2026-11-04 快照，含约 21.7 万件商品及下架存档图片，约 2.1 GB）：
+使用已发布的数据包安装。数据包是 2026-11-04 的快照，含约 21.7 万件商品及下架商品的存档图片（约 2.1 GB）。先按[部署指南](docs/DEPLOY.md#optional-download-the-data-bundle)（英文）下载，然后执行：
 
 ```sh
 mkdir -p /srv/boothdex && cd /srv/boothdex
 curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/compose.yaml
 curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
 $EDITOR .env    # 配置 POSTGRES_PASSWORD、SITE_URL、WEB_LISTEN、CONTACT_EMAIL，使用数据包时还需设置 ARCHIVE_IMAGES_DIR
-docker compose pull && docker compose up -d
+docker compose pull && docker compose up -d postgres
+until docker compose exec -T postgres pg_isready -h 127.0.0.1 -U catalogue -d catalogue; do sleep 2; done
+docker compose exec -T postgres pg_restore -U catalogue -d catalogue --no-owner --role=catalogue \
+  < /srv/boothdex/bundle/catalogue.dump
+docker compose up -d
 ```
+
+请在 `pg_restore` 无错误完成后再执行最后一行启动服务栈，因为 `api` 会直接迁移它找到的数据库。不使用数据包时，省略 `pg_restore` 命令，改为抓取 BOOTH，需要 2–3 天（参见[无数据包首次启动](docs/DEPLOY.md#starting-without-a-data-bundle)）。新建数据库已包含分类树、智能标签和约 380 个虚拟形象本体。
+
+然后通过反向代理打开网站，注册账号，把该用户名写入 `.env` 的 `ADMIN_USERNAMES`，再运行 `docker compose up -d api`。管理后台位于 `/admin`。
 
 ## 功能
 
-### 搜索
+搜索（[详情](docs/SEARCH.md)，英文）：
 
 - 在约 20 万件商品中按适配的虚拟形象、智能分类、BOOTH 分类、标签（包含与排除）、功能（MA、lilToon、Poiyomi、VRCFury）、价格、上架时间、免费商品及内容分级筛选，耗时仅数毫秒。
-- 筛选栏包含搜索框和每个筛选条件的选择器；放不下的筛选条件收进“+N”按钮。
-- 输入时，搜索框给出最近搜索、虚拟形象、商品、店铺与标签建议。按 `Ctrl+K`（macOS 上为 `Cmd+K`）可聚焦搜索框。
-- 搜索框把每个搜索词显示为可单独删除的词条；识别为虚拟形象或分类的词合为一个词条，前面显示虚拟形象图片或分类图标。
-- 搜索 BOOTH 商品链接（`booth.pm/<lang>/items/<id>` 或 `<shop>.booth.pm/items/<id>`）或 5 位及以上的商品编号时，无论当前是哪个视图，该商品都排在最前：商品列表中也会显示虚拟形象本体，已作为新商品重新上架的商品（其他搜索不显示）也会显示。筛选条件和内容分级设置照常生效；按相关度（搜索的默认排序）以外的方式排序时，该商品与其他结果一样按所选顺序排列。这类搜索不会发送给 AI 服务，也不会按同义词标签搜索。不是商品 ID 的编号按文本搜索。
-- 日文全文检索基于 Lindera（IPADIC），中文标题用其中文词典（CC-CEDICT）分词，因此搜索“水着”不会匹配“水着色器”。检索不区分全角与半角、平假名与片假名（搜索“しなの”也能匹配シナノ）。不超过 3 个单词的英文查询没有匹配任何文本时，会对 5 个字母及以上的纯字母单词各容许 1 处拼写错误，在标题、标签和作者名中重新搜索（“shinnano”也能匹配 Shinano）。BOOTH 标签还会按标签词典中的英、日、韩、中译词匹配，且只按完整单词匹配（搜索“裙子”能找到带スカート标签的商品，搜索“hair”不会匹配译为“chair”的标签）。简介大多是日文，而且只有标题有翻译，因此不超过 3 个单词的查询还会按译为该查询的 BOOTH 标签（最多 3 个）一并搜索：这些标签来自标题匹配查询的商品，且在带有查询语言标题的商品中，标签本身的标题匹配与查询的标题匹配大部分重合（搜索“skirt”也能找到只带スカート标签的商品）。这些商品按关键词匹配一半的权重参与排序；结果页会把这些标签列为同义词，并提供不含同义词的搜索。可选的语义搜索支持跨语言按语义查找（如搜索“哥特裙”即可匹配ゴスロリ连衣裙），并与关键词结果融合排序。AI 服务响应较慢时，结果页先显示关键词匹配的商品并附上说明，稍后自动重新加载一次；如果语义搜索结果仍未就绪，则显示相应说明，不再重新加载。由语义搜索参与的搜索还会在结果上方列出最多 4 个相关搜索：商品语义与查询词最接近的 BOOTH 标签（搜索“skirt”时如ミニスカート和 long skirt）；标签词典中有译词时按网站语言显示，不会列出查询词中的单词或查询词的译词。点击后以该标签替换查询词，保留虚拟形象名和筛选条件。没有找到商品的搜索，只要已保存查询词向量，也会在“没有找到商品”下方列出相关搜索。
+- 搜索框给出最近搜索、虚拟形象、商品、店铺与标签建议，并把每个搜索词显示为可单独删除的词条。
+- 搜索 BOOTH 商品链接或商品编号，该商品会排在最前。
+- 日文和中文全文检索；不区分全角与半角、平假名与片假名；英文单词允许 1 处拼写错误。
+- BOOTH 标签也按英、日、韩、中译词匹配，因此能找到以其他语言打标签的商品。
+- 可选的语义搜索支持跨语言按语义查找，并提供最多 4 个相关搜索。
+
+浏览与账户：
+
+- 在虚拟形象轮播中选择虚拟形象本体，即可列出适配它的商品；“虚拟形象本体”视图列出虚拟形象本身，并可按性别筛选。
+- 滚动一屏后出现“返回顶部”按钮，筛选条件和结果保持不变。
+- 商品在对话框中打开，包含完整 BOOTH 图集、变体、标题翻译与原图下载。
+- 收藏夹、最近已看、记住常用的虚拟形象，以及可重命名、可通过 RSS 订阅的已保存搜索。
+- 在设置中修改显示名称和密码；修改密码后，其他设备会退出登录。
+- 顶栏的留言板无需账号即可留言（昵称、最多 500 个字符，并需通过 Cloudflare Turnstile 验证）。管理员可隐藏或删除留言，也可将留言标为已完成或不计划处理。
+- 管理员可要求登录和注册也通过 Turnstile 验证，并对未通过验证的访客施加更严格的限制（[Turnstile](docs/SERVICES.md#cloudflare-turnstile)，英文）。
 
 <details>
 <summary>输入“manuka”时的建议：先列出虚拟形象本体，再列出匹配的商品</summary>
@@ -65,13 +70,6 @@ docker compose pull && docker compose up -d
 
 </details>
 
-### 浏览与账户
-
-- 在结果上方的虚拟形象轮播中选择虚拟形象本体，即可列出适配它的商品；“虚拟形象本体”视图列出虚拟形象本身，并可按性别筛选。
-- 商品在对话框中打开，包含完整 BOOTH 图集、变体、标题翻译与原图下载。
-- 收藏夹、最近已看（在结果中标记“已看”）、记住常用的虚拟形象，以及保存的搜索：可重命名，也可通过 RSS 订阅。
-- 在设置中修改显示名称和密码；修改密码后，其他设备会退出登录。
-
 <details>
 <summary>商品详情在结果上方打开</summary>
 
@@ -79,11 +77,10 @@ docker compose pull && docker compose up -d
 
 </details>
 
-### 外观与语言
+外观与语言：
 
 - 界面基于 Meta 的 [Astryx](https://github.com/meta/astryx) 设计系统构建。
-- 可选浅色、深色或跟随系统；深色模式下可开启纯黑模式。登录后，所选设置随账户同步。
-- 开启“减少动效”后，无论系统如何设置，页面动画都会减少；关闭时跟随系统设置。登录后此设置也随账号同步。
+- 可选浅色、深色或跟随系统；深色模式下可开启纯黑模式；还可减少动效，关闭时跟随系统设置。这些设置随账户同步。
 - 支持简体中文、英语、日语、韩语界面；商品标题支持原文或译文切换；支持货币换算，手机上同样可用。
 
 <details>
@@ -100,18 +97,18 @@ docker compose pull && docker compose up -d
 
 </details>
 
-### 抓取、AI 与图片
+抓取、AI 与图片（[详情](docs/WORKER.md)，英文）：
 
-- `worker` 每小时增量获取 BOOTH 新上架商品，每日全量巡检价格与下架状态，并定期刷新热门商品。
-- AI 增强（可选，兼容任意 OpenAI API，可配置思考强度）：自动为新商品提取智能分类、内容分级、支持功能及四语标题翻译（中/英/日/韩，虚拟形象名保留原文写法；漏掉虚拟形象名、出现原标题没有的数字或含有其他语言文字的标题会要求修正一次，仍未通过则不写入），通过名称匹配关联适配的虚拟形象，并翻译分类与标签名称；每天还会把用于 5 个及以上商品、但标签词典中还没有的 BOOTH 标签翻译成四种语言，每次最多 400 个，虚拟形象名保留原文写法，词典中已有的行不会被改动，未通过检查的译文留空，没有任何有效译文或回复对应了其他标签的标签会在之后的运行中重试，最多 3 次；若某次更新修改了分类与智能标签中文名称的翻译提示词，还会将这些名称全部重新翻译一次；语义搜索所需的向量同样由同一接口生成。
+- `worker` 每小时增量获取 BOOTH 新上架商品，每日全量巡检并标记下架商品，并定期刷新热门商品。
+- 可选的 AI 增强（兼容任意 OpenAI API）：为商品提取智能分类、内容分级、支持功能，关联适配的虚拟形象，翻译标题，并翻译分类与标签名称。语义搜索所需的向量由同一接口生成。
 - 内置代理将 BOOTH 图片和店铺图标转码为 AVIF 并缓存；已下架商品自动回退至存档图片。
 
-### 管理后台
+管理后台：
 
-- `/admin` 管理后台的概览页通过 SSE 实时显示运行状态，并提供 30 天趋势图。
-- 运行与停止任务并查看每个任务的实时日志，开关定时计划，浏览任务历史。
+- `/admin` 管理后台实时显示运行状态和 30 天趋势图，可运行、停止和定时执行任务，并查看实时日志和历史，包括最近 30 天内未被之后同类运行补救的失败运行。
+- 列出 AI 增强放弃处理的商品，可逐个或批量重试。
 - 配置 AI 服务，开放或关闭注册。
-- 查找用户，查看其登录设备，让某台设备退出登录，禁用账号或重置密码。重置密码或重新启用账号也会解除登录锁定。
+- 查找用户，查看其登录设备，让某台设备退出登录，禁用账号或重置密码。
 - 管理后台支持简体中文、英语和日语。
 
 <details>
@@ -121,7 +118,20 @@ docker compose pull && docker compose up -d
 
 </details>
 
-不提供独立商品详情页、历史价格曲线、第三方社交登录及找回密码邮件（由管理员重置密码）。商品简介和变体名保留原文，仅翻译标题和 BOOTH 标签以服务跨语言检索。
+不提供独立商品详情页、历史价格曲线、第三方社交登录及找回密码邮件（由管理员重置密码）。商品简介和变体名保留原文，仅翻译标题和 BOOTH 标签。
+
+## 文档
+
+| 页面 | 读者目标 |
+|---|---|
+| [部署指南](docs/DEPLOY.md) | 安装、配置、更新和备份服务器 |
+| [搜索行为](docs/SEARCH.md) | 了解搜索如何处理搜索词 |
+| [API 参考](docs/API.md) | 调用 HTTP API |
+| [后台任务与 AI 增强](docs/WORKER.md) | 了解 worker 运行哪些任务、AI 服务做什么 |
+| [服务行为](docs/SERVICES.md) | 了解图片代理、速率限制、缓存和 Turnstile 的行为 |
+| [实测数据](docs/MEASUREMENTS.md) | 查阅文档引用的数值 |
+
+以上页面仅提供英文版本。
 
 ## 架构
 
@@ -180,14 +190,14 @@ flowchart TD
 |---|---|
 | `crates/core` | 公共类型、BOOTH 客户端及 `migrations/` 中的 PostgreSQL 表结构（服务启动时自动执行迁移） |
 | `crates/limit` | 反向代理后的客户端 IP 与按 IP 的令牌桶，由 `api` 和 `imgproxy` 共用 |
-| `crates/api` | 搜索 API。筛选使用内存 Roaring 位图；Tantivy 文本索引持久化在磁盘（`INDEX_DIR`）并在重启间复用；分页详情从 PostgreSQL 读取。相关搜索将已保存的查询词向量与每个 BOOTH 标签的中心向量（带有该标签的商品向量的平均值）比较；中心向量在启动时生成，热重载时沿用，最长 6 小时 |
+| `crates/api` | 搜索 API。筛选使用内存 Roaring 位图；Tantivy 文本索引持久化在磁盘（`INDEX_DIR`）并在重启间复用；分页详情从 PostgreSQL 读取 |
 | `crates/worker` | 分三通道并发执行的后台任务器：`incremental`（增量上新）、`sweep`（全量巡检）、`details`、`refresh`、`enrich`、`localize` 与 `embed`（AI）。`worker run` 为守护进程，`worker once <kind> [params-json]` 单次执行指定任务 |
 | `crates/imgproxy` | `/b/{size}/...`（商品图片）、`/u/{size}/...`（店铺图标）、`/a/{file}`（BOOTH 静态图片）和 `/f/{size}/{uuid}/{file}`（pixiv Factory 图片，由 imgproxy 缩小到该尺寸）转码为 AVIF 并缓存；`/v/{sha1}.webp` 提供下架商品存档图片 |
 | `web` | Next.js 前端站点与 `/admin` 管理后台 |
 | `deploy` | 容器构建文件、`docker-bake.hcl`、`compose.yaml` 与 `.env.example` |
 | `scripts` | 数据包打包校验脚本与模拟 AI 服务 |
 
-在 32 线程机器上面对 21.6 万件商品时，API 内部检索耗时 2–10 毫秒，单次请求端到端耗时 5–40 毫秒，32 并发下吞吐约 550 请求/秒。在 Linux 容器环境中，`api` 常驻内存约 0.4–1 GB（mmap 映射的 Tantivy 索引另计在页缓存中），热重载双份目录快照时峰值约 1.8 GB（容器限制 `3g`）。标签中心向量在开发用目录的 7,396 个标签上占 30 MB（生产环境约 12,000 个标签，估计 50 MB），热重载期间只保留一份。每份目录快照还会缓存译为查询的标签的匹配结果，最多约 20 MB。
+实测的响应时间与内存占用见[实测数据](docs/MEASUREMENTS.md)（英文）。
 
 ## 开发
 
@@ -233,14 +243,7 @@ cd web && bun test && bunx next typegen && bunx tsc --noEmit && bunx biome check
 
 ## API
 
-`/api/search` 接受与 VRCatalogue 兼容的查询参数：`v q sort dir page pageSize adult avatars authors tags extags
-btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。其余公开接口包括：`/api/avatars`、`/api/authors`、
-`/api/tags`、`/api/booth-tags`（均支持 `?q=&offset=&limit=`）、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、`/api/related?<搜索参数>`
-以及 `/api/rss?<搜索参数>`。
-
-与 VRCatalogue 的差异：功能（Features）分面计数会联动当前选中的分类；“热门”（Trending）排序按点赞数随时间衰减计算；`range` 额外支持 `7d`、`30d` 与 `90d`；`fields=card` 可选返回卡片精简记录（bio、variations、booth_tags、linked_avatars 与 categories 置空，translations 仅保留标题，booth_images/media 最多 2 张；默认响应保持完整；完整记录通过 `/api/items?ids=` 获取）。`expandedWith` 列出译为查询并一同搜索的 BOOTH 标签（仅当只由它们找到的商品出现在结果中时）；`xl=0` 只按原词搜索。`/api/palette` 也会按这些标签搜索；`/api/rss` 只按原词搜索，订阅源中的商品因此不会变化。`q` 为 BOOTH 商品链接或 5 位及以上的商品编号时，该商品（含已重新上架的商品）在任何视图中按相关度排序时都排在最前，且不生成查询词向量（`semantic` 为 `skipped`）。等待 2.5 秒后 AI 服务仍在生成查询词向量时，`semantic` 为 `pending`：请求会继续执行并缓存向量，稍后的同一搜索即可使用。AI 服务出错、向量请求被速率限制拒绝，或同时进行的服务商请求已满时，`semantic` 为 `unavailable`。
-
-`/api/related` 接受相同的查询参数，在 `searches` 中最多返回 4 个相关搜索，每项包含显示名 `label` 与用于搜索它的 `q`（保留查询词中的虚拟形象名）。它们是商品平均向量与查询词向量最接近的 BOOTH 标签，排除以下标签：只是查询词的另一种写法或译词（按标签词典或同义词扩展判断）、与查询词中某个单词相同、含虚拟形象名、只由少数店铺使用或带有它的商品超过全部商品的 5%、很少出现在查询词本身的结果中，以及在相同筛选条件、成人内容设置和视图下找不到商品。指定 `hl`（`en`、`ja`、`ko` 或 `zh`）时，若标签词典中有该语言的译词，且与其他相关搜索和查询词中的单词写法都不同，`label` 即为该译词；该译词能找到商品时 `q` 使用译词，否则使用标签本身。它只读取搜索时已保存的查询词向量，从不请求 AI 服务，因此对没有已保存向量的查询词、商品链接或编号，以及当前设置的向量模型与生成商品向量的模型不一致时，都不返回结果。
+`/api/search` 接受与 VRCatalogue 兼容的查询参数：`v q sort dir page pageSize adult avatars authors tags extags btags exbtags sc scp bc if free pmin pmax range from to asup gender fields`。其余公开接口包括：`/api/avatars`、`/api/authors`、`/api/tags`、`/api/booth-tags`（均支持 `?q=&offset=&limit=`）、`/api/categories`、`/api/items?ids=`、`/api/palette?q=`、`/api/related?<搜索参数>` 以及 `/api/rss?<搜索参数>`。与 VRCatalogue 的差异、新增参数和响应字段见 [API 参考](docs/API.md)（英文）。
 
 ## 致谢
 
