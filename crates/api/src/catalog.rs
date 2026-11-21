@@ -11,6 +11,7 @@ use serde::Serialize;
 
 use crate::expansion::Equivalents;
 use crate::search_request::{Adult, ItemReference, Range, SearchRequest, Sort, Support, View, item_reference};
+use crate::tag_words::TagWords;
 use crate::text::{TextDoc, TextIndex, TextMatches};
 
 pub const FEATURES: &[&str] = &["quest", "vrcfury", "ma", "liltoon", "poiyomi"];
@@ -21,7 +22,13 @@ const PRICE_CAP: i32 = 15_000;
 pub struct DocInput {
     pub id: i64,
     pub title: String,
+    /// its title in English, Japanese and Korean, where that differs from `title`
     pub titles_translated: Vec<String>,
+    /// its title in Chinese, searched as Chinese (text.rs): `title` itself when the listing is Chinese, else the
+    /// Chinese translation
+    pub title_zh: Option<String>,
+    /// the listing is Chinese: `title` is searched as Chinese only, in `title_zh`
+    pub title_is_zh: bool,
     /// the languages it has a title in, translated or original: bit `1 << k` for `expansion::LANGUAGES[k]`
     pub title_languages: u8,
     pub bio: String,
@@ -221,7 +228,14 @@ impl Catalog {
         }
     }
 
+    /// A catalogue without tag translations, for tests.
+    #[cfg(test)]
     pub fn build(docs: Vec<DocInput>, now: i64, text_dir: Option<&std::path::Path>) -> Result<Self> {
+        Self::build_with_tag_words(docs, &TagWords::default(), now, text_dir)
+    }
+
+    /// `tag_words`: the BOOTH tag dictionary, whose words of each item's tags its text search matches as words.
+    pub fn build_with_tag_words(docs: Vec<DocInput>, tag_words: &TagWords, now: i64, text_dir: Option<&std::path::Path>) -> Result<Self> {
         let n = docs.len();
         use std::hash::{DefaultHasher, Hash, Hasher};
         let mut hasher = DefaultHasher::new();
@@ -230,10 +244,13 @@ impl Catalog {
             d.id.hash(&mut hasher);
             d.title.hash(&mut hasher);
             d.titles_translated.hash(&mut hasher);
+            d.title_zh.hash(&mut hasher);
+            d.title_is_zh.hash(&mut hasher);
             d.booth_tags.hash(&mut hasher);
             d.author.hash(&mut hasher);
             d.bio.hash(&mut hasher);
         }
+        tag_words.fingerprint().hash(&mut hasher);
         let fingerprint = hasher.finish();
 
         let mut c = Catalog {
@@ -261,8 +278,10 @@ impl Catalog {
             gender: Index::default(),
             text: TextIndex::build(
                 docs.iter().map(|d| TextDoc {
-                    title: std::iter::once(&d.title).chain(&d.titles_translated).cloned().collect::<Vec<_>>().join("\n"),
+                    title: std::iter::once(&d.title).filter(|_| !d.title_is_zh).chain(&d.titles_translated).cloned().collect::<Vec<_>>().join("\n"),
+                    title_zh: d.title_zh.clone().unwrap_or_default(),
                     tags: d.booth_tags.join("\n"),
+                    tag_words: tag_words.text(&d.booth_tags),
                     author: d.author.clone(),
                     bio: d.bio.clone(),
                 }),
@@ -472,7 +491,7 @@ impl Catalog {
         // order among themselves stays
         let mut translated: FxHashMap<u32, f32> = FxHashMap::default();
         for e in expanded.iter() {
-            let m = self.text.search(e)?;
+            let m = self.equivalents.matches(e, &self.text)?;
             for d in m.hits.iter().filter(|d| !hits.contains(*d) && fits.as_ref().is_none_or(|f| f.contains(*d))) {
                 let s = m.scores.get(&d).copied().unwrap_or(0.0);
                 let best = translated.entry(d).or_insert(s);
@@ -665,6 +684,8 @@ mod tests {
             id,
             title: format!("item {id}"),
             titles_translated: vec![],
+            title_zh: None,
+            title_is_zh: false,
             title_languages: 0b0111,
             bio: String::new(),
             author: "a".into(),
@@ -768,6 +789,166 @@ mod tests {
             assert_eq!(c.search_plain(&format!("q={title}"), 0, None).unwrap().ids, [id]);
             last = Some(current);
         }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn dictionary(rows: &[(&str, &[&str])]) -> TagWords {
+        TagWords::new(rows.iter().map(|(tag, words)| (tag.to_string(), words.iter().map(|w| w.to_string()).collect())))
+    }
+
+    #[test]
+    fn tag_translations_match_as_words_of_the_tags_only() {
+        let mut d = (1..=4).map(doc).collect::<Vec<_>>();
+        for (doc, tag) in d.iter_mut().zip(["スカート", "椅子", "Hair Clip", "テクスチャ"]) {
+            doc.booth_tags = vec![tag.into()];
+        }
+        let words = dictionary(&[("スカート", &["skirt", "裙子"]), ("椅子", &["chair", "의자"]), ("テクスチャ", &["texture", "纹理", "贴图"])]);
+        let c = Catalog::build_with_tag_words(d, &words, 0, None).unwrap();
+        for (q, expected) in [("skirt", vec![1]), ("裙子", vec![1]), ("chair", vec![2]), ("hair", vec![3]), ("贴图", vec![4]), ("纹理", vec![4])] {
+            assert_eq!(ids(&c, &format!("q={q}")), expected, "query {q:?}");
+        }
+        // the tag filter, the tag lists and the expansion keep the BOOTH tags as written
+        let mut tags = c.booth_tags.keys().cloned().collect::<Vec<_>>();
+        tags.sort();
+        assert_eq!(tags, ["Hair Clip", "スカート", "テクスチャ", "椅子"]);
+        assert!(ids(&c, "btags=skirt").is_empty());
+    }
+
+    #[test]
+    fn chinese_titles_are_searched_as_chinese() {
+        let mut d = (1..=4).map(doc).collect::<Vec<_>>();
+        // a Japanese listing translated as a water shader, a Chinese listing (made-to-order services), and two titled
+        // with the words themselves
+        (d[0].title, d[0].title_zh) = ("水シェーダー".into(), Some("水着色器".into()));
+        (d[1].title, d[1].title_zh, d[1].title_is_zh) = ("定制服务".into(), Some("定制服务".into()), true);
+        (d[2].title, d[2].title_zh) = ("スク水".into(), Some("夏日水着".into()));
+        (d[3].title, d[3].title_zh) = ("学生服".into(), Some("学生制服套装".into()));
+        let c = Catalog::build(d, 0, None).unwrap();
+        for (q, expected) in [("水着", vec![3]), ("制服", vec![4]), ("着色器", vec![1]), ("定制", vec![2]), ("水シェーダー", vec![1])] {
+            assert_eq!(ids(&c, &format!("q={q}")), expected, "query {q:?}");
+            assert_eq!(c.title_hits(q).unwrap().iter().map(|d| d as i64 + 1).collect::<Vec<_>>(), expected, "title words {q:?}");
+        }
+    }
+
+    #[test]
+    fn a_changed_dictionary_rebuilds_the_text_index_on_disk() {
+        let root = std::env::temp_dir().join(format!("catalog-tag-words-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let docs = || {
+            let mut d = doc(1);
+            d.booth_tags = vec!["スカート".into()];
+            vec![d]
+        };
+        let index_dirs = || std::fs::read_dir(&root).unwrap().map(|e| e.unwrap().path()).filter(|p| p.join("READY").exists()).collect::<Vec<_>>();
+        let first = Catalog::build_with_tag_words(docs(), &dictionary(&[("スカート", &["skirt"])]), 0, Some(&root)).unwrap();
+        assert_eq!(first.search_plain("q=skirt", 0, None).unwrap().ids, [1]);
+        let first_dir = index_dirs();
+        drop(first);
+        let second = Catalog::build_with_tag_words(docs(), &dictionary(&[("スカート", &["jupe"])]), 0, Some(&root)).unwrap();
+        assert_eq!((second.search_plain("q=jupe", 0, None).unwrap().ids, second.search_plain("q=skirt", 0, None).unwrap().ids), (vec![1], vec![]));
+        assert_ne!(index_dirs(), first_dir);
+        drop(second);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Fixed samples of what a search finds, so a change to the text search, the tag dictionary's words or the
+    /// expansion shows up here (owner ruling 30, 2026-11-21). Each search runs as `/api/search` runs it without
+    /// meaning-based matches: the words also searched as the tags that translate them.
+    #[test]
+    fn search_quality_samples() {
+        let titled = |d: &mut DocInput, title: &str, translated: &str| {
+            d.title = title.into();
+            d.titles_translated = vec![translated.into()];
+        };
+        let mut docs: Vec<DocInput> = (1..=60).chain([8_962_830]).map(doc).collect();
+        for d in &mut docs {
+            let id = d.id;
+            match id {
+                // skirts: 1-12 titled both ways, 13-22 only tagged スカート
+                1..=12 => (titled(d, &format!("スカート {id}"), &format!("Skirt {id}")), d.booth_tags = vec!["スカート".into()]).1,
+                13..=22 => d.booth_tags = vec!["スカート".into()],
+                // tails: 23-34 titled with 尾 too and tagged 尾, 35-44 only tagged 尾
+                23..=34 => (titled(d, &format!("尾 {id}"), &format!("Tail {id}")), d.booth_tags = vec!["尾".into()]).1,
+                35..=44 => d.booth_tags = vec!["尾".into()],
+                45 => d.booth_tags = vec!["椅子".into()],
+                46 => d.booth_tags = vec!["カクテル".into()],
+                47 => d.title = "Hair Clip".into(),
+                48 => d.booth_tags = vec!["テクスチャ".into()],
+                49 => (d.title, d.title_zh) = ("Water Shader".into(), Some("aleph 9 水着色器".into())),
+                50 => d.title = "水着セット".into(),
+                51 => (d.title, d.title_zh) = ("Fan-made Outfit".into(), Some("粉丝自制服装".into())),
+                52 => (d.title, d.title_zh) = ("Commission".into(), Some("定制服务（委托）".into())),
+                53 => d.title = "制服セット".into(),
+                54 => d.title = "Ribbon for 8962830".into(),
+                _ => {}
+            }
+        }
+        let words = dictionary(&[
+            // no English value, so skirt finds these items through the expansion alone
+            ("スカート", &["スカート", "스커트", "裙子"]),
+            ("椅子", &["chair", "椅子", "의자", "椅子"]),
+            ("カクテル", &["cocktail", "カクテル", "칵테일", "鸡尾酒"]),
+            ("テクスチャ", &["texture", "テクスチャ", "텍스처", "纹理", "贴图"]),
+        ]);
+        let c = Catalog::build_with_tag_words(docs, &words, 0, None).unwrap();
+        let found = |q: &str| {
+            let r = SearchRequest::from(&Params::parse(&format!("q={q}&pageSize=100")));
+            let mut ids = c.search(&r, 0, None, None, Some(q), false).unwrap().ids;
+            ids.sort();
+            ids
+        };
+        let range = |r: std::ops::RangeInclusive<i64>| r.collect::<Vec<_>>();
+        // skirt finds the items only tagged スカート, through the tag that translates it; 裙子 through the dictionary
+        assert_eq!(found("skirt"), range(1..=22));
+        assert_eq!(found("裙子"), range(1..=22));
+        // hair is not read inside the tag translated chair, nor tail inside the one translated cocktail
+        assert_eq!(found("hair"), [47]);
+        assert_eq!(found("cocktail"), [46]);
+        assert_eq!(found("tail"), range(23..=34));
+        // 尾 is one character: not taken as a translation of tail, though its items are titled both ways
+        assert!(c.equivalents("tail").unwrap().is_empty());
+        // the keyword 贴图 finds the items tagged with the tag translated 纹理
+        assert_eq!(found("贴图"), [48]);
+        // 水着 is not read inside the Chinese title 水着色器, nor 制服 inside 自制服装 or 定制服务
+        assert_eq!(found("水着"), [50]);
+        assert_eq!(found("制服"), [53]);
+        // a pasted item link finds that item, and its number ranks it before the items that only mention it
+        let first = |q: &str| c.search(&SearchRequest::from(&Params::parse(&format!("q={q}"))), 0, None, None, None, false).unwrap().ids;
+        assert_eq!(first("https%3A%2F%2Fbooth.pm%2Fja%2Fitems%2F8962830"), [8_962_830]);
+        assert_eq!(first("8962830"), [8_962_830, 54]);
+    }
+
+    #[test]
+    fn a_changed_chinese_title_rebuilds_the_text_index_on_disk() {
+        let root = std::env::temp_dir().join(format!("catalog-title-zh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let docs = |zh: &str| {
+            let mut d = doc(1);
+            d.title_zh = Some(zh.into());
+            vec![d]
+        };
+        drop(Catalog::build(docs("裙子"), 0, Some(&root)).unwrap());
+        let changed = Catalog::build(docs("帽子"), 0, Some(&root)).unwrap();
+        assert_eq!((ids(&changed, "q=帽子"), ids(&changed, "q=裙子")), (vec![1], vec![]));
+        drop(changed);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_listing_no_longer_read_as_chinese_rebuilds_the_text_index_on_disk() {
+        let root = std::env::temp_dir().join(format!("catalog-title-is-zh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // the Chinese title repeats the title, so only the listing's language changes, and with it the title's field
+        let docs = |zh: bool| {
+            let mut d = doc(1);
+            (d.title, d.title_zh, d.title_is_zh) = ("定制服务".into(), Some("定制服务".into()), zh);
+            vec![d]
+        };
+        drop(Catalog::build(docs(true), 0, Some(&root)).unwrap());
+        let changed = Catalog::build(docs(false), 0, Some(&root)).unwrap();
+        // read as Japanese, IPADIC finds 制服 in it (chinese_titles_are_searched_as_chinese)
+        assert_eq!(ids(&changed, "q=制服"), [1]);
+        drop(changed);
         let _ = std::fs::remove_dir_all(root);
     }
 

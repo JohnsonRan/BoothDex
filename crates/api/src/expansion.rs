@@ -16,7 +16,7 @@ use roaring::RoaringBitmap;
 use rustc_hash::FxHashMap;
 
 use crate::catalog::Index;
-use crate::text::{TextIndex, compact, fold};
+use crate::text::{TextIndex, TextMatches, compact, fold};
 
 // The thresholds were tuned on the development catalogue (216k items, 42 sample queries, 2026-11-20).
 /// A longer query describes something rather than naming one thing to translate.
@@ -34,8 +34,16 @@ const CONTAINMENT: f64 = 0.7;
 /// Share of the query's title matches that the tag matches too; below it the tag is narrower (ミニスカート for skirt).
 const COVERAGE: f64 = 0.25;
 const MAX_EQUIVALENTS: usize = 3;
+/// A tag of fewer characters is no equivalent: one character is part of too many other words and names (尾 for tail
+/// is in 九尾, 龍尾 and 狼尾, a wolf cut).
+const MIN_CHARS: usize = 2;
 /// Queries whose equivalents one snapshot remembers.
 const CACHE_CAP: u64 = 2000;
+/// What one snapshot holds of the equivalents' matches, in bytes (owner, 2026-11-21: about 20 MB): the matches of the
+/// tags searched least lately and least often give way first.
+const MATCHES_CAP: u64 = 20 * 1024 * 1024;
+/// Bytes one hit of the cached matches costs: its score in the map and its share of the bitmap, rounded up.
+const BYTES_PER_HIT: u64 = 16;
 
 /// The languages of item titles, in the bit order of `DocInput::title_languages`.
 pub(crate) const LANGUAGES: [&str; 4] = ["en", "ja", "ko", "zh"];
@@ -58,6 +66,13 @@ pub(crate) struct Equivalents {
     titled: [RoaringBitmap; 4],
     /// keyed by the query as the title parser gets it; `fold` is no key, as it folds kana before Lindera segments
     cache: moka::sync::Cache<String, Arc<[String]>>,
+    /// what each equivalent searched so far matches, keyed by the tag (`matches`)
+    matches: moka::sync::Cache<String, Arc<TextMatches>>,
+}
+
+/// What a tag's cached matches weigh against `MATCHES_CAP`.
+fn weight(tag: &str, matches: &TextMatches) -> u32 {
+    u32::try_from(tag.len() as u64 + matches.hits.len() * BYTES_PER_HIT).unwrap_or(u32::MAX)
 }
 
 impl Equivalents {
@@ -106,7 +121,19 @@ impl Equivalents {
             ids.extend(t);
             starts.push(ids.len() as u32);
         }
-        Self { names, items, shops, keys, starts, ids, titled: titled.map(|b| b - relisted), cache: moka::sync::Cache::new(CACHE_CAP) }
+        let matches = moka::sync::Cache::builder().max_capacity(MATCHES_CAP).weigher(|tag: &String, m: &Arc<TextMatches>| weight(tag, m)).build();
+        Self { names, items, shops, keys, starts, ids, titled: titled.map(|b| b - relisted), cache: moka::sync::Cache::new(CACHE_CAP), matches }
+    }
+
+    /// What `TextIndex::search` finds for the equivalent `tag`, remembered for this snapshot within `MATCHES_CAP`: an
+    /// expanded search, and the palette on every keystroke, would search each equivalent again.
+    pub(crate) fn matches(&self, tag: &str, text: &TextIndex) -> Result<Arc<TextMatches>> {
+        if let Some(found) = self.matches.get(tag) {
+            return Ok(found);
+        }
+        let found = Arc::new(text.search(tag)?);
+        self.matches.insert(tag.to_owned(), found.clone());
+        Ok(found)
     }
 
     /// The tags of doc `d`, as indexes.
@@ -184,7 +211,7 @@ impl Equivalents {
         let mut out = Vec::new();
         for (_, _, t) in candidates.into_iter().take(CANDIDATES) {
             let name = &self.names[t as usize];
-            if same_word(q, name) {
+            if same_word(q, name) || compact(name).chars().count() < MIN_CHARS {
                 continue;
             }
             let tt = text.title_hits(name)? & titled;
@@ -236,6 +263,8 @@ pub(crate) mod tests {
             id,
             title,
             titles_translated: translated.to_vec(),
+            title_zh: None,
+            title_is_zh: false,
             // en, ja and ko, as nearly every production item has; zh only where a test sets it
             title_languages: 0b0111,
             bio: String::new(),
@@ -318,7 +347,7 @@ pub(crate) mod tests {
         for i in 162..=203 {
             let mut scarf = doc(i, format!("マフラー {i}"), &[format!("Scarf {i}")], &["マフラー"]);
             if i <= 173 {
-                scarf.titles_translated.push(format!("围巾 {i}"));
+                scarf.title_zh = Some(format!("围巾 {i}"));
                 scarf.title_languages |= 0b1000;
             }
             d.push(scarf);
@@ -326,6 +355,10 @@ pub(crate) mod tests {
         // 204-243: titles in the same characters, not counted as Chinese (written by a Japanese shop, say)
         for i in 204..=243 {
             d.push(doc(i, format!("围巾 {i}"), &[], &[]));
+        }
+        // 244-263: wings titled and tagged in two Japanese words, one of them a single character
+        for i in 244..=263 {
+            d.push(doc(i, format!("翼 羽根 {i}"), &[format!("Wings {i}")], &["翼", "羽根"]));
         }
         Catalog::build(d, 0, None).unwrap()
     }
@@ -367,6 +400,21 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn an_equivalents_matches_are_remembered_by_their_weight() {
+        let c = catalogue();
+        let r = crate::search_request::SearchRequest::from(&crate::params::Params::parse("q=skirt&pageSize=100"));
+        let skirt = c.search(&r, 0, None, None, Some("skirt"), false).unwrap();
+        assert_eq!(skirt.expanded_with, ["スカート"]);
+        // the expanded search remembered what スカート matches, weighed by its bytes and 16 per hit; a second search uses it
+        let tags = c.tags();
+        tags.matches.run_pending_tasks();
+        let cached = tags.matches.get("スカート").expect("remembered by the search");
+        assert_eq!((tags.matches.entry_count(), tags.matches.weighted_size()), (1, "スカート".len() as u64 + cached.hits.len() * 16));
+        assert_eq!(c.search(&r, 0, None, None, Some("skirt"), false).unwrap(), skirt);
+        assert!(Arc::ptr_eq(&cached, &tags.matches.get("スカート").unwrap()));
+    }
+
+    #[test]
     fn a_query_is_measured_on_the_items_titled_in_its_language() {
         let c = catalogue();
         // among the items with a Chinese title every マフラー title says 围巾 and every 围巾 title is a scarf; among
@@ -388,5 +436,7 @@ pub(crate) mod tests {
         assert_eq!(of(&c, "앞치마"), ["エプロン"]);
         // titles match by words: 앞치마 (apron) does not hold the word 치마 (skirt)
         assert!(of(&c, "치마").is_empty());
+        // 翼 passes every count as 羽根 does, but one character is no equivalent
+        assert_eq!(of(&c, "wings"), ["羽根"]);
     }
 }

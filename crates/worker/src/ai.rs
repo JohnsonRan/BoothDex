@@ -34,12 +34,12 @@ impl Ai {
         Ok(Some(Self { http, base_url, model, api_key, reasoning_effort: c.reasoning_effort }))
     }
 
-    fn body(&self, messages: Value) -> Value {
+    fn body(&self, messages: Value, response_format: Value) -> Value {
         json!({
             "model": self.model,
             "temperature": 0,
             "reasoning_effort": self.reasoning_effort,
-            "response_format": { "type": "json_object" },
+            "response_format": response_format,
             "messages": messages,
         })
     }
@@ -47,6 +47,18 @@ impl Ai {
     /// One JSON-mode chat completion; retries 429/5xx with backoff. Returns the parsed JSON object.
     pub async fn json(&self, system: &str, user: &str) -> Result<Value> {
         self.chat(json!([{ "role": "system", "content": system }, { "role": "user", "content": user }])).await
+    }
+
+    /// Like `json`, with the reply held to `schema` (`response_format` json_schema, strict). `Ok(None)` when the
+    /// provider refuses that format (`refuses_format`), so the caller can ask with `json` instead.
+    pub async fn json_schema(&self, system: &str, user: &str, schema: Value) -> Result<Option<Value>> {
+        let messages = json!([{ "role": "system", "content": system }, { "role": "user", "content": user }]);
+        let format = json!({ "type": "json_schema", "json_schema": { "name": "reply", "strict": true, "schema": schema } });
+        match self.send(&self.body(messages, format)).await? {
+            Ok(v) => Ok(Some(v)),
+            Err(refusal) if refuses_format(refusal.status, &refusal.text) => Ok(None),
+            Err(refusal) => Err(refusal.into()),
+        }
     }
 
     /// Asks again in the same conversation after `rejected` failed validation with `error`, for a full corrected reply.
@@ -65,14 +77,18 @@ impl Ai {
     }
 
     async fn chat(&self, messages: Value) -> Result<Value> {
-        let body = self.body(messages);
+        Ok(self.send(&self.body(messages, json!({ "type": "json_object" }))).await??)
+    }
+
+    /// Sends one request; retries 429/5xx with backoff. The inner `Err` is a request the provider refused outright.
+    async fn send(&self, body: &Value) -> Result<std::result::Result<Value, Refusal>> {
         for attempt in 0..5u32 {
-            let res = self.http.post(format!("{}/chat/completions", self.base_url)).bearer_auth(&self.api_key).json(&body).send().await;
+            let res = self.http.post(format!("{}/chat/completions", self.base_url)).bearer_auth(&self.api_key).json(body).send().await;
             match res {
                 Ok(r) if r.status().is_success() => {
                     let v: Value = r.json().await?;
                     let text = v["choices"][0]["message"]["content"].as_str().context("provider reply without content")?;
-                    return parse_json_reply(text);
+                    return Ok(Ok(parse_json_reply(text)?));
                 }
                 Ok(r) if r.status() == 429 || r.status().is_server_error() => {
                     if attempt == 4 {
@@ -81,9 +97,9 @@ impl Ai {
                     tokio::time::sleep(Duration::from_secs(2u64.pow(attempt + 1))).await;
                 }
                 Ok(r) => {
-                    let status = r.status();
+                    let status = r.status().as_u16();
                     let text: String = r.text().await.unwrap_or_default().chars().take(300).collect();
-                    return Err(ProviderError(format!("provider answered {status}: {text}")).into());
+                    return Ok(Err(Refusal { status, text }));
                 }
                 Err(e) if attempt < 4 => {
                     eprintln!("ai request: {e}");
@@ -94,6 +110,24 @@ impl Ai {
         }
         Err(ProviderError("provider kept failing (rate limit or server errors)".into()).into())
     }
+}
+
+/// A request the provider refused outright (not 429 or 5xx): its status and the start of its body.
+struct Refusal {
+    status: u16,
+    text: String,
+}
+
+impl From<Refusal> for anyhow::Error {
+    fn from(r: Refusal) -> Self {
+        ProviderError(format!("provider answered {}: {}", r.status, r.text)).into()
+    }
+}
+
+/// Whether a refusal is about the reply format: HTTP 400, or an error that names `response_format` (providers without
+/// json_schema answer either way).
+fn refuses_format(status: u16, text: &str) -> bool {
+    status == 400 || text.contains("response_format")
 }
 
 /// Models sometimes wrap JSON in ```json fences or add text around it; take the outermost object.
@@ -107,9 +141,282 @@ pub fn parse_json_reply(text: &str) -> Result<Value> {
 }
 
 pub const LOCALIZE_SYSTEM: &str = "You translate UI labels of a shop for VRChat avatar assets (clothing, hair, accessories, shaders, tools) \
-into Simplified Chinese (zh-CN). Use the terms Chinese VRChat users use (e.g. 衣装/服装, 发型, 配饰, 着色器, 模型 for avatar). \
+into Simplified Chinese (zh-CN). Use the terms Chinese VRChat users use (e.g. 衣装/服装, 发型, 配饰; 虚拟形象 for an avatar, \
+3D模型 for a 3D model file) and the terms of Unity's Chinese manual: 纹理 for a texture, X贴图 for an X map (法线贴图 for a normal map), \
+材质 for a material, 着色器 for a shader, 网格 for a mesh. \
 Keep brand and tool names (VRChat, Quest, lilToon, Poiyomi, Modular Avatar, VRCFury, FBX, Unity) untranslated. Labels are short; no trailing punctuation. \
 Reply with a JSON object mapping each given key to its translation, nothing else.";
+
+pub const TAG_SYSTEM: &str = "You translate BOOTH tags for a catalogue of VRChat avatar assets (clothing, hair, accessories, shaders, tools, avatars). \
+The user message may first name the avatars the tags hold; then it is a JSON array of items {\"id\", \"tag\", \"context\"}. \
+Translate only \"tag\". \"context\" holds titles of listings that carry the tag: never translate it or copy it into an answer. \
+For every item give an object with keys tag, en, ja, ko and zh: tag copies the item's tag character for character; en, ja, ko \
+and zh give the tag as a short search keyword in English, Japanese, Korean and Simplified Chinese. Copy the tag where it \
+already is in that language. Translate the tag itself: add nothing it does not say. \
+Avatar (character model) names are never translated or transliterated: keep each one as the tag writes it, in Japanese or Latin \
+letters, in every value; the English value uses its romaji. Product, app, tool, brand and shop names stay as written (VRChat, \
+Quest, lilToon, Poiyomi, Modular Avatar, VRCFury, FBX, Unity, GIFTuber). Community jargon is translated by its meaning, not \
+word by word: 白モデル is an untextured base model (zh 白模), 地雷系 is jirai kei in English. zh uses the terms Chinese VRChat \
+users use (衣装/服装, 发型, 配饰; 虚拟形象 for an avatar, 3D模型 for a 3D model file, 虚拟主播 for a VTuber) and the terms of \
+Unity's Chinese manual: 纹理 for a texture, X贴图 for an X map (法线贴图 for a normal map), 材质 for a material, 着色器 for a \
+shader, 网格 for a mesh. Each value is one line of at most 60 characters, in the script of its language. \
+Reply with one JSON object whose keys are the ids and whose values are objects with exactly the keys tag, en, ja, ko and zh, \
+nothing else.";
+
+/// User message for one batch of BOOTH tags: the avatars the matcher found in the tags (avatars.rs), so the model keeps
+/// their names, then the tags as a JSON array of {id, tag, context}, the ids `tag_id`, the context up to 3 titles of
+/// listings that carry the tag (each cut to 120 characters). Keying the reply by id, not by the tag, keeps the model from
+/// echoing tags and titles back (owner's test of the formats, 2026-11-21).
+pub fn tag_prompt(tags: &[(String, Vec<String>)], avatars: &[&AvatarName]) -> String {
+    let items: Vec<Value> = tags
+        .iter()
+        .enumerate()
+        .map(|(i, (tag, titles))| json!({ "id": tag_id(i), "tag": tag, "context": titles.iter().take(3).map(|t| t.chars().take(120).collect::<String>()).collect::<Vec<_>>() }))
+        .collect();
+    format!("{}{}", avatar_names_line(avatars), Value::Array(items))
+}
+
+/// The id of the `i`-th tag of a batch, which keys its answer.
+pub fn tag_id(i: usize) -> String {
+    format!("t{}", i + 1)
+}
+
+/// The reply schema for a batch of `n` tags (`Ai::json_schema`): an object with every id, each an object with the tag
+/// copied back (`answers_tag`) and the four languages as strings of 1 to 60 characters, and nothing else at either level.
+pub fn tag_schema(n: usize) -> Value {
+    let value = json!({ "type": "string", "minLength": 1, "maxLength": 60 });
+    let mut properties: serde_json::Map<String, Value> = TAG_LANGUAGES.iter().map(|k| (k.to_string(), value.clone())).collect();
+    properties.insert("tag".into(), json!({ "type": "string" }));
+    let tag = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tag", "en", "ja", "ko", "zh"],
+        "properties": properties,
+    });
+    let ids: Vec<String> = (0..n).map(tag_id).collect();
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ids,
+        "properties": ids.iter().map(|id| (id.clone(), tag.clone())).collect::<serde_json::Map<_, _>>(),
+    })
+}
+
+/// The prompt line that names the avatars the matcher found, so the model keeps their names; empty without any.
+fn avatar_names_line(avatars: &[&AvatarName]) -> String {
+    if avatars.is_empty() {
+        return String::new();
+    }
+    let names: Vec<String> = avatars.iter().map(|a| a.to_string()).collect();
+    format!("Avatar names (Japanese / romaji): {}\n", names.join(", "))
+}
+
+/// Whether `answer` (the reply's entry under a tag's id) copies `tag` back, ignoring case, width and surrounding space:
+/// a model that loses its place in a batch files a tag's translation under another tag's id (Rira -> 花鸟风月巫女礼服 in
+/// the local backfill; owner ruling 29, 2026-11-21).
+pub fn answers_tag(answer: &Value, tag: &str) -> bool {
+    answer["tag"].as_str().is_some_and(|echo| crate::avatars::norm(echo.trim()) == crate::avatars::norm(tag.trim()))
+}
+
+/// The languages of a tag's dictionary row, in the column order of `booth_tag_translations`.
+pub const TAG_LANGUAGES: [&str; 4] = ["en", "ja", "ko", "zh"];
+
+/// An avatar name a tag or title holds, as the forms a value may keep it in, NFKC and lowercase: the forms the text
+/// writes it in, its Japanese name and its romaji (`forms`), and those in Latin letters (`latin`, `latin_letters`),
+/// which an English title or tag value keeps. A name is never translated or transliterated (owner ruling 13,
+/// 2026-11-20).
+pub struct HeldName {
+    pub forms: Vec<String>,
+    pub latin: Vec<String>,
+}
+
+impl HeldName {
+    /// The forms a value keeps the name in: English the Latin ones, the other languages any.
+    fn kept_in(&self, english: bool) -> &[String] {
+        if english { &self.latin } else { &self.forms }
+    }
+
+    /// Whether `folded` (NFKC, lowercase) drops the name. A name without a form in Latin letters gives an English value
+    /// nothing to keep.
+    fn dropped_from(&self, folded: &str, english: bool) -> bool {
+        let forms = self.kept_in(english);
+        !forms.is_empty() && !forms.iter().any(|f| folded.contains(f.as_str()))
+    }
+}
+
+/// One tag's values from its answer (`answer` is the reply's entry for the tag's id), in `TAG_LANGUAGES` order: each
+/// trimmed, or why it is left out. A value is left out unless it is at most 60 non-control characters, has no script
+/// foreign to its language (Han, kana or Hangul in English; Hangul in Japanese; Han or kana in Korean; kana or Hangul in
+/// Chinese) that the tag is not written in, is not one of the tag's example `titles` (nor, over 20 characters, a part
+/// of one) unless it is the tag itself, and keeps every avatar name the tag holds (English in Latin letters, the romaji).
+/// `japanese`: every avatar's Japanese name (`AvatarName::japanese_names`), which a Japanese, Korean or Chinese value may
+/// hold in any script.
+pub fn tag_values(answer: &Value, tag: &str, titles: &[String], names: &[HeldName], japanese: &[String]) -> [std::result::Result<String, String>; 4] {
+    let scripts: [fn(char) -> bool; 3] = [is_han, is_kana, is_hangul];
+    let foreign: [&[usize]; 4] = [&[0, 1, 2], &[2], &[0, 1], &[1, 2]];
+    std::array::from_fn(|k| {
+        let v = answer[TAG_LANGUAGES[k]].as_str().map(str::trim).filter(|v| !v.is_empty()).ok_or("no value")?;
+        // a control character (a line break, or a NUL, which PostgreSQL text refuses) is no part of a keyword
+        if v.chars().count() > 60 || v.chars().any(char::is_control) {
+            return Err("not one line of at most 60 characters without control characters".into());
+        }
+        // English keeps an avatar's romaji instead (owner ruling 13)
+        let unnamed = if TAG_LANGUAGES[k] == "en" { v.to_owned() } else { without_names(v, japanese) };
+        if foreign[k].iter().any(|&s| unnamed.chars().any(scripts[s]) && !tag.chars().any(scripts[s])) {
+            return Err("in a script foreign to its language".into());
+        }
+        if v != tag.trim() && titles.iter().any(|t| t.trim() == v || (v.chars().count() > 20 && t.contains(v))) {
+            return Err("copies an example title".into());
+        }
+        let (folded, english) = (crate::avatars::norm(v), TAG_LANGUAGES[k] == "en");
+        if let Some(lost) = names.iter().find(|n| n.dropped_from(&folded, english)) {
+            return Err(format!("drops the avatar name {}", lost.kept_in(english)[0]));
+        }
+        Ok(v.to_owned())
+    })
+}
+
+/// A script by its name, and whether a character is written in it.
+type Script = (&'static str, fn(char) -> bool);
+
+/// The checks of each translated title an enrich reply gives (owner ruling 30, 2026-11-21), for one listing.
+pub struct TitleCheck<'a> {
+    /// the listing's own title
+    pub original: &'a str,
+    /// the avatar names the matcher finds in that title
+    pub names: Vec<HeldName>,
+    /// every avatar's Japanese name (`AvatarName::japanese_names`)
+    pub japanese: &'a [String],
+}
+
+impl TitleCheck<'_> {
+    /// Why the title in `lang` fails, or `None`. A title fails when it drops an avatar name the original holds (English
+    /// keeps the romaji), has a number the original lacks, or holds a script foreign to its language (as `tag_values`
+    /// reads scripts; an avatar's Japanese name may stay in any but English). The title in the listing's own language,
+    /// `own`, is not checked when it copies the original, as the prompt asks.
+    pub fn problem(&self, lang: &str, title: &str, own: Option<&str>) -> Option<String> {
+        if own == Some(lang) && title.trim() == self.original.trim() {
+            return None;
+        }
+        // PostgreSQL's jsonb refuses a NUL, which would fail the item's write and stop the batch
+        if title.contains('\0') {
+            return Some("holds a NUL character".into());
+        }
+        let folded = crate::avatars::norm(title);
+        let english = lang == "en";
+        if let Some(lost) = self.names.iter().find(|n| n.dropped_from(&folded, english)) {
+            return Some(format!("drops the avatar name {}", lost.kept_in(english)[0]));
+        }
+        let allowed = numbers_of_original(self.original);
+        if let Some(n) = numbers(title).into_iter().find(|n| !allowed.contains(n)) {
+            return Some(format!("has the number {n}, which the original title lacks"));
+        }
+        let scripts: [Script; 3] = [("Han characters", is_han), ("kana", is_kana), ("Hangul", is_hangul)];
+        let foreign: &[usize] = match lang {
+            "en" => &[0, 1, 2],
+            "ja" => &[2],
+            "ko" => &[0, 1],
+            _ => &[1, 2],
+        };
+        let unnamed = if english { folded } else { without_names(title, self.japanese) };
+        foreign.iter().map(|&s| scripts[s]).find(|(_, is)| unnamed.chars().any(is)).map(|(script, _)| format!("holds {script}, which a {lang} title does not use"))
+    }
+
+    /// The problems of the titles in `translations` (`Enrichment::translations`), as (language, why).
+    pub fn problems(&self, translations: &Value) -> Vec<(&'static str, String)> {
+        let own = translations["original_language"].as_str();
+        TAG_LANGUAGES.iter().filter_map(|&lang| Some((lang, self.problem(lang, translations[lang]["title"].as_str()?, own)?))).collect()
+    }
+
+    /// `e` without the titles that fail: each is replaced by the item's earlier title in that language (`existing`) when
+    /// that one passes, else left out.
+    pub fn keep_passing(&self, mut e: Enrichment, existing: &Value) -> Enrichment {
+        let own = e.translations["original_language"].as_str().map(str::to_owned);
+        for (lang, _) in self.problems(&e.translations) {
+            let earlier = existing[lang]["title"].as_str().filter(|t| self.problem(lang, t, own.as_deref()).is_none());
+            match (earlier, e.translations.as_object_mut()) {
+                (Some(t), _) => e.translations[lang] = json!({ "title": t }),
+                (None, Some(map)) => {
+                    map.remove(lang);
+                }
+                (None, None) => {}
+            }
+        }
+        e
+    }
+}
+
+/// The correction a reply with title `problems` (`TitleCheck::problems`) gets.
+pub fn title_problems_message(problems: &[(&str, String)]) -> String {
+    problems.iter().map(|(lang, why)| format!("translations.{lang}.title {why}")).collect::<Vec<_>>().join("; ")
+}
+
+/// The numbers `text` writes in digits, after NFKC (full-width, circled and mathematical digits are digits), without
+/// leading zeros; a comma between digits is a group separator.
+fn numbers(text: &str) -> std::collections::BTreeSet<String> {
+    use unicode_normalization::UnicodeNormalization;
+    let chars: Vec<char> = text.nfkc().collect();
+    let mut out = std::collections::BTreeSet::new();
+    let mut digits = String::new();
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_ascii_digit() {
+            digits.push(c);
+        } else if c == ',' && !digits.is_empty() && chars.get(i + 1).is_some_and(char::is_ascii_digit) {
+            continue;
+        } else if !digits.is_empty() {
+            out.insert(number(&digits));
+            digits.clear();
+        }
+    }
+    if !digits.is_empty() {
+        out.insert(number(&digits));
+    }
+    out
+}
+
+fn number(digits: &str) -> String {
+    let n = digits.trim_start_matches('0');
+    if n.is_empty() { "0".to_owned() } else { n.to_owned() }
+}
+
+/// The numbers a title may write in digits: those of `original` in digits, and those it writes as a Chinese numeral
+/// from 〇 to 十 (三点セット is a 3-piece set).
+fn numbers_of_original(original: &str) -> std::collections::BTreeSet<String> {
+    const NUMERALS: [(char, &str); 14] =
+        [('〇', "0"), ('零', "0"), ('一', "1"), ('二', "2"), ('两', "2"), ('兩', "2"), ('三', "3"), ('四', "4"), ('五', "5"), ('六', "6"), ('七', "7"), ('八', "8"), ('九', "9"), ('十', "10")];
+    let mut out = numbers(original);
+    out.extend(NUMERALS.iter().filter(|(c, _)| original.contains(*c)).map(|(_, n)| n.to_string()));
+    out
+}
+
+/// `text` (NFKC, lowercase) with each of the `japanese` avatar names blanked out: a name is never translated or
+/// transliterated, so it may stay in the script it is written in (owner ruling 13; the tag 신라 is the avatar 森羅).
+fn without_names(text: &str, japanese: &[String]) -> String {
+    japanese.iter().fold(crate::avatars::norm(text), |t, name| t.replace(name.as_str(), " "))
+}
+
+/// Search-only keywords for a tag's Chinese value (owner ruling 20, 2026-11-21): tags use Unity's 纹理 for a texture,
+/// buyers and titles say 贴图, so a value with 纹理 is also found as the same words with 贴图.
+pub fn tag_keywords(zh: &str) -> Vec<String> {
+    if zh.contains("纹理") { vec![zh.replace("纹理", "贴图")] } else { Vec::new() }
+}
+
+fn is_han(c: char) -> bool {
+    matches!(c, '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}' | '\u{20000}'..='\u{2FA1F}')
+}
+
+fn is_kana(c: char) -> bool {
+    matches!(c, '\u{3040}'..='\u{30FF}' | '\u{31F0}'..='\u{31FF}' | '\u{FF66}'..='\u{FF9F}')
+}
+
+fn is_hangul(c: char) -> bool {
+    matches!(c, '\u{1100}'..='\u{11FF}' | '\u{3130}'..='\u{318F}' | '\u{A960}'..='\u{A97F}' | '\u{AC00}'..='\u{D7AF}' | '\u{FFA0}'..='\u{FFDC}')
+}
+
+/// Whether a name is written in Latin letters, accents included (the romaji Alué, Kyalóng): no Han, kana or Hangul.
+pub fn latin_letters(name: &str) -> bool {
+    !name.chars().any(|c| is_han(c) || is_kana(c) || is_hangul(c))
+}
 
 pub const ENRICH_SYSTEM: &str = "You classify listings and translate their titles from BOOTH, a Japanese marketplace, for a catalogue of VRChat avatar assets. \
 Reply with one valid JSON object only, without Markdown fences, comments or extra text. \
@@ -123,24 +430,56 @@ purpose and description. Always choose at least one listed slug; never return an
 \"quest_compatible\": \"Yes\", \"No\", or \"Non-Applicable\" (not an avatar or avatar asset);\n\
 \"smart_price\": integer yen a typical buyer pays for the main product (ignore support/donation tiers, pick the full set if that is the obvious main item), or null if unclear;\n\
 \"translations\": {\"en\": {\"title\": ...}, \"ja\": {\"title\": ...}, \"ko\": {\"title\": ...}, \"zh\": {\"title\": ...}}: the title only \
-(zh is Simplified Chinese, in the terms Chinese VRChat users use); for the item's own language, copy the original title with proper JSON escaping. \
-Each title must be non-empty and at most 300 characters. Do not translate the description or variations.\n\
+(zh is Simplified Chinese, in the terms Chinese VRChat buyers use: 虚拟形象 for an avatar, 3D模型 for a 3D model file, 贴图 for a \
+texture (眼睛贴图); and in the terms of Unity's Chinese manual: X贴图 for an X map such as 法线贴图 for a normal map, 材质 for a material, \
+着色器 for a shader, 网格 for a mesh); for the item's own language, copy the original title with proper JSON escaping. Each title must be non-empty and at most 300 characters. Do not translate the \
+description or variations. Avatar (character model) names are never translated or transliterated: keep each one as the original title writes \
+it, in Japanese or Latin letters, in every title; the English title uses its romaji. The listing names the avatars found in it, with their romaji.\n\
 \"original_language\": ISO 639-1 code of the listing's main language;\n\
 \"features\": array with any of \"ma\" (Modular Avatar setup), \"liltoon\", \"poiyomi\" (shaders it supports), \"vrcfury\" that the listing states it supports; empty if none.\n\
 Before replying, check that the JSON is syntactically valid, every required key is present, and categories contains at least one exact listed slug.";
 
-/// User message for one item. Long descriptions are cut to keep cost bounded.
-pub fn enrich_prompt(item: &EnrichItem, category_list: &str) -> String {
+/// User message for one item. Long descriptions are cut to keep cost bounded. `avatars`: the avatars the matcher
+/// found in the listing (avatars.rs), named so the model keeps their names as written.
+pub fn enrich_prompt(item: &EnrichItem, category_list: &str, avatars: &[&AvatarName]) -> String {
     let bio: String = item.bio.chars().take(2500).collect();
     let variations: Vec<String> = item.variations.0.iter().map(|v| format!("- {} (¥{})", v.name, v.price_jpy)).collect();
+    let avatars = avatar_names_line(avatars);
     format!(
-        "Categories (slug: meaning):\n{category_list}\n\nListing\nTitle: {}\nBooth category: {}\nListed price: ¥{}\nTags: {}\nVariations:\n{}\nDescription:\n{bio}",
+        "Categories (slug: meaning):\n{category_list}\n\nListing\nTitle: {}\nBooth category: {}\nListed price: ¥{}\nTags: {}\nVariations:\n{}\n{avatars}Description:\n{bio}",
         item.title,
         item.booth_category.as_deref().unwrap_or_default(),
         item.price_jpy.map_or_else(|| "null".to_owned(), |p| p.to_string()),
         item.booth_tags.join(", "),
         if variations.is_empty() { "(none)".to_owned() } else { variations.join("\n") },
     )
+}
+
+/// An avatar's names from the `avatars` table: Japanese (when known) and romaji (`name_en`).
+pub struct AvatarName {
+    pub ja: Option<String>,
+    pub romaji: String,
+}
+
+impl AvatarName {
+    /// The Japanese names of `avatars` that are not in Latin letters, NFKC and lowercase, longest first; names under two
+    /// characters are left out, as the matcher leaves them out (avatars.rs).
+    pub fn japanese_names<'a>(avatars: impl IntoIterator<Item = &'a AvatarName>) -> Vec<String> {
+        let mut names: Vec<String> =
+            avatars.into_iter().filter_map(|a| a.ja.as_deref()).map(crate::avatars::norm).filter(|n| !n.is_ascii() && n.chars().count() >= 2).collect();
+        names.sort_by(|a, b| b.chars().count().cmp(&a.chars().count()).then_with(|| a.cmp(b)));
+        names.dedup();
+        names
+    }
+}
+
+impl std::fmt::Display for AvatarName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.ja.as_deref().filter(|ja| *ja != self.romaji) {
+            Some(ja) => write!(f, "{ja} / {}", self.romaji),
+            None => f.write_str(&self.romaji),
+        }
+    }
 }
 
 /// One `items` row waiting for enrichment. `price_jpy` is null for a few malformed listings; a variation's
@@ -353,6 +692,13 @@ mod tests {
     }
 
     #[test]
+    fn localize_uses_the_chinese_terms_of_vrchat_users_and_unity() {
+        for term in ["虚拟形象 for an avatar", "3D模型 for a 3D model file", "纹理 for a texture", "法线贴图 for a normal map", "材质 for a material", "着色器 for a shader", "网格 for a mesh"] {
+            assert!(LOCALIZE_SYSTEM.contains(term), "{term}");
+        }
+    }
+
+    #[test]
     fn enrichment_prompt_includes_classification_evidence() {
         let categories = "accessories--rings: Accessories / Rings\nprops--other: Props / Other";
         let item = EnrichItem {
@@ -365,7 +711,7 @@ mod tests {
             bio: "An animated ring accessory for avatar fingers.".into(),
             translations: json!({}),
         };
-        let prompt = enrich_prompt(&item, categories);
+        let prompt = enrich_prompt(&item, categories, &[]);
         for evidence in [
             categories,
             "Title: 【VRChat想定】No Signal Ring【MA対応】",
@@ -373,10 +719,188 @@ mod tests {
             "Listed price: ¥500",
             "Tags: VRChat, Modular Avatar",
             "- Full set (¥500)",
-            "Description:\nAn animated ring accessory for avatar fingers.",
+            "Variations:\n- Full set (¥500)\nDescription:\nAn animated ring accessory for avatar fingers.",
         ] {
             assert!(prompt.contains(evidence), "missing evidence: {evidence}");
         }
+        // the avatars found in the listing, each name once when the dictionary spells it the same in both scripts
+        let manuka = AvatarName { ja: Some("マヌカ".into()), romaji: "Manuka".into() };
+        let adolescent = AvatarName { ja: Some("Adolescent U".into()), romaji: "Adolescent U".into() };
+        let unnamed = AvatarName { ja: None, romaji: "Rusk".into() };
+        let prompt = enrich_prompt(&item, categories, &[&manuka, &adolescent, &unnamed]);
+        assert!(
+            prompt.contains("- Full set (¥500)\nAvatar names (Japanese / romaji): マヌカ / Manuka, Adolescent U, Rusk\nDescription:\n"),
+            "{prompt}"
+        );
+    }
+
+    /// Which of a tag's values `tag_values` keeps: `Some` for a kept value, `None` for one left out. The avatars known
+    /// by a Japanese name are マヌカ and 森羅.
+    fn kept(answer: &Value, tag: &str, titles: &[&str], names: &[&[&str]]) -> [Option<String>; 4] {
+        let titles: Vec<String> = titles.iter().map(|t| t.to_string()).collect();
+        let held = |forms: &&[&str]| {
+            let forms: Vec<String> = forms.iter().map(|f| f.to_string()).collect();
+            HeldName { latin: forms.iter().filter(|f| latin_letters(f)).cloned().collect(), forms }
+        };
+        let names: Vec<HeldName> = names.iter().map(held).collect();
+        let avatars = [AvatarName { ja: Some("マヌカ".into()), romaji: "Manuka".into() }, AvatarName { ja: Some("森羅".into()), romaji: "Shinra".into() }];
+        tag_values(answer, tag, &titles, &names, &AvatarName::japanese_names(&avatars)).map(Result::ok)
+    }
+
+    #[test]
+    fn each_tag_value_is_checked_on_its_own() {
+        let skirt = |en: &str, ja: &str, ko: &str, zh: &str| json!({"en": en, "ja": ja, "ko": ko, "zh": zh});
+        let all = |v: [&str; 4]| v.map(|s| Some(s.to_owned()));
+        assert_eq!(kept(&skirt(" skirt ", "スカート", "스커트", "裙子"), "スカート", &[], &[]), all(["skirt", "スカート", "스커트", "裙子"]));
+        // a second line, a control character, an overlong or empty value: only that language is left out
+        for bad in ["裙子\n短裙", "裙\0子", "裙\t子", &"裙".repeat(61), " "] {
+            assert_eq!(kept(&skirt("skirt", "スカート", "스커트", bad), "スカート", &[], &[])[3], None, "{bad:?}");
+        }
+        let overlong = kept(&skirt("skirt", "スカート", "스커트", &"裙".repeat(61)), "スカート", &[], &[]);
+        assert!(overlong[..3].iter().all(Option::is_some) && overlong[3].is_none());
+        // a script foreign to the language that the tag is not written in
+        assert_eq!(kept(&skirt("スカート", "스커트", "裙子", "スカート"), "skirt", &[], &[]), [None, None, None, None]);
+        assert_eq!(kept(&skirt("skirt", "スカート", "스커트", "스커트"), "Skirt", &[], &[])[3], None);
+        // a script the tag is written in may stay: the avatar name in マヌカ用
+        let manuka: &[&str] = &["マヌカ", "manuka"];
+        let manuka_for = skirt("for Manuka", "マヌカ用", "マヌカ용", "マヌカ用");
+        assert_eq!(kept(&manuka_for, "マヌカ用", &[], &[manuka]), all(["for Manuka", "マヌカ用", "マヌカ용", "マヌカ用"]));
+        // an avatar's Japanese name may stay in the Japanese, Korean and Chinese values of a tag written in other
+        // letters (신라 is 森羅); English keeps the romaji, and other kana still count against Korean
+        let shinra = skirt("Shinra", "森羅", "森羅", "森羅");
+        assert_eq!(kept(&shinra, "신라", &[], &[]), [Some("Shinra".into()), Some("森羅".into()), Some("森羅".into()), Some("森羅".into())]);
+        assert_eq!(kept(&skirt("森羅", "森羅", "マヌカ 텍스처", "マヌカ纹理"), "Manukatexture", &[], &[])[..], [None, Some("森羅".into()), Some("マヌカ 텍스처".into()), Some("マヌカ纹理".into())]);
+        assert_eq!(kept(&skirt("Manuka eye", "マヌカの目", "マヌカの 눈", "マヌカの眼睛"), "Manukaeye", &[], &[])[2..], [None, None]);
+        // a name transliterated or translated is left out in that language only; English may give the romaji
+        let transliterated = skirt("for Manuka", "マヌカ用", "마누카용", "麦奴卡用");
+        assert_eq!(kept(&transliterated, "マヌカ用", &[], &[manuka]), [Some("for Manuka".into()), Some("マヌカ用".into()), None, None]);
+        assert_eq!(kept(&skirt("for the avatar", "マヌカ用", "マヌカ용", "マヌカ用"), "マヌカ用", &[], &[manuka])[0], None);
+        // English keeps the romaji, not the name in Japanese; a name with no form in Latin letters has none to keep
+        assert_eq!(kept(&skirt("マヌカ用", "マヌカ用", "マヌカ용", "マヌカ用"), "マヌカ用", &[], &[manuka])[0], None);
+        assert_eq!(kept(&skirt("for Tien", "ティエン用", "티엔용", "ティエン用"), "ティエン用", &[], &[&["ティエン"]])[0], Some("for Tien".into()));
+        // an example title copied, whole or as a long part, unless it is the tag itself
+        let titles = ["【無料】ふわふわロングスカート for Manuka", "スカート"];
+        let copied = skirt("skirt", "ふわふわロングスカート for Manuka", "스커트", "【無料】ふわふわロングスカート for Manuka");
+        assert_eq!(kept(&copied, "スカート", &titles, &[]), [Some("skirt".into()), None, Some("스커트".into()), None]);
+        assert_eq!(kept(&skirt("skirt", "スカート", "스커트", "裙子"), "スカート", &titles, &[])[1], Some("スカート".into()));
+        // no object with the four languages under the tag's id: a positional array, or the input structure echoed back
+        assert_eq!(kept(&json!(["skirt", "スカート", "스커트", "裙子"]), "スカート", &[], &[]), [None, None, None, None]);
+        let echoed: Value = serde_json::from_str(r#"{"id": "t1", "tag": "スカート", "id": "t1", "context": ["スカート"]}"#).unwrap();
+        assert_eq!(kept(&echoed, "スカート", &[], &[]), [None, None, None, None]);
+        assert_eq!(kept(&Value::Null, "スカート", &[], &[]), [None, None, None, None]);
+    }
+
+    #[test]
+    fn each_translated_title_keeps_the_names_adds_no_number_and_uses_its_script() {
+        let japanese = AvatarName::japanese_names(&[AvatarName { ja: Some("マヌカ".into()), romaji: "Manuka".into() }]);
+        let manuka = HeldName { forms: vec!["マヌカ".into(), "manuka".into()], latin: vec!["manuka".into()] };
+        let check = TitleCheck { original: "【マヌカ対応】フリルドレス 2着セット", names: vec![manuka], japanese: &japanese };
+        let problem = |lang: &str, title: &str| check.problem(lang, title, Some("ja"));
+        for (lang, title) in [
+            ("en", "[For Manuka] Frill Dress, Set of 2"),
+            ("ko", "【マヌカ 대응】프릴 드레스 2벌 세트"),
+            ("zh", "【マヌカ対応】荷叶边连衣裙 两件套"),
+            ("ja", "【マヌカ対応】フリルドレス 2着セット"),
+        ] {
+            assert_eq!(problem(lang, title), None, "{lang} {title}");
+        }
+        // a NUL, which the database refuses
+        assert_eq!(problem("en", "[For Manuka] Frill\0 Dress, Set of 2"), Some("holds a NUL character".into()));
+        // English keeps the romaji; the others keep the name in any of its forms
+        assert_eq!(problem("en", "[For マヌカ] Frill Dress 2"), Some("drops the avatar name manuka".into()));
+        assert_eq!(problem("zh", "【适配麦奴卡】荷叶边连衣裙 2"), Some("drops the avatar name マヌカ".into()));
+        assert_eq!(problem("zh", "【Manuka】荷叶边连衣裙 2"), None);
+        // a name with no form in Latin letters gives an English title nothing to keep
+        let tien = TitleCheck { original: "【ティエン対応】ドレス", names: vec![HeldName { forms: vec!["ティエン".into()], latin: vec![] }], japanese: &japanese };
+        assert_eq!(tien.problem("en", "[For Tien] Dress", Some("ja")), None);
+        assert_eq!(tien.problem("zh", "【适配蒂恩】连衣裙", Some("ja")), Some("drops the avatar name ティエン".into()));
+        // a number the original lacks, in any digits; a Chinese numeral the original writes counts as its number
+        for title in ["[For Manuka] Frill Dress, Set of 3", "[For Manuka] Frill Dress ３", "[For Manuka] Frill Dress 𝟑", "[For Manuka] 1,000 Frill Dresses"] {
+            assert!(problem("en", title).is_some_and(|p| p.starts_with("has the number")), "{title}");
+        }
+        let three = TitleCheck { original: "三点セット 1,000円", names: vec![], japanese: &japanese };
+        assert_eq!(three.problem("en", "3-piece set, 1000 yen", Some("ja")), None);
+        assert_eq!(three.problem("en", "3-piece set, 01000 yen", Some("ja")), None);
+        // a Chinese numeral in the title is a word of it, not a number it adds
+        assert_eq!(TitleCheck { original: "ワンクリック設定", names: vec![], japanese: &japanese }.problem("zh", "一键设置", Some("ja")), None);
+        // a script foreign to the language; an avatar's Japanese name is not, but in English
+        assert_eq!(problem("zh", "【マヌカ対応】フリル连衣裙 2"), Some("holds kana, which a zh title does not use".into()));
+        assert_eq!(problem("ko", "【マヌカ 대응】프릴 ドレス 2"), Some("holds kana, which a ko title does not use".into()));
+        assert_eq!(problem("ko", "【マヌカ対応】프릴 드레스 2"), Some("holds Han characters, which a ko title does not use".into()));
+        assert_eq!(problem("ja", "【マヌカ対応】フリルドレス 2벌"), Some("holds Hangul, which a ja title does not use".into()));
+        assert_eq!(problem("en", "[For Manuka] マヌカ Frill Dress 2"), Some("holds kana, which a en title does not use".into()));
+        // the listing's own language copies the original as it is; another language may not
+        let chinese = TitleCheck { original: "猫の连衣裙", names: vec![], japanese: &japanese };
+        assert_eq!(chinese.problem("zh", "猫の连衣裙", Some("zh")), None);
+        assert!(chinese.problem("zh", "猫の连衣裙", Some("ja")).is_some());
+        assert!(chinese.problem("ko", "猫の连衣裙", Some("zh")).is_some());
+    }
+
+    #[test]
+    fn a_failing_title_gives_way_to_an_earlier_one_that_passes_or_to_none() {
+        let check = TitleCheck { original: "フリルドレス", names: vec![], japanese: &[] };
+        let e = |translations: Value| Enrichment { categories: vec![], features: vec![], content_rating: None, quest: None, smart_price: None, translations };
+        let reply = json!({"en": {"title": "Frill Dress 2"}, "ja": {"title": "フリルドレス"}, "ko": {"title": "프릴 ドレス"}, "zh": {"title": "荷叶边连衣裙"}, "original_language": "ja"});
+        let existing = json!({"en": {"title": "Frill Dress"}, "ko": {"title": "프릴 드레스 3"}});
+        assert_eq!(
+            title_problems_message(&check.problems(&reply)),
+            "translations.en.title has the number 2, which the original title lacks; translations.ko.title holds kana, which a ko title does not use"
+        );
+        let kept = check.keep_passing(e(reply), &existing).translations;
+        assert_eq!(kept, json!({"en": {"title": "Frill Dress"}, "ja": {"title": "フリルドレス"}, "zh": {"title": "荷叶边连衣裙"}, "original_language": "ja"}));
+    }
+
+    #[test]
+    fn japanese_avatar_names_are_the_non_latin_ones_of_two_characters_or_more_longest_first() {
+        let name = |ja: Option<&str>| AvatarName { ja: ja.map(str::to_owned), romaji: "x".into() };
+        let avatars = [name(Some("森羅")), name(Some("ルーナリット")), name(Some("Adolescent U")), name(Some("萌")), name(None), name(Some("ﾏﾇｶ")), name(Some("マヌカ"))];
+        assert_eq!(AvatarName::japanese_names(&avatars), ["ルーナリット", "マヌカ", "森羅"]);
+    }
+
+    #[test]
+    fn a_provider_without_json_schema_is_told_apart_from_other_refusals() {
+        assert!(refuses_format(400, "bad request"));
+        assert!(refuses_format(422, r#"{"error": "unsupported response_format type json_schema"}"#));
+        assert!(!refuses_format(401, "invalid api key") && !refuses_format(404, "model not found"));
+    }
+
+    #[test]
+    fn the_reply_schema_asks_for_every_id_with_the_tag_and_four_short_values() {
+        let schema = tag_schema(2);
+        assert_eq!(schema["required"], json!(["t1", "t2"]));
+        assert_eq!(schema["additionalProperties"], json!(false));
+        let tag = &schema["properties"]["t2"];
+        assert_eq!((tag["required"].clone(), tag["additionalProperties"].clone()), (json!(["tag", "en", "ja", "ko", "zh"]), json!(false)));
+        assert_eq!(tag["properties"]["zh"], json!({"type": "string", "minLength": 1, "maxLength": 60}));
+        assert_eq!(tag["properties"]["tag"], json!({"type": "string"}));
+    }
+
+    #[test]
+    fn an_answer_is_for_the_tag_it_copies_back() {
+        assert!(answers_tag(&json!({"tag": " ｽｶｰﾄ ", "en": "skirt"}), "スカート"));
+        assert!(answers_tag(&json!({"tag": "SKIRT"}), "skirt"));
+        for wrong in [json!({"tag": "ドレス"}), json!({"en": "skirt"}), json!({"tag": 1}), json!(["skirt"]), Value::Null] {
+            assert!(!answers_tag(&wrong, "スカート"), "{wrong}");
+        }
+    }
+
+    #[test]
+    fn a_chinese_texture_is_also_found_as_tietu() {
+        assert_eq!(tag_keywords("眼睛纹理"), ["眼睛贴图"]);
+        assert_eq!(tag_keywords("纹理"), ["贴图"]);
+        assert!(tag_keywords("法线贴图").is_empty() && tag_keywords("裙子").is_empty());
+    }
+
+    #[test]
+    fn tag_prompt_names_the_avatars_and_keys_the_tags_by_id() {
+        let tags = vec![("マヌカ用".to_owned(), vec!["a".repeat(130), "b".into(), "c".into(), "d".into()]), ("白モデル".to_owned(), vec![])];
+        let manuka = AvatarName { ja: Some("マヌカ".into()), romaji: "Manuka".into() };
+        let prompt = tag_prompt(&tags, &[&manuka]);
+        let (head, body) = prompt.split_once('\n').unwrap();
+        assert_eq!(head, "Avatar names (Japanese / romaji): マヌカ / Manuka");
+        let items: Value = serde_json::from_str(body).unwrap();
+        assert_eq!(items, json!([{"id": "t1", "tag": "マヌカ用", "context": ["a".repeat(120), "b", "c"]}, {"id": "t2", "tag": "白モデル", "context": []}]));
+        assert!(tag_prompt(&tags, &[]).starts_with("[{"));
     }
 
     #[test]
@@ -580,8 +1104,8 @@ mod tests {
         crate::install_tls();
         let mut c = boothdex_core::settings::resolve(&json!({ "base_url": "http://x/v1", "model": "m", "api_key": "k" }), |_| None);
         let ai = Ai::from_config(&c).unwrap().unwrap();
-        assert_eq!(ai.body(json!([]))["reasoning_effort"], "none");
+        assert_eq!(ai.body(json!([]), json!({}))["reasoning_effort"], "none");
         c.reasoning_effort = "high";
-        assert_eq!(Ai::from_config(&c).unwrap().unwrap().body(json!([]))["reasoning_effort"], "high");
+        assert_eq!(Ai::from_config(&c).unwrap().unwrap().body(json!([]), json!({}))["reasoning_effort"], "high");
     }
 }

@@ -32,11 +32,9 @@ flowchart LR
   api -. "query embed" .-> ai
 ```
 
-`imgproxy` fetches only from `booth.pximg.net`, `asset.booth.pm` and `factory.pixiv.net`, over https, and follows no redirect off the host. It ignores `HTTP_PROXY`, `HTTPS_PROXY` and the system proxy settings, and connects only to public addresses: when DNS answers with only private, loopback or other special-purpose addresses, the request fails, the client gets a 502, and the log names the host. NAT64 addresses (`64:ff9b::/96`) count as special-purpose, so the container needs IPv4 or native IPv6 egress. `imgproxy` holds at most 200 MiB of uncached upstream images in memory at once, counting each by its declared size (25 MiB when it declares none), and answers a request that finds no room within 10 s with a 503 and `Retry-After: 10`. Each client (an IPv4 address or an IPv6 /64, found as `api` finds it; see "Host firewall & rate limiting") may cause 100 upstream requests a second, in bursts of 2,000, enough for fast scrolling through results where no image is cached yet (a 10 s scroll to page 3 at 1440x900 requested 542 images, up to 341 in one second). A cache miss past that is answered 429 with `Retry-After` and `Cache-Control: no-store`, and fetches nothing. Cache hits, in `imgproxy` or the CDN, are never limited. The number of upstream requests in flight from all clients together is not bounded.
-
 `postgres`, `api`, `worker` and `imgproxy` publish no host ports; run maintenance commands through `docker compose exec` (for example `docker compose exec postgres psql -U catalogue catalogue`). `podman compose` works with the same commands.
 
-Run exactly one `api` container; do not scale it. Each `api` process keeps its own key for signing the stricter limits' `pass` cookie, its own copy of the AI and Turnstile settings and its own rate-limit buckets, so with two of them a pass issued by one is refused by the other, those settings saved through one do not reach the other until it restarts, and every per-address limit doubles.
+Run exactly one `api` container; do not scale it ([why](SERVICES.md#one-api-container)). How `imgproxy`, the rate limits and Turnstile behave is in [Service behaviour](SERVICES.md).
 
 ## Deployment overview
 
@@ -61,24 +59,16 @@ flowchart TD
 
 | Resource | Minimum | Recommended | Why |
 |---|---|---|---|
-| RAM | **4 GB** + 2 GB swap | **6 GB** | Production runs on the minimum without active paging; 6 GB keeps the reload peak and the caches in RAM. Per container: see below |
+| RAM | **4 GB** + 2 GB swap | **6 GB** | 6 GB keeps the catalogue reload peak and the caches in RAM. Per-container figures: [Measurements](MEASUREMENTS.md#production-by-container) |
 | CPU | 2 vCPU | 4 vCPU | AVIF transcoding and Tantivy index rebuilds are CPU-bound |
 | Disk | 40 GB SSD | 60 GB+ SSD | Database ~3 GB (~4 GB with embeddings), archived images ~1 GB, `imgcache` 10 GB (configurable), container images and backups |
 | OS | Linux with Docker or Podman (+ Compose) | — | Prebuilt `linux/amd64` images are published to `ghcr.io` |
-
-Memory per container, measured in production on 2026-11-20: 222,883 items on 4 GB RAM with 2 GB swap (921 MB of it used, no active paging), `api` up 31 hours through 62 catalogue reloads. Anonymous memory is the process's own; page cache is file data the kernel reclaims first under the limit.
-
-- `api` (`mem_limit: 3g`): 949 MB anonymous and 180 MB page cache; at most 2,542 MB of both together, reloads included, while a reload holds the old and the new catalogue at once. The memory-mapped Tantivy index lives in page cache. Related searches (added after this measurement) keep one centroid per BOOTH tag: 30 MB for the 7,396 tags of the development catalogue, an estimated 50 MB for production's ~12,000. Both catalogues share one copy during a reload.
-- `postgres` (no limit): 1,192 MB, almost all page cache (6 MB anonymous).
-- `imgproxy` (`mem_limit: 1g`): about 0.76 GB, almost all cold and swapped out (729 MB in swap, 31 MB resident).
-- `web` (no limit): 149 MB resident (92 MB anonymous, 57 MB page cache) and 121 MB in swap.
-- `worker` (`mem_limit: 256m`): at most 29 MB over two days, the daily sweep included.
 
 ## 2. Get the stack files (and optional data bundle)
 
 ### Prebuilt images (recommended)
 
-No Git checkout or compiler is required when pulling images from `ghcr.io` — only `compose.yaml` and `.env`:
+No Git checkout or compiler is required when pulling images from `ghcr.io`, only `compose.yaml` and `.env`:
 
 ```sh
 mkdir -p /srv/boothdex && cd /srv/boothdex
@@ -98,9 +88,11 @@ cp .env.example .env
 
 Without a data bundle, skip to [3. Configure](#3-configure) and follow [Starting without a data bundle](#starting-without-a-data-bundle) in step 4.
 
-A data bundle is a snapshot of an existing instance created with `scripts/make-bundle.sh <out-dir>`. A ready-made bundle is published as the GitHub release [data-2026-11-04](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04): 217,494 items (VRCatalogue archive plus BOOTH crawls up to that day), with semantic-search vectors from `Qwen/Qwen3-Embedding-4B`. Services apply newer migrations automatically at startup, and the hourly crawl catches up from there.
+A data bundle is a snapshot of an existing instance created with `scripts/make-bundle.sh <out-dir>`. A ready-made bundle is published as the GitHub release [data-2026-11-04](https://github.com/JohnsonRan/BoothDex/releases/tag/data-2026-11-04): 217,494 items (VRCatalogue archive plus BOOTH crawls up to that day), with semantic-search vectors from `Qwen/Qwen3-Embedding-4B`.
 
-If you configure a different embeddings model, clear the bundled vectors once so the `embed` job rebuilds them with yours: `docker compose exec postgres psql -U catalogue catalogue -c 'update items set embedding = null'`.
+- Services apply newer migrations automatically at startup, and the hourly crawl catches up from there.
+- A bundle carries its instance's BOOTH tag dictionary and title translations. data-2026-11-04 predates the dictionary; the daily `localize` job translates the tags it lacks.
+- If you configure a different embeddings model, clear the bundled vectors once so the `embed` job rebuilds them with yours: `docker compose exec postgres psql -U catalogue catalogue -c 'update items set embedding = null'`.
 
 | File | Contents | Size |
 |---|---|---|
@@ -138,7 +130,7 @@ $EDITOR .env    # set POSTGRES_PASSWORD, SITE_URL, WEB_LISTEN, CONTACT_EMAIL, an
 | `IMG_CACHE_DISK_MB` / `IMG_CACHE_MEM_MB` | `imgproxy` | Transcoded AVIF cache budget (`10240` MB disk / `256` MB RAM by default) |
 | `BOOTHDEX_TAG` | `api`, `worker`, `imgproxy`, `web` | Image tag on `ghcr.io`: `latest` (default, tracks `master`) or `sha-<commit>`, the first 7 characters of the commit an image was built from |
 | `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` / `AI_REASONING_EFFORT` / `AI_EMBED_MODEL` | `api`, `worker` | Optional; override and lock the `/admin` AI settings so API keys stay out of PostgreSQL. `AI_API_KEY` locks the base URL as well: set `AI_BASE_URL` beside it to change the address. While `AI_BASE_URL` is set, `/admin` stores no base URL of its own, and a key saved there is stored with the `AI_BASE_URL` value, which it keeps when `AI_BASE_URL` is removed |
-| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | `api` | Optional; override and lock the `/admin` Turnstile settings, the keys of a Cloudflare Turnstile widget in managed mode. With either key unset in both places the guestbook shows that it is not open and refuses posts. A switch in the same settings makes sign-in and registration carry the widget too; it does nothing while a key is unset, and a check Cloudflare cannot make (unreachable, or a wrong secret key) lets the request through with an error in the `api` log. A wrong site key is different: the widget gives no token and nobody signs in. Turn the switch off from the host with `docker compose exec postgres psql -U catalogue catalogue -c "update app_settings set value = value - 'auth' where key = 'turnstile'"`. A second switch, "Stricter limits for visitors who haven't verified", gives `/api/search`, `/api/palette`, `/api/items` with one id, the gallery and the lookups (the guestbook list included) a stricter per-address bucket for visitors without a pass (`crates/api/src/limit.rs` holds both tiers' numbers); a refusal there offers the widget, and passing it sets a `pass` cookie, valid for 10 minutes from the visitor's IPv4 /24 or IPv6 /64, that restores today's numbers. While the sign-in switch is on as well, a session also gets today's numbers if the sign-in or registration that made it passed the widget (`sessions.turnstile_passed`); a session let through unchecked because Cloudflare could not judge the token, or made while the sign-in switch was off, counts as no pass, and with the sign-in switch off every session does. A restart of `api` ends every pass. For this switch and for the guestbook, `api` reads the row at start and when the console saves it: after changing the row by hand, restart `api`. The sign-in switch is read from the row on every request, so the command above needs no restart |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | `api` | Optional; override and lock the `/admin` Turnstile settings. What the keys switch on, and when a change applies: [Cloudflare Turnstile](SERVICES.md#cloudflare-turnstile) |
 
 Set automatically by `compose.yaml` (not needed in `.env`): `DATABASE_URL`, `PGPASSWORD` (passed separately so `/` `+` `=` in base64 passwords never break URL parsing), `IMGPROXY_URL` and `BIND`.
 
@@ -149,10 +141,12 @@ Run from the directory containing `compose.yaml` and `.env`:
 ```sh
 docker compose pull                       # or `docker compose build` from a source checkout
 docker compose up -d postgres
+# wait for the server on TCP: on a new volume the image's first-start setup runs one on the socket only, then restarts it
+until docker compose exec -T postgres pg_isready -h 127.0.0.1 -U catalogue -d catalogue; do sleep 2; done
 
 # With a data bundle only — stream the dump straight into Postgres:
 docker compose exec -T postgres pg_restore -U catalogue -d catalogue --no-owner --role=catalogue \
-  < /srv/boothdex/bundle/catalogue.dump
+  < /srv/boothdex/bundle/catalogue.dump   # start the stack only once this finished without an error
 
 docker compose up -d                      # api runs pending migrations, then loads the catalogue (~20 s)
 docker compose logs -f api                # wait for "listening on"
@@ -162,32 +156,13 @@ Then complete onboarding:
 
 1. Open the site (via your reverse proxy, or, for a quick check without one, `http://<server>:3100` with `WEB_LISTEN=3100` and `COOKIE_SECURE=0`; set both back afterwards) and register your account.
 2. Add that username to `ADMIN_USERNAMES` in `.env`, then run `docker compose up -d api`.
-3. Open `/admin`: verify `worker` shows as running. The hourly incremental crawl, the daily full sweep (03:00 JST) and the daily `details` pass (fetches missing galleries) are enabled by default.
+3. Open `/admin` and verify that `worker` shows as running. The default schedules are listed in [Background jobs](WORKER.md#schedule).
 4. Configure the AI provider in `/admin` (and click **Test**) or via `AI_*` in `.env`. A key is sent only to the base URL it was saved with: to change the URL in `/admin`, enter the key again in the same save.
 5. Read `/privacy` and `/terms`. They describe what the software does and are a starting point, not legal advice: if you change what the site collects (analytics, another network provider) or your jurisdiction needs more, update `web/src/lib/legal-*.ts` and `LEGAL_UPDATED` in `web/src/lib/legal.ts`. The site sets only strictly necessary and preference cookies, so it shows no consent banner; adding analytics or ads would need one.
 
-### Worker job lanes & catalogue reload
-
-The worker groups jobs into three independent lanes so polite serial BOOTH crawling never blocks AI enrichment or embedding:
-
-```mermaid
-flowchart LR
-  subgraph worker["worker daemon (1 active job per lane)"]
-    inc["booth lane (serial):<br/>incremental · sweep · details · refresh"]
-    enr["ai lane:<br/>enrich (200/batch chain) · localize"]
-    emb["embed lane (waits while enrich is live):<br/>embed (1024-d halfvec)"]
-    enr -. "queues on chain end" .-> emb
-  end
-
-  inc --> pg[("PostgreSQL<br/>catalog_meta.version++")]
-  enr --> pg
-  emb --> pg
-  pg -- "polls version &<br/>swaps ArcSwap snapshot" --> api["api<br/>(Roaring + Tantivy)"]
-```
-
 ### Starting without a data bundle
 
-Database migrations seed the category tree, smart tags and ~380 avatar bodies automatically. Populate items with one full crawl of BOOTH's `VRChat` tag listing (~3,400 pages, one item request per unknown item at ~0.7 s pacing — expect 2–3 days for ~200k items so BOOTH is not overloaded):
+Database migrations seed the category tree, smart tags and ~380 avatar bodies automatically. Populate items with one full crawl of BOOTH's `VRChat` tag listing. It takes 2–3 days for ~200k items, so BOOTH is not overloaded ([Measurements](MEASUREMENTS.md#start-up-and-crawling)):
 
 ```sh
 docker compose exec worker worker once incremental '{"max_pages": 5000, "full": true}'
@@ -195,15 +170,13 @@ docker compose exec worker worker once incremental '{"max_pages": 5000, "full": 
 docker compose exec worker worker once incremental '{"max_pages": 5000, "full": true, "start_page": 1200}'
 ```
 
-The site is usable while the crawl runs (`api` reloads automatically as items arrive). Newly crawled items receive AI categories, avatar-fit links and 4-language title translations once `enrich` processes them (200 items per batch, chaining itself until the backlog is empty). Before enabling AI on a 200k-item backlog, check your provider's token pricing: pausing the schedule does not stop an already-running chain — cancel the active or queued `enrich` job in `/admin` to halt immediately. `enrich` skips an item after it has failed on it 3 times (`items.enrich_failures`; a provider outage stops the batch without counting against any item), until a crawl finds its title or description changed, which sets the count back to 0. `/admin/jobs/given-up` lists those items, and its Retry or Retry all sets their count back to 0 and queues `enrich`; the overview's "Waiting for AI" tile says how many of its items were given up.
+The site is usable while the crawl runs (`api` reloads automatically as items arrive). Items get AI categories, avatar-fit links and translated titles once `enrich` processes them ([Background jobs](WORKER.md#ai-enrichment-optional)).
+
+Before enabling AI on a 200k-item backlog, check your provider's token pricing. Pausing the schedule does not stop an already-running chain: cancel the active or queued `enrich` job in `/admin` to halt it at once.
 
 ### Semantic search (optional)
 
-Set an embeddings model in `/admin` (or `AI_EMBED_MODEL`), served by the same OpenAI-compatible provider. The model must return 1024-dimension vectors via the `dimensions` parameter (for example `Qwen3-Embedding-4B`; `/admin`'s connection test verifies this).
-
-- **Indexing**: The hourly `embed` job embeds items missing a vector (~70 items/s during development, ~1 hour and a few dollars for ~200k items on `Qwen3-Embedding-4B` at $0.02/M tokens), then only processes new or edited items. Whenever an `enrich` chain finishes, it immediately queues `embed` so enriched items pick up translated English titles without waiting for the hourly tick.
-- **Query caching & fallback**: Each unseen query string makes one provider call (median 0.7 s, p95 1.2 s in development) and caches the vector in memory and in `query_embeddings` (text only, no user/session data; pruned after 90 days unused, capped at 50,000 entries). Repeat searches take milliseconds. If the provider exceeds 2.5 s or errors, `/api/search` falls back to keyword search alone and surfaces a notice above results. Vectors add ~0.5 GB in PostgreSQL plus ~0.5 GB for the HNSW index.
-- **Related searches**: the results page asks `/api/related` once per search for up to four BOOTH tags near the query's meaning. It reads only the vector a search already stored and never calls the provider. `api` builds one centroid per tag from every item vector at startup and again at the first reload after 6 hours or after the worker records a new embeddings model (`app_settings` key `embed_state`); other reloads reuse the centroids. A build streams every item vector from PostgreSQL: 1.0 s for 33,739 vectors on the development host; production holds about 212,000, not yet measured. While the configured model differs from the one the centroids were built from, the row stays hidden.
+Set an embeddings model in `/admin` (or `AI_EMBED_MODEL`), served by the same OpenAI-compatible provider. The model must return 1024-dimension vectors through the `dimensions` parameter (for example `Qwen3-Embedding-4B`); the connection test in `/admin` verifies this. The hourly `embed` job then embeds the items. Cost and timing: [Measurements](MEASUREMENTS.md#semantic-search-and-embeddings). What it does for a search: [Search behaviour](SEARCH.md#semantic-search-optional).
 
 ## 5. Putting a proxy in front
 
@@ -218,11 +191,18 @@ boothdex.example.com {
 }
 ```
 
-- **Server-sent events (`/api/admin/stream`)**: Disable response buffering so `/admin` updates live (`flush_interval -1` in Caddy, `proxy_buffering off;` in nginx).
-- **Compression**: Next.js (`web`) enables gzip by default, and `api` compresses responses while excluding SSE. SSE responses carry `Cache-Control: no-transform` to avoid intermediary gzip buffering; front proxies can compress unencoded responses (`encode zstd gzip` in Caddy, `gzip on;` in nginx).
-- **Content Security Policy**: `web` sends `Content-Security-Policy: img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'` on every response. The browser refuses an image from any other host, including one a proxy injects; it loads no plugin content, accepts no `<base>` pointing at another origin, and shows no page of the site inside a frame on any site, this one included. Scripts and styles are not restricted. A policy your proxy adds does not replace it: the browser enforces both.
-- **Host firewall & rate limiting**: Docker bypasses `ufw` when publishing `0.0.0.0:3100`, and `api`'s public read endpoints and account changes, and `imgproxy`'s cache misses, key their per-IP rate limits on `X-Forwarded-For` / `CF-Connecting-IP` from the front proxy, which `web` passes on unchanged. The front proxy must set or append `X-Forwarded-For` to the verified client IP (Caddy's `reverse_proxy` does this automatically; nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`); configuring only `X-Real-IP` without sanitizing incoming `X-Forwarded-For` allows visitors to forge their rate-limit identity. `api` never rate-limits a request whose client IP is internal (loopback, private or link-local): that is `web`'s own reads, a LAN visitor or local development. A proxy that sets none of these headers therefore makes every visitor count as `web`'s own address, and no visitor is rate-limited; `api` then logs `warn: a browser's request reached api with no visitor address` at most once a minute. A forwarding header holding an entry that is not an address, with no usable visitor address in any of them, puts the request in one bucket shared by all such requests, shown as `100::` where the client IP is printed or stored. The address the rate limits key on is printed in the sign-in log. It is also stored with each new session and shown in Settings, under devices, and in the admin user view. When that address is internal (loopback, private or link-local), the session stores no address. A proxy that does not set `X-Forwarded-For` therefore also lets a visitor falsify the sign-in log and the stored session address. Keep the default `WEB_LISTEN=127.0.0.1:3100` whenever the proxy or tunnel runs on the same machine so visitors cannot bypass the proxy; with a bare port, allow only the proxy's address to reach it.
-- **Cloudflare**: `/img/*` responses carry `Cache-Control: public, max-age=31536000, immutable` and are cached automatically. `/api/items` (item records, the item card's first request) carries `Cache-Control: public, max-age=43200` (12 hours), but Cloudflare caches JSON only through a Cache Rule: add one for *URI Path equals `/api/items`* with **Eligible for cache** and Edge TTL **Use cache-control header if present**, leaving the cache key's query string in. The catalogue lookups (`/api/avatars`, `/api/authors`, `/api/tags`, `/api/booth-tags`, `/api/categories`) carry `Cache-Control: public, max-age=300`: browsers keep them without a rule, and the same Cache Rule may list them as well. Cache no other `/api/` path: `/api/items/{id}/gallery` counts a view on every request, and the account endpoints answer per visitor. Keep **Rocket Loader** and HTML minification off so Next.js hydration is not broken.
+- **Server-sent events (`/api/admin/stream`)**: disable response buffering so `/admin` updates live (`flush_interval -1` in Caddy, `proxy_buffering off;` in nginx).
+- **Compression**: Next.js (`web`) enables gzip by default, and `api` compresses responses while excluding SSE. Front proxies can compress unencoded responses (`encode zstd gzip` in Caddy, `gzip on;` in nginx).
+- **Content Security Policy**: `web` sends one on every response; a policy your proxy adds does not replace it ([details](SERVICES.md#content-security-policy)).
+- **Host firewall & rate limiting**:
+  - Keep the default `WEB_LISTEN=127.0.0.1:3100` whenever the proxy or tunnel runs on the same machine, so visitors cannot bypass the proxy. Docker bypasses `ufw` when publishing `0.0.0.0:3100`. With a bare port, allow only the proxy's address to reach it.
+  - The front proxy must set or append `X-Forwarded-For` to the verified client IP, because the per-IP rate limits key on it. Caddy's `reverse_proxy` does this automatically; nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`.
+  - If it sets none of these headers, no visitor is rate-limited, and `api` logs `warn: a browser's request reached api with no visitor address` at most once a minute. Details: [Client address](SERVICES.md#client-address).
+- **Cloudflare**:
+  - `/img/*` responses are cached automatically.
+  - Cloudflare caches JSON only through a Cache Rule, so add one for *URI Path equals `/api/items`* with **Eligible for cache** and Edge TTL **Use cache-control header if present**, leaving the cache key's query string in. The same rule may list the catalogue lookups (`/api/avatars`, `/api/authors`, `/api/tags`, `/api/booth-tags`, `/api/categories`); browsers keep them without one.
+  - Cache no other `/api/` path. See [Caching](SERVICES.md#caching).
+  - Keep **Rocket Loader** and HTML minification off so Next.js hydration is not broken.
 
 ## 6. Operations
 
@@ -233,12 +213,17 @@ boothdex.example.com {
 | Tail logs | `docker compose logs -f api worker` |
 | Review sign-in attempts | `docker compose logs api \| grep -e sign-in -e 'password check'` (failures, successes and locks, with the client IP, and `warn: sign-in rate limited from <ip>` at most once a minute per address (per /64 for IPv6) when the per-IP limit refuses a sign-in; kept as long as the `api` log, 3 × 10 MB) |
 | Lift a sign-in lockout | in `/admin`, reset the password, or disable then re-enable the account (signs the member out) |
+| Turn off the Turnstile check at sign-in and registration | `docker compose exec postgres psql -U catalogue catalogue -c "update app_settings set value = value - 'auth' where key = 'turnstile'"` (needs no restart; use it when a wrong site key leaves nobody able to sign in) |
 | Restart one service | `docker compose restart worker` |
 | Backup database | `docker compose exec -T postgres pg_dump -U catalogue -Fc catalogue > backup-$(date +%F).dump` (schedule daily, keep off-server) |
 | Backup archived images | Copy `/srv/boothdex/images` once (changes only if you archive newly delisted items) |
 | Restore database | `docker compose stop api worker && docker compose exec -T postgres pg_restore -U catalogue -d catalogue --clean --if-exists --no-owner --role=catalogue < backup.dump && docker compose start api worker` |
 
 An `.env` copied from `.env.example` before the default became `127.0.0.1:3100` sets `WEB_LISTEN=3100`, which publishes the site on all interfaces. Change it to `WEB_LISTEN=127.0.0.1:3100` unless the proxy runs on another machine, then run `docker compose up -d web`.
+
+Cleanup runs automatically, and no manual `VACUUM` is needed. `imgcache` and `textindex` are safe to lose ([details](SERVICES.md#cleanup)).
+
+### Updates and rollback
 
 An update applies its new database migrations when `api` and `worker` start, each migration in its own transaction. CI applies a pull request's migrations to the public data bundle (`.github/workflows/migrations.yml`). The bundle holds no rows of the account tables (`users`, `sessions`, `favourites`, `item_stats` and others), so migrations of those tables are tested on an empty database only.
 
@@ -248,10 +233,6 @@ If `api` or `worker` stops at startup after an update, `docker compose logs api 
 2. If `docker compose logs api` then shows `migration <n> was previously applied but is missing`, the update applied a migration, and an older image refuses a database that holds one it does not know. Restore the latest backup and start the older images: `docker compose stop api worker && docker compose exec -T postgres pg_restore -U catalogue -d catalogue --clean --if-exists --no-owner --role=catalogue < backup.dump && docker compose up -d`. Changes since that backup are lost.
 
 Set `BOOTHDEX_TAG=latest` again once a fixed version is published. Waiting for that version, instead of going back, is the other choice.
-
-Automatic cleanup: the `worker` deletes expired login sessions and job history (including job errors and logs) older than 90 days every hour; container logs are capped by `x-logging` in `compose.yaml` (Docker keeps 3 × 10 MB per service, Podman truncates each log at 10 MB); `query_embeddings` is pruned by the `embed` job (see above). No manual `VACUUM` is needed (autovacuum handles it).
-
-Safe to lose (rebuilt automatically): `imgcache` (re-fetched from BOOTH on demand) and `textindex` (rebuilt by `api` at startup in ~10 s).
 
 ## 7. Go-live checklist
 

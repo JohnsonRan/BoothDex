@@ -7,6 +7,7 @@ use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::catalog::DocInput;
+use crate::tag_words::TagRow;
 
 /// Explicit typed representation of an item in API responses. The site's TypeScript types are generated from
 /// this and the types below (see `api_types`), so a change here that the site doesn't follow fails `tsc`.
@@ -223,6 +224,8 @@ struct Row {
     id: i64,
     title: String,
     titles_translated: Vec<String>,
+    title_zh: Option<String>,
+    title_is_zh: bool,
     title_languages: i32,
     bio: String,
     author_name: String,
@@ -254,20 +257,22 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
     let parent: HashMap<String, String> =
         sqlx::query_as::<_, (String, String)>("select slug, parent_slug from smart_categories where parent_slug is not null").fetch_all(pool).await?.into_iter().collect();
 
-    // only titles are translated (titles_translated); descriptions are searched in their original language.
+    // only titles are translated (titles_translated, title_zh); descriptions are searched in their original language.
     // One jsonpath call detoasts `translations` (~2 KB, TOASTed) once per row instead of once per `->` (≈1.5x faster); silent mode keeps non-object translations from failing the load.
     // title_languages: bit 1 << k for `expansion::LANGUAGES[k]` (en, ja, ko, zh), translated or original.
     let rows: Vec<Row> = sqlx::query_as(
         "select i.id, i.title, i.bio, i.author_name, i.booth_category, coalesce(i.smart_price, i.price_jpy) as price, i.likes,
                 extract(epoch from i.published_at)::bigint as published, i.is_adult, i.content_rating, i.quest, i.features,
                 i.booth_tags, i.supported, i.gender, coalesce(tr.titles, '{}') as titles_translated,
+                case when i.original_language = 'zh' then i.title else tr.zh end as title_zh, coalesce(i.original_language = 'zh', false) as title_is_zh,
                 coalesce(tr.languages, 0) | case i.original_language when 'en' then 1 when 'ja' then 2 when 'ko' then 4 when 'zh' then 8 else 0 end
                     as title_languages,
                 coalesce(ia.avatars, '{}') as avatars, coalesce(ic.cats, '{}') as cats, coalesce(ic.cats_primary, '{}') as cats_primary,
                 i.status = 'delisted' and i.relisted_as is not null as relisted
          from items i
          left join lateral (
-             select array_agg(t.e -> 'value' ->> 'title' order by t.n) as titles,
+             select array_agg(t.e -> 'value' ->> 'title' order by t.n) filter (where t.e ->> 'key' <> 'zh') as titles,
+                    max(t.e -> 'value' ->> 'title') filter (where t.e ->> 'key' = 'zh') as zh,
                     bit_or(case t.e ->> 'key' when 'en' then 1 when 'ja' then 2 when 'ko' then 4 when 'zh' then 8 end) as languages
              from jsonb_array_elements(jsonb_path_query_array(i.translations,
                  '$.keyvalue() ? ((@.key == \"en\" || @.key == \"ja\" || @.key == \"ko\" || @.key == \"zh\") && @.value.title != null)', '{}', true))
@@ -309,6 +314,8 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
                 bio: r.bio,
                 title: r.title,
                 titles_translated,
+                title_zh: r.title_zh,
+                title_is_zh: r.title_is_zh,
                 title_languages: r.title_languages as u8,
                 author: r.author_name,
                 booth_category: r.booth_category,
@@ -329,6 +336,16 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
         })
         .collect())
 }
+
+/// (tag, en, ja, ko, zh, keywords) of `booth_tag_translations`
+type TagRowColumns = (String, Option<String>, Option<String>, Option<String>, Option<String>, Vec<String>);
+
+/// The BOOTH tag dictionary, one query per snapshot: each tag with its translations and keywords.
+pub async fn load_tag_rows(pool: &PgPool) -> Result<Vec<TagRow>> {
+    let rows: Vec<TagRowColumns> = sqlx::query_as("select tag, en, ja, ko, zh, keywords from booth_tag_translations").fetch_all(pool).await?;
+    Ok(rows.into_iter().map(|(tag, en, ja, ko, zh, keywords)| TagRow { tag, values: [en, ja, ko, zh], keywords }).collect())
+}
+
 
 /// Item payloads in the given order. Card mode avoids loading details that result grids discard.
 pub async fn load_items(pool: &PgPool, ids: &[i64], card: bool) -> Result<Vec<ItemResponse>> {

@@ -17,7 +17,10 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS build
 COPY --from=planner /src/recipe.json recipe.json
-RUN for i in 1 2 3; do cargo chef cook --release --recipe-path recipe.json -p api -p imgproxy -p worker --features imgproxy/libavif && break; [ $i = 3 ] && exit 1; sleep 10; done
+# Rust 1.100's Cargo lint `cargo::unused_dependencies` takes every dependency of cook's stub crates as unused.
+# CARGO_BUILD_WARNINGS=allow (`build.warnings`, Cargo 1.97+) hides lint warnings of local packages only, here the
+# stubs; the real `cargo build` below keeps its warnings.
+RUN for i in 1 2 3; do CARGO_BUILD_WARNINGS=allow cargo chef cook --release --recipe-path recipe.json -p api -p imgproxy -p worker --features imgproxy/libavif && break; [ $i = 3 ] && exit 1; sleep 10; done
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 RUN cargo build --release -p api -p imgproxy -p worker --features imgproxy/libavif \
@@ -34,6 +37,8 @@ USER app
 
 FROM runtime AS api
 COPY --from=build /out/api /usr/local/bin/api
+# the binary embeds IPADIC and CC-CEDICT; both licences require their notices in every copy (deploy/licenses)
+COPY deploy/licenses/ /usr/share/doc/boothdex-api/
 # the api uses mimalloc (see main.rs), so glibc malloc tuning such as MALLOC_ARENA_MAX does not apply
 ENV BIND=0.0.0.0:3000 INDEX_DIR=/index
 EXPOSE 3000

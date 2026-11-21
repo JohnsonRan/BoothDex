@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use crate::params::Params;
 use crate::search_request::{SearchRequest, Sort};
-use crate::{ApiError, AppState, db, limit};
+use crate::{ApiError, AppState, catalog, db, limit};
 
 /// Ctrl+K: one query across items, avatars, authors, tags and categories.
 pub(crate) async fn palette(
@@ -27,7 +27,8 @@ pub(crate) async fn palette(
     let _permit = s.acquire_search().await?;
     let small = Params::parse(&format!("limit=5&{raw}"));
     let needle = crate::text::fold(&text);
-    let snap = s.snap();
+    // one snapshot for the whole request, so a reload during it cannot mix two catalogues
+    let snap = s.snap.load_full();
     let categories: Vec<Value> = snap.categories["categories"]
         .as_array()
         .into_iter()
@@ -37,10 +38,16 @@ pub(crate) async fn palette(
         .take(5)
         .map(|c| json!({ "slug": c["slug"], "en": c["en"], "ja": c["ja"], "ko": c["ko"], "zh": c["zh"] }))
         .collect();
+    // the words are also searched as the BOOTH tags that translate them, as the main search does (expansion.rs): the
+    // model names left out, a translated match held to the models named, and nothing for a query naming an item
+    let (meaning, named, _) = snap.avatars.split_names(&text, |w| snap.catalog.knows_word(w));
+    let models: Vec<String> = named.into_iter().map(|(slug, _)| slug).collect();
+    let semantic = (!models.is_empty()).then(|| catalog::Semantic { ids: &[], categories: &[], models: &models, rest: &meaning });
+    let expand = snap.catalog.referenced(&text).is_none().then_some(meaning.as_str());
     // items honour the caller's adult setting (default safe) like the main search
-    let items_req = SearchRequest { q: Some(text), adult: user.adult, sort: Sort::Relevant, page_size: 8, ..SearchRequest::from(&Params::default()) };
+    let items_req = SearchRequest { q: Some(text.clone()), adult: user.adult, sort: Sort::Relevant, page_size: 8, ..SearchRequest::from(&Params::default()) };
     let now = chrono::Utc::now().timestamp();
-    let r = tokio::task::block_in_place(|| s.snap().catalog.search(&items_req, now, None, None, None, false))?;
+    let r = tokio::task::block_in_place(|| snap.catalog.search(&items_req, now, None, semantic, expand, false))?;
     let items: Vec<Value> = db::load_items(&s.pool, &r.ids, true)
         .await?
         .into_iter()
@@ -57,9 +64,9 @@ pub(crate) async fn palette(
     Ok(Json(json!({
         "items": items,
         "itemCount": r.count,
-        "avatars": s.snap().avatars.find(&small)["items"],
-        "authors": s.snap().authors.find(&small)["items"],
-        "tags": s.snap().tags.find(&small)["items"],
+        "avatars": snap.avatars.find(&small)["items"],
+        "authors": snap.authors.find(&small)["items"],
+        "tags": snap.tags.find(&small)["items"],
         "categories": categories,
     }))
     .into_response())

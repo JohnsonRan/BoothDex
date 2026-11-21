@@ -96,9 +96,9 @@ export const adminEn: AdminDict = {
   "kind.embed": "Semantic vectors",
   "kind.embed.desc":
     "Generates search vectors for new items and items whose title or description changed (idle until an embedding model is set)",
-  "kind.localize": "Translate categories",
+  "kind.localize": "Translate categories and tags",
   "kind.localize.desc":
-    "Translates category and tag names into Chinese (only those without one). Runs once after the AI settings are saved",
+    "Translates category and tag names into Chinese, and BOOTH tags on 5 or more items into Chinese, English, Japanese and Korean for search (only those without a translation; up to 400 tags a run). Runs daily and after the AI settings are saved",
   "status.queued": "Queued",
   "status.running": "Running",
   "status.cancelling": "Stopping",

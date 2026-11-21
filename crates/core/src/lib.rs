@@ -8,6 +8,13 @@ pub mod settings;
 /// it from then on, and the admin console lists it with a retry that sets the count back to 0.
 pub const ENRICH_ATTEMPTS: i16 = 3;
 
+/// The version of the prompt the `localize` job translates the taxonomy names with (worker `ai::LOCALIZE_SYSTEM`).
+/// Raise it when that prompt changes how names are worded: the API then queues a forced `localize` (startup and a
+/// saved AI setting), and the worker records the version in `app_settings` (`localize_state`) once such a run has
+/// translated every name. 2: 虚拟形象 for an avatar and Unity's terms (owner ruling 22, 2026-11-21); the names
+/// translated before have no recorded version.
+pub const LOCALIZE_PROMPT_VERSION: i64 = 2;
+
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 /// Tells the API the catalogue changed; it rebuilds its in-memory snapshot on the next reload check.

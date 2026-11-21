@@ -438,15 +438,19 @@ async fn save_ai(s: &AppState, b: AiSettings, env: impl Fn(&str) -> Option<Strin
     Ok(config)
 }
 
-/// Once the provider is fully configured, translate the taxonomy into Chinese if that hasn't happened yet.
-/// The worker picks the job up within seconds; it is cheap (a few hundred short labels).
+/// Once the provider is fully configured, translate the taxonomy into Chinese if that hasn't happened yet, or all of it
+/// again (`force`) when it was translated with another prompt than `LOCALIZE_PROMPT_VERSION` (owner ruling 22,
+/// 2026-11-21). The worker picks the job up within seconds; it is cheap (a few hundred short labels). A forced run
+/// leaves the BOOTH tag dictionary alone.
 pub async fn queue_localize_if_needed(pool: &PgPool, c: &AiConfig) -> Result<(), sqlx::Error> {
     if c.base_url.is_none() || c.model.is_none() || c.api_key.is_none() {
         return Ok(());
     }
     sqlx::query(
-        "insert into jobs (kind, params, created_by) select 'localize', '{}', 'ai-settings'
-         where exists (
+        "insert into jobs (kind, params, created_by)
+         select 'localize', case when stale then '{\"force\": true}'::jsonb else '{}' end, 'ai-settings'
+           from (select not coalesce((select value->'prompt_version' = to_jsonb($1::bigint) from app_settings where key = 'localize_state'), false) as stale) v
+          where stale or exists (
            select 1 from smart_categories where name_en is not null and name_zh is null
            union all
            select 1 from smart_categories where group_en is not null and group_zh is null
@@ -455,6 +459,7 @@ pub async fn queue_localize_if_needed(pool: &PgPool, c: &AiConfig) -> Result<(),
          )
          on conflict do nothing",
     )
+    .bind(boothdex_core::LOCALIZE_PROMPT_VERSION)
     .execute(pool)
     .await?;
     Ok(())
@@ -598,6 +603,37 @@ mod tests {
         let ai = serde_json::from_value(json!({ "api_key": "sk-secret\0" })).unwrap();
         assert_eq!(status(super::put_ai(State(state.clone()), h.clone(), Json(ai)).await), StatusCode::BAD_REQUEST);
         assert_eq!(sqlx::query_scalar::<_, i64>("select count(*) from jobs").fetch_one(&pool).await.unwrap(), 0);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn a_new_localize_prompt_queues_the_taxonomy_names_again(pool: sqlx::PgPool) {
+        let configured = boothdex_core::settings::resolve(&serde_json::json!({ "base_url": "http://127.0.0.1:9", "model": "m", "api_key": "k" }), |_| None);
+        let queued = || async {
+            let jobs: Vec<serde_json::Value> = sqlx::query_scalar("select params from jobs where kind = 'localize'").fetch_all(&pool).await.unwrap();
+            sqlx::query("delete from jobs").execute(&pool).await.unwrap();
+            jobs
+        };
+        let record = |version: i64| sqlx::query("insert into app_settings (key, value) values ('localize_state', $1) on conflict (key) do update set value = excluded.value")
+            .bind(serde_json::json!({ "prompt_version": version }))
+            .execute(&pool);
+        // without a provider nothing is queued
+        super::queue_localize_if_needed(&pool, &boothdex_core::settings::resolve(&serde_json::json!({}), |_| None)).await.unwrap();
+        assert!(queued().await.is_empty());
+        sqlx::raw_sql("update smart_categories set name_zh = 'x', group_zh = 'x'; update smart_tags set display_zh = 'x';").execute(&pool).await.unwrap();
+        // every name has a translation, but none recorded with this prompt, or one with an older prompt: all again
+        super::queue_localize_if_needed(&pool, &configured).await.unwrap();
+        assert_eq!(queued().await, [serde_json::json!({ "force": true })]);
+        record(boothdex_core::LOCALIZE_PROMPT_VERSION - 1).await.unwrap();
+        super::queue_localize_if_needed(&pool, &configured).await.unwrap();
+        assert_eq!(queued().await, [serde_json::json!({ "force": true })]);
+        // with this prompt recorded: only missing names are filled, and nothing when none is missing
+        record(boothdex_core::LOCALIZE_PROMPT_VERSION).await.unwrap();
+        super::queue_localize_if_needed(&pool, &configured).await.unwrap();
+        assert!(queued().await.is_empty());
+        sqlx::query("update smart_tags set display_zh = null where id = (select min(id) from smart_tags)").execute(&pool).await.unwrap();
+        super::queue_localize_if_needed(&pool, &configured).await.unwrap();
+        assert_eq!(queued().await, [serde_json::json!({})]);
     }
 
     #[sqlx::test(migrations = "../core/migrations")]

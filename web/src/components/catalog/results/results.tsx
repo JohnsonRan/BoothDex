@@ -30,6 +30,7 @@ import { PageInView } from "./page-in-view";
 import { ResultPages } from "./result-pages";
 import {
   EmptyResults,
+  PendingNote,
   RelatedSearchLink,
   SearchInstead,
   SemanticNote,
@@ -163,6 +164,15 @@ export async function Results({
   // pages are read the same way, so the result set stays the one the first tiles came from
   const lexical = noSemantic || (!!filters.q && result.semantic !== "used");
   const t = translator(settings.ui);
+  // after the results (or the empty state), where the unavailable note goes, so nothing moves for it; keyed by the
+  // search, so a new search waits anew
+  const pending = result.semantic === "pending" && (
+    <PendingNote
+      key={filtersToQuery(filters)}
+      pending={t("list.semanticPending")}
+      unavailable={t("list.semanticUnavailable")}
+    />
+  );
   if (result.items.length === 0) {
     const searches = await related;
     return (
@@ -180,6 +190,7 @@ export async function Results({
                 )
               }
             />
+            {pending}
           </VStack>
         </Swap>
       </KeepResults>
@@ -222,6 +233,7 @@ export async function Results({
           {result.semantic === "unavailable" && (
             <SemanticNote text={t("list.semanticUnavailable")} />
           )}
+          {pending}
           {/* plain links for crawlers and screen readers' link lists; out of the tab order, the scroll reads on */}
           <VisuallyHidden as="nav" aria-label={t("page.nav")}>
             {result.page > 1 && (

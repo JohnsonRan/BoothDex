@@ -55,7 +55,7 @@ services:
     volumes:
       - textindex:/index # on-disk search index, reused across restarts
     logging: *logging
-    # sized from production (docs/DEPLOY.md, "Server requirements"); glibc malloc was OOM-killed at 3g, so keep
+    # sized from production (docs/MEASUREMENTS.md, "Production, by container"); glibc malloc was OOM-killed at 3g, so keep
     # mimalloc (crates/api/src/main.rs)
     mem_limit: 3g
 

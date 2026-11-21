@@ -1,8 +1,9 @@
 //! `/api/related`: related searches for a text query (owner, 2026-11-20), BOOTH tags near the query's meaning. Each tag
 //! has a centroid, the mean embedding of the items that carry it. The tags nearest the embedding a search already
-//! stored for the query are offered, minus those that respell or translate the query, name an avatar, are spread by a
-//! few shops or by everyone, seldom go with the query's own matches, or find nothing under the current filters. The
-//! rules and numbers were tuned with a prototype on the development catalogue (42 sample queries, 2026-11-20).
+//! stored for the query are offered, minus those that respell, translate or repeat a word of the query, name an
+//! avatar, are spread by a few shops or by everyone, seldom go with the query's own matches, or find nothing under the
+//! current filters. The rules and numbers were tuned with a prototype on the development catalogue (42 sample queries,
+//! 2026-11-20). A chip reads in the visitor's language when the tag dictionary has the tag in it (owner, 2026-11-21).
 
 use std::sync::Arc;
 
@@ -17,8 +18,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use sqlx::PgPool;
 
 use crate::catalog::Catalog;
+use crate::expansion::{Equivalents, LANGUAGES};
 use crate::params::Params;
 use crate::search_request::{SearchRequest, View};
+use crate::tag_words::TagRow;
 use crate::text::{compact, fold};
 use crate::{ApiError, AppState, account, limit, search};
 
@@ -45,6 +48,40 @@ const SAME_THING: f64 = 0.7;
 pub(crate) struct Related {
     pub(crate) avatars: AvatarNames,
     pub(crate) centroids: Option<Arc<TagCentroids>>,
+    pub(crate) labels: TagLabels,
+}
+
+/// The tag dictionary's rows (`booth_tag_translations`) of the tags a related search can be: those spelt as a tag on
+/// enough listed items (`Equivalents::name`).
+#[derive(Default)]
+pub(crate) struct TagLabels(FxHashMap<String, Label>);
+
+/// A tag's values in the languages of `LANGUAGES`, and its keywords.
+struct Label {
+    values: [Option<Box<str>>; 4],
+    keywords: Box<[Box<str>]>,
+}
+
+impl TagLabels {
+    pub(crate) fn new(rows: &[TagRow], tags: &Equivalents) -> Self {
+        let names: FxHashSet<&str> = (0..tags.len() as u32).map(|t| tags.name(t)).collect();
+        let kept = rows.iter().filter(|r| names.contains(r.tag.as_str())).map(|r| {
+            let values = std::array::from_fn(|k| r.values[k].as_deref().map(Box::from));
+            (r.tag.clone(), Label { values, keywords: r.keywords.iter().map(|k| Box::from(k.as_str())).collect() })
+        });
+        Self(kept.collect())
+    }
+
+    /// The tag in the language `LANGUAGES[k]`.
+    fn label(&self, tag: &str, k: usize) -> Option<&str> {
+        self.0.get(tag)?.values[k].as_deref()
+    }
+
+    /// Whether some value of the tag, in any language or as a keyword, respells `meaning`: the tag translates the query
+    /// (cheongsam offers 旗袍), which the query's own search finds or its expansion would.
+    fn translate(&self, tag: &str, meaning: &str) -> bool {
+        self.0.get(tag).is_some_and(|l| l.values.iter().flatten().chain(l.keywords.iter()).any(|v| respelling(meaning, v)))
+    }
 }
 
 /// The `/api/related` response. The site's type is generated from it (see `api_types`).
@@ -234,18 +271,23 @@ fn respelling(a: &str, b: &str) -> bool {
 }
 
 /// What related searches are chosen for: a search whose query `Lookup::split_names` read as `meaning` and the models
-/// `named` with their words.
+/// `named` with their words, for a visitor reading `LANGUAGES[language]`.
 pub(crate) struct Asked<'a> {
     pub(crate) req: &'a SearchRequest,
     pub(crate) meaning: &'a str,
     pub(crate) named: &'a [(String, Vec<&'a str>)],
     pub(crate) favourites: Option<&'a RoaringBitmap>,
     pub(crate) now: i64,
+    pub(crate) language: Option<usize>,
 }
 
-/// Up to `SEARCHES` related searches for `asked`, whose meaning has the embedding `vector`, best first.
-pub(crate) fn choose(catalog: &Catalog, avatars: &AvatarNames, centroids: &TagCentroids, vector: &[f32], asked: &Asked) -> Result<Vec<RelatedSearch>> {
+/// Up to `SEARCHES` related searches for `asked`, whose meaning has the embedding `vector`, best first. A search is
+/// labelled with the tag in the visitor's language (`labels`) unless that respells the query, one of its words or a
+/// search already chosen; its `q` uses that label when the label's own words find something, else the tag.
+pub(crate) fn choose(catalog: &Catalog, related: &Related, centroids: &TagCentroids, vector: &[f32], asked: &Asked) -> Result<Vec<RelatedSearch>> {
+    let (avatars, labels) = (&related.avatars, &related.labels);
     let tags = catalog.tags();
+    let words: Vec<&str> = asked.meaning.split_whitespace().collect();
     let equivalents = catalog.equivalents(asked.meaning)?;
     let matches = catalog.word_hits(asked.meaning)?;
     // how many of the query's matches carry each tag, when they are enough to tell
@@ -263,7 +305,15 @@ pub(crate) fn choose(catalog: &Catalog, avatars: &AvatarNames, centroids: &TagCe
     if !models.is_empty() {
         allowed &= catalog.fitting(&models);
     }
-    let (mut chosen, mut chosen_titles, mut validated): (Vec<RelatedSearch>, Vec<RoaringBitmap>, usize) = (Vec::new(), Vec::new(), 0);
+    // a destination finds something by its words: an item spelling them as a tag that the filters let through is one;
+    // else their text matches, with the tags that translate them (the site drops xl=0 with new words)
+    let finds = |words: &str| -> Result<bool> {
+        let dest = SearchRequest { q: Some(kept.iter().copied().chain([words]).collect::<Vec<_>>().join(" ")), ..asked.req.clone() };
+        let found = |expand| catalog.finds_by_words(&dest, asked.now, asked.favourites, &models, words, expand);
+        Ok(catalog.booth_tags.get(words).is_some_and(|b| !b.is_disjoint(&allowed)) || found(None)? || found(Some(words))?)
+    };
+    let destination = |words: &str| kept.iter().copied().chain([words]).collect::<Vec<_>>().join(" ");
+    let (mut chosen, mut chosen_titles, mut validated): (Vec<(&str, RelatedSearch)>, Vec<RoaringBitmap>, usize) = (Vec::new(), Vec::new(), 0);
     for key in centroids.ranked(vector) {
         if chosen.len() == SEARCHES || validated == VALIDATE {
             break;
@@ -279,21 +329,18 @@ pub(crate) fn choose(catalog: &Catalog, avatars: &AvatarNames, centroids: &TagCe
             continue;
         }
         let name = tags.name(t);
+        // a word of the query is a wider search, not a related one ("黒髪 ロング" offering ロング)
+        let repeats = |s: &str| respelling(asked.meaning, s) || words.iter().any(|w| respelling(w, s));
         if equivalents.iter().any(|e| fold(e) == key)
+            || labels.translate(name, asked.meaning)
             || avatars.named_in(key)
-            || respelling(asked.meaning, name)
-            || chosen.iter().any(|c| respelling(&c.label, name))
+            || repeats(name)
+            || chosen.iter().any(|(tag, _)| respelling(tag, name))
         {
             continue;
         }
         validated += 1;
-        let q = kept.iter().copied().chain([name]).collect::<Vec<_>>().join(" ");
-        // the search the chip leads to finds something by its words: an item spelling the tag so that the filters let
-        // through is one; else its text matches, with the tags that translate them (the site drops xl=0 with new words)
-        let dest = SearchRequest { q: Some(q.clone()), ..asked.req.clone() };
-        let finds = |expand| catalog.finds_by_words(&dest, asked.now, asked.favourites, &models, name, expand);
-        let spelt = catalog.booth_tags.get(name).is_some_and(|b| !b.is_disjoint(&allowed));
-        if !spelt && !finds(None)? && !finds(Some(name))? {
+        if !finds(name)? {
             continue;
         }
         let titles = catalog.title_hits(name)?;
@@ -305,9 +352,15 @@ pub(crate) fn choose(catalog: &Catalog, avatars: &AvatarNames, centroids: &TagCe
             continue;
         }
         chosen_titles.push(titles);
-        chosen.push(RelatedSearch { label: name.to_owned(), q });
+        let label = asked
+            .language
+            .and_then(|k| labels.label(name, k))
+            .filter(|l| !repeats(l) && !chosen.iter().any(|(tag, c)| respelling(tag, l) || respelling(&c.label, l)))
+            .unwrap_or(name);
+        let q = if label != name && finds(label)? { destination(label) } else { destination(name) };
+        chosen.push((name, RelatedSearch { label: label.to_owned(), q }));
     }
-    Ok(chosen)
+    Ok(chosen.into_iter().map(|(_, search)| search).collect())
 }
 
 /// Related searches for the search `q` asks (the same parameters), from the embedding a search already stored for its
@@ -332,6 +385,8 @@ pub(crate) async fn related(
         return none();
     }
     let typos = p.get("typo").as_deref() != Some("0");
+    // the visitor's language (the site's `hl`), which labels the searches
+    let language = p.get("hl").and_then(|hl| LANGUAGES.iter().position(|l| *l == hl));
     let (meaning, named, _) = snap.avatars.split_names(q, |w| !typos || snap.catalog.knows_word(w));
     let Some(centroids) = snap.related.centroids.as_ref().filter(|_| !meaning.is_empty()) else { return none() };
     let model = match s.ai_config().await {
@@ -351,8 +406,8 @@ pub(crate) async fn related(
     };
     let Some(vector) = search::stored_query_embedding(&s, &model, &meaning).await.filter(|v| v.len() == DIMS) else { return none() };
     let _permit = s.acquire_search().await?;
-    let asked = Asked { req: &req, meaning: &meaning, named: &named, favourites: favourites.as_ref(), now: chrono::Utc::now().timestamp() };
-    let searches = tokio::task::block_in_place(|| choose(&snap.catalog, &snap.related.avatars, centroids, &vector, &asked))?;
+    let asked = Asked { req: &req, meaning: &meaning, named: &named, favourites: favourites.as_ref(), now: chrono::Utc::now().timestamp(), language };
+    let searches = tokio::task::block_in_place(|| choose(&snap.catalog, &snap.related, centroids, &vector, &asked))?;
     Ok(Json(RelatedResponse { searches }).into_response())
 }
 
@@ -364,6 +419,11 @@ mod tests {
     /// Groups of docs, each `(count, title, tags, shops)`, then 400 untagged docs, so that a tag on 20 items is not on
     /// 5% of them. Doc ids count from 1 in order.
     fn catalogue(groups: &[(usize, &str, &[&str], usize)], each: impl Fn(i64, &mut DocInput)) -> Catalog {
+        catalogue_with_words(groups, each, &crate::tag_words::TagWords::default())
+    }
+
+    /// `catalogue`, its text search matching the tags' translations in `words` too.
+    fn catalogue_with_words(groups: &[(usize, &str, &[&str], usize)], each: impl Fn(i64, &mut DocInput), words: &crate::tag_words::TagWords) -> Catalog {
         let filler: &[(usize, &str, &[&str], usize)] = &[(400, "Filler", &[], 50)];
         let mut docs = Vec::new();
         for &(count, title, tags, shops) in groups.iter().chain(filler) {
@@ -373,6 +433,8 @@ mod tests {
                     id,
                     title: format!("{title} {id}"),
                     titles_translated: vec![],
+                    title_zh: None,
+                    title_is_zh: false,
                     title_languages: 0b0111,
                     bio: String::new(),
                     author: format!("{title} {}", i % shops),
@@ -395,7 +457,7 @@ mod tests {
                 docs.push(d);
             }
         }
-        Catalog::build(docs, 0, None).unwrap()
+        Catalog::build_with_tag_words(docs, words, 0, None).unwrap()
     }
 
     fn unit(i: usize) -> Vec<f32> {
@@ -418,12 +480,31 @@ mod tests {
 
     /// The related searches for `query`, whose words read as the `named` models are left out of its meaning.
     fn related(c: &Catalog, tags: &[&str], query: &str, named: &[(String, Vec<&str>)], favourites: Option<&RoaringBitmap>) -> Vec<(String, String)> {
+        related_in(c, tags, query, named, favourites, TagLabels::default(), None)
+    }
+
+    /// `related`, for a visitor reading `language`, with the tag dictionary's rows `labels`.
+    fn related_in(
+        c: &Catalog,
+        tags: &[&str],
+        query: &str,
+        named: &[(String, Vec<&str>)],
+        favourites: Option<&RoaringBitmap>,
+        labels: TagLabels,
+        language: Option<&str>,
+    ) -> Vec<(String, String)> {
         let req = SearchRequest::from(&Params::parse(query));
         let words: Vec<&str> = named.iter().flat_map(|(_, w)| w.iter().copied()).collect();
         let meaning: String = req.q.as_deref().unwrap().split_whitespace().filter(|w| !words.contains(w)).collect::<Vec<_>>().join(" ");
-        let asked = Asked { req: &req, meaning: &meaning, named, favourites, now: 0 };
-        let avatars = AvatarNames::new(["Kikyo", "桔梗", "io"]);
-        choose(c, &avatars, &centroids(tags), &unit(0), &asked).unwrap().into_iter().map(|s| (s.label, s.q)).collect()
+        let language = language.and_then(|l| LANGUAGES.iter().position(|x| *x == l));
+        let asked = Asked { req: &req, meaning: &meaning, named, favourites, now: 0, language };
+        let related = Related { avatars: AvatarNames::new(["Kikyo", "桔梗", "io"]), centroids: None, labels };
+        choose(c, &related, &centroids(tags), &unit(0), &asked).unwrap().into_iter().map(|s| (s.label, s.q)).collect()
+    }
+
+    /// A row of the tag dictionary: the tag, its values in en, ja, ko and zh, and its keywords.
+    fn row(tag: &str, values: [Option<&str>; 4], keywords: &[&str]) -> TagRow {
+        TagRow { tag: tag.into(), values: values.map(|v| v.map(str::to_owned)), keywords: keywords.iter().map(|k| k.to_string()).collect() }
     }
 
     fn labels(searches: Vec<(String, String)>) -> Vec<String> {
@@ -541,6 +622,81 @@ mod tests {
     }
 
     #[test]
+    fn a_word_of_the_query_is_a_wider_search_not_a_related_one() {
+        let c = catalogue(&[(20, "Black Long Hair", &["黒髪"], 5), (20, "Black Long Hair", &["ロング"], 5), (20, "Black Long Hair", &["ponytail"], 5)], |_, _| {});
+        assert_eq!(labels(related(&c, &["黒髪", "ロング", "ponytail"], "q=黒髪%20ロング", &[], None)), ["ponytail"]);
+    }
+
+    #[test]
+    fn a_tag_the_dictionary_translates_as_the_query_is_not_offered() {
+        let c = catalogue(&[(20, "Dress", &["Dresses"], 5), (20, "Dress", &["テクスチャ"], 5), (20, "Dress", &["frills"], 5)], |_, _| {});
+        let tags = ["Dresses", "テクスチャ", "frills"];
+        let dictionary = || TagLabels::new(&[row("Dresses", [Some("dresses"), Some("ドレス"), Some("드레스"), Some("连衣裙")], &[]), row("テクスチャ", [Some("texture"), Some("テクスチャ"), Some("텍스처"), Some("纹理")], &["贴图"])], c.tags());
+        // without the dictionary each is offered, as finding the items tagged in another language
+        assert_eq!(labels(related(&c, &tags, "q=ドレス", &[], None)), tags);
+        // ドレス is what Dresses says in Japanese, and 贴图 a keyword of テクスチャ
+        assert_eq!(labels(related_in(&c, &tags, "q=ドレス", &[], None, dictionary(), None)), ["テクスチャ", "frills"]);
+        assert_eq!(labels(related_in(&c, &tags, "q=贴图", &[], None, dictionary(), None)), ["Dresses", "frills"]);
+    }
+
+    #[test]
+    fn a_search_reads_in_the_visitors_language_and_searches_its_label_when_that_finds_items() {
+        // the text search knows frills as 荷叶边 (a dictionary word of the catalogue) but not pleats as 百褶
+        let words = crate::tag_words::TagWords::new([("frills".to_owned(), vec!["frills".to_owned(), "荷叶边".to_owned()])]);
+        let groups: &[(usize, &str, &[&str], usize)] = &[(20, "Skirt", &["frills"], 5), (20, "Skirt", &["pleats"], 5), (20, "Skirt", &["pleated"], 5), (20, "Skirt", &["lace"], 5)];
+        let c = catalogue_with_words(groups, |_, _| {}, &words);
+        let tags = ["frills", "pleats", "pleated", "lace"];
+        let dictionary = || {
+            TagLabels::new(
+                &[
+                    row("frills", [Some("frills"), Some("フリル"), Some("프릴"), Some("荷叶边")], &[]),
+                    row("pleats", [Some("pleats"), Some("プリーツ"), Some("플리츠"), Some("百褶")], &[]),
+                    row("pleated", [Some("pleated"), None, None, Some("百褶")], &[]),
+                ],
+                c.tags(),
+            )
+        };
+        let pair = |label: &str, q: &str| (label.to_owned(), q.to_owned());
+        // the label in Chinese; its words as the destination only when they find something; a label another search
+        // already shows, or no row, keeps the tag
+        assert_eq!(
+            related_in(&c, &tags, "q=skirt", &[], None, dictionary(), Some("zh")),
+            [pair("荷叶边", "荷叶边"), pair("百褶", "pleats"), pair("pleated", "pleated"), pair("lace", "lace")]
+        );
+        // a language without a value keeps the tag, as does a request that names no language
+        assert_eq!(related_in(&c, &tags, "q=skirt", &[], None, dictionary(), Some("ko"))[2], pair("pleated", "pleated"));
+        assert_eq!(related_in(&c, &tags, "q=skirt", &[], None, dictionary(), None)[0], pair("frills", "frills"));
+        // a model named in the query stays in the destination
+        let shinano = vec![("shinano".to_owned(), vec!["Shinano"])];
+        let c = catalogue_with_words(groups, |_, d| d.avatars = vec!["shinano".into()], &words);
+        assert_eq!(related_in(&c, &tags, "q=Shinano%20skirt", &shinano, None, dictionary(), Some("zh"))[0], pair("荷叶边", "Shinano 荷叶边"));
+    }
+
+    #[test]
+    fn a_label_that_repeats_a_word_of_the_query_or_another_searchs_tag_keeps_the_tag() {
+        let pair = |label: &str, q: &str| (label.to_owned(), q.to_owned());
+        // long reads ロング in Japanese, a word of the query
+        let c = catalogue(&[(20, "Black Long Hair", &["long"], 5)], |_, _| {});
+        let dictionary = TagLabels::new(&[row("long", [Some("long"), Some("ロング"), None, None], &[])], c.tags());
+        assert_eq!(related_in(&c, &["long"], "q=黒髪%20ロング", &[], None, dictionary, Some("ja")), [pair("long", "long")]);
+        // pleats reads 百褶 in Chinese, the tag of the search before it, which shows 百褶裙 and searches 百褶
+        let c = catalogue(&[(20, "Skirt", &["百褶"], 5), (20, "Skirt", &["pleats"], 5)], |_, _| {});
+        let dictionary = TagLabels::new(
+            &[row("百褶", [Some("pleated"), None, None, Some("百褶裙")], &[]), row("pleats", [Some("pleats"), None, None, Some("百褶")], &[])],
+            c.tags(),
+        );
+        assert_eq!(related_in(&c, &["百褶", "pleats"], "q=skirt", &[], None, dictionary, Some("zh")), [pair("百褶裙", "百褶"), pair("pleats", "pleats")]);
+    }
+
+    #[test]
+    fn the_labels_keep_only_the_tags_a_related_search_can_be() {
+        // rare is on five items, too few to be offered
+        let c = catalogue(&[(20, "Skirt", &["pleats"], 5), (5, "Skirt", &["rare"], 5)], |_, _| {});
+        let labels = TagLabels::new(&[row("pleats", [Some("pleats"), None, None, Some("百褶")], &[]), row("rare", [Some("rare"), None, None, Some("稀有")], &[])], c.tags());
+        assert_eq!((labels.label("pleats", 3), labels.label("rare", 3)), (Some("百褶"), None));
+    }
+
+    #[test]
     fn respellings_are_the_same_word_but_containment_is_not() {
         for (a, b) in [("skirt", "Skirts"), ("gothic girl", "gothic girls"), ("dress", "Dresses"), ("short hair", "ShortHair"), ("ドレス", "ﾄﾞﾚｽ")] {
             assert!(respelling(a, b) && respelling(b, a), "{a} / {b}");
@@ -593,6 +749,26 @@ mod tests {
         let t = TagCentroids { model: "m".into(), built: chrono::Utc::now(), keys: vec!["c".into(), "b".into(), "a".into()], vectors: [unit(2), unit(1), unit(2)].concat() };
         let query: Vec<f32> = unit(2).iter().map(|x| x * 3.0).collect();
         assert_eq!(t.ranked(&query).collect::<Vec<_>>(), ["a", "c", "b"]);
+    }
+
+    /// A snapshot searches the tag dictionary's words and labels related searches with its values.
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn a_snapshot_reads_the_tag_dictionary(pool: PgPool) {
+        // 20 items carry the tag, enough to be offered as a related search
+        sqlx::raw_sql(
+            "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags)
+             select i, 'Item ' || i, 'creator', 'https://example.test', false, 'ok', now(), '{テクスチャ}' from generate_series(1, 20) i;
+             insert into booth_tag_translations (tag, en, ja, ko, zh, keywords, source) values
+             ('テクスチャ', 'texture', 'テクスチャ', null, '纹理', '{}', 'import');",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let snap = crate::snapshot::build_snapshot(&pool, 1, None, None).await.unwrap();
+        let texture = SearchRequest::from(&Params::parse("q=texture"));
+        assert_eq!(snap.catalog.search(&texture, 0, None, None, None, false).unwrap().count, 20);
+        assert_eq!(snap.related.labels.label("テクスチャ", 3), Some("纹理"));
     }
 
     /// Centroids carry over to the next snapshot while they are recent and from the model of the item embeddings.

@@ -14,7 +14,8 @@ enum Name {
     Sub(String),
 }
 
-fn norm(s: &str) -> String {
+/// NFKC and lowercase: the form in which names and texts are compared.
+pub fn norm(s: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
     s.nfkc().collect::<String>().to_lowercase()
 }

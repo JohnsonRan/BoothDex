@@ -11,12 +11,16 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import { useAccount } from "@/components/account/session";
 import {
   CLAUSE_CLEAR,
   type Wider,
 } from "@/components/catalog/filter/clause-text";
-import { useFilterUrl } from "@/components/catalog/filter/filter-url";
+import {
+  useFilterUrl,
+  useRefresh,
+} from "@/components/catalog/filter/filter-url";
 import { useUi } from "@/components/providers";
 import {
   activeFilterCount,
@@ -132,6 +136,47 @@ export function SemanticNote({ text }: { text: string }) {
       <Text type="supporting">{text}</Text>
     </Center>
   );
+}
+
+/** How long a page whose search came back `pending` waits before it reads the search once more. */
+export const PENDING_RETRY_MS = 1000;
+
+/** Arms the one extra read of a `pending` search: `read` runs after `ms` unless the returned cancel runs first.
+ *  Nothing is armed once the note has asked, or while a navigation is under way. */
+export function armRetry(
+  asked: boolean,
+  navigating: boolean,
+  read: () => void,
+  ms = PENDING_RETRY_MS,
+): (() => void) | undefined {
+  if (asked || navigating) return;
+  const timer = setTimeout(read, ms);
+  return () => clearTimeout(timer);
+}
+
+/** The note on a search whose meaning-based matches were still being prepared (`semantic: "pending"`): the page reads
+ *  the search once more, which then waits for the vector the API went on to fetch. Keyed by the search (results.tsx),
+ *  so a new search drops the wait; an answer still pending shows `unavailable` and asks no more. */
+export function PendingNote({
+  pending,
+  unavailable,
+}: {
+  pending: string;
+  unavailable: string;
+}) {
+  const router = useRouter();
+  const { pending: navigating } = useRefresh();
+  const [asked, setAsked] = useState(false);
+  const [reading, startTransition] = useTransition();
+  useEffect(
+    () =>
+      armRetry(asked, navigating, () => {
+        setAsked(true);
+        startTransition(() => router.refresh());
+      }),
+    [asked, navigating, router],
+  );
+  return <SemanticNote text={asked && !reading ? unavailable : pending} />;
 }
 
 /** A link to the results after `patch`: a plain click applies it as a filter change, so the refresh shows its bar

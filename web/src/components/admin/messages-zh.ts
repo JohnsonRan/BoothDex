@@ -43,7 +43,7 @@ export const adminZh = {
   "tile.new": "24 小时新上架",
   "tile.newSub": "按 Booth 发布时间",
   "tile.ai": "待 AI 处理",
-  "tile.aiSub": "不会出现在模型适配和分类筛选里",
+  "tile.aiSub": "不会出现在虚拟形象适配和分类筛选里",
   "tile.aiGivenUp": "其中 {n} 个 AI 已放弃，不会再自动处理",
   "tile.images": "缺 Booth 图片",
   "tile.imagesSub": "在售商品中没有 Booth 图片链接的",
@@ -87,13 +87,13 @@ export const adminZh = {
     "把 Booth 的 VRChat 列表从头翻到尾（约 3,400 页，1 小时），更新所有商品的价格，并找出已下架的商品",
   "kind.enrich": "AI 处理",
   "kind.enrich.desc":
-    "为新商品生成分类、分级、推断价格和中英日韩翻译，并按名称匹配适配模型（每批 200 个，有积压时自动继续；配置 AI 模型之前不会运行）",
+    "为新商品生成分类、分级、推断价格和中英日韩翻译，并按名称匹配适配的虚拟形象（每批 200 个，有积压时自动继续；配置 AI 模型之前不会运行）",
   "kind.embed": "语义向量",
   "kind.embed.desc":
     "为新商品和改过标题或简介的商品生成语义搜索向量（设置向量模型之前不会运行）",
-  "kind.localize": "翻译分类",
+  "kind.localize": "翻译分类和标签",
   "kind.localize.desc":
-    "把分类和标签名翻译成中文（只翻译还没有中文名的）。保存 AI 设置后会自动运行一次",
+    "把分类和标签名翻译成中文，并把用于 5 个及以上商品的 BOOTH 标签翻译成中、英、日、韩四种语言以供搜索（只翻译还没有译文的，每次最多 400 个标签）。每天运行，保存 AI 设置后也会运行",
   "status.queued": "排队中",
   "status.running": "运行中",
   "status.cancelling": "停止中",

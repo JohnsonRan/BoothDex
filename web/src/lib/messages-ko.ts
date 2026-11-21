@@ -127,6 +127,8 @@ export const ko: Dict = {
   "trace.step.items": "상품 읽기",
   "list.semanticUnavailable":
     "의미 기반 검색을 일시적으로 사용할 수 없어 키워드로만 검색했습니다. 잠시 후 다시 검색하면 보통 복구됩니다.",
+  "list.semanticPending":
+    "의미 기반 검색 결과를 아직 준비하고 있어 지금은 키워드로만 검색했습니다. 잠시 후 결과가 업데이트됩니다.",
   "list.typoTolerant":
     "입력한 단어 그대로는 일치하는 결과가 없어, 단어 일치는 긴 단어마다 철자 오류를 한 군데까지 허용했습니다.",
   "list.searchInstead": '"{q}" 그대로 검색',

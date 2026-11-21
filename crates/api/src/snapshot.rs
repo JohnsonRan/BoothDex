@@ -13,7 +13,8 @@ use crate::AppState;
 use crate::catalog::Catalog;
 use crate::db;
 use crate::params::Params;
-use crate::related::{AvatarNames, Related, TagCentroids};
+use crate::related::{AvatarNames, Related, TagCentroids, TagLabels};
+use crate::tag_words::{TagRow, TagWords};
 use crate::text::{TYPO_MIN, fold, fold_width, one_typo};
 
 /// Name lookup for sidebar pickers and the command palette.
@@ -174,7 +175,7 @@ pub(crate) async fn reloader(state: Arc<AppState>) {
             continue;
         }
         last_build = Instant::now();
-        match build_snapshot(&state.pool, version, state.snap().related.centroids.clone()).await {
+        match build_snapshot(&state.pool, version, state.snap().related.centroids.clone(), index_dir()).await {
             Ok(s) => {
                 println!("catalogue reloaded: version {version}, {} docs", s.catalog.len());
                 state.snap.store(Arc::new(s));
@@ -184,17 +185,25 @@ pub(crate) async fn reloader(state: Arc<AppState>) {
     }
 }
 
-/// `centroids`: the previous snapshot's tag centroids, which carry over while they are recent (related.rs).
-pub(crate) async fn build_snapshot(pool: &PgPool, version: i64, centroids: Option<Arc<TagCentroids>>) -> Result<Snapshot> {
+/// Where the text index is kept: `INDEX_DIR`, by default `textindex`; `INDEX_DIR=""` keeps it in RAM.
+pub(crate) fn index_dir() -> Option<std::path::PathBuf> {
+    let root = std::env::var("INDEX_DIR").unwrap_or_else(|_| "textindex".into());
+    (!root.is_empty()).then(|| root.into())
+}
+
+/// `centroids`: the previous snapshot's tag centroids, which carry over while they are recent (related.rs). `dir`:
+/// the text index's directory (`index_dir`); text content selects the index there, so metadata-only reloads reuse it.
+pub(crate) async fn build_snapshot(pool: &PgPool, version: i64, centroids: Option<Arc<TagCentroids>>, dir: Option<std::path::PathBuf>) -> Result<Snapshot> {
     let pool = pool.clone();
     let t0 = Instant::now();
     let docs = db::load_docs(&pool).await?;
-    println!("loaded {} docs in {:.1}s", docs.len(), t0.elapsed().as_secs_f64());
+    let tag_rows = db::load_tag_rows(&pool).await?;
+    println!("loaded {} docs and {} tag translations in {:.1}s", docs.len(), tag_rows.len(), t0.elapsed().as_secs_f64());
     let t1 = Instant::now();
-    // Text content selects the disk index; metadata-only reloads reuse it. INDEX_DIR="" keeps it in RAM.
-    let index_root = std::env::var("INDEX_DIR").unwrap_or_else(|_| "textindex".into());
-    let dir = (!index_root.is_empty()).then(|| std::path::PathBuf::from(index_root));
-    let catalog = tokio::task::spawn_blocking(move || Catalog::build(docs, chrono::Utc::now().timestamp(), dir.as_deref())).await??;
+    let tag_words = TagWords::new(tag_rows.iter().map(TagRow::words));
+    let catalog = tokio::task::spawn_blocking(move || Catalog::build_with_tag_words(docs, &tag_words, chrono::Utc::now().timestamp(), dir.as_deref())).await??;
+    let labels = TagLabels::new(&tag_rows, catalog.tags());
+    drop(tag_rows);
     println!("built index in {:.1}s, bitmaps ~{} KB", t1.elapsed().as_secs_f64(), catalog.bitmap_bytes() / 1024);
 
     let avatars = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>)>("select slug, name_en, name_ja, name_ko, coalesce((select b.images[1] from booth_images b where b.item_id = a.avatar_item_id), a.image_url) from avatars a")
@@ -245,7 +254,7 @@ pub(crate) async fn build_snapshot(pool: &PgPool, version: i64, centroids: Optio
     Ok(Snapshot {
         catalog,
         category_phrases: category_phrases(&categories),
-        related: Related { avatars: avatar_names, centroids },
+        related: Related { avatars: avatar_names, centroids, labels },
         avatars: Lookup::new(avatars),
         authors: Lookup::new(authors),
         tags: Lookup::new(tags),

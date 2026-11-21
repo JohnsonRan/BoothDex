@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { Suspense } from "react";
 import { AdminConsole } from "@/components/admin/admin-console";
 import { Providers } from "@/components/providers";
-import { MESSAGES } from "@/lib/dictionaries";
+import { browserMessages } from "@/lib/dictionaries";
 import { componentCatalogue, readSettings } from "@/lib/server-data";
 
 export const metadata: Metadata = {
@@ -25,7 +25,7 @@ async function AdminRoot({ children }: { children: React.ReactNode }) {
   return (
     <Providers
       settings={settings}
-      messages={MESSAGES[settings.ui]}
+      messages={browserMessages(settings.ui)}
       catalogue={await componentCatalogue(settings.ui)}
     >
       <AdminConsole mobile={await isPhone()}>{children}</AdminConsole>

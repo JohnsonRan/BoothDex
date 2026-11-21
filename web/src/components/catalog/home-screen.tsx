@@ -42,7 +42,7 @@ import {
   RAW_QUERY_HEADER,
 } from "@/lib/catalog";
 import { DEEP_START } from "@/lib/deep-start";
-import { MESSAGES, translator } from "@/lib/dictionaries";
+import { browserMessages, translator } from "@/lib/dictionaries";
 import {
   componentCatalogue,
   exchangeRates,
@@ -91,7 +91,7 @@ export async function HomeScreen({
   return (
     <Providers
       settings={settings}
-      messages={MESSAGES[settings.ui]}
+      messages={browserMessages(settings.ui)}
       catalogue={await componentCatalogue(settings.ui)}
     >
       {opened > 0 && (
@@ -218,6 +218,7 @@ async function Catalog({
     outcome,
     filters,
     visitorHeaders(await headers()),
+    settings.ui,
   );
   const [avatars, categories, tags, railWidth] = await Promise.all([
     listAvatars().catch(() => []),

@@ -24,32 +24,37 @@ async fn multi_thread(check: impl Future<Output = ()> + Send + 'static) {
 }
 
 fn app(pool: PgPool, catalog: Catalog, avatars: Lookup) -> Arc<AppState> {
-    app_with(pool, catalog, avatars, Default::default())
+    app_with(pool, catalog, avatars, Default::default(), 2)
 }
 
-fn app_with(pool: PgPool, catalog: Catalog, avatars: Lookup, related: crate::related::Related) -> Arc<AppState> {
+fn snapshot(catalog: Catalog, avatars: Lookup, related: crate::related::Related) -> Snapshot {
+    Snapshot {
+        catalog,
+        category_phrases: Default::default(),
+        related,
+        avatars,
+        authors: Lookup::new(Vec::new()),
+        tags: Lookup::new(Vec::new()),
+        booth_tags: Lookup::new(Vec::new()),
+        categories: json!({ "categories": [] }),
+        version: 1,
+        loaded_at: chrono::Utc::now(),
+        build_secs: 0.0,
+    }
+}
+
+/// `http_secs`: the timeout of the API's outgoing requests, the embedding provider's included.
+fn app_with(pool: PgPool, catalog: Catalog, avatars: Lookup, related: crate::related::Related, http_secs: u64) -> Arc<AppState> {
     crate::install_tls();
     Arc::new(
         AppState::new(
             pool,
-            Snapshot {
-                catalog,
-                category_phrases: Default::default(),
-                related,
-                avatars,
-                authors: Lookup::new(Vec::new()),
-                tags: Lookup::new(Vec::new()),
-                booth_tags: Lookup::new(Vec::new()),
-                categories: json!({ "categories": [] }),
-                version: 1,
-                loaded_at: chrono::Utc::now(),
-                build_secs: 0.0,
-            },
+            snapshot(catalog, avatars, related),
             Default::default(),
             "http://127.0.0.1:3000".into(),
             None,
             String::new(),
-            Some(std::time::Duration::from_secs(2)),
+            Some(std::time::Duration::from_secs(http_secs)),
         )
         .unwrap(),
     )
@@ -118,6 +123,178 @@ async fn check_semantic_search(pool: PgPool) {
         .unwrap_or_else(IntoResponse::into_response);
     let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
     assert_eq!((&body["count"], &body["semantic"], &body["widerCounts"], &body["typoTolerant"]), (&json!(0), &json!("used"), &json!([0, 1]), &json!(false)), "{body}");
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_slow_query_embedding_is_pending_and_the_next_search_uses_it(pool: PgPool) {
+    multi_thread(check_pending_embedding(pool)).await;
+}
+
+async fn check_pending_embedding(pool: PgPool) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    for key in ["AI_BASE_URL", "AI_API_KEY", "AI_EMBED_MODEL"] {
+        assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test's provider is a local stand-in");
+    }
+    let mut vector = vec![0.0; boothdex_core::embed::DIMS];
+    vector[0] = 1.0;
+    sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, embedding)
+                 values (1, 'ボブカット', 'creator', 'https://example.test', false, 'ok', now(), $1::halfvec)")
+        .bind(boothdex_core::embed::HalfVector::from_f32_slice(&vector)).execute(&pool).await.unwrap();
+    // a local stand-in provider that answers after 2.8 s, past the search's 2.5 s wait
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = calls.clone();
+    let reply = json!({ "data": [{ "index": 0, "embedding": vector }] });
+    let provider = axum::Router::new().fallback(move || {
+        counted.fetch_add(1, Ordering::SeqCst);
+        let reply = reply.clone();
+        async move {
+            tokio::time::sleep(std::time::Duration::from_millis(2800)).await;
+            axum::Json(reply)
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, provider).await.unwrap() });
+    sqlx::query("insert into app_settings (key, value) values ('ai', $1)")
+        .bind(json!({ "base_url": base_url, "api_key": "test", "embed_model": "test-model" }))
+        .execute(&pool).await.unwrap();
+    let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
+    let state = app_with(pool, catalog, Lookup::new(Vec::new()), Default::default(), 10);
+
+    // the first search answers with words only while the provider works on; the same search within the provider's
+    // time waits for that request instead of sending another, and uses its vector
+    let first = search_json(&state, "q=silky%20strands").await;
+    assert_eq!(first["semantic"], "pending", "{first}");
+    let second = search_json(&state, "q=silky%20strands").await;
+    assert_eq!(second["semantic"], "used", "{second}");
+    assert_eq!(second["items"][0]["id"], 1, "{second}");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    // with every provider slot taken, a search that waits in vain is unavailable, not pending, and asks nothing
+    let held = state.embed_permits.clone().acquire_many_owned(4).await.unwrap();
+    let no_slot = search_json(&state, "q=wavy%20bangs").await;
+    assert_eq!(no_slot["semantic"], "unavailable", "{no_slot}");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    // so is a search the address's embedding budget refuses
+    while state.limits.embed_ip.take("203.0.113.40".parse().unwrap()).is_ok() {}
+    let refused = search_json(&state, "q=curly%20bangs").await;
+    assert_eq!(refused["semantic"], "unavailable", "{refused}");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    drop(held);
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_reload_during_a_search_leaves_it_on_the_snapshot_it_started_with(pool: PgPool) {
+    multi_thread(check_reload_mid_search(pool)).await;
+}
+
+async fn check_reload_mid_search(pool: PgPool) {
+    for key in ["AI_BASE_URL", "AI_API_KEY", "AI_EMBED_MODEL"] {
+        assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test's provider is a local stand-in");
+    }
+    sqlx::raw_sql("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at) values
+                   (1, 'ボブカット', 'creator', 'https://example.test', false, 'ok', now()),
+                   (2, 'ボブカット', 'creator', 'https://example.test', false, 'ok', now());")
+        .execute(&pool).await.unwrap();
+    let (one, two): (Vec<_>, Vec<_>) = db::load_docs(&pool).await.unwrap().into_iter().partition(|d| d.id == 1);
+    let (first, second) = (Catalog::build(one, 0, None).unwrap(), Catalog::build(two, 0, None).unwrap());
+    // a local stand-in provider that swaps in the catalogue of item 2, where the words name a category, while the
+    // search waits for the query's embedding, then refuses the request
+    let state_slot: Arc<std::sync::OnceLock<Arc<AppState>>> = Default::default();
+    let reload: Arc<std::sync::Mutex<Option<Catalog>>> = Arc::new(std::sync::Mutex::new(Some(second)));
+    let (slot, next) = (state_slot.clone(), reload.clone());
+    let provider = axum::Router::new().fallback(move || {
+        if let (Some(state), Some(catalog)) = (slot.get(), next.lock().unwrap().take()) {
+            let mut next = snapshot(catalog, Lookup::new(Vec::new()), Default::default());
+            next.category_phrases.insert(crate::text::fold("ボブカット"), "hair--short".into());
+            state.snap.store(Arc::new(next));
+        }
+        async { (StatusCode::BAD_REQUEST, "no") }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, provider).await.unwrap() });
+    sqlx::query("insert into app_settings (key, value) values ('ai', $1)")
+        .bind(json!({ "base_url": base_url, "api_key": "test", "embed_model": "test-model" }))
+        .execute(&pool).await.unwrap();
+    let state = app(pool.clone(), first, Lookup::new(Vec::new()));
+    state_slot.set(state.clone()).ok();
+
+    let during = search_json(&state, "q=%E3%83%9C%E3%83%96%E3%82%AB%E3%83%83%E3%83%88").await;
+    assert!(reload.lock().unwrap().is_none(), "the provider was asked during the search");
+    assert_eq!(during["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>(), [1], "{during}");
+    assert_eq!(during["recognized"], json!([]), "{during}");
+    // the next search reads the new snapshot
+    let after = search_json(&state, "q=%E3%83%9C%E3%83%96%E3%82%AB%E3%83%83%E3%83%88&sem=0").await;
+    assert_eq!(after["items"][0]["id"], 2, "{after}");
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn a_reload_while_a_request_reads_the_database_leaves_it_on_its_snapshot(pool: PgPool) {
+    multi_thread(check_reload_mid_read(pool)).await;
+}
+
+/// Runs `request` while `lock` holds a table it reads, and swaps in `next` while the request waits for that table.
+async fn reload_while_waiting<T: Send + 'static>(
+    pool: &PgPool,
+    lock: &'static str,
+    state: &Arc<AppState>,
+    next: Snapshot,
+    request: impl Future<Output = T> + Send + 'static,
+) -> T {
+    let mut held = pool.begin().await.unwrap();
+    sqlx::query(lock).execute(&mut *held).await.unwrap();
+    let request = tokio::spawn(request);
+    let waiting = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
+    while sqlx::query_scalar::<_, i64>(waiting).fetch_one(pool).await.unwrap() == 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    state.snap.store(Arc::new(next));
+    held.commit().await.unwrap();
+    request.await.unwrap()
+}
+
+async fn check_reload_mid_read(pool: PgPool) {
+    use axum::body::to_bytes;
+    use axum::http::{HeaderMap, header};
+
+    sqlx::raw_sql("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at) values
+                   (1, 'Rock Tee', 'creator', 'https://example.test', false, 'ok', now()),
+                   (2, 'Rock Hoodie', 'creator', 'https://example.test', false, 'ok', now());")
+        .execute(&pool).await.unwrap();
+    let user: i64 = sqlx::query_scalar("insert into users (username, email, display_name, password_hash) values ('a', 'a@example.test', 'A', 'x') returning id")
+        .fetch_one(&pool).await.unwrap();
+    sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '1 day')")
+        .bind(account::token_hash("tok-a")).bind(user).execute(&pool).await.unwrap();
+    sqlx::query("insert into favourites (user_id, item_id) values ($1, 2)").bind(user).execute(&pool).await.unwrap();
+    // both items, and a catalogue where item 2 is the first doc
+    let both = || async { Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap() };
+    let second = || async { Catalog::build(db::load_docs(&pool).await.unwrap().into_iter().filter(|d| d.id == 2).collect(), 0, None).unwrap() };
+    let rocket = || Lookup::new(vec![(vec!["rocket".into()], json!({ "slug": "rocket" }), 1)]);
+    let state = app(pool.clone(), both().await, rocket());
+    let ip = limit::ClientIp("203.0.113.43".parse().unwrap());
+    let body = |r: Result<Response, ApiError>| async move {
+        serde_json::from_slice::<Value>(&to_bytes(r.unwrap_or_else(IntoResponse::into_response).into_body(), 1024 * 1024).await.unwrap()).unwrap()
+    };
+
+    // favourites resolved on the catalogue the search runs on: the reload comes while it reads the session
+    let mut headers = HeaderMap::new();
+    headers.insert(header::COOKIE, "session=tok-a".parse().unwrap());
+    let favourites = search(State(state.clone()), ip, crate::limit::Tier::Base, headers, RawQuery(Some("v=favourites".into())));
+    let next = snapshot(second().await, Lookup::new(Vec::new()), Default::default());
+    let found = body(reload_while_waiting(&pool, "lock table sessions in access exclusive mode", &state, next, favourites).await).await;
+    assert_eq!(found["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>(), [2], "{found}");
+
+    // the palette lists the models of the snapshot its items came from: the reload comes while it reads the items
+    state.snap.store(Arc::new(snapshot(both().await, rocket(), Default::default())));
+    let listed = palette(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some("q=rock".into())));
+    let next = snapshot(second().await, Lookup::new(Vec::new()), Default::default());
+    let found = body(reload_while_waiting(&pool, "lock table items in access exclusive mode", &state, next, listed).await).await;
+    assert_eq!(found["avatars"], json!([{ "slug": "rocket", "item_count": 1 }]), "{found}");
 }
 
 #[sqlx::test(migrations = "../core/migrations")]
@@ -207,14 +384,17 @@ async fn check_expansion(pool: PgPool) {
         assert_eq!((&body["count"], &body["widerCounts"], &body["expandedWith"]), (&json!(0), &json!([wider]), &json!([])), "{query}: {body}");
     }
 
-    // the feed and the palette search the words alone
+    // the feed searches the words alone, without the tag chosen to translate them; the palette searches the tag too,
+    // held to a model it names; a link names its item alone
     let ip = limit::ClientIp("203.0.113.41".parse().unwrap());
     let feed = rss_feed(State(state.clone()), ip, RawQuery(Some("q=skirt".into()))).await.unwrap_or_else(IntoResponse::into_response);
     let xml = String::from_utf8(to_bytes(feed.into_body(), 1024 * 1024).await.unwrap().to_vec()).unwrap();
     assert_eq!(xml.matches("<item>").count(), 12);
-    let found = palette(State(state), ip, crate::limit::Tier::Base, RawQuery(Some("q=skirt".into()))).await.unwrap_or_else(IntoResponse::into_response);
-    let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
-    assert_eq!(json["itemCount"], 12);
+    for (query, count) in [("q=skirt", 22), ("q=shinano%20skirt", 2), ("q=https%3A%2F%2Fbooth.pm%2Fja%2Fitems%2F13", 1)] {
+        let found = palette(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some(query.into()))).await.unwrap_or_else(IntoResponse::into_response);
+        let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+        assert_eq!(json["itemCount"], count, "{query}: {json}");
+    }
 }
 
 #[sqlx::test(migrations = "../core/migrations")]
@@ -264,12 +444,12 @@ async fn check_item_reference(pool: PgPool) {
     assert_eq!((&text["count"], &text["semantic"]), (&json!(0), &json!("unavailable")), "{text}");
     assert!(asked_for_embedding(&text), "{text}");
 
-    // the palette lists it first too
+    // the palette lists it first too, and does not search the number as the tag either
     let ip = limit::ClientIp("203.0.113.42".parse().unwrap());
-    for q in ["70001", "https://booth.pm/ja/items/70001"] {
+    for (q, count) in [("70001", 13), ("https://booth.pm/ja/items/70001", 1)] {
         let found = palette(State(state.clone()), ip, crate::limit::Tier::Base, RawQuery(Some(format!("q={q}")))).await.unwrap_or_else(IntoResponse::into_response);
         let json: Value = serde_json::from_slice(&to_bytes(found.into_body(), 1024 * 1024).await.unwrap()).unwrap();
-        assert_eq!(json["items"][0]["id"], 70001, "{q}: {json}");
+        assert_eq!((&json["items"][0]["id"], &json["itemCount"]), (&json!(70001), &json!(count)), "{q}: {json}");
     }
 }
 
@@ -283,7 +463,7 @@ async fn check_related(pool: PgPool) {
     use axum::body::to_bytes;
     use axum::http::HeaderMap;
 
-    use crate::related::{AvatarNames, Related, TagCentroids};
+    use crate::related::{AvatarNames, Related, TagCentroids, TagLabels};
 
     // 1-20 are long skirts that fit Shinano, 21-40 pleated skirts, from five shops each and embedded near the query;
     // 41-440 are untagged, so neither tag is on 5% of the items
@@ -304,7 +484,10 @@ async fn check_related(pool: PgPool) {
          select i, 'Filler ' || i, 'shop ' || (i % 50), 'https://example.test', false, 'ok', now() from generate_series(41, 440) i;
          insert into avatars (slug, name_en) values ('shinano', 'Shinano') on conflict (slug) do nothing;
          insert into item_avatars (item_id, avatar_slug) select i, 'shinano' from generate_series(1, 20) i;
-         insert into app_settings (key, value) values ('embed_state', '{\"model\": \"test-model\"}');",
+         insert into app_settings (key, value) values ('embed_state', '{\"model\": \"test-model\"}');
+         insert into booth_tag_translations (tag, en, ja, ko, zh, source) values
+           ('long skirt', 'long skirt', 'ロングスカート', '롱스커트', '长裙', 'import'),
+           ('pleats', 'pleats', 'プリーツ', '플리츠', '百褶裙', 'import');",
     )
     .execute(&pool)
     .await
@@ -314,10 +497,12 @@ async fn check_related(pool: PgPool) {
         sqlx::query("insert into query_embeddings (model, query, embedding) values ('test-model', $1, $2::halfvec)")
             .bind(query).bind(unit(3, 1.0)).execute(&pool).await.unwrap();
     }
-    let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
+    let rows = db::load_tag_rows(&pool).await.unwrap();
+    let words = crate::tag_words::TagWords::new(rows.iter().map(crate::tag_words::TagRow::words));
+    let catalog = Catalog::build_with_tag_words(db::load_docs(&pool).await.unwrap(), &words, 0, None).unwrap();
     let centroids = TagCentroids::current(&pool, &catalog, None).await.unwrap();
-    let related = Related { avatars: AvatarNames::new(["Shinano"]), centroids };
-    let state = app_with(pool.clone(), catalog, Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 20)]), related);
+    let related = Related { avatars: AvatarNames::new(["Shinano"]), centroids, labels: TagLabels::new(&rows, catalog.tags()) };
+    let state = app_with(pool.clone(), catalog, Lookup::new(vec![(vec!["shinano".into()], json!({ "slug": "shinano" }), 20)]), related, 2);
     let ip = "203.0.113.50".parse().unwrap();
     let used = || sqlx::query_as::<_, (i32, chrono::DateTime<chrono::Utc>)>("select hits, last_used_at from query_embeddings where query = 'skirt'").fetch_one(&pool);
     let before = used().await.unwrap();
@@ -335,6 +520,9 @@ async fn check_related(pool: PgPool) {
 
     // nearest first; a model named in the query stays in each destination, which finds only what fits it
     assert_eq!(searches("q=skirt").await, json!([{ "label": "long skirt", "q": "long skirt" }, { "label": "pleats", "q": "pleats" }]));
+    // in the visitor's language (the site's hl), searched as such when its words find the items
+    assert_eq!(searches("q=skirt&hl=zh").await, json!([{ "label": "长裙", "q": "长裙" }, { "label": "百褶裙", "q": "百褶裙" }]));
+    assert_eq!(searches("q=Shinano%20skirt&hl=ja").await, json!([{ "label": "ロングスカート", "q": "Shinano ロングスカート" }]));
     assert_eq!(searches("q=Shinano%20skirt").await, json!([{ "label": "long skirt", "q": "Shinano long skirt" }]));
     // a misspelt model name is read as the model unless typo=0 asks for the words as typed
     assert_eq!(searches("q=Shinnano%20skirt").await, json!([{ "label": "long skirt", "q": "Shinnano long skirt" }]));
@@ -464,7 +652,7 @@ async fn load_docs_translated_titles(pool: PgPool) {
          (3, 'Original 3', 'creator', 'https://example.test', false, 'ok', now(), '{\"fr\":{\"title\":\"Titre FR\"}}'),
          (4, 'Original 4', 'creator', 'https://example.test', false, 'ok', now(), '42');
          insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, original_language, translations) values
-         (5, '原标题', 'creator', 'https://example.test', false, 'ok', now(), 'zh', '{\"en\":{\"title\":\"Title EN 5\"}}');",
+         (5, '原标题', 'creator', 'https://example.test', false, 'ok', now(), 'zh', '{\"en\":{\"title\":\"Title EN 5\"},\"zh\":{\"title\":\"标题\"}}');",
     )
     .execute(&pool)
     .await
@@ -472,15 +660,49 @@ async fn load_docs_translated_titles(pool: PgPool) {
 
     let docs = db::load_docs(&pool).await.unwrap();
     let languages: HashMap<i64, u8> = docs.iter().map(|d| (d.id, d.title_languages)).collect();
+    let zh: HashMap<i64, (Option<String>, bool)> = docs.iter().map(|d| (d.id, (d.title_zh.clone(), d.title_is_zh))).collect();
     let by_id: HashMap<i64, Vec<String>> = docs.into_iter().map(|d| (d.id, d.titles_translated)).collect();
 
-    assert_eq!(*by_id.get(&1).unwrap(), vec!["Title EN", "Title JA", "Title KO", "Title ZH"]);
-    assert_eq!(*by_id.get(&2).unwrap(), vec!["Title EN 2", "Title ZH 2"]);
+    assert_eq!(*by_id.get(&1).unwrap(), vec!["Title EN", "Title JA", "Title KO"]);
+    assert_eq!(*by_id.get(&2).unwrap(), vec!["Title EN 2"]);
     assert!(by_id.get(&3).unwrap().is_empty());
     assert!(by_id.get(&4).unwrap().is_empty());
+    // the Chinese title apart, searched as Chinese; a Chinese listing's own title, whatever its translation says
+    let chinese = |title: Option<&str>, own: bool| (title.map(str::to_owned), own);
+    assert_eq!([1, 2, 3, 5].map(|id| zh[&id].clone()), [chinese(Some("Title ZH"), false), chinese(Some("Title ZH 2"), false), chinese(None, false), chinese(Some("原标题"), true)]);
     // the languages it has a title in (expansion::LANGUAGES: en, ja, ko, zh), a null title not counted, and the
     // original language too
     assert_eq!([1, 2, 3, 4, 5].map(|id| languages[&id]), [0b1111, 0b1001, 0, 0, 0b1001]);
+}
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn search_finds_items_by_the_words_of_the_tag_dictionary(pool: PgPool) {
+    sqlx::raw_sql(
+        "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags) values
+         (1, 'Item 1', 'creator', 'https://example.test', false, 'ok', now(), '{テクスチャ}'),
+         (2, 'Item 2', 'creator', 'https://example.test', false, 'ok', now(), '{椅子}'),
+         (3, 'Item 3', 'creator', 'https://example.test', false, 'ok', now(), '{Hair Clip}');
+         insert into booth_tag_translations (tag, en, ja, ko, zh, keywords, source) values
+         ('テクスチャ', 'texture', 'テクスチャ', null, '纹理', '{贴图}', 'import'),
+         ('椅子', 'chair', '椅子', '의자', '椅子', '{}', 'localize');",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let rows = db::load_tag_rows(&pool).await.unwrap();
+    let ko: Vec<(&str, Option<&str>)> = rows.iter().map(|r| (r.tag.as_str(), r.values[2].as_deref())).collect();
+    assert!(ko.contains(&("テクスチャ", None)) && ko.contains(&("椅子", Some("의자"))) && ko.len() == 2, "{ko:?}");
+    let words = crate::tag_words::TagWords::new(rows.iter().map(crate::tag_words::TagRow::words));
+    let catalog = Catalog::build_with_tag_words(db::load_docs(&pool).await.unwrap(), &words, 0, None).unwrap();
+    let found = |q: &str| {
+        let request = crate::search_request::SearchRequest::from(&crate::params::Params::parse(&format!("q={q}")));
+        let mut ids = catalog.search(&request, 0, None, None, None, false).unwrap().ids;
+        ids.sort();
+        ids
+    };
+    // a translation and a keyword find the item; "hair" finds the tag that has the word, not the one translated "chair"
+    assert_eq!([found("texture"), found("贴图"), found("chair"), found("의자"), found("hair")], [vec![1], vec![1], vec![2], vec![2], vec![3]]);
 }
 
 #[test]

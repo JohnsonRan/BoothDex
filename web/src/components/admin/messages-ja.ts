@@ -95,9 +95,9 @@ export const adminJa: AdminDict = {
   "kind.embed": "意味ベクトル",
   "kind.embed.desc":
     "新商品とタイトルや説明が変更された商品の検索用ベクトルを生成します（埋め込みモデル設定前は実行しません）。",
-  "kind.localize": "カテゴリを翻訳",
+  "kind.localize": "カテゴリとタグを翻訳",
   "kind.localize.desc":
-    "カテゴリ名とタグ名を中国語に翻訳します（中国語名がないもののみ）。AI 設定の保存後に 1 回実行します。",
+    "カテゴリ名とタグ名を中国語に、5 件以上の商品に付いた BOOTH タグを検索用に中国語・英語・日本語・韓国語に翻訳します（訳がないもののみ、1 回に最大 400 タグ）。毎日実行し、AI 設定の保存後にも実行します。",
   "status.queued": "待機中",
   "status.running": "実行中",
   "status.cancelling": "停止中",

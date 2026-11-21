@@ -28,6 +28,7 @@ mod search;
 mod search_request;
 mod snapshot;
 mod state;
+mod tag_words;
 mod text;
 mod turnstile;
 
@@ -56,12 +57,12 @@ use palette::palette;
 use rss::rss_feed;
 #[cfg(test)]
 use snapshot::{Lookup, Snapshot};
-use snapshot::{build_snapshot, catalog_version, reloader};
+use snapshot::{build_snapshot, catalog_version, index_dir, reloader};
 use state::AppState;
 
 async fn build_state(pool: PgPool, admin_names: Option<Vec<String>>) -> Result<AppState> {
     let version = catalog_version(&pool).await?;
-    let snap = build_snapshot(&pool, version, None).await?;
+    let snap = build_snapshot(&pool, version, None, index_dir()).await?;
     let state = AppState::new(
         pool,
         snap,
