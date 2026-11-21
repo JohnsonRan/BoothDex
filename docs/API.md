@@ -58,12 +58,12 @@ The public HTTP API of `api`, reached through `web` under `/api/`. What a search
 They are BOOTH tags whose items' mean embedding is nearest to the query's. These tags are left out:
 
 - tags that respell or translate the query, as the tag dictionary or the expansion reads it;
-- tags that repeat one of the query's words;
+- tags that repeat one of the query's words, or that the tag dictionary translates as one (ロング, which reads "long", for "long hair");
 - tags that name an avatar;
 - tags that come from a few shops or from more than 5% of the items;
 - tags that seldom go with the query's own matches;
 - tags that find nothing under the same filters, adult setting and view.
 
-With `hl`, `label` is the tag in that language when the tag dictionary has it and no other search or query word reads the same. `q` uses that label when its words find items, and the tag otherwise.
+With `hl`, `label` is the tag in that language when the tag dictionary has it and no other search reads the same. `q` uses that label when its words find items, and the tag otherwise.
 
 The endpoint reads only the embedding a search already stored for the query and never asks the AI provider. It returns none for a query without a stored embedding, for an item link or number, and while the configured embeddings model is not the one the items were embedded with.
