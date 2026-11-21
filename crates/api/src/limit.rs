@@ -151,8 +151,8 @@ pub struct Limits {
     pub related: RateLimiter,
     /// /api/rss: 0.5 req/s, burst 20
     pub rss: RateLimiter,
-    /// /api/items: 1 req/s, burst 20
-    pub items: RateLimiter,
+    /// /api/items with several ids, a list's (the recent view's, other clients'): 0.5/10, today's 1/20
+    pub items: Tiered,
     /// /api/items with one id, the item dialog's record, also fetched when a tile is pointed at: 1/15, today's 4/40
     pub item: Tiered,
     /// /api/items/{id}/gallery: 0.5/12, today's 1/20
@@ -185,7 +185,7 @@ impl Default for Limits {
             palette: Tiered::new((2.0, 40.0), (5.0, 40.0)),
             related: RateLimiter::new(2.0, 30.0, 8192),
             rss: RateLimiter::new(0.5, 20.0, 8192),
-            items: RateLimiter::new(1.0, 20.0, 8192),
+            items: Tiered::new((0.5, 10.0), (1.0, 20.0)),
             item: Tiered::new((1.0, 15.0), (4.0, 40.0)),
             gallery: Tiered::new((0.5, 12.0), (1.0, 20.0)),
             lookup: Tiered::new((2.0, 20.0), (5.0, 40.0)),
@@ -223,6 +223,8 @@ mod tests {
         assert_eq!(numbers(&l.search), ((1.0, 30.0), (2.0, 30.0)));
         assert_eq!(numbers(&l.palette), ((2.0, 40.0), (5.0, 40.0)));
         assert_eq!(numbers(&l.item), ((1.0, 15.0), (4.0, 40.0)));
+        // the owner's numbers of 2026-11-21 for the multi-id read
+        assert_eq!(numbers(&l.items), ((0.5, 10.0), (1.0, 20.0)));
         assert_eq!(numbers(&l.gallery), ((0.5, 12.0), (1.0, 20.0)));
         assert_eq!(numbers(&l.lookup), ((2.0, 20.0), (5.0, 40.0)));
     }

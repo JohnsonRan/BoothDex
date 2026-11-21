@@ -37,7 +37,7 @@ fn limits() -> Limits {
         item: tiered(2.0, 6.0),
         gallery: tiered(1.0, 3.0),
         lookup: tiered(2.0, 4.0),
-        items: RateLimiter::new(SLOW, 3.0, 64),
+        items: tiered(3.0, 7.0),
         rss: RateLimiter::new(SLOW, 3.0, 64),
         related: RateLimiter::new(SLOW, 3.0, 64),
         verify: RateLimiter::new(SLOW, 3.0, 64),
@@ -46,17 +46,18 @@ fn limits() -> Limits {
 }
 
 /// Each tiered route, with the burst of its strict and of its base bucket in `limits`.
-const TIERED: [(&str, usize, usize); 6] = [
+const TIERED: [(&str, usize, usize); 7] = [
     ("/api/search", 2, 4),
     ("/api/palette?q=x", 3, 5),
     ("/api/items?ids=1", 2, 6),
+    ("/api/items?ids=1+2", 3, 7),
     ("/api/items/1/gallery", 1, 3),
     ("/api/tags", 2, 4),
     ("/api/guestbook", 2, 4),
 ];
 
-/// Routes that keep one bucket whatever the switch: the multi-item read, the feed and the related searches, burst 3 each.
-const UNTIERED: [&str; 3] = ["/api/items?ids=1+2", "/api/rss", "/api/related?q=x"];
+/// Routes that keep one bucket whatever the switch: the feed and the related searches, burst 3 each.
+const UNTIERED: [&str; 2] = ["/api/rss", "/api/related?q=x"];
 
 /// A stand-in for siteverify that counts the tokens it is asked about. "pass" passes for this form, "guestbook" for
 /// another and "in" for sign-in; "failing" is answered HTTP 500, "no-secret" as a wrong secret key is and "broken" as
@@ -244,6 +245,26 @@ async fn without_a_pass_the_strict_bucket_refuses_and_offers_the_check(pool: PgP
         }
         for path in UNTIERED {
             assert_eq!(site.count(path, "203.0.113.1", None).await, (3, PLAIN), "{path}");
+        }
+    });
+}
+
+/// No shape of `/api/items` reaches an untiered bucket: exactly one id (ids that do not parse are dropped) is the item
+/// record's, strict burst 2 here; none, several, duplicates and more than 100 are the list's, strict burst 3. A
+/// refusal carries no Cache-Control, so neither a browser nor the CDN keeps it.
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn every_shape_of_the_item_read_is_tiered(pool: PgPool) {
+    multi_thread(pool, |pool| async move {
+        let site = site(&pool, strict()).await;
+        let many = format!("/api/items?ids={}", (1..=101).map(|i| i.to_string()).collect::<Vec<_>>().join(","));
+        let shapes = [("/api/items?ids=", 3), ("/api/items?ids=1", 2), ("/api/items?ids=1,x", 2), ("/api/items?ids=1,1", 3), ("/api/items?ids=1+2", 3), (&*many, 3)];
+        for (i, (path, burst)) in shapes.into_iter().enumerate() {
+            let ip = format!("192.0.2.{i}");
+            assert_eq!(site.count(path, &ip, None).await, (burst, offered()), "{path}");
+            let refused = site.send(path, &[("x-forwarded-for", &ip)]).await;
+            assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS, "{path}");
+            assert!(refused.headers().get("cache-control").is_none(), "{path}");
         }
     });
 }
