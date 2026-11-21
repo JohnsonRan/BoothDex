@@ -59,6 +59,7 @@ They are BOOTH tags whose items' mean embedding is nearest to the query's. These
 
 - tags that respell or translate the query, as the tag dictionary or the expansion reads it;
 - tags that repeat one of the query's words, or that the tag dictionary translates as one (ロング, which reads "long", for "long hair");
+- with `hl`, tags whose label respells the value in that language of another tag, on enough items to be offered itself, that the tag dictionary translates as the query or one of its words: one-piece reads 连衣裙 in Chinese, as ドレス does, which reads "dress", so "dress" does not offer it in Chinese but offers it as ワンピース in Japanese;
 - tags that make the same search as a nearer one: their labels respell each other, or one tag respells the other or one of its dictionary values (wavy hair after ウェーブヘア, which reads "wavy hair");
 - tags that name an avatar;
 - tags that come from a few shops or from more than 5% of the items;
