@@ -263,12 +263,17 @@ impl AvatarNames {
 }
 
 /// The same word spelt again: equal once case, width, spaces and symbols are gone, or but for a plural `s` or `es`
-/// (gothic girl / gothic girls). Unlike `expansion::same_word`, one holding the other does not count: ミニスカート is a
-/// related search for スカート.
+/// (gothic girl / gothic girls, eye / eyes, dress / dresses). Unlike `expansion::same_word`, one holding the other does
+/// not count: ミニスカート is a related search for スカート.
 fn respelling(a: &str, b: &str) -> bool {
     let (a, b) = (compact(a), compact(b));
-    let singular = |s: &str| s.strip_suffix("es").or_else(|| s.strip_suffix('s')).unwrap_or(s).to_owned();
-    a == b || singular(&a) == singular(&b) || singular(&a) == b || a == singular(&b)
+    forms(&a).any(|x| forms(&b).any(|y| x == y))
+}
+
+/// A compacted word, and the word without a plural `s` or `es`: the spelling alone cannot tell which one a plural
+/// added (eyes gives eyes, eye and ey; dresses gives dresses, dresse and dress).
+fn forms(s: &str) -> impl Iterator<Item = &str> {
+    [Some(s), s.strip_suffix('s'), s.strip_suffix("es")].into_iter().flatten()
 }
 
 /// What related searches are chosen for: a search whose query `Lookup::split_names` read as `meaning` and the models
@@ -782,8 +787,29 @@ mod tests {
     }
 
     #[test]
+    fn a_plural_of_a_word_ending_in_e_repeats_the_query_or_a_nearer_search() {
+        // Eyes is the query's word, and Eye Textures the search eye texture makes; no title says texture, so the title
+        // rule keeps every tag
+        let groups: &[(usize, &str, &[&str], usize)] = &[
+            (20, "Eye Set", &["eye texture set"], 5),
+            (20, "Eye Iris", &["eye texture"], 5),
+            (20, "Eye Pupil", &["Eye Textures"], 5),
+            (20, "Eye Highlight", &["Eyes"], 5),
+            (20, "Eye Lash", &["pupil"], 5),
+        ];
+        let c = catalogue(groups, |_, _| {});
+        let tags = ["eye texture set", "eye texture", "Eye Textures", "Eyes", "pupil"];
+        assert_eq!(labels(related(&c, &tags, "q=eye", &[], None)), ["eye texture set", "eye texture", "pupil"]);
+        // Hoodies is the plural of the query's word, so it is not offered in any language (パーカー in Japanese)
+        let c = catalogue(&[(20, "Hoodie", &["Hoodies"], 5), (20, "Hoodie", &["zip"], 5)], |_, _| {});
+        let dictionary = TagLabels::new(&[row("Hoodies", [Some("hoodies"), Some("パーカー"), Some("후드티"), Some("连帽衫")], &[])], c.tags());
+        assert_eq!(labels(related_in(&c, &["Hoodies", "zip"], "q=hoodie", &[], None, dictionary, Some("ja"))), ["zip"]);
+    }
+
+    #[test]
     fn respellings_are_the_same_word_but_containment_is_not() {
-        for (a, b) in [("skirt", "Skirts"), ("gothic girl", "gothic girls"), ("dress", "Dresses"), ("short hair", "ShortHair"), ("ドレス", "ﾄﾞﾚｽ")] {
+        let plurals = [("skirt", "Skirts"), ("gothic girl", "gothic girls"), ("dress", "Dresses"), ("eye", "Eyes"), ("eye texture", "Eye Textures"), ("hoodie", "Hoodies"), ("shoe", "shoes")];
+        for (a, b) in plurals.into_iter().chain([("short hair", "ShortHair"), ("ドレス", "ﾄﾞﾚｽ")]) {
             assert!(respelling(a, b) && respelling(b, a), "{a} / {b}");
         }
         for (a, b) in [("スカート", "ミニスカート"), ("skirt", "long skirt"), ("hair", "chair")] {
