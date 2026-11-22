@@ -911,10 +911,13 @@ mod tests {
     #[test]
     fn a_tag_names_an_avatar_by_a_cjk_name_or_a_whole_latin_name() {
         let names = AvatarNames::new(["Kikyo", "Shinano", "Alué", "桔梗", "io", "猫", "Rusk Dragon"]);
-        for tag in ["kikyo", "kikyo (桔梗)", "桔梗対応", "io", "猫", "rusk dragon", "kikyo-dress", "Shinano対応", "対応Ｓｈｉｎａｎｏ", "for Rusk Dragon only", "Alué用"] {
+        for tag in [
+            "kikyo", "kikyo (桔梗)", "桔梗対応", "io", "猫", "rusk dragon", "kikyo-dress",
+            "Shinano対応", "対応Ｓｈｉｎａｎｏ", "シナノShinano", "Shinano호환", "for Rusk Dragon only", "Alué用",
+        ] {
             assert!(names.named_in(&fold(tag)), "{tag}");
         }
-        // short names only as the whole tag; an ASCII name only as a word
+        // Short names only as the whole tag; longer Latin names never inside another word.
         for tag in ["io hair", "猫耳", "kikyodress", "rusk", "unshinano対応", "Shinano2対応", "for Rusk Dragonfly", "brusk dragon", "éShinano", "Aluéx"] {
             assert!(!names.named_in(&fold(tag)), "{tag}");
         }
