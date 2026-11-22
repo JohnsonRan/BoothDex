@@ -1,14 +1,70 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import * as request from "next/headers";
 import { DEFAULT_FILTERS } from "./catalog";
 import {
   passOffer,
   relatedSearches,
   type SearchOutcome,
+  searchItems,
   tagLabels,
   visitorHeaders,
 } from "./server-data";
+
+test("search trusts an explicit startup response but still checks health for ambiguous failures", async () => {
+  const headers = spyOn(request, "headers").mockResolvedValue(
+    new Headers() as Awaited<ReturnType<typeof request.headers>>,
+  );
+  const original = globalThis.fetch;
+  let health = 200;
+  const paths: string[] = [];
+  const search = async (reply: Response | Error) => {
+    paths.length = 0;
+    globalThis.fetch = (async (url: string) => {
+      const path = new URL(url).pathname;
+      paths.push(path);
+      if (path === "/api/health") return new Response(null, { status: health });
+      if (reply instanceof Error) throw reply;
+      return reply;
+    }) as typeof fetch;
+    return searchItems(DEFAULT_FILTERS, 1, false);
+  };
+  try {
+    expect(
+      await search(
+        Response.json(
+          { starting: true },
+          { status: 503, headers: { "Retry-After": "5" } },
+        ),
+      ),
+    ).toEqual({ state: "starting", retryAfterMs: 5000 });
+    expect(paths).toEqual(["/api/search"]);
+    expect(
+      await search(
+        Response.json(
+          { code: "verification_offered", site_key: "key" },
+          { status: 429 },
+        ),
+      ),
+    ).toEqual({ state: "error", limited: true, offer: { siteKey: "key" } });
+    expect(paths).toEqual(["/api/search"]);
+    for (const response of [
+      new Response("not JSON", { status: 503 }),
+      Response.json({ starting: "true" }, { status: 503 }),
+      Response.json({ starting: true }, { status: 500 }),
+    ]) {
+      expect(await search(response)).toEqual({ state: "error" });
+      expect(paths).toEqual(["/api/search", "/api/health"]);
+    }
+    health = 503;
+    expect((await search(new TypeError("offline"))).state).toBe("starting");
+    expect(paths).toEqual(["/api/search", "/api/health"]);
+  } finally {
+    headers.mockRestore();
+    globalThis.fetch = original;
+  }
+});
 
 test("visitorHeaders forwards the session and the visitor's address headers, and nothing else", () => {
   const from = new Headers({

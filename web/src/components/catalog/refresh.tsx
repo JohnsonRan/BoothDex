@@ -23,9 +23,10 @@ import { useAccount } from "@/components/account/session";
 import { useRefresh } from "@/components/catalog/filter/filter-url";
 import { FailedResults } from "@/components/catalog/results/result-states";
 import { useUi } from "@/components/providers";
-import { type PassOffer, passCheck } from "@/lib/api";
+import { type ApiStarting, passCheck } from "@/lib/api";
 import { useApiRecovery } from "@/lib/client-data";
 import { cancelOnReducedMotion, swapIn } from "@/lib/motion";
+import type { SearchOutcome } from "@/lib/server-data";
 
 // shown only after a refresh fails, so its code loads then
 const Banner = dynamic(
@@ -96,14 +97,14 @@ export function Swap({ children }: { children: ReactNode }) {
  */
 export function KeepResults({
   failure,
-  offer,
   children,
 }: {
-  failure?: "error" | "starting";
-  offer?: PassOffer;
+  failure?: Exclude<SearchOutcome, { state: "ok" }>;
   children?: ReactNode;
 }) {
   const router = useRouter();
+  const starting = failure?.state === "starting" && failure;
+  const offer = failure?.state === "error" ? failure.offer : undefined;
   // a new object with each server render, so a refusal after Retry offers the check again
   useEffect(() => {
     if (offer)
@@ -113,13 +114,12 @@ export function KeepResults({
   }, [offer, router]);
   const [kept, setKept] = useState(children);
   if (!failure && children !== kept) setKept(children);
-  if (failure && !kept)
-    return <FailedResults starting={failure === "starting"} />;
+  if (failure && !kept) return <FailedResults starting={starting} />;
   // the results in the same place with and without the Banner (in the band's column, which spaces the two): moved,
   // React would mount them anew, dropping the pages read and reading the server's page again, which fails as well
   return (
     <>
-      {failure && <RefreshFailed starting={failure === "starting"} />}
+      {failure && <RefreshFailed starting={starting} />}
       {failure ? kept : children}
     </>
   );
@@ -130,7 +130,7 @@ export function RefreshFailed({
   starting,
   onRetry,
 }: {
-  starting: boolean;
+  starting: ApiStarting | false;
   /** for results read in the browser (the later tiles) */
   onRetry?: () => void;
 }) {

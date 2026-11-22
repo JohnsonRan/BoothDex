@@ -456,7 +456,7 @@ test("a search the stricter limit refused offers the check from a navigation as 
       navigation,
     })) as { type: unknown; props: Record<string, unknown> };
     expect(shown.type).toBe(KeepResults);
-    expect(shown.props).toEqual({ failure: "error", offer });
+    expect(shown.props).toEqual({ failure: { state: "error", offer } });
   }
 });
 

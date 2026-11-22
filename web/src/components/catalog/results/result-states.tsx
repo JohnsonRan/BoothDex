@@ -22,6 +22,7 @@ import {
   useRefresh,
 } from "@/components/catalog/filter/filter-url";
 import { useUi } from "@/components/providers";
+import type { ApiStarting } from "@/lib/api";
 import {
   activeFilterCount,
   FILTER_RESET,
@@ -102,7 +103,7 @@ export function FailedResults({
   starting,
   onRetry,
 }: {
-  starting: boolean;
+  starting: ApiStarting | false;
   /** for results read in the browser (the recent view) */
   onRetry?: () => void;
 }) {

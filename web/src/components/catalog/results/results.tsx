@@ -173,8 +173,7 @@ export async function Results({
   navigation: boolean;
 }) {
   const o = await outcome;
-  if (o.state !== "ok")
-    return <KeepResults failure={o.state} offer={o.offer} />;
+  if (o.state !== "ok") return <KeepResults failure={o} />;
   const { result } = o;
   // this page's search went without meaning-based matches, asked to or not: the rest of the page and the later
   // pages are read the same way, so the result set stays the one the first tiles came from

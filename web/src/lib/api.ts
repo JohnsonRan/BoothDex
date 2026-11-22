@@ -38,12 +38,27 @@ export function errorKey<K extends string>(
   );
 }
 
-/** False while the API is still loading the catalogue (it answers 503) or not reachable at all. */
-export const apiReady = () =>
-  fetch("/api/health", { cache: "no-store" }).then(
-    (r) => r.ok,
-    () => false,
-  );
+export type ApiStarting = { state: "starting"; retryAfterMs: number };
+
+/** The startup listener sends Retry-After in seconds. A proxy may send an HTTP date instead. */
+export function retryAfterMs(response?: Response): number {
+  const value = response?.headers.get("retry-after") ?? "";
+  const ms = /^\d+$/.test(value)
+    ? Number(value) * 1000
+    : /^[A-Za-z]{3}, /.test(value)
+      ? Date.parse(value) - Date.now()
+      : 0;
+  return ms > 0 ? Math.min(ms, 2_147_483_647) : 3000;
+}
+
+/** Null when healthy, otherwise the delay before checking again. */
+export async function probeHealth(origin: string, signal?: AbortSignal) {
+  const res = await fetch(`${origin}/api/health`, {
+    cache: "no-store",
+    signal,
+  }).catch(() => undefined);
+  return res?.ok ? null : retryAfterMs(res);
+}
 
 /** The check that lifts the stricter rate limits, set by components/verification/pass-host.tsx: true once it passed,
  *  false when the visitor closed it (and before the host is mounted). */

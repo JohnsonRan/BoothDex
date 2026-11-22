@@ -3,7 +3,12 @@
 // module out of client bundles.
 import { cacheLife } from "next/cache";
 import { cookies, headers } from "next/headers";
-import type { PassOffer } from "./api";
+import {
+  type ApiStarting,
+  type PassOffer,
+  probeHealth,
+  retryAfterMs,
+} from "./api";
 import type {
   ItemResponse,
   RelatedResponse,
@@ -64,7 +69,8 @@ export async function readRailWidth(): Promise<number> {
 export type SearchOutcome =
   /** `ms`: this server's request, the API's time included (the search trace's total) */
   | { state: "ok"; result: SearchResponse; ms: number }
-  | { state: "starting" | "error"; offer?: PassOffer; limited?: boolean };
+  | ApiStarting
+  | { state: "error"; offer?: PassOffer; limited?: boolean };
 
 /** The check a refused read offers (crates/api/src/limit.rs, `RateLimited`): the server cannot show it, the page can. */
 export async function passOffer(e: unknown): Promise<PassOffer | undefined> {
@@ -74,13 +80,6 @@ export async function passOffer(e: unknown): Promise<PassOffer | undefined> {
   return body?.code === "verification_offered"
     ? { siteKey: body.site_key }
     : undefined;
-}
-
-async function apiReady(): Promise<boolean> {
-  return fetch(`${API_ORIGIN}/api/health`, { cache: "no-store" }).then(
-    (r) => r.ok,
-    () => false,
-  );
 }
 
 /** The visitor's request headers a per-visitor API call carries: the cookie (the session) and the address headers
@@ -123,13 +122,20 @@ export async function searchItems(
     );
     return { state: "ok", result, ms: performance.now() - start };
   } catch (e) {
-    if (
-      e instanceof Error &&
-      e.cause instanceof Response &&
-      e.cause.status === 429
-    )
-      return { state: "error", limited: true, offer: await passOffer(e) };
-    return { state: (await apiReady()) ? "error" : "starting" };
+    const res = e instanceof Error ? e.cause : undefined;
+    if (res instanceof Response) {
+      if (res.status === 429)
+        return { state: "error", limited: true, offer: await passOffer(e) };
+      if (
+        res.status === 503 &&
+        (await res.json().catch(() => null))?.starting === true
+      )
+        return { state: "starting", retryAfterMs: retryAfterMs(res) };
+    }
+    const delay = await probeHealth(API_ORIGIN);
+    return delay === null
+      ? { state: "error" }
+      : { state: "starting", retryAfterMs: delay };
   }
 }
 
@@ -221,7 +227,7 @@ export async function tagLabels(
 ): Promise<Record<string, string>> {
   if (names.length === 0) return {};
   const o = search && (await search);
-  const refused = !!o && o.state !== "ok" && !!o.limited;
+  const refused = o?.state === "error" && o.limited;
   const found = refused
     ? []
     : await Promise.all(names.map((n) => lookup(n).catch(() => null)));
