@@ -19,7 +19,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use sqlx::PgPool;
 
 use crate::catalog::Catalog;
-use crate::expansion::{Equivalents, LANGUAGES, MIN_CHARS};
+use crate::expansion::{Equivalents, LANGUAGES, MIN_CHARS, is_cjk};
 use crate::params::Params;
 use crate::search_request::{SearchRequest, View};
 use crate::tag_words::TagRow;
@@ -273,11 +273,15 @@ fn dot(a: &[f32], b: &[f32]) -> f32 {
 /// which avatar an item fits, which the search reads from the model's name already.
 #[derive(Default)]
 pub(crate) struct AvatarNames {
+    /// Short names are too ambiguous except as the whole tag.
     exact: FxHashSet<String>,
-    /// ASCII names of at least 3 letters, found as a whole word
-    words: FxHashSet<String>,
-    /// other names of at least 2 characters, found anywhere, by their first two characters
-    inside: FxHashMap<(char, char), Vec<Vec<char>>>,
+    /// Longer names indexed by their first two characters.
+    inside: FxHashMap<(char, char), Vec<AvatarForm>>,
+}
+
+struct AvatarForm {
+    chars: Vec<char>,
+    whole_word: bool,
 }
 
 impl AvatarNames {
@@ -285,12 +289,12 @@ impl AvatarNames {
         let mut out = Self::default();
         for name in names.into_iter().map(fold).filter(|n| !n.is_empty()) {
             let chars: Vec<char> = name.chars().collect();
-            if name.is_ascii() && name.len() >= 3 {
-                out.words.insert(name.clone());
-            } else if !name.is_ascii() && chars.len() >= 2 {
-                out.inside.entry((chars[0], chars[1])).or_default().push(chars);
+            let whole_word = !chars.iter().copied().any(is_cjk);
+            if chars.len() >= if whole_word { 3 } else { 2 } {
+                out.inside.entry((chars[0], chars[1])).or_default().push(AvatarForm { chars, whole_word });
+            } else {
+                out.exact.insert(name);
             }
-            out.exact.insert(name);
         }
         out
     }
@@ -298,10 +302,13 @@ impl AvatarNames {
     /// Whether the folded tag names an avatar.
     pub(crate) fn named_in(&self, tag: &str) -> bool {
         let chars: Vec<char> = tag.chars().collect();
-        self.exact.contains(tag)
-            || tag.split(|c: char| !c.is_alphanumeric()).any(|w| self.words.contains(w))
-            || (0..chars.len().saturating_sub(1))
-                .any(|i| self.inside.get(&(chars[i], chars[i + 1])).is_some_and(|names| names.iter().any(|n| chars[i..].starts_with(n))))
+        let boundary = |c: Option<&char>| c.is_none_or(|&c| !c.is_alphanumeric() || is_cjk(c));
+        self.exact.contains(tag) || chars.windows(2).enumerate().any(|(i, pair)| {
+            self.inside.get(&(pair[0], pair[1])).is_some_and(|names| names.iter().any(|n| {
+                chars[i..].starts_with(&n.chars)
+                    && (!n.whole_word || (boundary(chars[..i].last()) && boundary(chars.get(i + n.chars.len()))))
+            }))
+        })
     }
 }
 
@@ -902,13 +909,13 @@ mod tests {
     }
 
     #[test]
-    fn a_tag_names_an_avatar_by_its_whole_name_an_ascii_word_or_a_longer_name_inside() {
-        let names = AvatarNames::new(["Kikyo", "桔梗", "io", "猫", "Rusk Dragon"]);
-        for tag in ["kikyo", "kikyo (桔梗)", "桔梗対応", "io", "猫", "rusk dragon", "kikyo-dress"] {
+    fn a_tag_names_an_avatar_by_a_cjk_name_or_a_whole_latin_name() {
+        let names = AvatarNames::new(["Kikyo", "Shinano", "Alué", "桔梗", "io", "猫", "Rusk Dragon"]);
+        for tag in ["kikyo", "kikyo (桔梗)", "桔梗対応", "io", "猫", "rusk dragon", "kikyo-dress", "Shinano対応", "対応Ｓｈｉｎａｎｏ", "for Rusk Dragon only", "Alué用"] {
             assert!(names.named_in(&fold(tag)), "{tag}");
         }
         // short names only as the whole tag; an ASCII name only as a word
-        for tag in ["io hair", "猫耳", "kikyodress", "rusk"] {
+        for tag in ["io hair", "猫耳", "kikyodress", "rusk", "unshinano対応", "Shinano2対応", "for Rusk Dragonfly", "brusk dragon", "éShinano", "Aluéx"] {
             assert!(!names.named_in(&fold(tag)), "{tag}");
         }
     }

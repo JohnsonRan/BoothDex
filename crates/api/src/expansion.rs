@@ -8,7 +8,6 @@
 //! Chinese title (2026-11-20), so a Chinese query's title matches come from those few while a tag's come from all,
 //! and no Chinese query would pass containment measured on every item. The matches searched stay global.
 
-use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -227,18 +226,30 @@ impl Equivalents {
     }
 }
 
+fn hangul(c: char) -> bool {
+    matches!(c, '\u{1100}'..='\u{11FF}' | '\u{3130}'..='\u{318F}' | '\u{A960}'..='\u{A97F}' | '\u{AC00}'..='\u{D7AF}' | '\u{FFA0}'..='\u{FFDC}')
+}
+
+fn kana(c: char) -> bool {
+    matches!(c, '\u{3040}'..='\u{30FF}' | '\u{31F0}'..='\u{31FF}' | '\u{FF66}'..='\u{FF9F}')
+}
+
+fn han(c: char) -> bool {
+    matches!(c, '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}' | '\u{20000}'..='\u{2FA1F}')
+}
+
+pub(crate) fn is_cjk(c: char) -> bool {
+    hangul(c) || kana(c) || han(c)
+}
+
 /// The language of a query, as an index into `LANGUAGES`, by its script: any Hangul is Korean, else any kana
 /// Japanese, else any Han character Chinese, else English.
 fn language(q: &str) -> usize {
-    let has = |ranges: &[RangeInclusive<char>]| q.chars().any(|c| ranges.iter().any(|r| r.contains(&c)));
-    let hangul = ['\u{1100}'..='\u{11FF}', '\u{3130}'..='\u{318F}', '\u{A960}'..='\u{A97F}', '\u{AC00}'..='\u{D7AF}', '\u{FFA0}'..='\u{FFDC}'];
-    let kana = ['\u{3040}'..='\u{30FF}', '\u{31F0}'..='\u{31FF}', '\u{FF66}'..='\u{FF9F}'];
-    let han = ['\u{3400}'..='\u{4DBF}', '\u{4E00}'..='\u{9FFF}', '\u{F900}'..='\u{FAFF}', '\u{20000}'..='\u{2FA1F}'];
-    let name = if has(&hangul) {
+    let name = if q.chars().any(hangul) {
         "ko"
-    } else if has(&kana) {
+    } else if q.chars().any(kana) {
         "ja"
-    } else if has(&han) {
+    } else if q.chars().any(han) {
         "zh"
     } else {
         "en"
