@@ -34,6 +34,8 @@ flowchart LR
 
 `postgres`, `api`, `worker` and `imgproxy` publish no host ports; run maintenance commands through `docker compose exec` (for example `docker compose exec postgres psql -U catalogue catalogue`). `podman compose` works with the same commands.
 
+The API health check reports readiness, not process startup. `web` starts as soon as the `api` container is running so it can show the startup screen while the catalogue loads. During this interval `/api/health` returns 503 with `Retry-After: 5`; after loading it returns 200. Do not make `web` wait for `api` to be healthy: the reverse proxy would have no frontend to serve during that wait.
+
 Run exactly one `api` container; do not scale it ([why](SERVICES.md#one-api-container)). How `imgproxy`, the rate limits and Turnstile behave is in [Service behaviour](SERVICES.md).
 
 ## Deployment overview
