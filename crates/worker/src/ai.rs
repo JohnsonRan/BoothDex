@@ -86,7 +86,8 @@ impl Ai {
             let res = self.http.post(format!("{}/chat/completions", self.base_url)).bearer_auth(&self.api_key).json(body).send().await;
             match res {
                 Ok(r) if r.status().is_success() => {
-                    let v: Value = r.json().await?;
+                    let bytes = r.bytes().await.map_err(|e| ProviderError(format!("provider response body interrupted: {}", e.without_url())))?;
+                    let v: Value = serde_json::from_slice(&bytes)?;
                     let text = v["choices"][0]["message"]["content"].as_str().context("provider reply without content")?;
                     return Ok(Ok(parse_json_reply(text)?));
                 }
@@ -240,8 +241,20 @@ impl HeldName {
     /// nothing to keep.
     fn dropped_from(&self, folded: &str, english: bool) -> bool {
         let forms = self.kept_in(english);
-        !forms.is_empty() && !forms.iter().any(|f| folded.contains(f.as_str()))
+        !forms.is_empty() && !forms.iter().any(|f| contains_name(folded, f))
     }
+}
+
+/// Both inputs are NFKC and lowercase. CJK names can occur inside compounds; Latin names must stand apart
+/// from other letters and digits, but may directly precede or follow CJK text.
+pub fn contains_name(folded: &str, name: &str) -> bool {
+    if !latin_letters(name) {
+        return folded.contains(name);
+    }
+    let joins_word = |c: char| c.is_alphanumeric() && !(is_han(c) || is_kana(c) || is_hangul(c));
+    folded.match_indices(name).any(|(i, _)| {
+        !folded[..i].chars().next_back().is_some_and(joins_word) && !folded[i + name.len()..].chars().next().is_some_and(joins_word)
+    })
 }
 
 /// One tag's values from its answer (`answer` is the reply's entry for the tag's id), in `TAG_LANGUAGES` order: each
@@ -379,14 +392,25 @@ fn number(digits: &str) -> String {
     if n.is_empty() { "0".to_owned() } else { n.to_owned() }
 }
 
-/// The numbers a title may write in digits: those of `original` in digits, and those it writes as a Chinese numeral
-/// from 〇 to 十 (三点セット is a 3-piece set).
+/// The numbers a title may write in digits: its original digits and whole CJK numerals up to 99.
+/// Larger units stay in the same run so a fragment of a larger number cannot license a smaller one.
 fn numbers_of_original(original: &str) -> std::collections::BTreeSet<String> {
-    const NUMERALS: [(char, &str); 14] =
-        [('〇', "0"), ('零', "0"), ('一', "1"), ('二', "2"), ('两', "2"), ('兩', "2"), ('三', "3"), ('四', "4"), ('五', "5"), ('六', "6"), ('七', "7"), ('八', "8"), ('九', "9"), ('十', "10")];
     let mut out = numbers(original);
-    out.extend(NUMERALS.iter().filter(|(c, _)| original.contains(*c)).map(|(_, n)| n.to_string()));
+    let runs = original.split(|c: char| !"〇零一二两兩三四五六七八九十百千万萬亿億兆".contains(c));
+    out.extend(runs.filter(|s| !s.is_empty()).filter_map(small_numeral).map(|n| n.to_string()));
     out
+}
+
+fn small_numeral(s: &str) -> Option<u8> {
+    let digit = |s| match s {
+        "〇" | "零" => Some(0),
+        "两" | "兩" => Some(2),
+        _ => ["一", "二", "三", "四", "五", "六", "七", "八", "九"].iter().position(|&d| d == s).map(|i| i as u8 + 1),
+    };
+    let Some((tens, ones)) = s.split_once('十') else { return digit(s) };
+    let tens = if tens.is_empty() { 1 } else { digit(tens)? };
+    let ones = if ones.is_empty() { 0 } else { digit(ones)? };
+    Some(tens * 10 + ones)
 }
 
 /// `text` (NFKC, lowercase) with each of the `japanese` avatar names blanked out: a name is never translated or
@@ -832,6 +856,28 @@ mod tests {
         assert_eq!(chinese.problem("zh", "猫の连衣裙", Some("zh")), None);
         assert!(chinese.problem("zh", "猫の连衣裙", Some("ja")).is_some());
         assert!(chinese.problem("ko", "猫の连衣裙", Some("zh")).is_some());
+    }
+
+    #[test]
+    fn compound_numerals_allow_only_the_whole_number() {
+        let allowed = numbers_of_original("十二点セット・二十色・二十四枚・三種類");
+        assert_eq!(allowed, ["12", "20", "24", "3"].map(str::to_owned).into());
+        assert!(numbers_of_original("一百十二色").is_empty());
+    }
+
+    #[test]
+    fn a_latin_avatar_name_is_not_part_of_another_word() {
+        let names = vec![HeldName { forms: vec!["lime".into(), "ライム".into()], latin: vec!["lime".into()] }];
+        let check = TitleCheck { original: "ライム用", names, japanese: &[] };
+        for title in ["Sublime dress", "Limelight dress", "Lime2"] {
+            assert!(check.problem("en", title, None).is_some(), "{title}");
+        }
+        for (lang, title) in [("en", "Sublime dress (ＬＩＭＥ)"), ("zh", "适配Lime用"), ("ja", "新ライム用")] {
+            assert_eq!(check.problem(lang, title, None), None, "{title}");
+        }
+        let reply = json!({"en": "Sublime", "ja": "ライム用", "zh": "适配Sublime"});
+        let values = kept(&reply, "ライム用", &[], &[&["lime", "ライム"]]);
+        assert_eq!(values, [None, Some("ライム用".into()), None, None]);
     }
 
     #[test]

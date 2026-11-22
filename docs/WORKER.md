@@ -49,7 +49,8 @@ Any OpenAI-compatible API works, with configurable reasoning effort. Without a p
 
 Rules for translated titles:
 
-- Avatar names stay as written.
+- Avatar names stay as written. A Latin name such as Lime may touch Japanese text, but the word “Sublime” does not preserve it.
+- A compound number such as 十二 in the source title allows 12, not 2, in a translated title.
 - A title that drops an avatar name, adds a number, or uses another language's script gets one correction. If it still fails, it is not written.
 
 An item that has failed 3 times is skipped (`items.enrich_failures`), until a crawl finds its title or description changed, which sets the count back to 0. A provider outage stops the batch without counting against any item. `/admin/jobs/given-up` lists the skipped items; Retry or Retry all sets their count to 0 and queues `enrich`. The overview's "Waiting for AI" tile says how many of its items were given up.
@@ -75,7 +76,7 @@ When an update adds avatars or aliases, the worker links every item to the added
 
 - It translates the category and smart tag names that have no Chinese name into Chinese; the taxonomy carries its English, Japanese and Korean names.
 - It translates the BOOTH tags that sit on 5 or more items and that the tag dictionary lacks into English, Japanese, Korean and Chinese, up to 400 a run (`max_tags`). Avatar names stay as written. It never changes a dictionary row.
-- A value that fails its checks is left empty. A tag with no valid value, or whose answer names another tag, is asked again on later runs, 3 runs at most. After 3 runs without a valid translation, the tag is skipped until its row in `booth_tag_failures` is deleted.
+- A value that fails its checks is left empty. A tag with no valid value, or whose answer names another tag, is asked again on later runs, 3 runs at most. After 3 runs without a valid translation, the tag is skipped until its row in `booth_tag_failures` is deleted. An interrupted provider response does not count as a failed translation.
 - When an update changes the prompt that words the Chinese category and smart tag names, `api` queues `localize` with `force` at startup (and when the AI settings are saved). That run translates those names again and leaves the tag dictionary alone. The worker records the prompt's version (`app_settings` key `localize_state`) once the run has translated every name; a name the reply leaves out keeps its old wording, and the next start queues the run again.
 
 ## Semantic search vectors

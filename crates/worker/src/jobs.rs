@@ -511,8 +511,11 @@ impl AvatarKit {
             .iter()
             .filter_map(|slug| {
                 let name = self.names.get(slug)?;
-                let written = self.forms.get(slug)?.iter().map(|f| crate::avatars::norm(f)).filter(|f| folded.contains(f.as_str()));
-                let mut forms: Vec<String> = written.chain(name.ja.iter().chain([&name.romaji]).map(|f| crate::avatars::norm(f))).collect();
+                let mut forms: Vec<_> = self.forms.get(slug)?.iter().map(|f| crate::avatars::norm(f)).filter(|f| crate::ai::contains_name(&folded, f)).collect();
+                if forms.is_empty() {
+                    return None;
+                }
+                forms.extend(name.ja.iter().chain([&name.romaji]).map(|f| crate::avatars::norm(f)));
                 forms.dedup();
                 let latin = forms.iter().filter(|f| crate::ai::latin_letters(f)).cloned().collect();
                 Some(crate::ai::HeldName { forms, latin })
@@ -1420,10 +1423,41 @@ mod tests {
         assert_eq!((rows, failures), (0, 0));
     }
 
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn only_a_complete_bad_reply_counts_against_the_tag(pool: PgPool) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        crate::install_tls();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let config = boothdex_core::settings::resolve(&json!({"base_url": format!("http://{}", listener.local_addr().unwrap()), "model": "test", "api_key": "test"}), |_| None);
+        let ai = crate::ai::Ai::from_config(&config).unwrap().unwrap();
+        let server = tokio::spawn(async move {
+            let invalid_model_reply = json!({"choices": [{"message": {"content": "not JSON"}}]}).to_string();
+            for (body, length) in [(invalid_model_reply.as_str(), invalid_model_reply.len()), ("{", 1), ("{", 100)] {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                assert!(socket.read(&mut [0; 4096]).await.unwrap() > 0);
+                socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n{body}").as_bytes()).await.unwrap();
+                socket.shutdown().await.unwrap();
+                tokio::io::copy(&mut socket, &mut tokio::io::sink()).await.unwrap();
+            }
+        });
+        let job = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('localize', 'running', now()) returning id").fetch_one(&pool).await.unwrap();
+        let booth = Booth::new().unwrap();
+        let mut ctx = Ctx::new(&pool, &booth, job);
+        let avatars = avatar_kit(&pool).await.unwrap();
+        for (expected, interrupted) in [(1, false), (2, false), (2, true)] {
+            let result = ask_tags(&mut ctx, &ai, &avatars, vec![("スカート".into(), vec![])], &mut TagTally::default()).await;
+            let failures: i32 = sqlx::query_scalar("select failures from booth_tag_failures where tag = 'スカート'").fetch_one(&pool).await.unwrap();
+            assert_eq!(failures, expected);
+            assert_eq!(result.is_err_and(|err| err.is::<crate::ai::ProviderError>()), interrupted);
+        }
+        server.await.unwrap();
+    }
+
     #[test]
     fn a_tag_holds_an_avatar_name_in_the_forms_it_writes_and_in_japanese_and_romaji() {
         let names = |romaji: &str, ja: &str, ko: &str| vec![romaji.to_owned(), ja.to_owned(), ko.to_owned()];
-        let forms: std::collections::HashMap<String, Vec<String>> = [("manuka".to_owned(), names("Manuka", "マヌカ", "마누카")), ("alue".to_owned(), names("Alué", "アルエ", "アルエ"))].into();
+        let forms: std::collections::HashMap<String, Vec<String>> = [("manuka".to_owned(), names("Manuka", "マヌカ", "마누카")), ("alue".to_owned(), names("Alué", "アルエ", "Lime"))].into();
         let avatar = |ja: &str, romaji: &str| crate::ai::AvatarName { ja: Some(ja.into()), romaji: romaji.into() };
         let kit = AvatarKit {
             matcher: crate::avatars::Matcher::new(forms.clone()),
@@ -1440,6 +1474,8 @@ mod tests {
         assert!(held("スカート").is_empty());
         // a romaji with an accent is in Latin letters, so an English title can keep it
         assert_eq!(held("【アルエ対応】ドレス"), [pair("アルエ alué", "alué")]);
+        assert_eq!(held("Sublime アルエ"), [pair("アルエ alué", "alué")]);
+        assert!(held("Palué").is_empty());
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
