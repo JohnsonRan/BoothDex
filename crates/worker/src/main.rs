@@ -144,7 +144,9 @@ fn lane(kind: &str) -> &str {
 async fn start(pool: &PgPool) -> Result<()> {
     sqlx::query("update jobs set status = 'failed', finished_at = now(), error = 'worker restarted' where status in ('running', 'cancelling')").execute(pool).await?;
     sqlx::query("update worker_status set started_at = now(), version = $1").bind(env!("CARGO_PKG_VERSION")).execute(pool).await?;
-    jobs::publish_pending_embeddings(pool).await?;
+    if jobs::publish_pending_embeddings(pool).await.is_err() {
+        eprintln!("embed: startup publication failed; pending changes will be retried at the next embed job or worker start");
+    }
     relink::queue(pool).await
 }
 
@@ -241,10 +243,14 @@ mod tests {
     #[sqlx::test(migrations = "../core/migrations")]
     #[ignore = "requires PostgreSQL with pgvector"]
     async fn start_fails_jobs_left_running_and_queues_a_relink(pool: sqlx::PgPool) {
+        let version = || sqlx::query_scalar::<_, i64>("select version from catalog_meta").fetch_one(&pool);
+        let before = version().await.unwrap();
         sqlx::raw_sql(
             "insert into jobs (kind, status, started_at) values ('refresh', 'running', now());
              update avatars set aliases = aliases || '{nothing}' where slug = 'manuka';
-             update job_schedules set enabled = false where kind = 'enrich';",
+             update job_schedules set enabled = false where kind = 'enrich';
+             insert into app_settings (key, value) values ('embed_state', '{\"model\":\"m\",\"pending\":true}');
+             alter table catalog_meta add constraint refuse_publication check (false) not valid;",
         )
         .execute(&pool)
         .await
@@ -253,6 +259,12 @@ mod tests {
         let jobs: Vec<(String, String, serde_json::Value)> = sqlx::query_as("select kind, status, params from jobs order by id").fetch_all(&pool).await.unwrap();
         let expected = [("refresh", "failed", serde_json::json!({})), ("enrich", "queued", serde_json::json!({ "relink_only": true }))];
         assert_eq!(jobs, expected.map(|(k, s, p)| (k.to_owned(), s.to_owned(), p)));
+        assert_eq!(version().await.unwrap(), before);
+        assert!(sqlx::query_scalar::<_, bool>("select value ? 'pending' from app_settings where key = 'embed_state'").fetch_one(&pool).await.unwrap());
+        sqlx::query("alter table catalog_meta drop constraint refuse_publication").execute(&pool).await.unwrap();
+        super::jobs::publish_pending_embeddings(&pool).await.unwrap();
+        super::jobs::publish_pending_embeddings(&pool).await.unwrap();
+        assert_eq!(version().await.unwrap(), before + 1);
     }
 
     #[sqlx::test(migrations = "../core/migrations")]
