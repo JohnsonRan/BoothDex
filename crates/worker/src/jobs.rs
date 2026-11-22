@@ -753,26 +753,40 @@ const EMBED_ROWS_SELECT: &str = concat!(
 );
 
 const EMBEDDING_UPDATE: &str = concat!(
-    "update items i set embedding = v.e
-    from unnest($1::bigint[], $2::halfvec[], $3::text[]) as v(id, e, fp)
-    where i.id = v.id and ",
+    "with written as (
+        update items i set embedding = v.e
+        from unnest($1::bigint[], $2::halfvec[], $3::text[]) as v(id, e, fp)
+        where i.id = v.id and ",
     embedding_fingerprint!(),
-    " = v.fp"
+    " = v.fp returning 1
+    ), mark_pending as (
+        update app_settings set value = value || '{\"pending\":true}'::jsonb, updated_at = now()
+        where key = 'embed_state' and exists (select from written)
+    ) select count(*) from written"
 );
 
 /// Embeddings for semantic search: every listed item without one (new, edited, or after a model change).
 /// Runs until done; requests go out `batch` items at a time, `concurrency` at once.
 pub async fn embed(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
-    let mut changed = false;
-    let result = embed_items(ctx, params, &mut changed).await;
+    publish_pending_embeddings(ctx.pool).await?;
+    let result = embed_items(ctx, params).await;
     // A later provider failure or cancellation does not roll back the batches already written.
-    if changed {
-        boothdex_core::bump_catalog_version(ctx.pool).await?;
-    }
+    publish_pending_embeddings(ctx.pool).await?;
     result
 }
 
-async fn embed_items(ctx: &mut Ctx<'_>, params: &Value, changed: &mut bool) -> Result<String> {
+const PUBLISH_PENDING_EMBEDDINGS: &str = "with pending as (
+        update app_settings set value = value - 'pending', updated_at = now()
+        where key = 'embed_state' and value ? 'pending' returning 1
+    ) update catalog_meta set version = version + 1, changed_at = now() where exists (select from pending)";
+
+/// A failed bump rolls back the claim. Only one publisher can consume a committed change.
+pub async fn publish_pending_embeddings(pool: &PgPool) -> Result<()> {
+    sqlx::query(PUBLISH_PENDING_EMBEDDINGS).execute(pool).await?;
+    Ok(())
+}
+
+async fn embed_items(ctx: &mut Ctx<'_>, params: &Value) -> Result<String> {
     use boothdex_core::embed;
     let c = boothdex_core::settings::ai(ctx.pool).await?;
     let (Some(base), Some(key), Some(model)) = (c.base_url, c.api_key, c.embed_model) else {
@@ -783,7 +797,7 @@ async fn embed_items(ctx: &mut Ctx<'_>, params: &Value, changed: &mut bool) -> R
     // for trial runs
     let limit: i64 = param(params, "limit", i64::MAX);
 
-    *changed = clear_embeddings_on_model_change(ctx, &model).await?;
+    clear_embeddings_on_model_change(ctx, &model).await?;
 
     let total: i64 = sqlx::query_scalar("select count(*) from items where status = 'ok' and embedding is null").fetch_one(ctx.pool).await?;
     let http = reqwest::Client::builder().timeout(Duration::from_secs(120)).build()?;
@@ -822,15 +836,13 @@ async fn embed_items(ctx: &mut Ctx<'_>, params: &Value, changed: &mut bool) -> R
                 fps.push(fp.clone());
             }
         }
-        let written = sqlx::query(EMBEDDING_UPDATE)
+        let written: i64 = sqlx::query_scalar(EMBEDDING_UPDATE)
             .bind(&ids)
             .bind(&vecs)
             .bind(&fps)
-            .execute(ctx.pool)
-            .await?
-            .rows_affected();
-        *changed |= written > 0;
-        done += written as i64;
+            .fetch_one(ctx.pool)
+            .await?;
+        done += written;
         if !ctx.progress(done, Some(total.min(limit)), &format!("embed: {done} of {}", total.min(limit)), false).await? {
             ctx.log("cancelled").await?;
             break;
@@ -844,20 +856,24 @@ async fn embed_items(ctx: &mut Ctx<'_>, params: &Value, changed: &mut bool) -> R
 }
 
 /// Vectors from another model aren't comparable: start over when the model changes.
-async fn clear_embeddings_on_model_change(ctx: &Ctx<'_>, model: &str) -> Result<bool> {
+async fn clear_embeddings_on_model_change(ctx: &Ctx<'_>, model: &str) -> Result<()> {
     let previous: Option<String> = sqlx::query_scalar("select value->>'model' from app_settings where key = 'embed_state'").fetch_optional(ctx.pool).await?.flatten();
     if previous.as_deref() == Some(model) {
-        return Ok(false);
+        return Ok(());
     }
-    if previous.is_some() {
-        let n = sqlx::query("update items set embedding = null where embedding is not null").execute(ctx.pool).await?.rows_affected();
-        ctx.log(&format!("model changed from {} to {model}: cleared {n} embeddings", previous.as_deref().unwrap_or("-"))).await?;
-    }
+    let mut tx = ctx.pool.begin().await?;
+    let cleared = if previous.is_some() {
+        sqlx::query("update items set embedding = null where embedding is not null").execute(&mut *tx).await?.rows_affected()
+    } else { 0 };
     sqlx::query("insert into app_settings (key, value) values ('embed_state', $1) on conflict (key) do update set value = excluded.value, updated_at = now()")
-        .bind(serde_json::json!({ "model": model }))
-        .execute(ctx.pool)
+        .bind(serde_json::json!({ "model": model, "pending": true }))
+        .execute(&mut *tx)
         .await?;
-    Ok(true)
+    tx.commit().await?;
+    if let Some(previous) = previous {
+        ctx.log(&format!("model changed from {previous} to {model}: cleared {cleared} embeddings")).await?;
+    }
+    Ok(())
 }
 
 /// Search-text cache: other models' rows are useless, stale ones and the long tail go.
@@ -948,9 +964,7 @@ mod tests {
         assert_eq!(empty, 0);
     }
 
-    #[sqlx::test(migrations = "../core/migrations")]
-    #[ignore = "requires PostgreSQL with pgvector"]
-    async fn embed_publishes_completed_and_partial_runs_once(pool: PgPool) {
+    async fn setup_embed(pool: &PgPool) -> (Booth, i64) {
         for key in ["AI_BASE_URL", "AI_API_KEY", "AI_EMBED_MODEL"] {
             assert!(std::env::var(key).ok().is_none_or(|v| v.trim().is_empty()), "unset {key}: this test's provider is a local stand-in");
         }
@@ -963,11 +977,109 @@ mod tests {
         let base_url = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         sqlx::query("insert into app_settings (key, value) values ('ai', $1), ('embed_state', '{\"model\":\"m\"}')")
-            .bind(json!({"base_url": base_url, "embed_model": "m", "api_key": "test"})).execute(&pool).await.unwrap();
+            .bind(json!({"base_url": base_url, "embed_model": "m", "api_key": "test"})).execute(pool).await.unwrap();
+        let id = sqlx::query_scalar("insert into jobs (kind, status) values ('embed', 'running') returning id").fetch_one(pool).await.unwrap();
+        (Booth::new().unwrap(), id)
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn embed_retries_failed_publication_once(pool: PgPool) {
+        let (booth, id) = setup_embed(&pool).await;
+        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+                     values (1, 'ok', 's', 'u', false, 'ok', now())").execute(&pool).await.unwrap();
+        let version = || sqlx::query_scalar::<_, i64>("select version from catalog_meta").fetch_one(&pool);
+        let before = version().await.unwrap();
+        // Only this scratch database rejects the publication; the vector batch commits first.
+        sqlx::query("alter table catalog_meta add constraint refuse_publication check (false) not valid").execute(&pool).await.unwrap();
+        let params = json!({});
+        let err = embed(&mut Ctx::new(&pool, &booth, id), &params).await.unwrap_err();
+        assert!(err.to_string().contains("refuse_publication"), "{err}");
+        assert_eq!(sqlx::query_scalar::<_, i64>("select count(embedding) from items").fetch_one(&pool).await.unwrap(), 1);
+        assert_eq!(version().await.unwrap(), before);
+        sqlx::query("alter table catalog_meta drop constraint refuse_publication").execute(&pool).await.unwrap();
+        let (mut a, mut b) = (Ctx::new(&pool, &booth, id), Ctx::new(&pool, &booth, id));
+        let (a, b) = tokio::try_join!(embed(&mut a, &params), embed(&mut b, &params)).unwrap();
+        assert_eq!((a.as_str(), b.as_str()), ("0 items embedded with m", "0 items embedded with m"));
+        assert_eq!(version().await.unwrap(), before + 1);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn embed_write_waits_for_inflight_publication(pool: PgPool) {
+        sqlx::raw_sql("insert into app_settings (key, value) values ('embed_state', '{\"model\":\"m\",\"pending\":true}');
+                       insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+                       values (1, 'ok', 's', 'u', false, 'ok', now())").execute(&pool).await.unwrap();
+        let version = || sqlx::query_scalar::<_, i64>("select version from catalog_meta").fetch_one(&pool);
+        let before = version().await.unwrap();
+        let row: EmbedRow = sqlx::query_as(EMBED_ROWS_SELECT).bind(i64::MAX).bind(1i64).fetch_one(&pool).await.unwrap();
+        let write = || sqlx::query_scalar::<_, i64>(EMBEDDING_UPDATE).bind(vec![row.0])
+            .bind(vec![HalfVector::from_f32_slice(&vec![0.125; DIMS])]).bind(vec![&row.5]);
+        let mut drain = pool.begin().await.unwrap();
+        sqlx::query(PUBLISH_PENDING_EMBEDDINGS).execute(&mut *drain).await.unwrap();
+        // The writer's snapshot still sees pending. It must lock that row, not skip setting the marker.
+        let mut writer = pool.begin().await.unwrap();
+        sqlx::query("set local lock_timeout = '100ms'").execute(&mut *writer).await.unwrap();
+        let err = write().fetch_one(&mut *writer).await.unwrap_err();
+        assert_eq!(err.as_database_error().unwrap().code().as_deref(), Some("55P03"));
+        writer.rollback().await.unwrap();
+        drain.commit().await.unwrap();
+        assert_eq!(write().fetch_one(&pool).await.unwrap(), 1);
+        publish_pending_embeddings(&pool).await.unwrap();
+        assert_eq!(version().await.unwrap(), before + 2);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn embed_recovers_interrupted_changes_at_job_and_daemon_start(pool: PgPool) {
+        let (booth, id) = setup_embed(&pool).await;
+        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+                     select i, 'ok', 's', 'u', false, 'ok', now() from generate_series(1, 2) i").execute(&pool).await.unwrap();
+        let version = || sqlx::query_scalar::<_, i64>("select version from catalog_meta").fetch_one(&pool);
+        let before = version().await.unwrap();
+        // Stop after a committed batch, without invoking the job's final publication.
+        let params = json!({"limit": 1});
+        assert_eq!(embed_items(&mut Ctx::new(&pool, &booth, id), &params).await.unwrap(), "1 items embedded with m");
+        assert_eq!(version().await.unwrap(), before);
+        assert_eq!(embed(&mut Ctx::new(&pool, &booth, id), &params).await.unwrap(), "1 items embedded with m");
+        assert_eq!(version().await.unwrap(), before + 2);
+
+        // A model reset is a publishable change even if no replacement vectors were written.
+        sqlx::query("update app_settings set value = value || '{\"embed_model\":\"n\"}' where key = 'ai'").execute(&pool).await.unwrap();
+        assert_eq!(embed_items(&mut Ctx::new(&pool, &booth, id), &json!({"limit": 0})).await.unwrap(), "0 items embedded with n");
+        assert_eq!(version().await.unwrap(), before + 2);
+        crate::start(&pool).await.unwrap();
+        crate::start(&pool).await.unwrap();
+        assert_eq!(version().await.unwrap(), before + 3);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn embed_rolls_back_vector_writes_and_model_clear_without_marker(pool: PgPool) {
+        let (booth, id) = setup_embed(&pool).await;
+        sqlx::raw_sql("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
+                       values (1, 'ok', 's', 'u', false, 'ok', now());
+                       alter table app_settings add constraint refuse_marker check (key <> 'embed_state' or not (value ? 'pending'))")
+            .execute(&pool).await.unwrap();
+        let count = || sqlx::query_scalar::<_, i64>("select count(embedding) from items").fetch_one(&pool);
+        let mut ctx = Ctx::new(&pool, &booth, id);
+        let err = embed(&mut ctx, &json!({})).await.unwrap_err();
+        assert!(err.to_string().contains("refuse_marker"), "{err}");
+        assert_eq!(count().await.unwrap(), 0);
+        sqlx::query("update items set embedding = $1").bind(HalfVector::from_f32_slice(&vec![0.125; DIMS])).execute(&pool).await.unwrap();
+        sqlx::query("update app_settings set value = value || '{\"embed_model\":\"n\"}' where key = 'ai'").execute(&pool).await.unwrap();
+        let err = embed(&mut ctx, &json!({"limit": 0})).await.unwrap_err();
+        assert!(err.to_string().contains("refuse_marker"), "{err}");
+        assert_eq!(count().await.unwrap(), 1);
+        assert_eq!(sqlx::query_scalar::<_, String>("select value->>'model' from app_settings where key = 'embed_state'").fetch_one(&pool).await.unwrap(), "m");
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn embed_publishes_completed_and_partial_runs_once(pool: PgPool) {
+        let (booth, id) = setup_embed(&pool).await;
         sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at)
                      select i, case when i = 1 then 'fail' else 'ok' end, 's', 'u', false, 'ok', now() from generate_series(1, 3) i").execute(&pool).await.unwrap();
-        let id = sqlx::query_scalar("insert into jobs (kind, status) values ('embed', 'running') returning id").fetch_one(&pool).await.unwrap();
-        let booth = Booth::new().unwrap();
         let mut ctx = Ctx::new(&pool, &booth, id);
         let params = json!({"batch": 1, "concurrency": 1});
         let version = || sqlx::query_scalar::<_, i64>("select version from catalog_meta").fetch_one(&pool);
@@ -1010,19 +1122,22 @@ mod tests {
         ] {
             sqlx::query(edit).execute(&pool).await.unwrap();
         }
+        sqlx::query("insert into app_settings (key, value) values ('embed_state', '{\"model\":\"m\"}')").execute(&pool).await.unwrap();
         let values = vec![0.125; DIMS];
         let vectors = vec![HalfVector::from_f32_slice(&values); ids.len()];
-        let written = sqlx::query(EMBEDDING_UPDATE).bind(&ids).bind(&vectors).bind(&fingerprints)
-            .execute(&pool).await.unwrap().rows_affected();
+        let written: i64 = sqlx::query_scalar(EMBEDDING_UPDATE).bind(&ids).bind(&vectors).bind(&fingerprints)
+            .fetch_one(&pool).await.unwrap();
         assert_eq!(written, 2);
         let stored: Vec<(i64, bool)> = sqlx::query_as("select id, embedding is not null from items order by id").fetch_all(&pool).await.unwrap();
         assert_eq!(stored, [(1, true), (2, false), (3, false), (4, false), (5, false), (6, true), (7, false), (8, false)]);
         let same: bool = sqlx::query_scalar("select bool_and(halfvec_send(embedding) = halfvec_send($1::halfvec)) from items where embedding is not null")
             .bind(&vectors[0]).fetch_one(&pool).await.unwrap();
         assert!(same);
-        let empty = sqlx::query(EMBEDDING_UPDATE).bind(Vec::<i64>::new()).bind(Vec::<HalfVector>::new()).bind(Vec::<String>::new())
-            .execute(&pool).await.unwrap().rows_affected();
+        publish_pending_embeddings(&pool).await.unwrap();
+        let empty: i64 = sqlx::query_scalar(EMBEDDING_UPDATE).bind(Vec::<i64>::new()).bind(Vec::<HalfVector>::new()).bind(Vec::<String>::new())
+            .fetch_one(&pool).await.unwrap();
         assert_eq!(empty, 0);
+        assert!(!sqlx::query_scalar::<_, bool>("select value ? 'pending' from app_settings where key = 'embed_state'").fetch_one(&pool).await.unwrap());
     }
 
     #[sqlx::test(migrations = "../core/migrations")]

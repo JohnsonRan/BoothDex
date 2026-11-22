@@ -144,6 +144,7 @@ fn lane(kind: &str) -> &str {
 async fn start(pool: &PgPool) -> Result<()> {
     sqlx::query("update jobs set status = 'failed', finished_at = now(), error = 'worker restarted' where status in ('running', 'cancelling')").execute(pool).await?;
     sqlx::query("update worker_status set started_at = now(), version = $1").bind(env!("CARGO_PKG_VERSION")).execute(pool).await?;
+    jobs::publish_pending_embeddings(pool).await?;
     relink::queue(pool).await
 }
 
