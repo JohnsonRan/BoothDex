@@ -16,7 +16,7 @@ A BOOTH item link (`booth.pm/<lang>/items/<id>` or `<shop>.booth.pm/items/<id>`)
 - An avatar shows among the items.
 - An item relisted as a new one shows although other searches leave it out.
 - The filters and the adult setting still apply.
-- A sort other than relevance (a search's default) places the item like any other result.
+- Relevance puts the exact item first in either direction, before pagination. A sort other than relevance places it like any other result.
 - Such a search is not sent to the AI provider and is not searched as translated tags.
 - A number that is no item's id is searched as text.
 
@@ -35,7 +35,7 @@ A BOOTH item link (`booth.pm/<lang>/items/<id>` or `<shop>.booth.pm/items/<id>`)
 
 - BOOTH tags also match by their English, Japanese, Korean and Chinese words in the tag dictionary, as whole words only. "裙子" finds the items tagged スカート; "hair" does not find a tag translated as "chair".
 - A query of up to three words is also searched as up to three BOOTH tags that translate it. These tags are carried by the items whose titles match the query. Their own title matches largely overlap the query's among the items titled in the query's language, so "skirt" also finds the items tagged only スカート.
-- Items found this way rank among the word matches at half weight. The results page names the tags and offers to search without them.
+- Items found this way rank among the word matches at half weight. The results page names the tags and offers to search without them only if the current filters leave an item no other match found.
 - Palette suggestions search these tags too. RSS feeds do not, so a feed's items do not move with the tags chosen to translate its query; its words still match the tag dictionary's words.
 
 ## Semantic search (optional)

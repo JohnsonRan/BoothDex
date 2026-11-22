@@ -462,7 +462,7 @@ impl Catalog {
 
     /// The text query's hits and scores, joined by the meaning-based matches when there are any, by the matches of
     /// the BOOTH tags that translate `expand` (expansion.rs) when it is given, and by the item the query names by its
-    /// link or number, scored above them all.
+    /// link or number, pinned in relevance order.
     fn text_hits(&self, r: &SearchRequest, semantic: Option<Semantic>, expand: Option<&str>) -> Result<Option<TextHits>> {
         let Some(q) = r.q.as_deref() else { return Ok(None) };
         let TextMatches { mut hits, mut scores, typo } = self.text.search(q)?;
@@ -498,7 +498,8 @@ impl Catalog {
                 *best = best.max(s);
             }
         }
-        let expansion: RoaringBitmap = translated.keys().copied().collect();
+        let pinned = self.referenced(q).flatten();
+        hits.extend(pinned);
         if semantic.is_some() || !translated.is_empty() {
             let (ids, categories) = semantic.map_or((&[][..], &[][..]), |sem| (sem.ids, sem.categories));
             let docs: Vec<u32> = ids.iter().filter_map(|id| self.doc_of.get(id)).copied().filter(|d| fits.as_ref().is_none_or(|f| f.contains(*d))).collect();
@@ -508,14 +509,11 @@ impl Catalog {
             }
             scores = fuse(&scores, &docs, &translated, &cat);
             hits.extend(docs);
-            hits |= &expansion;
             hits |= cat;
         }
-        let pinned = self.referenced(q).flatten();
-        if let Some(d) = pinned {
-            hits.insert(d);
-            scores.insert(d, f32::INFINITY);
-        }
+        // Overlap keeps its translation vote in fusion, but only a new hit explains an expansion.
+        let expansion: RoaringBitmap = translated.keys().copied().filter(|d| !hits.contains(*d)).collect();
+        hits |= &expansion;
         Ok(Some(TextHits { matches: TextMatches { hits, scores, typo }, expanded, expansion, pinned }))
     }
 
@@ -584,11 +582,14 @@ impl Catalog {
                 _ => self.trending[i] as f64,
             }
         };
+        let pinned = text.as_ref().and_then(|t| t.pinned);
         let cmp = |a: &u32, b: &u32| {
             let o = key(*b).total_cmp(&key(*a));
             let o = if asc { o.reverse() } else { o };
-            // equal relevance (e.g. a model's items that don't mention it by name): trending first
-            let o = if sort == "relevant" { o.then_with(|| self.trending[*b as usize].total_cmp(&self.trending[*a as usize])) } else { o };
+            let o = if sort == "relevant" {
+                (pinned == Some(*b)).cmp(&(pinned == Some(*a))).then(o)
+                    .then_with(|| self.trending[*b as usize].total_cmp(&self.trending[*a as usize]))
+            } else { o };
             o.then(a.cmp(b))
         };
 
@@ -1028,6 +1029,7 @@ mod tests {
             doc.title = title.into();
         }
         d[0].relisted = true;
+        d[1].likes = 10;
         d[2].relisted = true;
         d[3].is_adult = true;
         d[4].booth_category = Some(AVATAR_CATEGORY.into());
@@ -1035,6 +1037,12 @@ mod tests {
         let found = |q: &str| c.search_plain(q, 0, None).unwrap().ids;
         // the named item first, then what the number finds as text; of the re-uploaded items only the named one shows
         assert_eq!(found("q=10001"), [10_001, 10_002]);
+        for dir in ["asc", "desc"] {
+            let q = format!("q=10001&sort=relevant&dir={dir}&pageSize=1");
+            assert_eq!(found(&q), [10_001], "{q}");
+            assert_eq!(found(&format!("{q}&page=2")), [10_002]);
+        }
+        assert_eq!(found("q=10001&sort=likes&dir=desc&pageSize=1"), [10_002]);
         assert_eq!(found("q=https://booth.pm/ja/items/10001"), [10_001]);
         // it shows in every view: an avatar among the items, an unsupported avatar among the supported ones, an item
         // that is no favourite among the favourites
@@ -1199,6 +1207,30 @@ mod tests {
         // filtered down to a word match, the results hold nothing the translation found
         assert_eq!(run("q=skirt&free=1", Some("skirt")).ids, [1]);
         assert!(run("q=skirt&free=1", Some("skirt")).expanded_with.is_empty());
+    }
+
+    #[test]
+    fn an_expansion_must_add_a_filtered_result_but_overlap_still_scores() {
+        let mut c = crate::expansion::tests::catalogue();
+        c.cats.add("clothing", c.doc(17).unwrap());
+        let categories = ["clothing".to_owned()];
+        let semantic = Semantic { ids: &[16], categories: &categories, models: &[], rest: "skirt" };
+        let query = request("q=skirt&v=favourites&pageSize=1");
+        let run = |ids: &[i64], expand| c.search(&query, 0, Some(&c.docs_for(ids)), Some(semantic), expand, false).unwrap();
+        // The translated hits 16 and 17 are also found by meaning and category respectively.
+        for id in [16, 17] {
+            let r = run(&[id], Some("skirt"));
+            assert_eq!(r.ids, [id]);
+            assert!(r.expanded_with.is_empty(), "{id}: {:?}", r.expanded_with);
+        }
+        // 18 is translation-only; the notice describes all filtered hits, not just the page.
+        let r = run(&[16, 18], Some("skirt"));
+        assert_eq!((r.ids, r.count, r.expanded_with), (vec![16], 2, vec!["スカート".to_owned()]));
+        // 16's translation vote takes it above the word match 15, even when the notice is hidden.
+        assert_eq!(run(&[15, 16], None).ids, [15]);
+        let r = run(&[15, 16], Some("skirt"));
+        assert_eq!(r.ids, [16]);
+        assert!(r.expanded_with.is_empty());
     }
 
     #[test]
