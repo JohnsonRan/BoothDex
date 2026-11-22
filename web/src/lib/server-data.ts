@@ -5,6 +5,7 @@ import { cacheLife } from "next/cache";
 import { cookies, headers } from "next/headers";
 import {
   type ApiStarting,
+  isStartupResponse,
   type PassOffer,
   probeHealth,
   retryAfterMs,
@@ -118,7 +119,12 @@ export async function searchItems(
   try {
     const result = await getJson<SearchResponse>(
       `/api/search?${searchQuery(filters, page, PAGE_SIZE)}&fields=card${noSemantic ? "&sem=0" : ""}${without.length ? `&without=${without.map((g) => g.join(",")).join("+")}` : ""}`,
-      { cache: "no-store", headers: forwarded },
+      {
+        cache: "no-store",
+        headers: forwarded,
+        // Opt out of Next's memoized body clone so cancelling a 503 reaches the source.
+        signal: new AbortController().signal,
+      },
     );
     return { state: "ok", result, ms: performance.now() - start };
   } catch (e) {
@@ -126,10 +132,7 @@ export async function searchItems(
     if (res instanceof Response) {
       if (res.status === 429)
         return { state: "error", limited: true, offer: await passOffer(e) };
-      if (
-        res.status === 503 &&
-        (await res.json().catch(() => null))?.starting === true
-      )
+      if (await isStartupResponse(res))
         return { state: "starting", retryAfterMs: retryAfterMs(res) };
     }
     const delay = await probeHealth(API_ORIGIN);

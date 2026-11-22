@@ -51,13 +51,43 @@ export function retryAfterMs(response?: Response): number {
   return ms > 0 ? Math.min(ms, 2_147_483_647) : 3000;
 }
 
+async function withinRecoveryDeadline<T>(
+  read: (signal: AbortSignal) => Promise<T>,
+) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3000);
+  try {
+    return await read(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Null when healthy, otherwise the delay before checking again. */
 export async function probeHealth(origin: string, signal?: AbortSignal) {
-  const res = await fetch(`${origin}/api/health`, {
-    cache: "no-store",
-    signal,
-  }).catch(() => undefined);
+  const res = await withinRecoveryDeadline((deadline) =>
+    fetch(`${origin}/api/health`, {
+      cache: "no-store",
+      signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
+    }),
+  ).catch(() => undefined);
+  void res?.body?.cancel().catch(() => {});
   return res?.ok ? null : retryAfterMs(res);
+}
+
+/** Inspect only the 503 body, without putting a deadline on the search itself. */
+export async function isStartupResponse(res: Response) {
+  const { body } = res;
+  if (res.status !== 503 || !body) return false;
+  const type = res.headers.get("content-type");
+  if (type && !/^[^;\s]+[/+]json\s*(?:;|$)/i.test(type)) {
+    void body.cancel().catch(() => {});
+    return false;
+  }
+  return withinRecoveryDeadline(async (signal) => {
+    const bounded = body.pipeThrough(new TransformStream(), { signal });
+    return (await new Response(bounded).json())?.starting === true;
+  }).catch(() => false);
 }
 
 /** The check that lifts the stricter rate limits, set by components/verification/pass-host.tsx: true once it passed,

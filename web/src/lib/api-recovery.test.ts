@@ -8,6 +8,7 @@ const calls: {
   path: string;
   signal?: AbortSignal | null;
   answer: (r: Response) => void;
+  reject: (reason: unknown) => void;
 }[] = [];
 const cleanups: (() => void)[] = [];
 
@@ -15,8 +16,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   calls.length = 0;
   globalThis.fetch = ((path: string, init?: RequestInit) =>
-    new Promise<Response>((answer) =>
-      calls.push({ path, signal: init?.signal, answer }),
+    new Promise<Response>((answer, reject) =>
+      calls.push({ path, signal: init?.signal, answer, reject }),
     )) as typeof fetch;
 });
 afterEach(() => {
@@ -60,7 +61,7 @@ test("startup views share one slow probe, follow Retry-After and reload once for
   expect(calls).toHaveLength(0);
   jest.advanceTimersByTime(1);
   expect(calls.map((c) => c.path)).toEqual(["/api/health"]);
-  jest.advanceTimersByTime(20_000);
+  jest.advanceTimersByTime(1000);
   expect(calls).toHaveLength(1);
   stop();
   expect(calls[0].signal?.aborted).toBe(false);
@@ -75,6 +76,37 @@ test("startup views share one slow probe, follow Retry-After and reload once for
   expect(calls).toHaveLength(2);
   expect(stale).not.toHaveBeenCalled();
   expect(reload).toHaveBeenCalledTimes(1);
+});
+
+test("a hung probe times out, then the remaining subscriber gets one retry", async () => {
+  const stale = mock(() => {});
+  const reload = mock(() => {});
+  const stop = subscribe(stale);
+  subscribe(reload);
+  jest.advanceTimersByTime(5000);
+  expect(calls).toHaveLength(1);
+  stop();
+  const hung = calls[0];
+  hung.signal?.addEventListener("abort", () =>
+    hung.reject(hung.signal?.reason),
+  );
+  jest.advanceTimersByTime(3000);
+  await new Promise<void>((resolve) => nextTurn(resolve));
+  expect(hung.signal?.aborted).toBe(true);
+  expect(calls).toHaveLength(1);
+  expect(reload).not.toHaveBeenCalled();
+  jest.advanceTimersByTime(2999);
+  expect(calls).toHaveLength(1);
+  jest.advanceTimersByTime(1);
+  expect(calls).toHaveLength(2);
+  expect(calls[1].signal?.aborted).toBe(false);
+  const cancel = mock(() => {});
+  calls[1].answer(new Response(new ReadableStream({ cancel })));
+  await new Promise<void>((resolve) => nextTurn(resolve));
+  expect(cancel).toHaveBeenCalledTimes(1);
+  expect(reload).toHaveBeenCalledTimes(1);
+  expect(stale).not.toHaveBeenCalled();
+  expect(jest.getTimerCount()).toBe(0);
 });
 
 test("the last unmount cancels the timer or flight; a late answer cannot reload a new view", async () => {
