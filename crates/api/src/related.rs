@@ -159,7 +159,7 @@ pub(crate) struct TagCentroids {
 impl TagCentroids {
     /// The centroids a new snapshot of `catalog` uses: `previous` while it is from the current embedding model and
     /// younger than `REBUILD_AFTER`, else built again from every item embedding (in production, 2026-11-20, about
-    /// 212k of them, 435 MB as halfvec). `None` when no item has been embedded.
+    /// 212k of them, 435 MB as halfvec). `None` until at least one tag has enough embedded items.
     pub(crate) async fn current(pool: &PgPool, catalog: &Catalog, previous: Option<Arc<Self>>) -> Result<Option<Arc<Self>>> {
         // one view of the database: the worker clears the embeddings when the model changes, then records the model
         let mut tx = pool.begin().await?;
@@ -173,6 +173,10 @@ impl TagCentroids {
         // which tags get a centroid first, from the ids alone, so the sums take no memory for the others
         let embedded: Vec<i64> = sqlx::query_scalar("select id from items where embedding is not null").fetch_all(&mut *tx).await?;
         let mut sums = Sums::new(catalog, embedded);
+        // An empty set must not carry over for six hours once the worker has embedded enough items.
+        if sums.sums.is_empty() {
+            return Ok(None);
+        }
         let mut rows = sqlx::query_as::<_, (i64, HalfVector)>("select id, embedding from items where embedding is not null").fetch(&mut *tx);
         while let Some((id, v)) = rows.try_next().await? {
             sums.add(id, v.as_slice().iter().map(|x| x.to_f32()));
@@ -983,13 +987,18 @@ mod tests {
         let c = catalogue(&[(20, "A", &["a"], 5)], |_, _| {});
         assert!(TagCentroids::current(&pool, &c, None).await.unwrap().is_none(), "no item embedded yet");
         sqlx::query("insert into app_settings (key, value) values ('embed_state', '{\"model\": \"m\"}')").execute(&pool).await.unwrap();
-        let built = TagCentroids::current(&pool, &c, None).await.unwrap().unwrap();
-        assert_eq!((built.model.as_str(), built.len()), ("m", 0));
-        let again = TagCentroids::current(&pool, &c, Some(built.clone())).await.unwrap().unwrap();
-        assert!(Arc::ptr_eq(&built, &again));
-        let old = Arc::new(TagCentroids { built: chrono::Utc::now() - REBUILD_AFTER, keys: vec![], vectors: vec![], model: "m".into() });
-        assert!(!Arc::ptr_eq(&old, &TagCentroids::current(&pool, &c, Some(old.clone())).await.unwrap().unwrap()));
+        let empty = TagCentroids::current(&pool, &c, None).await.unwrap();
+        assert!(empty.is_none(), "do not cache an empty set for the new model");
+        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, embedding)
+                     select i, 'A', 's', 'u', false, 'ok', now(), $1::halfvec from generate_series(1, 5) i")
+            .bind(HalfVector::from_f32_slice(&unit(0))).execute(&pool).await.unwrap();
+        let mut built = TagCentroids::current(&pool, &c, empty).await.unwrap().unwrap();
+        assert_eq!(built.keys, ["a"], "first embeddings reach the next snapshot");
+        assert!(Arc::ptr_eq(&built, &TagCentroids::current(&pool, &c, Some(built.clone())).await.unwrap().unwrap()));
+        Arc::get_mut(&mut built).unwrap().built -= REBUILD_AFTER;
+        let fresh = TagCentroids::current(&pool, &c, Some(built.clone())).await.unwrap().unwrap();
+        assert!(!Arc::ptr_eq(&built, &fresh));
         sqlx::query("update app_settings set value = '{\"model\": \"n\"}' where key = 'embed_state'").execute(&pool).await.unwrap();
-        assert_eq!(TagCentroids::current(&pool, &c, Some(built)).await.unwrap().unwrap().model, "n");
+        assert_eq!(TagCentroids::current(&pool, &c, Some(fresh)).await.unwrap().unwrap().model, "n");
     }
 }
