@@ -68,28 +68,46 @@ test("a known non-JSON 503 checks health without reading or waiting for its body
   expect(jest.getTimerCount()).toBe(0);
 });
 
-test("a stalled JSON 503 releases its body and a stalled fallback health probe times out", async () => {
-  const { res, cancel } = stalled503("application/json; charset=utf-8");
+test("a proxy's text/plain 503 can still carry the explicit startup reply", async () => {
   const outcome = search(
-    res,
-    (init) =>
-      new Promise<Response>((_, reject) =>
-        init?.signal?.addEventListener("abort", () =>
-          reject(init.signal?.reason),
-        ),
-      ),
+    new Response('{"starting":true}', {
+      status: 503,
+      headers: {
+        "Content-Type": "Text/Plain; charset=utf-8",
+        "Retry-After": "9",
+      },
+    }),
   );
-  await turn();
+  expect(await outcome).toEqual({ state: "starting", retryAfterMs: 9000 });
   expect(paths).toEqual(["/api/search"]);
-  jest.advanceTimersByTime(20_000);
-  await turn();
-  expect(cancel).toHaveBeenCalledTimes(1);
-  expect(paths).toEqual(["/api/search", "/api/health"]);
-  jest.advanceTimersByTime(20_000);
-  await turn();
-  expect(await outcome).toEqual({ state: "starting", retryAfterMs: 3000 });
   expect(jest.getTimerCount()).toBe(0);
 });
+
+test.each(["application/json", "text/plain"])(
+  "a stalled %s 503 releases its body and a stalled fallback health probe times out",
+  async (type) => {
+    const { res, cancel } = stalled503(type);
+    const outcome = search(
+      res,
+      (init) =>
+        new Promise<Response>((_, reject) =>
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          ),
+        ),
+    );
+    await turn();
+    expect(paths).toEqual(["/api/search"]);
+    jest.advanceTimersByTime(20_000);
+    await turn();
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(paths).toEqual(["/api/search", "/api/health"]);
+    jest.advanceTimersByTime(20_000);
+    await turn();
+    expect(await outcome).toEqual({ state: "starting", retryAfterMs: 3000 });
+    expect(jest.getTimerCount()).toBe(0);
+  },
+);
 
 test("a slow successful search can finish without a deadline on its headers or body", async () => {
   const { promise, resolve } = Promise.withResolvers<Response>();

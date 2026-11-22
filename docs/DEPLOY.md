@@ -36,7 +36,7 @@ flowchart LR
 
 The API health check reports readiness, not process startup. `web` starts as soon as the `api` container is running so it can show the startup screen while the catalogue loads. During this interval `/api/health` returns 503 with `Retry-After: 5`; after loading it returns 200. Do not make `web` wait for `api` to be healthy: the reverse proxy would have no frontend to serve during that wait.
 
-A complete JSON startup response tells `web` to show the startup screen. If a proxy sends an HTML 503 or a JSON response that stalls, `web` checks health instead. A slow health check times out and the browser tries again; a stalled probe does not require visitors to reload the page.
+A complete JSON startup response tells `web` to show the startup screen. If a proxy sends an HTML 503 or a JSON response that stalls, `web` checks health instead. A slow health check times out and the browser tries again. Subsequent probes get more time to receive headers, so a healthy but slow proxy can still trigger recovery. A complete JSON startup reply relabelled as `text/plain` by a proxy is also recognized.
 
 Run exactly one `api` container; do not scale it ([why](SERVICES.md#one-api-container)). How `imgproxy`, the rate limits and Turnstile behave is in [Service behaviour](SERVICES.md).
 

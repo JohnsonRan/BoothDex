@@ -53,23 +53,32 @@ export function retryAfterMs(response?: Response): number {
 
 async function withinRecoveryDeadline<T>(
   read: (signal: AbortSignal) => Promise<T>,
+  unmount?: AbortSignal,
+  timeoutMs = 3000,
 ) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 3000);
+  const abort = () => controller.abort();
+  if (unmount?.aborted) abort();
+  else unmount?.addEventListener("abort", abort);
+  const timer = setTimeout(abort, timeoutMs);
   try {
     return await read(controller.signal);
   } finally {
     clearTimeout(timer);
+    unmount?.removeEventListener("abort", abort);
   }
 }
 
 /** Null when healthy, otherwise the delay before checking again. */
-export async function probeHealth(origin: string, signal?: AbortSignal) {
-  const res = await withinRecoveryDeadline((deadline) =>
-    fetch(`${origin}/api/health`, {
-      cache: "no-store",
-      signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
-    }),
+export async function probeHealth(
+  origin: string,
+  unmount?: AbortSignal,
+  timeoutMs?: number,
+) {
+  const res = await withinRecoveryDeadline(
+    (signal) => fetch(`${origin}/api/health`, { cache: "no-store", signal }),
+    unmount,
+    timeoutMs,
   ).catch(() => undefined);
   void res?.body?.cancel().catch(() => {});
   return res?.ok ? null : retryAfterMs(res);
@@ -79,8 +88,12 @@ export async function probeHealth(origin: string, signal?: AbortSignal) {
 export async function isStartupResponse(res: Response) {
   const { body } = res;
   if (res.status !== 503 || !body) return false;
-  const type = res.headers.get("content-type");
-  if (type && !/^[^;\s]+[/+]json\s*(?:;|$)/i.test(type)) {
+  const mime = res.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (mime && mime !== "text/plain" && !/[/+]json$/.test(mime)) {
     void body.cancel().catch(() => {});
     return false;
   }

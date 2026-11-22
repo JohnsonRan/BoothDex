@@ -16,11 +16,11 @@ export function watchApiRecovery(ready: () => void, delay: number) {
   waiters.add(notify);
   if (waiters.size === 1) {
     const controller = new AbortController();
-    const poll = async () => {
-      const next = await probeHealth("", controller.signal);
+    const poll = async (timeoutMs?: number) => {
+      const next = await probeHealth("", controller.signal, timeoutMs);
       if (controller.signal.aborted) return;
       if (next === null) waiters.values().next().value?.();
-      else timer = setTimeout(poll, next);
+      else timer = setTimeout(poll, next, 12_000);
     };
     let timer = setTimeout(poll, delay);
     stopProbe = () => {
