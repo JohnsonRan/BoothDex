@@ -1,12 +1,12 @@
 // Generated from the Rust response types (crates/api/src/api_types.rs). Do not edit:
 // change the Rust types, then run `UPDATE_API_TYPES=1 cargo test -p api api_types`.
 
-export type ItemResponse = { id: number, title: string, bio: string, author_name: string, author_uri: string, author_icon: string | null, booth_category: string | null, price_jpy: number | null, smart_price: number | null, likes: number, is_adult: boolean, content_rating: ContentRating | null, quest: string | null, features: Array<string>, status: Status, published_at: string | null, scraped_at: string, original_language: string | null, avatar_slug: string | null, supported: boolean, gender: Gender | null, needs_enrichment: boolean, last_listed_at: string | null, enrich_failures: number, media: Array<string>, booth_tags: Array<string>, variations: Array<Variation>, 
+export type ItemResponse = { id: number, title: string, bio: string, author_name: string, author_uri: string, author_icon: string | null, booth_category: string | null, price_jpy: number | null, smart_price: number | null, likes: number, is_adult: boolean, content_rating: ContentRating | null, quest: string | null, features: Array<string>, status: Status, published_at: string | null, scraped_at: string, original_language: string | null, avatar_slug: string | null, supported: boolean, gender: Gender | null, needs_enrichment: boolean, last_listed_at: string | null, enrich_failures: number, media: Array<string>, booth_tags: Array<string>, variations: Array<Variation>,
 /**
  * AI translations by language, plus `original_language`. Kept as raw JSON: a few rows carry stray keys, and
  * the API passes them through untouched. The site sees the documented shape.
  */
-translations: Translations, linked_avatars: Array<LinkedAvatar>, categories: Array<ItemCategory>, booth_images: Array<string> | null, booth_images_complete: boolean | null, 
+translations: Translations, linked_avatars: Array<LinkedAvatar>, categories: Array<ItemCategory>, booth_images: Array<string> | null, booth_images_complete: boolean | null,
 /**
  * delisted, but re-uploaded by the shop under this id
  */
@@ -28,30 +28,30 @@ export type ItemCategory = { slug: string, is_primary: boolean, };
 
 export type Translations = { zh?: Translation, en?: Translation, ja?: Translation, ko?: Translation, original_language?: string, };
 
-export type Translation = { title?: string, bio?: string, 
+export type Translation = { title?: string, bio?: string,
 /**
  * variation name -> translated name (null when the model returned none)
  */
 variations?: { [key in string]: string | null }, };
 
-export type SearchResponse = { count: number, page: number, totalPages: number, pageSize: number, sort: string, dir: string, boothCounts: { [key in string]: number }, smartCounts: { [key in string]: number }, featureCounts: { [key in string]: number }, items: Array<ItemResponse>, semantic: SemanticStatus, 
+export type SearchResponse = { count: number, page: number, totalPages: number, pageSize: number, sort: string, dir: string, boothCounts: { [key in string]: number }, smartCounts: { [key in string]: number }, featureCounts: { [key in string]: number }, items: Array<ItemResponse>, semantic: SemanticStatus,
 /**
  * what the search read the query's words as: the site marks those tokens
  */
-recognized: Array<Recognized>, trace: Array<TraceStep>, timing: Timing, 
+recognized: Array<Recognized>, trace: Array<TraceStep>, timing: Timing,
 /**
  * for a search that finds nothing, asked with `without=`: what it finds without each group, in order
  */
-widerCounts: Array<number>, 
+widerCounts: Array<number>,
 /**
  * the query's words matched nothing as typed, so its word matches allow one typo per long word; or a word was
  * read as the model whose name it misspells
  */
-typoTolerant: boolean, 
+typoTolerant: boolean,
 /**
  * a word was read as the model whose name it misspells; `typo=0` asks for the words as typed
  */
-nameTypo: boolean, 
+nameTypo: boolean,
 /**
  * BOOTH tags that translate the query, searched too, when items only they found are among the results;
  * `xl=0` asks for the words alone
@@ -60,11 +60,11 @@ expandedWith: Array<string>, };
 
 export type SemanticStatus = "used" | "off" | "unavailable" | "pending" | "skipped";
 
-export type Recognized = { kind: RecognizedKind, slug: string, 
+export type Recognized = { kind: RecognizedKind, slug: string,
 /**
  * as typed
  */
-words: Array<string>, 
+words: Array<string>,
 /**
  * the words misspell the model's name, which no item has as a word
  */
@@ -76,31 +76,31 @@ export type TraceStep = { step: string, ms: number, };
 
 export type Timing = { searchMs: number, totalMs: number, };
 
-export type RelatedResponse = { 
+export type RelatedResponse = {
 /**
  * best first; empty when there is nothing to offer
  */
 searches: Array<RelatedSearch>, };
 
-export type RelatedSearch = { 
+export type RelatedSearch = {
 /**
  * the tag as most items spell it
  */
-label: string, 
+label: string,
 /**
  * the query that searches it: the model names of the asked query, then the tag
  */
 q: string, };
 
-export type GuestbookPage = { 
+export type GuestbookPage = {
 /**
  * newest first
  */
-entries: Array<GuestbookEntry>, 
+entries: Array<GuestbookEntry>,
 /**
  * older messages follow; ask again with `before` set to the last id
  */
-more: boolean, 
+more: boolean,
 /**
  * the widget's site key; null while the guestbook is closed (either Turnstile key unset)
  */

@@ -42,8 +42,10 @@ fn generate() -> String {
     );
     for d in decls {
         out.push_str("\nexport ");
-        out.push_str(&d);
-        out.push('\n');
+        for line in d.lines() {
+            out.push_str(line.trim_end());
+            out.push('\n');
+        }
     }
     out
 }
