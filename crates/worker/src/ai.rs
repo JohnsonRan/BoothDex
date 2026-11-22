@@ -392,7 +392,7 @@ fn number(digits: &str) -> String {
     if n.is_empty() { "0".to_owned() } else { n.to_owned() }
 }
 
-/// The numbers a title may write in digits: its original digits and whole CJK numerals up to 99.
+/// The numbers a title may write in digits: its original digits, single CJK digits, and tens written with 十.
 /// Larger units stay in the same run so a fragment of a larger number cannot license a smaller one.
 fn numbers_of_original(original: &str) -> std::collections::BTreeSet<String> {
     let mut out = numbers(original);
