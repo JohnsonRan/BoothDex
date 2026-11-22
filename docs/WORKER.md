@@ -62,7 +62,7 @@ Pausing the schedule does not stop a chain that is already running. Cancel the a
 
 When an update adds avatars or aliases, the worker links every item to the added names once:
 
-- At startup it queues `enrich`: an ordinary run while the enrich schedule is enabled, and one with `{"relink_only": true}` while it is disabled. A `relink_only` run makes no AI request and does not chain.
+- At startup it queues `enrich`: a run with the schedule's configured parameters (including batch size and concurrency) while the schedule is enabled, and one with `{"relink_only": true}` while it is disabled. A `relink_only` run makes no AI request and does not chain.
 - Either run first matches every item, listed or delisted, against the added names only, inserts the links it finds and records the names in `catalog_meta.avatar_names`. Links by earlier names, VRCatalogue's among them, stay as they are.
 - A cancelled run starts again with the next `enrich`.
 - It never deletes a link. A migration that removes a name deletes that name's links itself.

@@ -105,7 +105,7 @@ pub async fn queue(pool: &PgPool) -> Result<()> {
     if !Names::read(pool).await?.added().is_empty() {
         sqlx::query(
             "insert into jobs (kind, params, created_by)
-             select 'enrich', case when coalesce((select enabled from job_schedules where kind = 'enrich'), false) then '{}' else '{\"relink_only\": true}' end::jsonb, 'avatars'
+             select 'enrich', coalesce((select params from job_schedules where kind = 'enrich' and enabled), '{\"relink_only\": true}'::jsonb), 'avatars'
              on conflict do nothing",
         )
         .execute(pool)
@@ -220,7 +220,8 @@ mod tests {
             sqlx::query("delete from jobs").execute(&pool).await.unwrap();
             params
         };
-        let schedule = |on: bool| sqlx::query("update job_schedules set enabled = $1 where kind = 'enrich'").bind(on).execute(&pool);
+        let params = serde_json::json!({ "batch": 17, "concurrency": 2 });
+        let schedule = |on: bool| sqlx::query("update job_schedules set enabled = $1, params = $2 where kind = 'enrich'").bind(on).bind(&params).execute(&pool);
         record_current(&pool).await;
         queue(&pool).await.unwrap();
         assert!(queued().await.is_empty());
@@ -231,6 +232,6 @@ mod tests {
         assert_eq!(queued().await, [serde_json::json!({ "relink_only": true })]);
         schedule(true).await.unwrap();
         queue(&pool).await.unwrap();
-        assert_eq!(queued().await, [serde_json::json!({})]);
+        assert_eq!(queued().await, [params]);
     }
 }
