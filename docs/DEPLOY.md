@@ -62,7 +62,7 @@ flowchart TD
 | RAM | **4 GB** + 2 GB swap | **6 GB** | 6 GB keeps the catalogue reload peak and the caches in RAM. Per-container figures: [Measurements](MEASUREMENTS.md#production-by-container) |
 | CPU | 2 vCPU | 4 vCPU | AVIF transcoding and Tantivy index rebuilds are CPU-bound |
 | Disk | 40 GB SSD | 60 GB+ SSD | Database ~3 GB (~4 GB with embeddings), archived images ~1 GB, `imgcache` 10 GB (configurable), container images and backups |
-| OS | Linux with Docker or Podman (+ Compose) | — | Prebuilt `linux/amd64` images are published to `ghcr.io` |
+| OS | `linux/amd64` or `linux/arm64` with Docker or Podman (+ Compose) | — | Compose pulls the image for the host architecture |
 
 ## 2. Get the stack files (and optional data bundle)
 
@@ -76,7 +76,8 @@ curl -fLO https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/co
 curl -fLo .env https://raw.githubusercontent.com/JohnsonRan/BoothDex/master/deploy/.env.example
 ```
 
-To build from source instead (for example on `arm64` or with local changes):
+On ARM64, use `latest` or a `sha-` tag published with ARM64 support. Older `sha-` tags may only contain AMD64 images.
+To build from source instead (for example, with local changes):
 
 ```sh
 git clone https://github.com/JohnsonRan/BoothDex.git /srv/boothdex/app
@@ -226,6 +227,8 @@ An `.env` copied from `.env.example` before the default became `127.0.0.1:3100` 
 Cleanup runs automatically, and no manual `VACUUM` is needed. `imgcache` and `textindex` are safe to lose ([details](SERVICES.md#cleanup)).
 
 ### Updates and rollback
+
+If the image workflow cannot rerun a failed publish job because its digest artifacts expired, rerun all jobs to rebuild those artifacts.
 
 An update applies its new database migrations when `api` and `worker` start, each migration in its own transaction. CI applies a pull request's migrations to the public data bundle (`.github/workflows/migrations.yml`). The bundle holds no rows of the account tables (`users`, `sessions`, `favourites`, `item_stats` and others), so migrations of those tables are tested on an empty database only.
 

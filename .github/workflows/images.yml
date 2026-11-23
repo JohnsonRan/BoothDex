@@ -1,4 +1,4 @@
-# Builds the four container images and pushes them to ghcr.io/<owner>/boothdex-{api,worker,imgproxy,web}.
+# Builds linux/amd64 and linux/arm64 images and publishes them to ghcr.io/<owner>/boothdex-{api,worker,imgproxy,web}.
 # Tags: `latest` and `sha-<short>` from master; `X.Y.Z` and `X.Y` from tags like v1.2.3.
 name: images
 
@@ -24,6 +24,10 @@ permissions:
   contents: read
   packages: write
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: images-${{ github.ref }}
   cancel-in-progress: true
@@ -33,10 +37,19 @@ jobs:
   test:
     uses: ./.github/workflows/test.yml
 
-  rust:
-    name: api, worker, imgproxy
+  build:
+    name: ${{ matrix.target }} (${{ matrix.arch }})
     needs: test
-    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target: [default, web]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -46,78 +59,89 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta-api
+      - id: repo
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: echo "prefix=ghcr.io/${OWNER,,}/boothdex" >> "$GITHUB_OUTPUT"
+      - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository_owner }}/boothdex-api
-          bake-target: meta-api
-          tags: |
+          tags: &image-tags |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-      - id: meta-worker
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/boothdex-worker
-          bake-target: meta-worker
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-      - id: meta-imgproxy
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/boothdex-imgproxy
-          bake-target: meta-imgproxy
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-      # one compile, three images built in parallel (deploy/docker-bake.hcl)
-      - uses: docker/bake-action@v7
+      # Push only by digest here. The publish job is the only writer of public tags.
+      - id: bake
+        uses: docker/bake-action@v7
         with:
           source: .
           files: |
             ./deploy/docker-bake.hcl
-            cwd://${{ steps.meta-api.outputs.bake-file }}
-            cwd://${{ steps.meta-worker.outputs.bake-file }}
-            cwd://${{ steps.meta-imgproxy.outputs.bake-file }}
-          push: true
+            cwd://${{ steps.meta.outputs.bake-file-labels }}
+          targets: ${{ matrix.target }}
           set: |
-            *.cache-from=type=gha,scope=rust
-            *.cache-to=type=gha,scope=rust,mode=max
+            *.platform=linux/${{ matrix.arch }}
+            api.output=type=image,name=${{ steps.repo.outputs.prefix }}-api,push-by-digest=true,push=true
+            worker.output=type=image,name=${{ steps.repo.outputs.prefix }}-worker,push-by-digest=true,push=true
+            imgproxy.output=type=image,name=${{ steps.repo.outputs.prefix }}-imgproxy,push-by-digest=true,push=true
+            web.output=type=image,name=${{ steps.repo.outputs.prefix }}-web,push-by-digest=true,push=true
+            *.cache-from=type=gha,scope=${{ matrix.target }}-${{ matrix.arch }}
+            *.cache-to=type=gha,scope=${{ matrix.target }}-${{ matrix.arch }},mode=max
+      - name: Record image digests
+        env:
+          METADATA: ${{ steps.bake.outputs.metadata }}
+          DIGESTS: digests-${{ matrix.target }}-${{ matrix.arch }}.json
+        run: |
+          jq -e 'with_entries(.value |= ."containerimage.digest") | select(length > 0)' \
+            <<< "$METADATA" > "$DIGESTS"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digests-${{ matrix.target }}-${{ matrix.arch }}
+          path: digests-${{ matrix.target }}-${{ matrix.arch }}.json
+          if-no-files-found: error
+          overwrite: true
 
-  web:
-    needs: test
+  publish:
+    name: Publish ${{ matrix.image }}
+    needs: build
+    strategy:
+      matrix:
+        image: [api, worker, imgproxy, web]
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digests-*
+          merge-multiple: true
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository_owner }}/boothdex-web
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: deploy/web.Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,scope=web,mode=max
+          images: ghcr.io/${{ github.repository_owner }}/boothdex-${{ matrix.image }}
+          tags: *image-tags
+      - name: Publish dual-platform index
+        env:
+          IMAGE: ${{ matrix.image }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          group=default
+          if [[ $IMAGE == web ]]; then group=web; fi
+          mapfile -t tags <<< "$TAGS"
+          repository=${tags[0]%:*}
+          for arch in amd64 arm64; do
+            digest=$(jq -er --arg image "$IMAGE" '.[$image] | strings | select(test("^sha256:[0-9a-f]{64}$"))' "digests-$group-$arch.json")
+            sources+=("$repository@$digest")
+          done
+
+          docker buildx imagetools create --dry-run "${sources[@]}" | jq -e '
+            [.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]
+          '
+          for tag in "${tags[@]}"; do tag_args+=(--tag "$tag"); done
+          docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"

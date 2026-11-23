@@ -20,7 +20,7 @@ BoothDex は、[BOOTH](https://booth.pm) で販売されている VRChat 向け�
 
 ## はじめに
 
-BoothDex は、PostgreSQL 17 (`pgvector`)、3 つの Rust サービス、Next.js サイトを Docker または Podman Compose で起動します。**4 GB 以上のメモリ**と 2 GB のスワップを備えた Linux サーバーが必要です (6 GB 推奨)。TLS リバースプロキシ向けに公開するのは単一ポート (`WEB_LISTEN`、既定値 `127.0.0.1:3100`) だけです。
+BoothDex は、PostgreSQL 17 (`pgvector`)、3 つの Rust サービス、Next.js サイトを Docker または Podman Compose で起動します。ビルド済みイメージは `linux/amd64` と `linux/arm64` に対応しています。サーバーには **4 GB 以上のメモリ**と 2 GB のスワップが必要です (メモリは 6 GB 推奨)。TLS リバースプロキシ向けに公開するのは単一ポート (`WEB_LISTEN`、既定値 `127.0.0.1:3100`) だけです。
 
 公開済みのデータバンドルを使ってインストールします。バンドルは 2026-11-04 時点のスナップショットで、約 21.7 万件の商品と販売終了商品のアーカイブ画像を収録しています (約 2.1 GB)。[デプロイガイド](docs/DEPLOY.md#optional-download-the-data-bundle) (英語) の手順でダウンロードしてから、次を実行します。
 
