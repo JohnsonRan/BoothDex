@@ -23,11 +23,11 @@ VRCatalogue. Item data and images belong to their creators; every item links bac
 
 ## Getting started
 
-BoothDex runs as PostgreSQL 17 (`pgvector`), three Rust services and the Next.js site, under Docker or Podman
+BoothDex runs as PostgreSQL 19 (`pgvector`), three Rust services and the Next.js site, under Docker or Podman
 Compose. It needs a Linux server with 4 GB or more of RAM and 2 GB of swap (6 GB recommended). The stack exposes one
 port, `WEB_LISTEN` (default `127.0.0.1:3100`), for your TLS reverse proxy.
 
-Install with the published data bundle: a 2026-11-04 snapshot of ~217k items with archived images of delisted items
+Install with the published data bundle: a 2026-11-21 snapshot of ~223k items with archived images of delisted items
 (~2.1 GB). Download it as the [deployment guide](docs/DEPLOY.md#optional-download-the-data-bundle) says, then:
 
 ```sh
@@ -164,7 +164,7 @@ flowchart LR
     web -- "/api/*" --> api["api (Rust, Axum :3000)<br/>Roaring bitmaps · Tantivy"]
     web -- "/img/*" --> imgproxy["imgproxy (Rust :3001)<br/>foyer AVIF cache"]
     worker["worker (Rust)<br/>booth · ai · embed lanes"]
-    pg[("PostgreSQL 17<br/>+ pgvector")]
+    pg[("PostgreSQL 19<br/>+ pgvector")]
 
     api --> pg
     worker --> pg
@@ -220,11 +220,11 @@ Measured latency and memory are in [Measurements](docs/MEASUREMENTS.md).
 
 ## Development
 
-Requirements: Rust (stable), [Bun](https://bun.sh), and PostgreSQL 17 with `pgvector` (via Podman or Docker).
+Requirements: Rust (stable), [Bun](https://bun.sh), and PostgreSQL 19 with `pgvector` (via Podman or Docker).
 
 ```sh
 podman run -d --name boothdex-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalogue \
-  -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql/data docker.io/pgvector/pgvector:pg17
+  -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql docker.io/pgvector/pgvector:pg19
 
 cargo build --release            # first build downloads the IPADIC and CC-CEDICT dictionaries; rerun if download fails
 # the container images encode AVIF with libaom: --features imgproxy/libavif (needs libavif-dev and pkg-config).

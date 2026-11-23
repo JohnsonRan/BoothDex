@@ -20,9 +20,9 @@ BoothDex は、[BOOTH](https://booth.pm) で販売されている VRChat 向け�
 
 ## はじめに
 
-BoothDex は、PostgreSQL 17 (`pgvector`)、3 つの Rust サービス、Next.js サイトを Docker または Podman Compose で起動します。**4 GB 以上のメモリ**と 2 GB のスワップを備えた Linux サーバーが必要です (6 GB 推奨)。TLS リバースプロキシ向けに公開するのは単一ポート (`WEB_LISTEN`、既定値 `127.0.0.1:3100`) だけです。
+BoothDex は、PostgreSQL 19 (`pgvector`)、3 つの Rust サービス、Next.js サイトを Docker または Podman Compose で起動します。**4 GB 以上のメモリ**と 2 GB のスワップを備えた Linux サーバーが必要です (6 GB 推奨)。TLS リバースプロキシ向けに公開するのは単一ポート (`WEB_LISTEN`、既定値 `127.0.0.1:3100`) だけです。
 
-公開済みのデータバンドルを使ってインストールします。バンドルは 2026-11-04 時点のスナップショットで、約 21.7 万件の商品と販売終了商品のアーカイブ画像を収録しています (約 2.1 GB)。[デプロイガイド](docs/DEPLOY.md#optional-download-the-data-bundle) (英語) の手順でダウンロードしてから、次を実行します。
+公開済みのデータバンドルを使ってインストールします。バンドルは 2026-11-21 時点のスナップショットで、約 22.3 万件の商品と販売終了商品のアーカイブ画像を収録しています (約 2.1 GB)。[デプロイガイド](docs/DEPLOY.md#optional-download-the-data-bundle) (英語) の手順でダウンロードしてから、次を実行します。
 
 ```sh
 mkdir -p /srv/boothdex && cd /srv/boothdex
@@ -143,7 +143,7 @@ flowchart LR
     web -- "/api/*" --> api["api (Rust, Axum :3000)<br/>Roaring ビットマップ・Tantivy"]
     web -- "/img/*" --> imgproxy["imgproxy (Rust :3001)<br/>foyer AVIF キャッシュ"]
     worker["worker (Rust)<br/>booth・ai・embed の 3 レーン"]
-    pg[("PostgreSQL 17<br/>+ pgvector")]
+    pg[("PostgreSQL 19<br/>+ pgvector")]
 
     api --> pg
     worker --> pg
@@ -199,11 +199,11 @@ flowchart TD
 
 ## 開発
 
-必要な環境: Rust (stable)、[Bun](https://bun.sh)、および `pgvector` 拡張入りの PostgreSQL 17 (Podman または Docker 上で実行)。
+必要な環境: Rust (stable)、[Bun](https://bun.sh)、および `pgvector` 拡張入りの PostgreSQL 19 (Podman または Docker 上で実行)。
 
 ```sh
 podman run -d --name boothdex-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalogue \
-  -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql/data docker.io/pgvector/pgvector:pg17
+  -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql docker.io/pgvector/pgvector:pg19
 
 cargo build --release            # 初回ビルド時に IPADIC と CC-CEDICT の辞書をダウンロードします (失敗した場合は再実行してください)
 # コンテナー イメージでは libaom で AVIF をエンコードします: --features imgproxy/libavif (libavif-dev と pkg-config が必要)。
