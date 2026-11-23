@@ -11,8 +11,8 @@ name=boothdex-bench
 clients="${CLIENTS:-16}"
 "$podman" rm -f "$name" >/dev/null 2>&1 || true
 trap '"$podman" rm -f "$name" >/dev/null' EXIT
-"$podman" run -d --name "$name" -e POSTGRES_PASSWORD=x docker.io/pgvector/pgvector:pg17 >/dev/null
-for _ in $(seq 1 60); do "$podman" exec "$name" pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
+"$podman" run -d --name "$name" -e POSTGRES_PASSWORD=x docker.io/pgvector/pgvector:pg19 >/dev/null
+for _ in $(seq 1 60); do "$podman" exec "$name" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1 && break; sleep 1; done
 sleep 2
 psql() { "$podman" exec -i "$name" psql -U postgres -q -v ON_ERROR_STOP=1 "$@"; }
 for f in crates/core/migrations/*.sql; do psql -1 < "$f" >/dev/null; done
