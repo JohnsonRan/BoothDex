@@ -24,8 +24,9 @@ VRCatalogue. Item data and images belong to their creators; every item links bac
 ## Getting started
 
 BoothDex runs as PostgreSQL 19 (`pgvector`), three Rust services and the Next.js site, under Docker or Podman
-Compose. It needs a Linux server with 4 GB or more of RAM and 2 GB of swap (6 GB recommended). The stack exposes one
-port, `WEB_LISTEN` (default `127.0.0.1:3100`), for your TLS reverse proxy.
+Compose. Prebuilt images support `linux/amd64` and `linux/arm64`. The server needs 4 GB or more of RAM and 2 GB of
+swap (6 GB of RAM recommended). The stack exposes one port, `WEB_LISTEN` (default `127.0.0.1:3100`), for your TLS
+reverse proxy.
 
 Install with the published data bundle: a 2026-11-21 snapshot of ~223k items with archived images of delisted items
 (~2.1 GB). Download it as the [deployment guide](docs/DEPLOY.md#optional-download-the-data-bundle) says, then:

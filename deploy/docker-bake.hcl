@@ -1,33 +1,41 @@
 # The three Rust images share one compile stage: bake builds it once and the three targets in parallel.
 #   docker buildx bake -f deploy/docker-bake.hcl            (from the repository root)
-# CI adds tags and labels per image through the meta-* targets (see .github/workflows/images.yml).
+# CI selects the build platform for each native runner; local builds use the builder's platform.
 
 group "default" {
   targets = ["api", "worker", "imgproxy"]
 }
 
-target "_rust" {
-  context    = "."
-  dockerfile = "deploy/Dockerfile"
-  platforms  = ["linux/amd64"]
+group "images" {
+  targets = ["api", "worker", "imgproxy", "web"]
 }
 
-# overridden in CI by docker/metadata-action
-target "meta-api" {}
-target "meta-worker" {}
-target "meta-imgproxy" {}
+# CI injects the same OCI labels into all four images.
+target "docker-metadata-action" {}
+
+target "_rust" {
+  inherits   = ["docker-metadata-action"]
+  context    = "."
+  dockerfile = "deploy/Dockerfile"
+}
 
 target "api" {
-  inherits = ["_rust", "meta-api"]
+  inherits = ["_rust"]
   target   = "api"
 }
 
 target "worker" {
-  inherits = ["_rust", "meta-worker"]
+  inherits = ["_rust"]
   target   = "worker"
 }
 
 target "imgproxy" {
-  inherits = ["_rust", "meta-imgproxy"]
+  inherits = ["_rust"]
   target   = "imgproxy"
+}
+
+target "web" {
+  inherits   = ["docker-metadata-action"]
+  context    = "."
+  dockerfile = "deploy/web.Dockerfile"
 }
