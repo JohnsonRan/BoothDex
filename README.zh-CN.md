@@ -22,7 +22,7 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 
 ## 快速开始
 
-BoothDex 通过 Docker 或 Podman Compose 运行 PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端。服务器需运行 Linux，并有 **4 GB 及以上内存**和 2 GB Swap（推荐 6 GB）。整个服务栈只暴露一个端口（`WEB_LISTEN`，默认 `127.0.0.1:3100`），供反向代理接入。
+BoothDex 通过 Docker 或 Podman Compose 运行 PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端。预构建镜像支持 `linux/amd64` 和 `linux/arm64`。服务器需有 **4 GB 及以上内存**和 2 GB 交换空间（推荐 6 GB 内存）。整个服务栈只暴露一个端口（`WEB_LISTEN`，默认 `127.0.0.1:3100`），供反向代理接入。
 
 使用已发布的数据包安装。数据包是 2026-11-04 的快照，含约 21.7 万件商品及下架商品的存档图片（约 2.1 GB）。先按[部署指南](docs/DEPLOY.md#optional-download-the-data-bundle)（英文）下载，然后执行：
 
