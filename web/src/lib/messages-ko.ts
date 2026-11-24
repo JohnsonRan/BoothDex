@@ -6,6 +6,7 @@ export const ko: Dict = {
   "nav.filters": "필터",
   "nav.account": "계정 메뉴",
   "nav.guestbook": "방명록",
+  "nav.support": "BoothDex 후원",
   "nav.top": "맨 위로",
   "title.all": "전체 상품",
   "title.favourites": "즐겨찾기",
@@ -270,7 +271,7 @@ export const ko: Dict = {
   "settings.currencyDesc":
     "엔 이외의 가격은 환율로 환산해 ≈ 표시와 함께 보여 줍니다.",
   "settings.about": "정보",
-  "settings.aboutDesc": "개인정보, 약관, 소스 코드, 문제 신고입니다.",
+  "settings.aboutDesc": "개인정보, 약관, 후원, 소스 코드, 문제 신고입니다.",
   "settings.account": "계정",
   "settings.profile": "프로필",
   "settings.profileDesc": "표시 이름과 로그인 비밀번호입니다.",

@@ -10,6 +10,7 @@ import {
   Bookmark,
   BookmarkPlus,
   CircleUser,
+  Coffee,
   Heart,
   Languages,
   LayoutGrid,
@@ -33,6 +34,7 @@ const SITE_ICONS = {
   "site:light": <Sun {...glyph} />,
   "site:clear": <Trash2 {...glyph} />,
   "site:guestbook": <MessagesSquare {...glyph} />,
+  "site:support": <Coffee {...glyph} />,
   "site:save": <BookmarkPlus {...glyph} />,
   "site:saved": <Bookmark {...glyph} />,
   // a pressed saved-views toggle (the template's BookmarkFilled)

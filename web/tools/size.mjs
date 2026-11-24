@@ -41,8 +41,10 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // 50,838) and HTML at 51,506 to 51,508 with live titles: every budget to the next 500 B, so a small change is not
 // blocked by a few bytes (owner, 2026-11-15: "提，如果有别的预算紧的也一块提了"). The refresh bar's code back in the
 // first load, so a refresh before an idle preload still shows it (JS 524,871 over 3 reads, against 522,819): JS to
-// 525,000 (owner, 2026-11-15: "放回首屏加载").
-const BUDGET = { html: 52_000, js: 525_000, css: 51_500 };
+// 525,000 (owner, 2026-11-15: "放回首屏加载"). The Ko-fi support link at the end of the filter rail (and in
+// Settings > About) with its coffee glyph and dictionary entry: HTML 52,250 B over 3 reads against 51,890 B on HEAD
+// with the same dump (JS 523,856 against 523,529, CSS 51,258 unchanged): HTML to 52,500 (owner, 2026-11-25).
+const BUDGET = { html: 52_500, js: 525_000, css: 51_500 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {

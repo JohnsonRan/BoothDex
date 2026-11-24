@@ -9,6 +9,8 @@ import {
   type UiLang,
 } from "./messages";
 
+export const SUPPORT_URL = "https://ko-fi.com/melodystalker";
+
 const CONTENT_LANGS = ["original", "zh", "en", "ja", "ko"] as const;
 export type ContentLang = (typeof CONTENT_LANGS)[number];
 /** The item-text setting: a language, or "ui" to follow the interface language. */
