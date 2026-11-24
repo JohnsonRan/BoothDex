@@ -6,6 +6,7 @@ export const en: Dict = {
   "nav.filters": "Filters",
   "nav.account": "Account menu",
   "nav.guestbook": "Guestbook",
+  "nav.support": "Support BoothDex",
   "nav.top": "Back to top",
   "title.all": "All items",
   "title.favourites": "My favourites",
@@ -272,7 +273,8 @@ export const en: Dict = {
   "settings.currencyDesc":
     "Prices other than yen are converted at the exchange rate and marked ≈.",
   "settings.about": "About",
-  "settings.aboutDesc": "Privacy, terms, source code and issue reporting.",
+  "settings.aboutDesc":
+    "Privacy, terms, support, source code and issue reporting.",
   "settings.account": "Account",
   "settings.profile": "Profile",
   "settings.profileDesc": "Your display name and sign-in password.",

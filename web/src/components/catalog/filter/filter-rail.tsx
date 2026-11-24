@@ -17,8 +17,11 @@ import {
   CheckboxListItem,
 } from "@astryxdesign/core/CheckboxList";
 import { Collapsible, CollapsibleGroup } from "@astryxdesign/core/Collapsible";
+import { Divider } from "@astryxdesign/core/Divider";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
+import { Icon } from "@astryxdesign/core/Icon";
 import { LayoutPanel } from "@astryxdesign/core/Layout";
+import { Link } from "@astryxdesign/core/Link";
 import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
 import { ResizeHandle, useResizable } from "@astryxdesign/core/Resizable";
 import { Selector } from "@astryxdesign/core/Selector";
@@ -39,7 +42,7 @@ import {
 import { useUi } from "@/components/providers";
 import { FEATURES, type Feature, type Filters, RANGES } from "@/lib/catalog";
 import { RAIL_REM, railCookie, railToSave } from "@/lib/rail-width";
-import { LOCALES } from "@/lib/settings-core";
+import { LOCALES, SUPPORT_URL } from "@/lib/settings-core";
 import {
   CLAUSE_CLEAR,
   type ClauseNames,
@@ -393,6 +396,20 @@ const RailFields = memo(function RailFields({
             />
           )}
         </VStack>
+        <Divider />
+        <HStack gap={1.5} vAlign="center">
+          <Icon icon="site:support" size="sm" color="secondary" />
+          <Link
+            href={SUPPORT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            isStandalone
+            type="supporting"
+            color="secondary"
+          >
+            {t("nav.support")}
+          </Link>
+        </HStack>
       </VStack>
     </>
   );

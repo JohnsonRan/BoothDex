@@ -6,6 +6,7 @@ export const ja: Dict = {
   "nav.filters": "絞り込み",
   "nav.account": "アカウントメニュー",
   "nav.guestbook": "ゲストブック",
+  "nav.support": "BoothDex を支援",
   "nav.top": "トップへ戻る",
   "title.all": "すべての商品",
   "title.favourites": "お気に入り",
@@ -274,7 +275,7 @@ export const ja: Dict = {
     "円以外の価格は為替レートで換算し、≈ を付けて表示します。",
   "settings.about": "バージョン情報",
   "settings.aboutDesc":
-    "プライバシー、利用規約、ソースコード、問題の報告です。",
+    "プライバシー、利用規約、支援、ソースコード、問題の報告です。",
   "settings.account": "アカウント",
   "settings.profile": "プロフィール",
   "settings.profileDesc": "表示名とログイン パスワードです。",

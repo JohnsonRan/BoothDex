@@ -36,6 +36,7 @@ import {
   ITEM_TEXT,
   type ItemTextSetting,
   LOCALES,
+  SUPPORT_URL,
 } from "@/lib/settings-core";
 import { DataPanel } from "./delete-account";
 import { ProfilePanel } from "./profile";
@@ -261,6 +262,11 @@ const LEGAL = [
 
 const LINKS = [
   {
+    title: "nav.support",
+    icon: "site:support",
+    href: SUPPORT_URL,
+  },
+  {
     title: "settings.feedback",
     icon: "site:feedback",
     href: "https://github.com/JohnsonRan/BoothDex/issues",
@@ -314,7 +320,7 @@ function AboutPanel() {
                 icon={<Icon icon="externalLink" size="sm" />}
                 href={link.href}
                 target="_blank"
-                rel="noopener"
+                rel="noopener noreferrer"
               />
             }
           />
