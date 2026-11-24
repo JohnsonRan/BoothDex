@@ -1,6 +1,6 @@
 # Deploying to a Linux server
 
-Everything runs in containers: PostgreSQL 17 (`pgvector`), the three Rust services (`api`, `worker`, `imgproxy`) and the Next.js site (`web`). Only `web` publishes a host port (`WEB_LISTEN`, default `127.0.0.1:3100`) and forwards `/api/*` and `/img/*` over the internal Compose network. Put your own TLS reverse proxy or tunnel (Caddy, nginx, Cloudflare Tunnel) in front of it.
+Everything runs in containers: PostgreSQL 19 (`pgvector`), the three Rust services (`api`, `worker`, `imgproxy`) and the Next.js site (`web`). Only `web` publishes a host port (`WEB_LISTEN`, default `127.0.0.1:3100`) and forwards `/api/*` and `/img/*` over the internal Compose network. Put your own TLS reverse proxy or tunnel (Caddy, nginx, Cloudflare Tunnel) in front of it.
 
 ```mermaid
 flowchart LR
@@ -14,7 +14,7 @@ flowchart LR
       web -- "/img/*" --> imgproxy["imgproxy (Rust)<br/>:3001 · mem_limit 1g"]
       worker["worker (Rust)<br/>daemon · mem_limit 256m"]
 
-      api --> pg[("postgres<br/>pgvector:pg17")]
+      api --> pg[("postgres<br/>pgvector:pg19")]
       worker --> pg
 
       pg --- pgdata[("pgdata volume")]
@@ -153,6 +153,14 @@ docker compose exec -T postgres pg_restore -U catalogue -d catalogue --no-owner 
 docker compose up -d                      # api runs pending migrations, then loads the catalogue (~20 s)
 docker compose logs -f api                # wait for "listening on"
 ```
+
+The site answers during that start: `web` comes up with the stack, and while `api` loads the catalogue it answers 503,
+which the site reads as "the service is starting" and shows as its own page. The proxy in front must therefore pass the
+site's requests through from the first moment; a proxy that answers 502 on its own while the backend is not ready hides
+that page.
+
+The `pgdata` volume holds PostgreSQL 19's own layout, a directory per major version under `/var/lib/postgresql`. A
+volume written by an older PostgreSQL is refused by the image, which tells the operator to dump and restore instead.
 
 Then complete onboarding:
 

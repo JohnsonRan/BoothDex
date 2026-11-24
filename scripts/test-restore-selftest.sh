@@ -18,7 +18,7 @@ trap '"$podman" rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$dir"' EXIT
 
 "$podman" rm -f "$name" >/dev/null 2>&1 || true
 "$podman" run -d --name "$name" -p "127.0.0.1:$port:5432" -e POSTGRES_DB=catalogue -e POSTGRES_USER=catalogue \
-  -e POSTGRES_PASSWORD=x docker.io/pgvector/pgvector:pg17 >/dev/null || cannot "could not start Postgres"
+  -e POSTGRES_PASSWORD=x docker.io/pgvector/pgvector:pg19 >/dev/null || cannot "could not start Postgres"
 psql() { "$podman" exec -i "$name" psql -U catalogue -d catalogue -q -v ON_ERROR_STOP=1 "$@"; }
 dump() { mkdir "$dir/$1" && "$podman" exec "$name" pg_dump -U catalogue -d catalogue -Fc > "$dir/$1/catalogue.dump"; }
 for _ in $(seq 1 60); do

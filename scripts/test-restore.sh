@@ -27,7 +27,7 @@ trap '"$podman" rm -f "$name" >/dev/null 2>&1 || true' EXIT
 publish=()
 [ -n "${WORKER_BIN:-}" ] && publish=(-p "127.0.0.1:$port:5432")
 "$podman" run -d --name "$name" "${publish[@]}" -e POSTGRES_DB=catalogue -e POSTGRES_USER=catalogue \
-  -e POSTGRES_PASSWORD=x docker.io/pgvector/pgvector:pg17 >/dev/null || cannot "could not start Postgres"
+  -e POSTGRES_PASSWORD=x docker.io/pgvector/pgvector:pg19 >/dev/null || cannot "could not start Postgres"
 psql() { "$podman" exec -i "$name" psql -U catalogue -d catalogue -tA "$@"; }
 # TCP, not the socket: the image's first-start setup runs a server on the socket only, then restarts it
 ready=

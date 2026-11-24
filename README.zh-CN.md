@@ -22,9 +22,9 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 
 ## 快速开始
 
-BoothDex 通过 Docker 或 Podman Compose 运行 PostgreSQL 17（`pgvector`）、三个 Rust 服务与 Next.js 前端。预构建镜像支持 `linux/amd64` 和 `linux/arm64`。服务器需有 **4 GB 及以上内存**和 2 GB 交换空间（推荐 6 GB 内存）。整个服务栈只暴露一个端口（`WEB_LISTEN`，默认 `127.0.0.1:3100`），供反向代理接入。
+BoothDex 通过 Docker 或 Podman Compose 运行 PostgreSQL 19（`pgvector`）、三个 Rust 服务与 Next.js 前端。预构建镜像支持 `linux/amd64` 和 `linux/arm64`。服务器需有 **4 GB 及以上内存**和 2 GB 交换空间（推荐 6 GB 内存）。整个服务栈只暴露一个端口（`WEB_LISTEN`，默认 `127.0.0.1:3100`），供反向代理接入。
 
-使用已发布的数据包安装。数据包是 2026-11-04 的快照，含约 21.7 万件商品及下架商品的存档图片（约 2.1 GB）。先按[部署指南](docs/DEPLOY.md#optional-download-the-data-bundle)（英文）下载，然后执行：
+使用已发布的数据包安装。数据包是 2026-11-21 的快照，含约 22.3 万件商品及下架商品的存档图片（约 2.1 GB）。先按[部署指南](docs/DEPLOY.md#optional-download-the-data-bundle)（英文）下载，然后执行：
 
 ```sh
 mkdir -p /srv/boothdex && cd /srv/boothdex
@@ -145,7 +145,7 @@ flowchart LR
     web -- "/api/*" --> api["api (Rust, Axum :3000)<br/>Roaring 位图 · Tantivy"]
     web -- "/img/*" --> imgproxy["imgproxy (Rust :3001)<br/>foyer AVIF 缓存"]
     worker["worker (Rust)<br/>booth · ai · embed 三通道"]
-    pg[("PostgreSQL 17<br/>+ pgvector")]
+    pg[("PostgreSQL 19<br/>+ pgvector")]
 
     api --> pg
     worker --> pg
@@ -201,11 +201,11 @@ flowchart TD
 
 ## 开发
 
-环境要求：Rust（stable）、[Bun](https://bun.sh)，以及带 `pgvector` 扩展的 PostgreSQL 17（运行于 Podman 或 Docker）。
+环境要求：Rust（stable）、[Bun](https://bun.sh)，以及带 `pgvector` 扩展的 PostgreSQL 19（运行于 Podman 或 Docker）。
 
 ```sh
 podman run -d --name boothdex-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=catalogue \
-  -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql/data docker.io/pgvector/pgvector:pg17
+  -p 5432:5432 -v boothdex-pgdata:/var/lib/postgresql docker.io/pgvector/pgvector:pg19
 
 cargo build --release            # 首次构建会下载 IPADIC 和 CC-CEDICT 词典；若网络失败重试即可
 # 容器镜像改用 libaom 编码 AVIF：--features imgproxy/libavif（需要 libavif-dev 和 pkg-config）。

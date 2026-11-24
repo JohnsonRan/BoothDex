@@ -15,16 +15,18 @@ x-logging: &logging
 
 services:
   postgres:
-    image: docker.io/pgvector/pgvector:pg17
+    image: docker.io/pgvector/pgvector:pg19
     restart: unless-stopped
     environment:
       POSTGRES_DB: catalogue
       POSTGRES_USER: catalogue
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U catalogue -d catalogue"]
+      # TCP, not the socket: on a new volume the image's first-start setup runs a server on the socket only, then
+      # restarts it (docs/DEPLOY.md, "First start"), and the socket answers before the real server is up
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U catalogue -d catalogue"]
       interval: 5s
       retries: 20
     shm_size: 256mb
@@ -58,6 +60,12 @@ services:
     # sized from production (docs/MEASUREMENTS.md, "Production, by container"); glibc malloc was OOM-killed at 3g, so keep
     # mimalloc (crates/api/src/main.rs)
     mem_limit: 3g
+    healthcheck:
+      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/3000 && printf "GET /api/health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && head -n 1 <&3 | grep -q "200"']
+      interval: 5s
+      timeout: 3s
+      start_period: 60s
+      retries: 20
 
   worker:
     image: ghcr.io/johnsonran/boothdex-worker:${BOOTHDEX_TAG:-latest}
@@ -93,7 +101,12 @@ services:
     image: ghcr.io/johnsonran/boothdex-web:${BOOTHDEX_TAG:-latest}
     build: { context: .., dockerfile: deploy/web.Dockerfile }
     restart: unless-stopped
-    depends_on: [api, imgproxy]
+    depends_on:
+      # service_started, not service_healthy: `web` serves the "starting" page while the API loads its catalogue
+      # (the API answers 503 until then, crates/api/src/main.rs), and waiting for health here would give visitors
+      # a 502 from the proxy instead
+      api: { condition: service_started }
+      imgproxy: { condition: service_started }
     environment:
       SITE_URL: ${SITE_URL:?set SITE_URL in .env}
       OPERATOR_NAME: ${OPERATOR_NAME:-}
