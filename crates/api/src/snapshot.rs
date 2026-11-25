@@ -187,7 +187,9 @@ pub(crate) async fn reloader(state: Arc<AppState>) {
             continue;
         }
         last_build = Instant::now();
-        match build_snapshot(&state.pool, version, state.snap().related.centroids.clone(), index_dir()).await {
+        // an explicit admin reload rebuilds tag centroids instead of carrying stale ones over
+        let prev_centroids = (!forced).then(|| state.snap().related.centroids.clone()).flatten();
+        match build_snapshot(&state.pool, version, prev_centroids, index_dir()).await {
             Ok(s) => {
                 println!("catalogue reloaded: version {version}, {} docs", s.catalog.len());
                 state.snap.store(Arc::new(s));
