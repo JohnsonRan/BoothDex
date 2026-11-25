@@ -172,15 +172,23 @@ impl RateLimiter {
 
     /// Consumes one token or returns whole seconds until one refills (`Retry-After`).
     pub fn take(&self, ip: IpAddr) -> Result<(), u64> {
-        self.take_at(ip, Instant::now())
+        self.take_with_clock(ip, Instant::now)
     }
 
     pub fn take_global(&self) -> Result<(), u64> {
-        self.take_at(IpAddr::V4(Ipv4Addr::UNSPECIFIED), Instant::now())
+        self.take_with_clock(IpAddr::V4(Ipv4Addr::UNSPECIFIED), Instant::now)
     }
 
+    #[cfg(test)]
     fn take_at(&self, ip: IpAddr, now: Instant) -> Result<(), u64> {
+        self.take_with_clock(ip, || now)
+    }
+
+    /// Reads `clock` after taking the bucket lock, so concurrent callers never write back an instant older than one
+    /// another caller wrote.
+    fn take_with_clock(&self, ip: IpAddr, clock: impl FnOnce() -> Instant) -> Result<(), u64> {
         let mut map = self.buckets.lock().unwrap();
+        let now = clock();
         let entry = self.entry(&mut map, bucket_key(ip), now);
         let available = self.available(entry, now);
         if available < 1.0 {
@@ -459,5 +467,15 @@ mod tests {
         assert!(l.take_at(ip("198.51.100.1"), t0 + Duration::from_millis(600)).is_ok());
         assert!(l.take_at(ip("198.51.100.2"), t0 + Duration::from_millis(700)).is_ok());
         assert!(l.buckets.lock().unwrap().len() <= 2);
+    }
+
+    #[test]
+    fn take_reads_clock_while_holding_bucket_lock() {
+        let l = RateLimiter::new(SLOW, 5.0, 64);
+        l.take_with_clock(ip("203.0.113.77"), || {
+            assert!(matches!(l.buckets.try_lock(), Err(std::sync::TryLockError::WouldBlock)), "clock must be read while holding the bucket mutex");
+            Instant::now()
+        })
+        .unwrap();
     }
 }

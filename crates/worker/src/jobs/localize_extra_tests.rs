@@ -147,3 +147,22 @@ async fn localize_asks_for_a_tag_that_is_an_alias_like_any_word(pool: PgPool) {
     let row = dictionary(&pool).await.into_iter().find(|r| r.0 == "ぬぺぽ").unwrap();
     assert_eq!(row.1.as_deref(), Some("nupepo"));
 }
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn localize_matches_fullwidth_avatar_tags_after_nfkc(pool: PgPool) {
+    sqlx::raw_sql("update smart_categories set name_zh = 'x', group_zh = 'x'; update smart_tags set display_zh = 'x';").execute(&pool).await.unwrap();
+    for id in 1..=5i64 {
+        sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, booth_tags) values ($1, 'Item', 'c', 'https://example.test', false, 'ok', now(), '{ＭＡＮＵＫＡ}')")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let requests = stand_in_provider(&pool, |_, _| panic!("full-width avatar tag must use the shortcut")).await;
+    let summary = localize_job(&pool, json!({})).await;
+    assert_eq!(summary, "0 names translated to Chinese (0 unique strings); 1 tags added to the dictionary (1 avatar names, 0 with a language left empty), 0 without a valid translation");
+    assert!(requests.lock().unwrap().is_empty());
+    let row = dictionary(&pool).await.into_iter().find(|r| r.0 == "ＭＡＮＵＫＡ").unwrap();
+    assert_eq!(row.1.as_deref(), Some("Manuka"));
+}
