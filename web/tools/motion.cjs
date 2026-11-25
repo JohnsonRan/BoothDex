@@ -15,13 +15,15 @@ const [
 ] = process.argv.slice(2);
 const ENTRANCE = ["page-enter", "row-enter"];
 // the animations running on what can be seen: a hidden element's draws nothing (Tokenizer keeps its idle Spinner
-// mounted and hidden)
+// mounted and hidden); a scroll-driven edge fade (globals.css `body-fade` on dialogs and the filter rail) is a mask
+// that follows scroll, nothing moves
 const RUNNING = () =>
   document
     .getAnimations()
     .filter(
       (a) =>
         a.playState === "running" &&
+        a.animationName !== "body-fade" &&
         a.effect?.target?.checkVisibility({ visibilityProperty: true }) !==
           false,
     )
