@@ -174,7 +174,7 @@ export const adminZh = {
   "settings.title": "设置",
   "ai.title": "AI 处理",
   "ai.desc":
-    "商品分类、翻译和语义向量使用的 OpenAI 兼容服务。保存后会自动运行一次翻译分类。",
+    "商品分类、翻译和语义向量使用的 OpenAI 兼容服务。保存后会自动运行一次翻译分类和标签。",
   "ai.baseUrl": "API 地址",
   "ai.baseUrlDesc": "OpenAI 兼容接口",
   "ai.model": "AI 模型",

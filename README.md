@@ -29,7 +29,7 @@ swap (6 GB of RAM recommended). The stack exposes one port, `WEB_LISTEN` (defaul
 reverse proxy.
 
 Install with the published data bundle: a 2026-11-21 snapshot of ~223k items with archived images of delisted items
-(~2.1 GB). Download it as the [deployment guide](docs/DEPLOY.md#optional-download-the-data-bundle) says, then:
+(~2.2 GB). Download it as the [deployment guide](docs/DEPLOY.md#optional-download-the-data-bundle) says, then:
 
 ```sh
 mkdir -p /srv/boothdex && cd /srv/boothdex
