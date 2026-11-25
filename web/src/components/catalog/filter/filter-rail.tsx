@@ -247,12 +247,12 @@ const RailFields = memo(function RailFields({
 
   return (
     <>
-      {/* the band's toolbar inset above (band.tsx), so the first section lines up with the search */}
+      {/* the page header's inset above (home-screen.tsx), so the first section lines up with the title */}
       <VStack
         gap={4}
         paddingInlineStart={6}
         paddingInlineEnd={4}
-        paddingBlockStart={4}
+        paddingBlockStart={6}
         paddingBlockEnd={6}
       >
         {/* the shop has no field of its own: a link sets it, and this is how it is removed */}

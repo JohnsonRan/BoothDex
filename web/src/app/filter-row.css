@@ -189,9 +189,11 @@
   align-self: flex-start;
   block-size: calc(100dvh - var(--_app-shell-header-height, 0px));
 }
-/* The rail scrolls with no bar beside it, as a dialog's body does (app/globals.css). */
+/* The rail scrolls on its own without chaining into the page, with no bar beside it, as a dialog's body does
+   (app/globals.css, which also adds its lower-edge fade). */
 .filter-rail {
   scrollbar-width: none;
+  overscroll-behavior: contain;
 }
 /* The rail's checkboxes start at its edge, as its radios do: a CheckboxList's items are List items, inset as a
    list's rows are. Core's rules carry up to four :not(#\#), so this carries one class more. */
