@@ -33,7 +33,9 @@ import {
   type CSSProperties,
   memo,
   type ReactNode,
+  type Ref,
   type RefObject,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -61,10 +63,19 @@ const TOP = "var(--_app-shell-header-height, 0px)";
 const RAIL: CSSProperties = {
   position: "sticky",
   insetBlockStart: TOP,
-  // its own height, not the row's, so it can stick; the window's, so its divider runs the window's height
+  // its own height, not the row's, so it can stick; the viewport below the top bar less the visible part of
+  // LayoutHeader (--rail-head, app/filter-row.css) and any bottom safe area, so at scrollY = 0 its bottom stays on screen
   alignSelf: "flex-start",
-  blockSize: `calc(100dvh - ${TOP})`,
+  blockSize: `calc(100dvh - ${TOP} - var(--rail-head, 0px) - env(safe-area-inset-bottom, 0px))`,
 };
+
+/** How many pixels of LayoutHeader still sit above the filter rail at `scrollY`. */
+export function visibleRailHeader(
+  headerHeight: number,
+  scrollY: number,
+): number {
+  return Math.max(0, headerHeight - Math.max(0, scrollY));
+}
 
 // `count`: the search's count for the choice, null until it answers; a choice it does not count leaves it out
 type Choice = { value: string; label: string; count?: number | null };
@@ -94,11 +105,64 @@ export function FilterRail({
   const [rem, setRem] = useState(width);
   // the width the cookie holds: the one the page loaded with, then each one written
   const saved = useRef(width);
+  const railRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLDivElement | null>(null);
+  const headPx = useRef<string | null>(null);
+  const setHandle = useCallback((el: HTMLDivElement | null) => {
+    handleRef.current = el;
+    if (el && headPx.current)
+      el.style.setProperty("--rail-head", headPx.current);
+  }, []);
   const isNarrow = useMediaQuery(NO_RAIL_QUERY);
+
+  useEffect(() => {
+    if (isNarrow) return;
+    const rail = railRef.current;
+    const middle = rail?.parentElement;
+    const header = middle?.previousElementSibling;
+    if (!rail || !middle || !header) return;
+    const driven = CSS.supports("animation-timeline", "scroll()");
+    let headerHeight = 0;
+    let frame = 0;
+    const syncHead = () => {
+      frame = 0;
+      const value = `${visibleRailHeader(headerHeight, scrollY)}px`;
+      if (headPx.current === value) return;
+      headPx.current = value;
+      rail.style.setProperty("--rail-head", value);
+      handleRef.current?.style.setProperty("--rail-head", value);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(syncHead);
+    };
+    const measure = () => {
+      const next = header.getBoundingClientRect().height;
+      if (next !== headerHeight) {
+        headerHeight = next;
+        middle.style.setProperty("--rail-header", `${next}px`);
+      }
+      if (!driven) syncHead();
+    };
+    measure();
+    const sized = new ResizeObserver(measure);
+    sized.observe(header);
+    if (!driven) addEventListener("scroll", schedule, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      sized.disconnect();
+      if (!driven) removeEventListener("scroll", schedule);
+      middle.style.removeProperty("--rail-header");
+      rail.style.removeProperty("--rail-head");
+      handleRef.current?.style.removeProperty("--rail-head");
+      headPx.current = null;
+    };
+  }, [isNarrow]);
+
   if (isNarrow) return null;
   return (
     <>
       <LayoutPanel
+        ref={railRef}
         role="region"
         label={t("filter.rail")}
         width={`${rem}rem`}
@@ -108,7 +172,12 @@ export function FilterRail({
       >
         <RailFields facets={facets} names={names} />
       </LayoutPanel>
-      <RailHandle rem={rem} saved={saved} onResize={setRem} />
+      <RailHandle
+        rem={rem}
+        saved={saved}
+        onResize={setRem}
+        handleRef={setHandle}
+      />
     </>
   );
 }
@@ -141,10 +210,12 @@ function RailHandle({
   rem,
   saved,
   onResize,
+  handleRef,
 }: {
   rem: number;
   saved: RefObject<number>;
   onResize: (rem: number) => void;
+  handleRef: Ref<HTMLDivElement>;
 }) {
   // 0 on the server and while hydrating; a new size of a rem starts the hook again from the width in rem
   const px = useSyncExternalStore(onWindowResize, remPixels, () => 0);
@@ -155,6 +226,7 @@ function RailHandle({
       rem={rem}
       saved={saved}
       onResize={onResize}
+      handleRef={handleRef}
     />
   ) : null;
 }
@@ -164,11 +236,13 @@ function RailHandleControl({
   rem,
   saved,
   onResize,
+  handleRef,
 }: {
   px: number;
   rem: number;
   saved: RefObject<number>;
   onResize: (rem: number) => void;
+  handleRef: Ref<HTMLDivElement>;
 }) {
   const { t, ui } = useUi();
   const region = useResizable({
@@ -190,6 +264,7 @@ function RailHandleControl({
   }, [size, saved]);
   return (
     <ResizeHandle
+      ref={handleRef}
       resizable={region}
       label={t("filter.railResize")}
       // the handle reports pixels; a screen reader reads the width in rem, as it is set and stored
@@ -247,12 +322,12 @@ const RailFields = memo(function RailFields({
 
   return (
     <>
-      {/* the page header's inset above (home-screen.tsx), so the first section lines up with the title */}
+      {/* the band's toolbar inset above (band.tsx), so the first section lines up with the search */}
       <VStack
         gap={4}
         paddingInlineStart={6}
         paddingInlineEnd={4}
-        paddingBlockStart={6}
+        paddingBlockStart={4}
         paddingBlockEnd={6}
       >
         {/* the shop has no field of its own: a link sets it, and this is how it is removed */}

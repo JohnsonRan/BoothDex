@@ -241,7 +241,7 @@ export function FilterBand({
       e = e.parentElement
     )
       for (let s = e.previousElementSibling; s; s = s.previousElementSibling)
-        sized.observe(s);
+        if (!s.matches(".filter-rail, .filter-rail-handle")) sized.observe(s);
     return () => {
       cancelAnimationFrame(frame);
       removeEventListener("scroll", schedule);

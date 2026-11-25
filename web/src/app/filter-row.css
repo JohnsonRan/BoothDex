@@ -181,19 +181,97 @@
 .rail-name {
   display: block;
 }
-/* The rail's resize handle sticks beside the rail at the window's height, as the rail does (filter-rail.tsx RAIL), so
-   its grip shows mid-window and not mid-page. */
+/* LayoutHeader sits above the filter rail at scrollY = 0 and scrolls out under TopNav. Both the rail and its
+   resize handle subtract the still-visible part of that header (--rail-head) from their viewport height so the
+   rail ends flush with the viewport at scrollY = 0 and grows to full height once the header leaves view.
+   --rail-header defaults to the single-line h1 header height before ResizeObserver refines it on hydration. */
+@property --rail-header {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+@property --rail-head {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --rail-fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes rail-fade-top {
+  from {
+    --rail-fade-top: 0px;
+  }
+  to {
+    --rail-fade-top: var(--spacing-8);
+  }
+}
+@keyframes rail-head {
+  from {
+    --rail-head: var(--rail-header);
+  }
+  to {
+    --rail-head: 0px;
+  }
+}
+[data-filters="side"] {
+  --rail-header: calc(
+    var(--spacing-6) +
+    var(--text-heading-1-leading) *
+    var(--text-heading-1-size)
+  );
+}
+/* The rail's resize handle sticks beside the rail at the same visible viewport height as the rail
+   (filter-rail.tsx RAIL), so its grip stays centred in the visible rail and never extends past the viewport. */
 .filter-rail-handle {
   position: sticky;
   inset-block-start: var(--_app-shell-header-height, 0px);
   align-self: flex-start;
-  block-size: calc(100dvh - var(--_app-shell-header-height, 0px));
+  block-size: calc(
+    100dvh -
+    var(--_app-shell-header-height, 0px) -
+    var(--rail-head, 0px) -
+    env(safe-area-inset-bottom, 0px)
+  );
+  --rail-head: var(--rail-header);
 }
 /* The rail scrolls on its own without chaining into the page, with no bar beside it, as a dialog's body does
-   (app/globals.css, which also adds its lower-edge fade). */
+   (app/globals.css). Both edges fade while more filters sit past them so scrolled content softens under
+   LayoutHeader instead of hard-clipping against it. */
 .filter-rail {
   scrollbar-width: none;
   overscroll-behavior: contain;
+  --rail-head: var(--rail-header);
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--rail-fade-top),
+    black calc(100% - var(--body-fade)),
+    transparent
+  );
+}
+/* Scroll-driven header offset and edge fades: keeps body-fade / rail-fade-top (scroll(self)) and rail-head
+   (scroll(root)) active together. Browsers without scroll timelines (Firefox) keep the base --rail-head on first
+   paint and update it from scroll events in filter-rail.tsx, with no edge fades. */
+@supports (animation-timeline: scroll()) {
+  .filter-rail {
+    animation:
+      body-fade linear both,
+      rail-fade-top linear both,
+      rail-head linear both;
+    animation-timeline: scroll(self), scroll(self), scroll(root);
+    animation-range:
+      calc(100% - var(--spacing-8)) 100%,
+      0px var(--spacing-8),
+      0px var(--rail-header);
+  }
+  .filter-rail-handle {
+    animation: rail-head linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0px var(--rail-header);
+  }
 }
 /* The rail's checkboxes start at its edge, as its radios do: a CheckboxList's items are List items, inset as a
    list's rows are. Core's rules carry up to four :not(#\#), so this carries one class more. */
