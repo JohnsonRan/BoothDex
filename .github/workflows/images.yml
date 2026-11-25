@@ -14,6 +14,7 @@ on:
       - "deploy/Dockerfile"
       - "deploy/web.Dockerfile"
       - "deploy/docker-bake.hcl"
+      - "deploy/licenses/**"
       - ".dockerignore"
       - ".github/workflows/images.yml"
       - ".github/workflows/test.yml"
@@ -95,7 +96,7 @@ jobs:
         run: |
           jq -e 'with_entries(.value |= ."containerimage.digest") | select(length > 0)' \
             <<< "$METADATA" > "$DIGESTS"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@v7
         with:
           name: digests-${{ matrix.target }}-${{ matrix.arch }}
           path: digests-${{ matrix.target }}-${{ matrix.arch }}.json
@@ -117,7 +118,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/download-artifact@v8
         with:
           pattern: digests-*
           merge-multiple: true
