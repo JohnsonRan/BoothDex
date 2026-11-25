@@ -58,22 +58,31 @@ async fn enrich_reply(ai: &crate::ai::Ai, kit: &EnrichKit, item: &crate::ai::Enr
         Err(e) if first.is_ok() && !e.is::<crate::ai::ProviderError>() => Value::Null,
         Err(e) => return Err(e),
     };
+    let first_own = v["original_language"]
+        .as_str()
+        .filter(|l| l.len() == 2 && l.bytes().all(|b| b.is_ascii_lowercase()))
+        .or_else(|| item.translations["original_language"].as_str());
+    let first_zh = v["translations"]["zh"]["title"]
+        .as_str()
+        .filter(|s| !s.is_empty() && s.chars().count() <= 300)
+        .filter(|zh| titles.problem("zh", zh, first_own).is_none());
     match (crate::ai::validate_enrichment(&v2, &kit.known, &item.translations), first) {
-        (Ok(e), Ok(first)) => {
+        (Ok(e), _) => {
             let mut e = titles.keep_passing(e, &item.translations);
+            let corr_own = e.translations["original_language"].as_str();
             let v2_zh_ok = v2["translations"]["zh"]["title"]
                 .as_str()
                 .filter(|s| !s.is_empty() && s.chars().count() <= 300)
-                .is_some_and(|zh| titles.problem("zh", zh, e.translations["original_language"].as_str()).is_none());
+                .is_some_and(|zh| titles.problem("zh", zh, corr_own).is_none());
             if !v2_zh_ok
-                && let Some(zh) = first.translations["zh"]["title"].as_str()
-                && titles.problem("zh", zh, e.translations["original_language"].as_str()).is_none()
+                && let Some(zh) = first_zh
+                && titles.problem("zh", zh, corr_own).is_none()
             {
                 e.translations["zh"] = serde_json::json!({ "title": zh });
             }
             Ok(e)
         }
-        (Ok(e), Err(_)) | (Err(_), Ok(e)) => Ok(titles.keep_passing(e, &item.translations)),
+        (Err(_), Ok(e)) => Ok(titles.keep_passing(e, &item.translations)),
         (Err(e2), Err(e)) => Err(e2.context(format!("after correction (first: {e:#})"))),
     }
 }
