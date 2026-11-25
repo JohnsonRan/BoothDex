@@ -59,7 +59,21 @@ async fn enrich_reply(ai: &crate::ai::Ai, kit: &EnrichKit, item: &crate::ai::Enr
         Err(e) => return Err(e),
     };
     match (crate::ai::validate_enrichment(&v2, &kit.known, &item.translations), first) {
-        (Ok(e), _) | (Err(_), Ok(e)) => Ok(titles.keep_passing(e, &item.translations)),
+        (Ok(e), Ok(first)) => {
+            let mut e = titles.keep_passing(e, &item.translations);
+            let v2_zh_ok = v2["translations"]["zh"]["title"]
+                .as_str()
+                .filter(|s| !s.is_empty() && s.chars().count() <= 300)
+                .is_some_and(|zh| titles.problem("zh", zh, e.translations["original_language"].as_str()).is_none());
+            if !v2_zh_ok
+                && let Some(zh) = first.translations["zh"]["title"].as_str()
+                && titles.problem("zh", zh, e.translations["original_language"].as_str()).is_none()
+            {
+                e.translations["zh"] = serde_json::json!({ "title": zh });
+            }
+            Ok(e)
+        }
+        (Ok(e), Err(_)) | (Err(_), Ok(e)) => Ok(titles.keep_passing(e, &item.translations)),
         (Err(e2), Err(e)) => Err(e2.context(format!("after correction (first: {e:#})"))),
     }
 }

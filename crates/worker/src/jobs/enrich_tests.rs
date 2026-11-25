@@ -226,3 +226,48 @@ async fn enrich_links_items_to_the_names_migration_0032_added(pool: PgPool) {
     .fetch_one(&pool).await.unwrap();
     assert!(!pending);
 }
+
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn enrich_keeps_first_reply_passing_zh_when_correction_omits_it(pool: PgPool) {
+    let requests = enrich_stand_in(&pool, |body| {
+        let correction = body["messages"].as_array().unwrap().len() == 4;
+        if !correction {
+            json!({
+                "categories": ["clothing--outfit-dresses"], "content_rating": "SFW", "quest_compatible": "No", "smart_price": 1500, "features": [],
+                "translations": {
+                    "en": {"title": "[For the avatar] Frill Dress"},
+                    "ja": {"title": "【マヌカ対応】フリルドレス"},
+                    "ko": {"title": "【マヌカ 대응】프릴 드레스"},
+                    "zh": {"title": "【マヌカ対応】荷叶边连衣裙"},
+                },
+                "original_language": "ja",
+            })
+            .to_string()
+        } else {
+            json!({
+                "categories": ["clothing--outfit-dresses"], "content_rating": "SFW", "quest_compatible": "No", "smart_price": 1500, "features": [],
+                "translations": {
+                    "en": {"title": "[For Manuka] Frill Dress"},
+                    "ja": {"title": "【マヌカ対応】フリルドレス"},
+                    "ko": {"title": "【マヌカ 대응】프릴 드레스"},
+                },
+                "original_language": "ja",
+            })
+            .to_string()
+        }
+    })
+    .await;
+    sqlx::query("insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, needs_enrichment, booth_tags) values (1, '【マヌカ対応】フリルドレス', 'c', 'https://example.test', false, 'ok', now(), true, '{ドレス}')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let job: i64 = sqlx::query_scalar("insert into jobs (kind, status, started_at) values ('enrich', 'running', now()) returning id").fetch_one(&pool).await.unwrap();
+    crate::relink::record_current(&pool).await;
+    let booth = Booth::new().unwrap();
+    assert_eq!(enrich(&mut Ctx::new(&pool, &booth, job), &json!({"concurrency": 1})).await.unwrap(), "1 enriched, 0 failed of 1");
+    assert_eq!(requests.lock().unwrap().len(), 2);
+    let translations: Value = sqlx::query_scalar("select translations from items where id = 1").fetch_one(&pool).await.unwrap();
+    assert_eq!(translations["en"], json!({"title": "[For Manuka] Frill Dress"}));
+    assert_eq!(translations["zh"], json!({"title": "【マヌカ対応】荷叶边连衣裙"}));
+}
