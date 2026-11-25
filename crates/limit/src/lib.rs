@@ -214,32 +214,54 @@ impl RateLimiter {
     }
 }
 
-/// Takes `n` tokens from each `(bucket, n)` of `draws` for `ip`, all or none, at one instant. The buckets are locked in
-/// the order given, which every caller keeps the same (a route's own bucket, then a bucket several routes share, then a
-/// fallback), so two draws never wait on each other in a circle; a bucket appears once per draw. A part of 0 is left
-/// out: its bucket is neither locked nor given an entry. On a refusal nothing is written: no token is taken and no entry
-/// made, so a refused draw never evicts another address's bucket. The error names each bucket that fell short, by its
-/// index in `draws`, with the whole seconds until it covers its part. The clock is read once all the locks are held, so
-/// no draw writes back an instant older than one another draw wrote.
+/// Takes `n` tokens from each `(bucket, n)` of `draws` for `ip`, all or none, at one instant. Buckets are deduplicated
+/// (summing parts for the same bucket) and locked in raw pointer-address order so concurrent callers passing buckets in
+/// any order—or repeating a bucket—never deadlock. A part of 0 is left out: its bucket is neither locked nor given an
+/// entry. A non-finite part (`NaN` or infinite) is refused without locking or mutating any bucket. On a refusal nothing
+/// is written: no token is taken and no entry made, so a refused draw never evicts another address's bucket. The error
+/// names each draw index whose bucket fell short, in `draws` order, with the whole seconds until it covers its part.
+/// The clock is read once all the locks are held, so no draw writes back an instant older than one another draw wrote.
 pub fn take_all(ip: IpAddr, draws: &[(&RateLimiter, f64)]) -> Result<(), Vec<(usize, u64)>> {
+    let invalid: Vec<(usize, u64)> = draws.iter().enumerate().filter(|(_, (_, n))| !n.is_finite()).map(|(i, _)| (i, 1)).collect();
+    if !invalid.is_empty() {
+        return Err(invalid);
+    }
     let key = bucket_key(ip);
-    let draws: Vec<(usize, &RateLimiter, f64)> = draws.iter().enumerate().filter(|(_, (_, n))| *n > 0.0).map(|(i, (b, n))| (i, *b, *n)).collect();
-    let mut maps: Vec<_> = draws.iter().map(|(_, bucket, _)| bucket.buckets.lock().unwrap()).collect();
+    // group active draws by bucket identity and lock in ascending pointer address order to prevent AB-BA or self-deadlocks
+    let mut grouped: Vec<(usize, &RateLimiter, f64, Vec<usize>)> = Vec::new();
+    for (i, &(bucket, n)) in draws.iter().enumerate() {
+        if n <= 0.0 {
+            continue;
+        }
+        let addr = std::ptr::from_ref(bucket) as usize;
+        if let Some(slot) = grouped.iter_mut().find(|g| g.0 == addr) {
+            slot.2 += n;
+            slot.3.push(i);
+        } else {
+            grouped.push((addr, bucket, n, vec![i]));
+        }
+    }
+    grouped.sort_unstable_by_key(|g| g.0);
+    let mut maps: Vec<_> = grouped.iter().map(|(_, bucket, _, _)| bucket.buckets.lock().unwrap()).collect();
     let now = Instant::now();
     let mut short = Vec::new();
-    let mut levels = Vec::with_capacity(draws.len());
-    for ((i, bucket, n), map) in draws.iter().zip(maps.iter()) {
+    let mut levels = Vec::with_capacity(grouped.len());
+    for ((_, bucket, n, indices), map) in grouped.iter().zip(maps.iter()) {
         // an address without a bucket has a full one
         let available = map.get(&key).map_or(bucket.burst, |entry| bucket.available(entry, now));
         if available < *n {
-            short.push((*i, bucket.wait(available, *n)));
+            let wait = bucket.wait(available, *n);
+            for &i in indices {
+                short.push((i, wait));
+            }
         }
         levels.push(available);
     }
     if !short.is_empty() {
+        short.sort_unstable_by_key(|&(i, _)| i);
         return Err(short);
     }
-    for (((_, bucket, n), map), available) in draws.iter().zip(maps.iter_mut()).zip(levels) {
+    for (((_, bucket, n, _), map), available) in grouped.iter().zip(maps.iter_mut()).zip(levels) {
         *bucket.entry(map, key, now) = (available - n, now);
     }
     Ok(())
@@ -274,6 +296,25 @@ mod tests {
         assert_eq!(take_all(b, &[(&slow, 1.0), (&slower, 4.0)]), Err(vec![(0, 1), (1, 8)]));
         // a part above a bucket's burst is never admitted, however long the bucket waits
         assert!(take_all(ip("203.0.113.3"), &[(&shared, 6.0)]).is_err());
+        // duplicate bucket pointers sum their cost without self-deadlocking, and non-finite costs are refused
+        let dup = RateLimiter::new(SLOW, 3.0, 64);
+        assert_eq!(take_all(ip("203.0.113.4"), &[(&dup, 2.0), (&dup, 2.0)]).unwrap_err().iter().map(|(i, _)| *i).collect::<Vec<_>>(), [0, 1]);
+        assert_eq!(take_all(ip("203.0.113.4"), &[(&dup, 1.0), (&dup, 2.0)]), Ok(()));
+        assert!(take_all(ip("203.0.113.4"), &[(&dup, 1.0)]).is_err());
+        assert_eq!(take_all(ip("203.0.113.5"), &[(&shared, f64::NAN), (&own, f64::INFINITY)]), Err(vec![(0, 1), (1, 1)]));
+        // reversed bucket order across concurrent threads never deadlocks
+        let a = std::sync::Arc::new(RateLimiter::new(1000.0, 1000.0, 64));
+        let b = std::sync::Arc::new(RateLimiter::new(1000.0, 1000.0, 64));
+        let (a1, b1) = (a.clone(), b.clone());
+        let t1 = std::thread::spawn(move || {
+            for _ in 0..200 {
+                let _ = take_all(ip("203.0.113.6"), &[(&a1, 1.0), (&b1, 1.0)]);
+            }
+        });
+        for _ in 0..200 {
+            let _ = take_all(ip("203.0.113.6"), &[(&b, 1.0), (&a, 1.0)]);
+        }
+        t1.join().unwrap();
     }
 
     #[test]
