@@ -128,6 +128,8 @@ test("related searches are asked once a search matched by meaning or found nothi
       ["skipped", 1],
       ["off", 1],
       ["unavailable", 1],
+      ["pending", 1],
+      ["pending", 0],
       ["off", 0],
     ] as const)
       expect(await found(semantic, count)).toEqual([]);

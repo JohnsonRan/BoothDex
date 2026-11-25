@@ -149,7 +149,11 @@ export async function relatedSearches(
   const o = await outcome;
   if (o.state !== "ok") return [];
   const { count, semantic } = o.result;
-  if (semantic !== "used" && (count > 0 || semantic === "off")) return [];
+  if (
+    semantic !== "used" &&
+    (count > 0 || semantic === "off" || semantic === "pending")
+  )
+    return [];
   try {
     const { searches } = await getJson<RelatedResponse>(
       `/api/related?${filtersToQuery(filters)}&hl=${ui}`,
