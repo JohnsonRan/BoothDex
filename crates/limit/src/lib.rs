@@ -472,12 +472,10 @@ mod tests {
     #[test]
     fn take_reads_clock_while_holding_bucket_lock() {
         let l = RateLimiter::new(SLOW, 5.0, 64);
-        let mut held_during_clock = false;
         l.take_with_clock(ip("203.0.113.77"), || {
-            held_during_clock = matches!(l.buckets.try_lock(), Err(std::sync::TryLockError::WouldBlock));
+            assert!(matches!(l.buckets.try_lock(), Err(std::sync::TryLockError::WouldBlock)), "clock must be read while holding the bucket mutex");
             Instant::now()
         })
         .unwrap();
-        assert!(held_during_clock, "clock must be read while holding the bucket mutex");
     }
 }
