@@ -12,10 +12,23 @@ const unchecked: Registration = { open: true, site_key: null };
 test("a submit sends a token only once the answer and the widget allow it", () => {
   // the answer names a site key and the widget is not drawn yet, or has no token: nothing is sent
   expect(tokenFor(checked, null)).toBe("required");
-  expect(tokenFor(checked, { token: "", failed: false })).toBe("required");
-  expect(tokenFor(checked, { token: "t", failed: false })).toBe("t");
+  expect(
+    tokenFor(checked, { siteKey: "0x-site", token: "", failed: false }),
+  ).toBe("required");
+  expect(
+    tokenFor(checked, { siteKey: "0x-site", token: "t", failed: false }),
+  ).toBe("t");
+  // a widget drawn for an earlier site key (rotated between opens) never answers for the new one
+  expect(
+    tokenFor(checked, { siteKey: "0x-old", token: "t", failed: false }),
+  ).toBe("required");
+  expect(
+    tokenFor(checked, { siteKey: "0x-old", token: "", failed: true }),
+  ).toBe("required");
   // a widget whose script did not load, no site key, and no answer: the API decides
-  expect(tokenFor(checked, { token: "", failed: true })).toBe("");
+  expect(
+    tokenFor(checked, { siteKey: "0x-site", token: "", failed: true }),
+  ).toBe("");
   expect(tokenFor(unchecked, null)).toBe("");
   expect(tokenFor(null, null)).toBe("");
 });
