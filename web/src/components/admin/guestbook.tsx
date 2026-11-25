@@ -11,43 +11,20 @@
 
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
-import { DropdownMenu } from "@astryxdesign/core/DropdownMenu";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Icon } from "@astryxdesign/core/Icon";
-import { HStack, VStack } from "@astryxdesign/core/Layout";
-import { List, ListItem } from "@astryxdesign/core/List";
+import { VStack } from "@astryxdesign/core/Layout";
+import { List } from "@astryxdesign/core/List";
 import { Spinner } from "@astryxdesign/core/Spinner";
-import { Text } from "@astryxdesign/core/Text";
-import { Timestamp } from "@astryxdesign/core/Timestamp";
-import { Token } from "@astryxdesign/core/Token";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MESSAGE_STYLE } from "@/components/guestbook/message-style";
-import { CLOSED_COLOR } from "@/components/guestbook/status";
 import { useToast } from "@/components/toasts";
 import { ApiError, api } from "@/lib/api";
 import type { GuestbookStatus } from "@/lib/api-types";
+import { listView, type Page, pageOf } from "./guestbook-page";
+import { type Busy, GuestbookRow } from "./guestbook-row";
 import { errorText, useAdminT } from "./messages";
 import { PageFrame } from "./page-frame";
 import type { AdminGuestbookEntry } from "./types";
-
-/** The rows loaded so far, whether older ones remain, and the id the next page is read from: the last row loaded,
- *  kept when rows are deleted. */
-type Page = { entries: AdminGuestbookEntry[]; more: boolean; cursor?: number };
-
-/** An answer of the API as a page, read on from its last row, or from `cursor` when it has none. */
-export const pageOf = (
-  r: { entries: AdminGuestbookEntry[]; more: boolean },
-  cursor?: number,
-): Page => ({ ...r, cursor: r.entries.at(-1)?.id ?? cursor });
-
-/** What the list shows: its rows; the next page, when every loaded row was deleted and older messages remain; or the
- *  empty state. */
-export function listView(page: Page): "rows" | "next" | "empty" {
-  if (page.entries.length > 0) return "rows";
-  return page.more ? "next" : "empty";
-}
-/** The action in flight: loading more, or one of a row's three. */
-type Busy = "more" | `${number}:${"hidden" | "status" | "delete"}`;
 
 function Entries() {
   const t = useAdminT();
@@ -58,12 +35,6 @@ function Entries() {
   const [deleting, setDeleting] = useState<AdminGuestbookEntry>();
   // the row whose Close or Reopen just went through: the control that replaced the old one takes the focus
   const refocus = useRef<number | null>(null);
-  const statusControl = (id: number) => (el: HTMLButtonElement | null) => {
-    if (el && refocus.current === id) {
-      refocus.current = null;
-      el.focus();
-    }
-  };
 
   const load = useCallback(() => {
     setError(undefined);
@@ -176,81 +147,14 @@ function Entries() {
     <>
       <List density="compact" hasDividers edge="outset">
         {page.entries.map((e) => (
-          <ListItem
+          <GuestbookRow
             key={e.id}
-            label={e.nickname}
-            description={
-              <Text type="supporting" color="secondary" style={MESSAGE_STYLE}>
-                {e.body}
-              </Text>
-            }
-            endContent={
-              <HStack gap={3} vAlign="center">
-                {e.hidden_at && (
-                  <Token size="sm" label={t("guestbook.hiddenMark")} />
-                )}
-                {e.status !== "open" && (
-                  <Token
-                    size="sm"
-                    color={CLOSED_COLOR[e.status]}
-                    label={t(`guestbook.status.${e.status}`)}
-                  />
-                )}
-                <Timestamp value={e.created_at} format="relative" />
-                {e.status === "open" ? (
-                  <DropdownMenu
-                    button={{
-                      ref: statusControl(e.id),
-                      label: t("guestbook.close"),
-                      variant: "secondary",
-                      size: "sm",
-                      isLoading: busy === `${e.id}:status`,
-                      isDisabled:
-                        busy !== undefined && busy !== `${e.id}:status`,
-                    }}
-                    alignment="end"
-                    menuWidth="max-content"
-                    items={[
-                      {
-                        label: t("guestbook.closeCompleted"),
-                        onClick: () =>
-                          change(e, "status", { status: "completed" }),
-                      },
-                      {
-                        label: t("guestbook.closeNotPlanned"),
-                        onClick: () =>
-                          change(e, "status", { status: "not_planned" }),
-                      },
-                    ]}
-                  />
-                ) : (
-                  <Button
-                    ref={statusControl(e.id)}
-                    label={t("guestbook.reopen")}
-                    variant="secondary"
-                    size="sm"
-                    isLoading={busy === `${e.id}:status`}
-                    isDisabled={busy !== undefined && busy !== `${e.id}:status`}
-                    onClick={() => change(e, "status", { status: "open" })}
-                  />
-                )}
-                <Button
-                  label={t(e.hidden_at ? "guestbook.show" : "guestbook.hide")}
-                  variant="secondary"
-                  size="sm"
-                  isLoading={busy === `${e.id}:hidden`}
-                  isDisabled={busy !== undefined && busy !== `${e.id}:hidden`}
-                  onClick={() => change(e, "hidden", { hidden: !e.hidden_at })}
-                />
-                <Button
-                  label={t("guestbook.delete")}
-                  variant="destructive"
-                  size="sm"
-                  isDisabled={busy !== undefined}
-                  onClick={() => setDeleting(e)}
-                />
-              </HStack>
-            }
+            entry={e}
+            busy={busy}
+            refocus={refocus}
+            t={t}
+            onChange={change}
+            onDelete={setDeleting}
           />
         ))}
       </List>

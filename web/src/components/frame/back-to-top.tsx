@@ -13,11 +13,13 @@ import { useUi } from "@/components/providers";
 import { toastClearance } from "@/components/toasts";
 import { prefersReducedMotion } from "@/lib/motion";
 
-/** Where toasts sit above a button at `rect` in a window `height` tall: its top, plus its own gap to the bottom edge. */
+/** Where toasts sit above a button at `rect` in a window `height` tall: its top, plus `gap` above it
+ *  (without double-counting `env(safe-area-inset-bottom)` below the button). */
 export const clearanceAbove = (
   rect: { top: number; bottom: number },
   height: number,
-) => 2 * height - rect.top - rect.bottom;
+  gap = height - rect.bottom,
+) => height - rect.top + gap;
 
 export function BackToTop() {
   const { t } = useUi();
@@ -37,10 +39,16 @@ export function BackToTop() {
       toastClearance.set(0);
       return;
     }
-    const place = () =>
-      toastClearance.set(
-        clearanceAbove(el.getBoundingClientRect(), innerHeight),
-      );
+    const place = () => {
+      const rect = el.getBoundingClientRect();
+      // `--spacing-4` is 1rem; capping by the root font size avoids adding `safe-area-inset-bottom` a second time
+      const spacing =
+        Number.parseFloat(
+          getComputedStyle(document.documentElement).fontSize,
+        ) || 16;
+      const gap = Math.min(innerHeight - rect.bottom, spacing);
+      toastClearance.set(clearanceAbove(rect, innerHeight, gap));
+    };
     place();
     // the window's height and the root font size (which sizes the button) change with a resize
     addEventListener("resize", place);

@@ -44,6 +44,7 @@ test("the form takes what the server's validate takes", () => {
 test("a message keeps at most 10 lines, one blank line at a time", () => {
   expect(normalBody("a\n\n\n\nb")).toBe("a\n\nb");
   expect(normalBody("a\r\n \r\n\t\r\n\u3000\nb")).toBe("a\n\nb");
+  expect(normalBody("a\n\u200d\n\ufe0f\nb")).toBe("a\n\nb");
   expect(normalBody("a\u2028b\u2029\u2029\u2029c")).toBe("a\nb\n\nc");
   expect(normalBody("\n\n a \n\n")).toBe("a");
   // two letters and 498 line breaks are two lines and a blank one

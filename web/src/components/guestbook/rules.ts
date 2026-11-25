@@ -31,15 +31,13 @@ export const nicknameOk = (v: string) => {
   return shown(s, NICKNAME_MAX) && !CONTROL.test(s);
 };
 
-// a line made only of white space, as Rust's `char::is_whitespace` reads it
-const BLANK_LINE = /^\p{White_Space}*$/u;
-
 /** The message as the server keeps it (guestbook.rs `normal_body`): each line break a line feed (the line and
- *  paragraph separators break a line as one does), trimmed, and each run of blank lines one empty line. */
+ *  paragraph separators break a line as one does), trimmed, and each run of blank lines (including shaping-only lines)
+ *  one empty line. */
 export const normalBody = (v: string) =>
   trim(v.replace(/\r\n|[\u2028\u2029]/g, "\n"))
     .split("\n")
-    .map((line) => (BLANK_LINE.test(line) ? "" : line))
+    .map((line) => (BLANK.test(line) ? "" : line))
     .filter((line, i, lines) => line !== "" || lines[i - 1] !== "")
     .join("\n");
 
