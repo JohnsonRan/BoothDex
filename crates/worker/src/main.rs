@@ -223,11 +223,7 @@ async fn main() -> Result<()> {
             let kind = args.get(2).context("usage: worker once <kind> [params-json]")?;
             let params: Value = args.get(3).map(|s| serde_json::from_str(s)).transpose()?.unwrap_or_else(|| serde_json::json!({}));
             let id: i64 = sqlx::query_scalar("insert into jobs (kind, params, created_by, status, started_at) values ($1, $2, 'cli', 'running', now()) returning id")
-                .bind(kind)
-                .bind(&params)
-                .fetch_one(&pool)
-                .await
-                .context("could not create job (is one of this kind already running?)")?;
+                .bind(kind).bind(&params).fetch_one(&pool).await.context("could not create job (is one of this kind already running?)")?;
             execute(&pool, &booth, id, kind, &params, false).await
         }
         Some("migrate") => Ok(()), // migrations already ran above

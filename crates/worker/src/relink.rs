@@ -105,7 +105,11 @@ pub async fn queue(pool: &PgPool) -> Result<()> {
     if !Names::read(pool).await?.added().is_empty() {
         sqlx::query(
             "insert into jobs (kind, params, created_by)
-             select 'enrich', case when coalesce((select enabled from job_schedules where kind = 'enrich'), false) then '{}' else '{\"relink_only\": true}' end::jsonb, 'avatars'
+             select 'enrich',
+                    case when coalesce((select enabled from job_schedules where kind = 'enrich'), false)
+                         then coalesce((select params from job_schedules where kind = 'enrich'), '{}'::jsonb)
+                         else '{\"relink_only\": true}'::jsonb end,
+                    'avatars'
              on conflict do nothing",
         )
         .execute(pool)
@@ -231,6 +235,10 @@ mod tests {
         assert_eq!(queued().await, [serde_json::json!({ "relink_only": true })]);
         schedule(true).await.unwrap();
         queue(&pool).await.unwrap();
-        assert_eq!(queued().await, [serde_json::json!({})]);
+        assert_eq!(queued().await, [serde_json::json!({ "batch": 200 })]);
+        // custom enrich schedule params (e.g. concurrency or batch) are kept when relink triggers an enrich run
+        sqlx::query("update job_schedules set params = '{\"batch\": 50, \"concurrency\": 2}'::jsonb where kind = 'enrich'").execute(&pool).await.unwrap();
+        queue(&pool).await.unwrap();
+        assert_eq!(queued().await, [serde_json::json!({ "batch": 50, "concurrency": 2 })]);
     }
 }
