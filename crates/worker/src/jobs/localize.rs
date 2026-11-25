@@ -234,4 +234,3 @@ async fn ask_batch(ctx: &Ctx<'_>, ai: &crate::ai::Ai, avatars: &AvatarKit, batch
         }
     }
 }
-
