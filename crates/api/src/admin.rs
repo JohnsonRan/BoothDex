@@ -447,16 +447,26 @@ pub async fn queue_localize_if_needed(pool: &PgPool, c: &AiConfig) -> Result<(),
         return Ok(());
     }
     sqlx::query(
-        "insert into jobs (kind, params, created_by)
-         select 'localize', case when stale then '{\"force\": true}'::jsonb else '{}' end, 'ai-settings'
-           from (select not coalesce((select value->'prompt_version' = to_jsonb($1::bigint) from app_settings where key = 'localize_state'), false) as stale) v
-          where stale or exists (
-           select 1 from smart_categories where name_en is not null and name_zh is null
-           union all
-           select 1 from smart_categories where group_en is not null and group_zh is null
-           union all
-           select 1 from smart_tags where display is not null and display_zh is null
+        "with state as (
+           select not coalesce((select value->'prompt_version' = to_jsonb($1::bigint) from app_settings where key = 'localize_state'), false) as stale
+         ), upgraded as (
+           update jobs set params = params || '{\"force\": true}'::jsonb
+            where kind = 'localize' and status = 'queued'
+              and (select stale from state)
+              and params->'force' is distinct from 'true'::jsonb
+           returning id
          )
+         insert into jobs (kind, params, created_by)
+         select 'localize', case when stale then '{\"force\": true}'::jsonb else '{}' end, 'ai-settings'
+           from state
+          where not exists (select 1 from upgraded)
+            and (stale or exists (
+             select 1 from smart_categories where name_en is not null and name_zh is null
+             union all
+             select 1 from smart_categories where group_en is not null and group_zh is null
+             union all
+             select 1 from smart_tags where display is not null and display_zh is null
+           ))
          on conflict do nothing",
     )
     .bind(boothdex_core::LOCALIZE_PROMPT_VERSION)
@@ -627,6 +637,10 @@ mod tests {
         record(boothdex_core::LOCALIZE_PROMPT_VERSION - 1).await.unwrap();
         super::queue_localize_if_needed(&pool, &configured).await.unwrap();
         assert_eq!(queued().await, [serde_json::json!({ "force": true })]);
+        // an already-queued daily localize job without force is upgraded in place when the prompt is stale
+        sqlx::query("insert into jobs (kind, params, created_by) values ('localize', '{\"max_tags\": 100}', 'schedule')").execute(&pool).await.unwrap();
+        super::queue_localize_if_needed(&pool, &configured).await.unwrap();
+        assert_eq!(queued().await, [serde_json::json!({ "max_tags": 100, "force": true })]);
         // with this prompt recorded: only missing names are filled, and nothing when none is missing
         record(boothdex_core::LOCALIZE_PROMPT_VERSION).await.unwrap();
         super::queue_localize_if_needed(&pool, &configured).await.unwrap();
