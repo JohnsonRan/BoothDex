@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   askRegistration,
+  createSubmitFlight,
   type Registration,
   tokenFor,
   waitForAnswer,
@@ -107,4 +108,75 @@ test("a submit whose form changed while it waited is cancelled", async () => {
     still: () => shown,
   });
   expect(changedDuringAsk).toBe("cancelled");
+});
+
+test("form change cancels a registration wait without blocking the next submit", async () => {
+  const flight = createSubmitFlight();
+  let releaseWait: (r: Registration) => void = () => {};
+  const pending = new Promise<Registration | null>((resolve) => {
+    releaseWait = resolve;
+  });
+  let posts = 0;
+  let busy = false;
+
+  const a1 = flight.begin();
+  expect(a1).not.toBeNull();
+  if (!a1) return;
+  busy = true;
+  // double-submit while waiting is ignored
+  expect(flight.begin()).toBeNull();
+
+  const wait1 = waitForAnswer({
+    pending,
+    ask: () => Promise.resolve(unchecked),
+    still: a1.still,
+  });
+
+  // closing/reopening or switching tabs while still waiting cancels the wait and unlocks busy
+  busy = flight.onFormChange();
+  expect(busy).toBe(false);
+
+  // second submit starts cleanly and enters POST
+  const a2 = flight.begin();
+  expect(a2).not.toBeNull();
+  if (!a2) return;
+  busy = true;
+  expect(a2.enterPost()).toBe(true);
+  posts++;
+
+  // first wait settles late: cancelled, cannot enter POST, and finish() does not clear a2's busy state
+  releaseWait(unchecked);
+  expect(await wait1).toBe("cancelled");
+  expect(a1.enterPost()).toBe(false);
+  expect(a1.finish()).toBe(false);
+  expect(busy).toBe(true);
+  expect(posts).toBe(1);
+
+  // a2 finishes cleanly
+  expect(a2.finish()).toBe(true);
+  busy = false;
+  expect(busy).toBe(false);
+});
+
+test("reopening after an account POST starts keeps the POST single-flight until it settles", () => {
+  const flight = createSubmitFlight();
+  const a1 = flight.begin();
+  expect(a1).not.toBeNull();
+  if (!a1) return;
+  expect(a1.enterPost()).toBe(true);
+
+  // close and reopen while the account POST is still pending
+  expect(flight.onFormChange()).toBe(true);
+  expect(flight.onFormChange()).toBe(true);
+  // a1 is no longer on the same form (no stale error toast or widget reset),
+  // but no second account POST may overlap until a1 settles
+  expect(a1.still()).toBe(false);
+  expect(flight.begin()).toBeNull();
+
+  // once the single in-flight POST settles, the reopened form unlocks for a new submit
+  expect(a1.finish()).toBe(true);
+  const a2 = flight.begin();
+  expect(a2).not.toBeNull();
+  expect(a2?.enterPost()).toBe(true);
+  expect(a2?.finish()).toBe(true);
 });

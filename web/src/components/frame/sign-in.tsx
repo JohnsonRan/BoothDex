@@ -45,6 +45,7 @@ import { rich } from "@/lib/rich";
 import { type TurnstileState, useTurnstile } from "@/lib/turnstile";
 import {
   askRegistration,
+  createSubmitFlight,
   type Registration,
   tokenFor,
   waitForAnswer,
@@ -125,14 +126,11 @@ export function SignInDialog({
   const [siteKey, setSiteKey] = useState<string | null>(null);
   const verification = useRef<VerificationHandle>(null);
   const value = (f: Field) => values[f] ?? "";
-  // this open's registration answer, which a submit waits for; the opens so far; the form shown, renumbered on every
-  // open, close and change between sign-in and registration, which a waiting submit must still be on to go on; the
-  // active submit id (0 when idle), cleared on form change so switching tabs or reopening never freezes the form
+  // this open's registration answer, which a submit waits for; the opens so far; and the two-phase submit controller
+  // (cancels a registration wait on close/mode change, keeps an issued account POST single-flight until it settles)
   const answer = useRef<Promise<Registration | null>>(Promise.resolve(null));
   const opens = useRef(0);
-  const form = useRef(0);
-  const submitSeq = useRef(0);
-  const activeSubmit = useRef(0);
+  const flight = useRef(createSubmitFlight());
 
   const apply = (a: Registration | null) => {
     // unknown: keep offering registration, without the widget
@@ -164,30 +162,26 @@ export function SignInDialog({
   }, [isOpen]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: renumbered on each change of either
   useEffect(() => {
-    form.current++;
-    activeSubmit.current = 0;
-    setBusy(false);
+    setBusy(flight.current.onFormChange());
   }, [isOpen, mode]);
   const errorOf = (f: Field) =>
     checked ? problem(mode, f, value(f)) : undefined;
 
   const submit = async () => {
-    if (activeSubmit.current !== 0) return;
+    if (flight.current.busy()) return;
     setChecked(true);
     if (FIELDS[mode].some((f) => problem(mode, f, value(f)))) return;
-    const run = ++submitSeq.current;
-    activeSubmit.current = run;
+    const attempt = flight.current.begin();
+    if (!attempt) return;
     setBusy(true);
-    const from = form.current;
-    const still = () => form.current === from && activeSubmit.current === run;
     try {
       const waited = await waitForAnswer({
         pending: answer.current,
         ask,
-        still,
+        still: attempt.still,
       });
       // a registration the answer says is closed is not sent either
-      if (waited === "cancelled" || !still()) return;
+      if (waited === "cancelled" || !attempt.still()) return;
       if (mode === "register" && waited.answer?.open === false) {
         toast({
           type: "error",
@@ -202,6 +196,7 @@ export function SignInDialog({
         toast({ type: "error", body: vt("required"), uniqueID: "auth" });
         return;
       }
+      if (!attempt.enterPost()) return;
       try {
         await api(
           mode === "login" ? "/api/account/login" : "/api/account/register",
@@ -214,14 +209,12 @@ export function SignInDialog({
             },
           },
         );
-        if (still()) {
-          toast({ body: t("account.signedIn"), uniqueID: "auth" });
-          setValues({});
-          setChecked(false);
-        }
+        toast({ body: t("account.signedIn"), uniqueID: "auth" });
+        setValues({});
+        setChecked(false);
         onSignedIn();
       } catch (err) {
-        if (!still()) return;
+        if (!attempt.still()) return;
         toast({
           type: "error",
           body: verificationRefused(err)
@@ -230,13 +223,10 @@ export function SignInDialog({
           uniqueID: "auth",
         });
       } finally {
-        if (still()) widget?.reset();
+        if (attempt.still()) widget?.reset();
       }
     } finally {
-      if (activeSubmit.current === run) {
-        activeSubmit.current = 0;
-        setBusy(false);
-      }
+      if (attempt.finish()) setBusy(false);
     }
   };
 
