@@ -99,11 +99,11 @@ html {
 .astryx-dialog .astryx-layout-content {
   scrollbar-width: none;
 }
-/* A dialog's body or the filter rail can be cut anywhere, also through its last row's padding, where it read as
-   clipped (owner, the Settings panel's last switch): while more is below, its lower edge fades as a Carousel's edges
-   do (core Carousel.tsx `fadeEnd`), over the last steps of its scroll the fade goes. Scroll-driven, so a box that
-   does not scroll has no timeline and no fade; without scroll timelines (Firefox) the animation ends at once, with no
-   fade either. */
+/* A dialog's body (and the filter rail, which reuses `body-fade` in app/filter-row.css) can be cut anywhere, also
+   through its last row's padding, where it read as clipped (owner, the Settings panel's last switch): while more is
+   below, its lower edge fades as a Carousel's edges do (core Carousel.tsx `fadeEnd`), over the last steps of its
+   scroll the fade goes. Scroll-driven, so a box that does not scroll has no timeline and no fade; without scroll
+   timelines (Firefox) the animation ends at once, with no fade either. */
 @property --body-fade {
   syntax: "<length>";
   inherits: false;
@@ -117,8 +117,7 @@ html {
     --body-fade: 0px;
   }
 }
-.astryx-dialog .astryx-layout-content,
-.filter-rail {
+.astryx-dialog .astryx-layout-content {
   mask-image: linear-gradient(
     to bottom,
     black calc(100% - var(--body-fade)),

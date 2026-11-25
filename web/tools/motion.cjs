@@ -15,15 +15,16 @@ const [
 ] = process.argv.slice(2);
 const ENTRANCE = ["page-enter", "row-enter"];
 // the animations running on what can be seen: a hidden element's draws nothing (Tokenizer keeps its idle Spinner
-// mounted and hidden); a scroll-driven edge fade (globals.css `body-fade` on dialogs and the filter rail) is a mask
-// that follows scroll, nothing moves
+// mounted and hidden); scroll-driven geometry/masks (globals.css `body-fade` on dialogs and the filter rail,
+// filter-row.css `rail-fade-top` and `rail-head` on the filter rail) follow scroll, nothing animates on its own
+const PASSIVE_SCROLL = new Set(["body-fade", "rail-fade-top", "rail-head"]);
 const RUNNING = () =>
   document
     .getAnimations()
     .filter(
       (a) =>
         a.playState === "running" &&
-        a.animationName !== "body-fade" &&
+        !PASSIVE_SCROLL.has(a.animationName) &&
         a.effect?.target?.checkVisibility({ visibilityProperty: true }) !==
           false,
     )
@@ -61,7 +62,7 @@ const opening = async (p, click) => {
     await p.waitForTimeout(40);
   }
   const ids = await p.evaluate(() => window.__anims.map((a) => a.id));
-  return [...new Set([...seen, ...ids])].filter((r) => r !== "body-fade");
+  return [...new Set([...seen, ...ids])].filter((r) => !PASSIVE_SCROLL.has(r));
 };
 const stripToggle = (p, name) => () =>
   p.getByRole("button", { name, exact: true }).click();

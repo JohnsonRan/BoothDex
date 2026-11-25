@@ -277,32 +277,33 @@ async function Catalog({
       padding={6}
       // where the filters sit, for the band's edge beside the rail (app/filter-row.css)
       data-filters={settings.filters}
-      // the filters at the side (Settings), starting directly under the top bar beside the title, band and results;
-      // the recent view has none
+      // the filters at the side (Settings), beside the band and the results; the recent view has none
       start={
         settings.filters === "side" && !recent ? (
           <FilterRail facets={facets} names={names} width={railWidth} />
         ) : undefined
       }
+      header={
+        // padding 0 and a Section inside, as the template (:4339-4353); the Section keeps the page inset
+        // (TEMPLATE-MAP rule 5) where the template has 16 px. The divider and the progress bar are the band's.
+        <LayoutHeader padding={0}>
+          <Section
+            variant="transparent"
+            padding={6}
+            paddingBlockEnd={recent ? 6 : 0}
+          >
+            <HStack gap={3} vAlign="center" wrap="wrap">
+              <Heading level={1}>{title}</Heading>
+              {recent && <RecentCount />}
+              {(recent || filters.view === "favourites") && <ViewActions />}
+            </HStack>
+          </Section>
+        </LayoutHeader>
+      }
       content={
-        // not scrolling itself, so the band sticks to the window (band.tsx); the title sits here instead of in
-        // Layout's header slot so the side rail starts flush under the top bar at full viewport height
+        // not scrolling itself, so the band sticks to the window (band.tsx); the band and the results carry the
+        // page inset, the results the default 4 below the header (owner: the template's 6 left too much space)
         <LayoutContent isScrollable={false} padding={0}>
-          {/* padding 0 and a Section inside, as the template (:4339-4353); the Section keeps the page inset
-              (TEMPLATE-MAP rule 5) where the template has 16 px. The divider and the progress bar are the band's. */}
-          <LayoutHeader padding={0}>
-            <Section
-              variant="transparent"
-              padding={6}
-              paddingBlockEnd={recent ? 6 : 0}
-            >
-              <HStack gap={3} vAlign="center" wrap="wrap">
-                <Heading level={1}>{title}</Heading>
-                {recent && <RecentCount />}
-                {(recent || filters.view === "favourites") && <ViewActions />}
-              </HStack>
-            </Section>
-          </LayoutHeader>
           <FilterBand
             label={t("filter.region")}
             avatars={
