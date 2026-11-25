@@ -185,7 +185,7 @@ export const adminJa: AdminDict = {
   "settings.title": "設定",
   "ai.title": "AI 処理",
   "ai.desc":
-    "商品分類、翻訳、意味ベクトルの生成に使用する OpenAI 互換サービスです。保存後にカテゴリの翻訳を 1 回実行します。",
+    "商品分類、商品・タグの翻訳、意味ベクトルの生成に使用する OpenAI 互換サービスです。未翻訳のカテゴリがある場合は保存後に翻訳を実行します。",
   "ai.baseUrl": "API URL",
   "ai.baseUrlDesc": "OpenAI 互換エンドポイント",
   "ai.model": "AI モデル",

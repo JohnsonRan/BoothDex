@@ -6,7 +6,11 @@
 export type Registration = { open: boolean; site_key: string | null };
 
 /** The widget as the dialog reads it when it sends. */
-export type Widget = { token: string; failed: boolean } | null;
+export type Widget = {
+  siteKey: string;
+  token: string;
+  failed: boolean;
+} | null;
 
 /** How long one ask for the answer may take before the dialog goes on without it. */
 export const ANSWER_WAIT_MS = 5000;
@@ -58,6 +62,54 @@ export function tokenFor(
   answer: Registration | null,
   widget: Widget,
 ): string | "required" {
-  if (!answer?.site_key || widget?.failed) return "";
-  return widget?.token || "required";
+  if (!answer?.site_key) return "";
+  if (!widget || widget.siteKey !== answer.site_key) return "required";
+  if (widget.failed) return "";
+  return widget.token || "required";
+}
+
+/**
+ * Single-flight controller across the sign-in dialog's two submit phases:
+ * - waiting on `/api/account/registration`: closing, reopening or switching tabs cancels the wait so the form is never stuck;
+ * - posting to `/api/account/login` or `/api/account/register`: stays single-flight until the request settles so reopening cannot overlap two account POSTs.
+ */
+export function createSubmitFlight() {
+  let form = 0;
+  let seq = 0;
+  let active = 0;
+  let posting = false;
+  return {
+    /** Whether a submit is currently waiting on registration settings or posting to the account API. */
+    busy: () => posting || active !== 0,
+    /** Called whenever the dialog opens, closes, or switches mode; returns whether a submit is still busy. */
+    onFormChange(): boolean {
+      form++;
+      if (!posting) {
+        active = 0;
+        return false;
+      }
+      return true;
+    },
+    /** Starts a submit attempt, or returns null while another submit is waiting or posting. */
+    begin() {
+      if (posting || active !== 0) return null;
+      const run = ++seq;
+      const from = form;
+      active = run;
+      return {
+        still: () => form === from && active === run,
+        enterPost() {
+          if (form !== from || active !== run) return false;
+          posting = true;
+          return true;
+        },
+        finish(): boolean {
+          if (active !== run) return false;
+          posting = false;
+          active = 0;
+          return true;
+        },
+      };
+    },
+  };
 }

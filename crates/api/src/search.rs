@@ -434,12 +434,26 @@ pub(crate) async fn query_embedding(
             EmbedPlan::Unavailable
         }
         Err(_) => {
-            trace.step("embed_timeout");
-            eprintln!("query embedding: still waiting after 2.5 s; searching by words only this time");
-            // with the provider, the request fills both caches for the same search a moment later; still waiting for a
-            // slot, it gives up at about this time and nothing comes
-            if matches!(*rx.borrow(), Embedding::Asking) { EmbedPlan::Pending } else { EmbedPlan::Unavailable }
+            let (step, plan) = plan_on_timeout(&rx.borrow());
+            trace.step(step);
+            if step == "embed_timeout" {
+                eprintln!("query embedding: still waiting after 2.5 s; searching by words only this time");
+            }
+            plan
         }
+    }
+}
+
+/// Decides the embed plan when `wait_for` times out: if the embedding finished right as the deadline fired, use it
+/// instead of discarding the vector and showing an unavailable note.
+fn plan_on_timeout(state: &Embedding) -> (&'static str, EmbedPlan) {
+    match state {
+        Embedding::Done(Some(v)) => ("embed_provider", EmbedPlan::Vector(v.clone())),
+        Embedding::Done(None) => ("embed_failed", EmbedPlan::Unavailable),
+        // with the provider, the request fills both caches for the same search a moment later; still waiting for a
+        // slot, it gives up at about this time and nothing comes
+        Embedding::Asking => ("embed_timeout", EmbedPlan::Pending),
+        Embedding::Queued => ("embed_timeout", EmbedPlan::Unavailable),
     }
 }
 
@@ -510,5 +524,13 @@ mod recognized_tests {
             ])
         );
         assert_eq!(recognized(&[], &[], None, "dress"), vec![]);
+    }
+
+    #[test]
+    fn timeout_keeps_a_vector_that_landed_at_the_deadline() {
+        assert!(matches!(plan_on_timeout(&Embedding::Done(Some(vec![1.0]))), ("embed_provider", EmbedPlan::Vector(v)) if v == [1.0]));
+        assert!(matches!(plan_on_timeout(&Embedding::Done(None)), ("embed_failed", EmbedPlan::Unavailable)));
+        assert!(matches!(plan_on_timeout(&Embedding::Asking), ("embed_timeout", EmbedPlan::Pending)));
+        assert!(matches!(plan_on_timeout(&Embedding::Queued), ("embed_timeout", EmbedPlan::Unavailable)));
     }
 }

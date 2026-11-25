@@ -24,7 +24,7 @@ pixiv、BOOTH 及 VRCatalogue 均无关联；商品数据与图片归原作者�
 
 BoothDex 通过 Docker 或 Podman Compose 运行 PostgreSQL 19（`pgvector`）、三个 Rust 服务与 Next.js 前端。预构建镜像支持 `linux/amd64` 和 `linux/arm64`。服务器需有 **4 GB 及以上内存**和 2 GB 交换空间（推荐 6 GB 内存）。整个服务栈只暴露一个端口（`WEB_LISTEN`，默认 `127.0.0.1:3100`），供反向代理接入。
 
-使用已发布的数据包安装。数据包是 2026-11-21 的快照，含约 22.3 万件商品及下架商品的存档图片（约 2.1 GB）。先按[部署指南](docs/DEPLOY.md#optional-download-the-data-bundle)（英文）下载，然后执行：
+使用已发布的数据包安装。数据包是 2026-11-21 的快照，含约 22.3 万件商品及下架商品的存档图片（约 2.2 GB）。先按[部署指南](docs/DEPLOY.md#optional-download-the-data-bundle)（英文）下载，然后执行：
 
 ```sh
 mkdir -p /srv/boothdex && cd /srv/boothdex
@@ -60,7 +60,7 @@ docker compose up -d
 - 商品在对话框中打开，包含完整 BOOTH 图集、变体、标题翻译与原图下载。
 - 收藏夹、最近已看、记住常用的虚拟形象，以及可重命名、可通过 RSS 订阅的已保存搜索。
 - 在设置中修改显示名称和密码；修改密码后，其他设备会退出登录。
-- 顶栏的留言板无需账号即可留言（昵称、最多 500 个字符，并需通过 Cloudflare Turnstile 验证）。管理员可隐藏或删除留言，也可将留言标为已完成或不计划处理。
+- 顶栏的留言板无需账号即可留言（昵称、最多 500 个字符、10 行，并需通过 Cloudflare Turnstile 验证）。管理员可隐藏或删除留言，也可将留言标为已完成或不计划处理。
 - 管理员可要求登录和注册也通过 Turnstile 验证，并对未通过验证的访客施加更严格的限制（[Turnstile](docs/SERVICES.md#cloudflare-turnstile)，英文）。
 
 <details>

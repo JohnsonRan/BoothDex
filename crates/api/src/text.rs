@@ -676,4 +676,20 @@ mod tests {
         assert_eq!(ids("short-hair"), [0, 1, 2, 5]);
         assert!(joined_pairs(&["Short Hair 2.0 for しなの"]).contains("shorthair"));
     }
+
+    #[test]
+    fn chinese_title_with_katakana_name_matches_full_name_as_words_only() {
+        let idx = TextIndex::build(
+            vec![TextDoc { title: String::new(), title_zh: "ミルティナ用 连衣裙".into(), tags: String::new(), tag_words: String::new(), author: String::new(), bio: String::new() }]
+                .into_iter(),
+            None,
+            0,
+        )
+        .unwrap();
+        let hits = |q: &str| idx.search(q).unwrap().hits.iter().collect::<Vec<_>>();
+        // CC-CEDICT keeps the full katakana run as one token; title_zh is words-only so partial prefixes stay out
+        assert_eq!(hits("ミルティナ"), [0]);
+        assert!(hits("ミルティ").is_empty());
+        assert_eq!(hits("连衣裙"), [0]);
+    }
 }

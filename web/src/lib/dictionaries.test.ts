@@ -28,30 +28,34 @@ test("the browser's dictionary has every key but the server-only ones", () => {
   }
 });
 
-test("only results.tsx, rendered on the server, looks up a server-only key", () => {
+const SERVER_RESULTS = [
+  "components/catalog/results/result-notes.tsx",
+  "components/catalog/results/results.tsx",
+];
+
+test("only results modules rendered on the server look up a server-only key", () => {
   expect(
     sources.filter((file) =>
       SERVER_ONLY.some((key) => read(file).includes(`"${key}"`)),
     ),
-  ).toEqual(["components/catalog/results/results.tsx", "lib/dictionaries.ts"]);
-  expect(read("components/catalog/results/results.tsx")).not.toContain(
-    '"use client"',
-  );
+  ).toEqual([...SERVER_RESULTS, "lib/dictionaries.ts"]);
+  for (const file of SERVER_RESULTS) {
+    expect(read(file)).not.toContain('"use client"');
+  }
   // pages hand the browser its dictionary through browserMessages only
   expect(sources.filter((file) => /\bMESSAGES\b/.test(read(file)))).toEqual([
     "lib/dictionaries.ts",
   ]);
 });
 
-test("every key that only results.tsx looks up is server-only", () => {
+test("every key that only server results modules look up is server-only", () => {
   const texts = sources
     .filter((file) => file !== "lib/dictionaries.ts")
     .map((file) => [file, read(file)] as const);
   const onlyResults = Object.keys(MESSAGES.en).filter((key) => {
     const named = texts.filter(([, text]) => text.includes(`"${key}"`));
     return (
-      named.length === 1 &&
-      named[0][0] === "components/catalog/results/results.tsx"
+      named.length > 0 && named.every(([file]) => SERVER_RESULTS.includes(file))
     );
   });
   expect(onlyResults.sort()).toEqual([...SERVER_ONLY].sort());

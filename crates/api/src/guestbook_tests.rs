@@ -27,6 +27,7 @@ fn a_message_keeps_ten_lines_and_one_blank_line_at_a_time() {
     let kept = |body: &str| validate("Ann", body).map(|(_, body)| body);
     assert_eq!(kept("a\n\n\n\nb").unwrap(), "a\n\nb");
     assert_eq!(kept("a\r\n \r\n\t\r\n\u{3000}\nb").unwrap(), "a\n\nb");
+    assert_eq!(kept("a\n\u{200D}\n\u{FE0F}\nb").unwrap(), "a\n\nb");
     assert_eq!(kept("a\u{2028}b\u{2029}\u{2029}\u{2029}c").unwrap(), "a\nb\n\nc");
     assert_eq!(kept("\n\n a \n\n").unwrap(), "a");
     // two letters and 498 line breaks are two lines and a blank one

@@ -114,7 +114,7 @@ impl Refusal {
             Self::VerificationOffered => (S::TOO_MANY_REQUESTS, crate::limit::TOO_MANY),
             Self::VerificationRequired => (S::FORBIDDEN, "Pass the verification with these keys first."),
             Self::BadTurnstileSettings => (S::BAD_REQUEST, "Keys must be 1-200 printable ASCII characters."),
-            Self::BadGuestbookEntry => (S::BAD_REQUEST, "Nickname must be 1-24 characters and message 1-500 characters."),
+            Self::BadGuestbookEntry => (S::BAD_REQUEST, "Nickname must be 1-24 characters and message 1-500 characters in at most 10 lines."),
             Self::NoSuchEntry => (S::NOT_FOUND, "No such message"),
         }
     }

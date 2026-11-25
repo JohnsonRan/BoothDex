@@ -87,16 +87,29 @@ pub(super) async fn put(
     Json(b): Json<TurnstileSettings>,
 ) -> Result<Response, ApiError> {
     let who = require_admin(&s, &headers).await?;
+    save(&s, ip, &who, b, |k| std::env::var(k).ok()).await
+}
+
+/// `env` is injected for testability, as in `save_ai`: a key locked by `TURNSTILE_*` is never written to the database,
+/// so an unproved value cannot sit in `app_settings` and take effect once the environment variable is removed.
+async fn save(
+    s: &AppState,
+    ip: std::net::IpAddr,
+    who: &str,
+    b: TurnstileSettings,
+    env: impl Fn(&str) -> Option<String>,
+) -> Result<Response, ApiError> {
     let site_key = b.site_key.map(|k| k.trim().to_owned());
     let secret = b.secret.map(|k| k.trim().to_owned()).filter(|k| !k.is_empty());
     if [&site_key, &secret].iter().any(|k| k.as_deref().is_some_and(|k| !valid_key(k))) {
         return Err(Refusal::BadTurnstileSettings.into());
     }
+    let env_locked = |var: &str| env(var).is_some_and(|v| !v.trim().is_empty());
     let mut change = json!({});
-    if let Some(k) = site_key {
+    if let Some(k) = site_key.filter(|_| !env_locked("TURNSTILE_SITE_KEY")) {
         change["site_key"] = json!(k);
     }
-    if let Some(k) = secret {
+    if let Some(k) = secret.filter(|_| !env_locked("TURNSTILE_SECRET_KEY")) {
         change["secret"] = json!(k);
     }
     if let Some(on) = b.auth {
@@ -109,12 +122,12 @@ pub(super) async fn put(
     // there, and two saves (one a key, one the switch) are each judged against the other's result
     let _save = s.turnstile_save.lock().await;
     let stored = turnstile::stored(&s.pool).await?;
-    let (before, after) = before_after(&stored, &change, |k| std::env::var(k).ok());
+    let (before, after) = before_after(&stored, &change, &env);
     if let Some((site_key, secret)) = unproved(&before, &after) {
         if b.token.is_empty() || b.proved_site_key.as_deref() != Some(site_key) {
             return Ok(proof_required(site_key));
         }
-        match turnstile::verdict(&s, secret, &b.token, ip, SETTINGS_ACTION).await {
+        match turnstile::verdict(s, secret, &b.token, ip, SETTINGS_ACTION).await {
             Verdict::Passed => {}
             Verdict::Refused => return Err(Refusal::VerificationFailed.into()),
             Verdict::Unjudged => {
@@ -131,7 +144,7 @@ pub(super) async fn put(
     .execute(&s.pool)
     .await?;
     println!("admin {who} saved the Turnstile settings");
-    let saved = Arc::new(turnstile::config(&s.pool).await?);
+    let saved = Arc::new(turnstile::resolve(&turnstile::stored(&s.pool).await?, &env));
     s.turnstile.store(Some(saved.clone()));
     Ok(Json(public(&saved)).into_response())
 }
@@ -151,3 +164,7 @@ pub(super) async fn test(State(s): State<Arc<AppState>>, headers: HeaderMap) -> 
 #[cfg(test)]
 #[path = "turnstile_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "turnstile_proof_tests.rs"]
+mod proof_tests;

@@ -45,6 +45,7 @@ import { rich } from "@/lib/rich";
 import { type TurnstileState, useTurnstile } from "@/lib/turnstile";
 import {
   askRegistration,
+  createSubmitFlight,
   type Registration,
   tokenFor,
   waitForAnswer,
@@ -73,6 +74,8 @@ function problem(mode: Mode, field: Field, v: string): MessageKey | undefined {
 /** the actions the API checks the token for (crates/api/src/account/sign_in.rs) */
 const ACTION: Record<Mode, string> = { login: "sign-in", register: "register" };
 
+type VerificationHandle = TurnstileState & { siteKey: string };
+
 /** The widget for a site key; the dialog reads its state through `handle` when it submits. */
 function Verification({
   siteKey,
@@ -81,10 +84,10 @@ function Verification({
 }: {
   siteKey: string;
   action: string;
-  handle: Ref<TurnstileState>;
+  handle: Ref<VerificationHandle>;
 }) {
   const verification = useTurnstile(siteKey, action);
-  useImperativeHandle(handle, () => verification);
+  useImperativeHandle(handle, () => ({ ...verification, siteKey }));
   return <VerificationField verification={verification} />;
 }
 
@@ -121,15 +124,13 @@ export function SignInDialog({
   const [busy, setBusy] = useState(false);
   const [canRegister, setCanRegister] = useState(true);
   const [siteKey, setSiteKey] = useState<string | null>(null);
-  const verification = useRef<TurnstileState>(null);
+  const verification = useRef<VerificationHandle>(null);
   const value = (f: Field) => values[f] ?? "";
-  // this open's registration answer, which a submit waits for; the opens so far; the form shown, renumbered on every
-  // open, close and change between sign-in and registration, which a waiting submit must still be on to go on; a
-  // submit under way, for Enter pressed again while it waits
+  // this open's registration answer, which a submit waits for; the opens so far; and the two-phase submit controller
+  // (cancels a registration wait on close/mode change, keeps an issued account POST single-flight until it settles)
   const answer = useRef<Promise<Registration | null>>(Promise.resolve(null));
   const opens = useRef(0);
-  const form = useRef(0);
-  const sending = useRef(false);
+  const flight = useRef(createSubmitFlight());
 
   const apply = (a: Registration | null) => {
     // unknown: keep offering registration, without the widget
@@ -151,39 +152,51 @@ export function SignInDialog({
   // the gate asks too, for the site key only: it never offers registration
   // biome-ignore lint/correctness/useExhaustiveDependencies: asked once per open; ask only sets state
   useEffect(() => {
-    if (!isOpen) return;
     opens.current++;
+    if (!isOpen) {
+      // unmount the widget while closed so a rotated key or recovered script failure starts clean on the next open
+      setSiteKey(null);
+      return;
+    }
     ask();
   }, [isOpen]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: renumbered on each change of either
   useEffect(() => {
-    form.current++;
+    setBusy(flight.current.onFormChange());
   }, [isOpen, mode]);
   const errorOf = (f: Field) =>
     checked ? problem(mode, f, value(f)) : undefined;
 
   const submit = async () => {
-    if (sending.current) return;
+    if (flight.current.busy()) return;
     setChecked(true);
     if (FIELDS[mode].some((f) => problem(mode, f, value(f)))) return;
-    sending.current = true;
+    const attempt = flight.current.begin();
+    if (!attempt) return;
     setBusy(true);
-    const from = form.current;
     try {
       const waited = await waitForAnswer({
         pending: answer.current,
         ask,
-        still: () => form.current === from,
+        still: attempt.still,
       });
       // a registration the answer says is closed is not sent either
-      if (waited === "cancelled") return;
-      if (mode === "register" && waited.answer?.open === false) return;
+      if (waited === "cancelled" || !attempt.still()) return;
+      if (mode === "register" && waited.answer?.open === false) {
+        toast({
+          type: "error",
+          body: t("error.registrationClosed"),
+          uniqueID: "auth",
+        });
+        return;
+      }
       const widget = verification.current;
       const token = tokenFor(waited.answer, widget);
       if (token === "required") {
         toast({ type: "error", body: vt("required"), uniqueID: "auth" });
         return;
       }
+      if (!attempt.enterPost()) return;
       try {
         await api(
           mode === "login" ? "/api/account/login" : "/api/account/register",
@@ -201,6 +214,7 @@ export function SignInDialog({
         setChecked(false);
         onSignedIn();
       } catch (err) {
+        if (!attempt.still()) return;
         toast({
           type: "error",
           body: verificationRefused(err)
@@ -209,12 +223,10 @@ export function SignInDialog({
           uniqueID: "auth",
         });
       } finally {
-        widget?.reset();
+        if (attempt.still()) widget?.reset();
       }
     } finally {
-      // every way out, a cancelled submit included, leaves the form able to send again
-      sending.current = false;
-      setBusy(false);
+      if (attempt.finish()) setBusy(false);
     }
   };
 
@@ -300,8 +312,9 @@ export function SignInDialog({
                         );
                       })}
                     </VStack>
-                    {siteKey && (
+                    {isOpen && siteKey && (
                       <Verification
+                        key={`${siteKey}:${ACTION[mode]}`}
                         siteKey={siteKey}
                         action={ACTION[mode]}
                         handle={verification}

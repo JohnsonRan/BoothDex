@@ -705,6 +705,25 @@ async fn search_finds_items_by_the_words_of_the_tag_dictionary(pool: PgPool) {
     assert_eq!([found("texture"), found("贴图"), found("chair"), found("의자"), found("hair")], [vec![1], vec![1], vec![2], vec![2], vec![3]]);
 }
 
+#[sqlx::test(migrations = "../core/migrations")]
+#[ignore = "requires PostgreSQL with pgvector"]
+async fn chinese_listing_keeps_identical_english_title_searchable_in_title_field(pool: PgPool) {
+    sqlx::query(
+        "insert into items (id, title, author_name, author_uri, is_adult, status, scraped_at, original_language, translations)
+         values (1, 'ShortHair', 'c', 'https://example.test', false, 'ok', now(), 'zh', '{\"en\": {\"title\": \"ShortHair\"}, \"zh\": {\"title\": \"ShortHair\"}}')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let catalog = Catalog::build(db::load_docs(&pool).await.unwrap(), 0, None).unwrap();
+    let found = |q: &str| {
+        let request = crate::search_request::SearchRequest::from(&crate::params::Params::parse(&format!("q={q}")));
+        catalog.search(&request, 0, None, None, None, false).unwrap().ids
+    };
+    assert_eq!(found("hair"), [1]);
+    assert_eq!(found("short%20hair"), [1]);
+}
+
 #[test]
 fn nearest_binds_only_parameters_used_by_each_query() {
     use sqlx::{Arguments, Execute};

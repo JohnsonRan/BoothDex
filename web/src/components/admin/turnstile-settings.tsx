@@ -93,8 +93,8 @@ export function TurnstileSettings() {
       saved(await put({ ...change, token, proved_site_key: siteKey }));
       return null;
     } catch (e) {
-      // another save changed the key meanwhile: the dialog, keyed by the site key, starts over with the key the API
-      // names now, and this one's failure goes with it
+      // another save changed the key meanwhile: CheckDialog resets its state and widget for the new site key without
+      // unmounting the modal, keeping focus inside it
       if (e instanceof ApiError && e.code === "verification_required") {
         setProof({ change, siteKey: e.siteKey ?? "", saved });
         return { message: t("turnstile.proofRefused") };
@@ -213,8 +213,6 @@ export function TurnstileSettings() {
       />
       {proof && (
         <CheckDialog
-          // a key the API names anew starts the widget over
-          key={proof.siteKey}
           siteKey={proof.siteKey}
           action={ACTION}
           title={t("turnstile.proofTitle")}

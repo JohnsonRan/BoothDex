@@ -164,6 +164,9 @@ pub fn item_reference(q: &str) -> Option<ItemReference> {
         [host, "items", id] if host.strip_suffix(".booth.pm").is_some_and(label) => id,
         _ => return None,
     };
+    if !digits(id) {
+        return None;
+    }
     id.parse().ok().map(ItemReference::Link)
 }
 
@@ -242,6 +245,9 @@ mod tests {
             "https://booth.pm//items/8962830",
             "https://booth.pm/ja/items/8962830/images",
             "https://booth.pm/ja/items/89x62830",
+            "https://booth.pm/ja/items/+123",
+            "https://booth.pm/ja/items/-1",
+            "https://shop.booth.pm/items/+8962830",
             "https://a.b.booth.pm/items/8962830",
             "https://booth.pm.example.com/ja/items/8962830",
             "https://example.com/ja/items/8962830",

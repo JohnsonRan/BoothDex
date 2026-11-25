@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { listView, pageOf } from "./guestbook";
+import { listView, pageOf } from "./guestbook-page";
 import type { AdminGuestbookEntry } from "./types";
 
 const entry = (id: number) => ({ id }) as AdminGuestbookEntry;

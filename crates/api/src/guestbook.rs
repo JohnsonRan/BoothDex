@@ -114,7 +114,7 @@ fn normal_body(body: &str) -> String {
     let body = body.replace("\r\n", "\n").replace(['\u{2028}', '\u{2029}'], "\n");
     let mut lines: Vec<&str> = Vec::new();
     for line in body.trim().split('\n') {
-        if !line.chars().all(char::is_whitespace) {
+        if !blank(line) {
             lines.push(line);
         } else if lines.last() != Some(&"") {
             lines.push("");

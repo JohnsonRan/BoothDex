@@ -184,7 +184,7 @@ export const adminEn: AdminDict = {
   "settings.title": "Settings",
   "ai.title": "AI processing",
   "ai.desc":
-    "The OpenAI-compatible service for categories, translations and semantic vectors. Saving queues one category translation run.",
+    "The OpenAI-compatible service for categories, item and tag translations, and semantic vectors. Saving queues a category translation run when needed.",
   "ai.baseUrl": "API URL",
   "ai.baseUrlDesc": "OpenAI-compatible endpoint",
   "ai.model": "AI model",

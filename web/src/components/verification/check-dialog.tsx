@@ -15,12 +15,22 @@ import {
   LayoutFooter,
   VStack,
 } from "@astryxdesign/core/Layout";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useTurnstile } from "@/lib/turnstile";
 import { VerificationField } from "./verification-field";
 
 /** Why a sent token was not taken, and how many seconds Try again waits. */
 export type CheckFailure = { message: string; retryAfter?: number };
+
+/** What clicking Try again must ask the widget to do when it has no token ready. */
+export function retryAction(widget: {
+  token: string;
+  failed: boolean;
+}): "retry" | "reset" | "none" {
+  if (widget.failed) return "retry";
+  if (!widget.token) return "reset";
+  return "none";
+}
 
 export function CheckDialog({
   siteKey,
@@ -50,23 +60,53 @@ export function CheckDialog({
   // Try again stays disabled while a 429's Retry-After runs
   const [cooling, setCooling] = useState(false);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const currentSiteKey = useRef(siteKey);
+  currentSiteKey.current = siteKey;
+  const coolTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  useEffect(() => () => clearTimeout(coolTimer.current), []);
+  // a new siteKey (e.g. rotated while the dialog is open) drops any earlier failure without unmounting the modal
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset state whenever the target siteKey changes
+  useEffect(() => {
+    setFailure(null);
+    setCooling(false);
+    clearTimeout(coolTimer.current);
+  }, [siteKey]);
   const submit = useEffectEvent(async (token: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
-    const failed = await send(token);
-    if (!failed) return done(true);
-    setFailure(failed.message);
-    if (failed.retryAfter) {
-      setCooling(true);
-      setTimeout(() => setCooling(false), failed.retryAfter * 1000);
+    const keyAtStart = currentSiteKey.current;
+    try {
+      const failed = await send(token);
+      if (!failed) return done(true);
+      if (keyAtStart !== currentSiteKey.current) return;
+      setFailure(failed.message);
+      const wait = failed.retryAfter ?? 0;
+      if (wait > 0) {
+        setCooling(true);
+        clearTimeout(coolTimer.current);
+        coolTimer.current = setTimeout(() => setCooling(false), wait * 1000);
+      }
+      verification.reset();
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
-    verification.reset();
-    setBusy(false);
   });
   const { token } = verification;
   useEffect(() => {
     if (token && !failure) submit(token);
   }, [token, failure]);
   const close = (open: boolean) => !open && !busy && done(false);
+  const onRetry = () => {
+    setFailure(null);
+    const act = retryAction(verification);
+    if (act === "retry") verification.retry();
+    else if (act === "reset") verification.reset();
+  };
 
   return (
     <Dialog isOpen onOpenChange={close} purpose="form" width={440}>
@@ -90,7 +130,7 @@ export function CheckDialog({
                       label={retry}
                       variant="secondary"
                       isDisabled={cooling}
-                      onClick={() => setFailure(null)}
+                      onClick={onRetry}
                     />
                   }
                 />

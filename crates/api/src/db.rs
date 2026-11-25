@@ -308,7 +308,13 @@ pub async fn load_docs(pool: &PgPool) -> Result<Vec<DocInput>> {
             if r.quest.as_deref() == Some("Yes") {
                 features.push("quest".into());
             }
-            let titles_translated = r.titles_translated.into_iter().filter(|t| *t != r.title).collect();
+            // when the listing itself is Chinese, `title` is indexed only in `title_zh`; keep identical
+            // English/Japanese/Korean translations so Latin/kana search still sees them in `title`
+            let titles_translated = if r.title_is_zh {
+                r.titles_translated
+            } else {
+                r.titles_translated.into_iter().filter(|t| *t != r.title).collect()
+            };
             DocInput {
                 id: r.id,
                 bio: r.bio,
