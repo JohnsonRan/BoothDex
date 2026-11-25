@@ -56,7 +56,7 @@ pub(super) async fn load_avatars(pool: &PgPool) -> Result<(AvatarKit, crate::ava
     }));
     let romaji = avatars
         .iter()
-        .flat_map(|(_, en, ja, ko, _)| [Some(en), ja.as_ref(), ko.as_ref()].into_iter().flatten().map(move |n| (n.trim().to_lowercase(), en.clone())))
+        .flat_map(|(_, en, ja, ko, _)| [Some(en), ja.as_ref(), ko.as_ref()].into_iter().flatten().map(move |n| (crate::avatars::norm(n.trim()), en.clone())))
         .collect();
     let names: HashMap<String, crate::ai::AvatarName> =
         avatars.into_iter().map(|(slug, romaji, ja, _, _)| (slug, crate::ai::AvatarName { ja, romaji })).collect();

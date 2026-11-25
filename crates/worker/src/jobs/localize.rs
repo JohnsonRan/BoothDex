@@ -152,7 +152,7 @@ async fn localize_tags(ctx: &mut Ctx<'_>, ai: &crate::ai::Ai, max: i64) -> Resul
         return Ok("no new tags".into());
     }
     let (avatars, _) = load_avatars(ctx.pool).await?;
-    let romaji = |tag: &str| avatars.romaji.get(&tag.trim().to_lowercase()).cloned();
+    let romaji = |tag: &str| avatars.romaji.get(&crate::avatars::norm(tag.trim())).cloned();
     let (named, asked): (Vec<TagAsk>, Vec<TagAsk>) = missing.into_iter().partition(|(tag, _)| romaji(tag).is_some());
     let named: Vec<TagRow> = named.into_iter().map(|(tag, _)| (tag.clone(), [romaji(&tag), Some(tag.clone()), Some(tag.clone()), Some(tag)])).collect();
     let mut tally = TagTally { added: insert_tag_rows(ctx.pool, &named).await?, ..Default::default() };
