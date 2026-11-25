@@ -172,23 +172,23 @@ impl RateLimiter {
 
     /// Consumes one token or returns whole seconds until one refills (`Retry-After`).
     pub fn take(&self, ip: IpAddr) -> Result<(), u64> {
-        self.take_locked(ip, None)
+        self.take_with_clock(ip, Instant::now)
     }
 
     pub fn take_global(&self) -> Result<(), u64> {
-        self.take_locked(IpAddr::V4(Ipv4Addr::UNSPECIFIED), None)
+        self.take_with_clock(IpAddr::V4(Ipv4Addr::UNSPECIFIED), Instant::now)
     }
 
     #[cfg(test)]
     fn take_at(&self, ip: IpAddr, now: Instant) -> Result<(), u64> {
-        self.take_locked(ip, Some(now))
+        self.take_with_clock(ip, || now)
     }
 
-    /// Reads the clock after taking the bucket lock (unless a test passes `at`), so concurrent callers never write back
-    /// an instant older than one another caller wrote.
-    fn take_locked(&self, ip: IpAddr, at: Option<Instant>) -> Result<(), u64> {
+    /// Reads `clock` after taking the bucket lock, so concurrent callers never write back an instant older than one
+    /// another caller wrote.
+    fn take_with_clock(&self, ip: IpAddr, clock: impl FnOnce() -> Instant) -> Result<(), u64> {
         let mut map = self.buckets.lock().unwrap();
-        let now = at.unwrap_or_else(Instant::now);
+        let now = clock();
         let entry = self.entry(&mut map, bucket_key(ip), now);
         let available = self.available(entry, now);
         if available < 1.0 {
@@ -470,23 +470,14 @@ mod tests {
     }
 
     #[test]
-    fn take_reads_clock_after_acquiring_bucket_lock() {
-        let l = std::sync::Arc::new(RateLimiter::new(SLOW, 5.0, 64));
-        let addr = ip("203.0.113.77");
-        let guard = l.buckets.lock().unwrap();
-        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
-        let l2 = l.clone();
-        let worker = std::thread::spawn(move || {
-            ready_tx.send(()).unwrap();
-            l2.take(addr).unwrap();
-        });
-        ready_rx.recv().unwrap();
-        // give the worker time to reach the mutex; a pre-lock Instant::now() would be captured before this sleep ends
-        std::thread::sleep(Duration::from_millis(30));
-        let unlock_at = Instant::now();
-        drop(guard);
-        worker.join().unwrap();
-        let stored_at = l.buckets.lock().unwrap()[&addr].1;
-        assert!(stored_at >= unlock_at, "bucket timestamp predates lock acquisition");
+    fn take_reads_clock_while_holding_bucket_lock() {
+        let l = RateLimiter::new(SLOW, 5.0, 64);
+        let mut held_during_clock = false;
+        l.take_with_clock(ip("203.0.113.77"), || {
+            held_during_clock = matches!(l.buckets.try_lock(), Err(std::sync::TryLockError::WouldBlock));
+            Instant::now()
+        })
+        .unwrap();
+        assert!(held_during_clock, "clock must be read while holding the bucket mutex");
     }
 }
