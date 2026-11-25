@@ -9,9 +9,6 @@ fn main() {
         // unresolved symbol needs yet (`--as-needed`), would then let go of libavif before the archive is read. The
         // calls the archive makes into libavif would have nothing to resolve against. It showed on arm64, whose
         // linker applies the order strictly; the x86_64 build's linker happened to keep libavif.
-        for var in ["PKG_CONFIG_PATH", "PKG_CONFIG_SYSROOT_DIR", "PKG_CONFIG_LIBDIR", "PKG_CONFIG_ALLOW_CROSS", "PKG_CONFIG_ALL_STATIC"] {
-            println!("cargo::rerun-if-env-changed={var}");
-        }
         let avif = pkg_config::Config::new()
             .atleast_version("1.0")
             .cargo_metadata(false)
