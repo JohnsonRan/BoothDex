@@ -172,15 +172,23 @@ impl RateLimiter {
 
     /// Consumes one token or returns whole seconds until one refills (`Retry-After`).
     pub fn take(&self, ip: IpAddr) -> Result<(), u64> {
-        self.take_at(ip, Instant::now())
+        self.take_locked(ip, None)
     }
 
     pub fn take_global(&self) -> Result<(), u64> {
-        self.take_at(IpAddr::V4(Ipv4Addr::UNSPECIFIED), Instant::now())
+        self.take_locked(IpAddr::V4(Ipv4Addr::UNSPECIFIED), None)
     }
 
+    #[cfg(test)]
     fn take_at(&self, ip: IpAddr, now: Instant) -> Result<(), u64> {
+        self.take_locked(ip, Some(now))
+    }
+
+    /// Reads the clock after taking the bucket lock (unless a test passes `at`), so concurrent callers never write back
+    /// an instant older than one another caller wrote.
+    fn take_locked(&self, ip: IpAddr, at: Option<Instant>) -> Result<(), u64> {
         let mut map = self.buckets.lock().unwrap();
+        let now = at.unwrap_or_else(Instant::now);
         let entry = self.entry(&mut map, bucket_key(ip), now);
         let available = self.available(entry, now);
         if available < 1.0 {
@@ -459,5 +467,25 @@ mod tests {
         assert!(l.take_at(ip("198.51.100.1"), t0 + Duration::from_millis(600)).is_ok());
         assert!(l.take_at(ip("198.51.100.2"), t0 + Duration::from_millis(700)).is_ok());
         assert!(l.buckets.lock().unwrap().len() <= 2);
+    }
+
+    #[test]
+    fn concurrent_take_never_moves_bucket_clock_backwards() {
+        let l = RateLimiter::new(SLOW, 20.0, 64);
+        let addr = ip("203.0.113.77");
+        let admitted = std::sync::atomic::AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    for _ in 0..10 {
+                        if l.take(addr).is_ok() {
+                            admitted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        }
+                    }
+                });
+            }
+        });
+        assert_eq!(admitted.into_inner(), 20);
+        assert!(l.take(addr).is_err());
     }
 }
