@@ -470,22 +470,23 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_take_never_moves_bucket_clock_backwards() {
-        let l = RateLimiter::new(SLOW, 20.0, 64);
+    fn take_reads_clock_after_acquiring_bucket_lock() {
+        let l = std::sync::Arc::new(RateLimiter::new(SLOW, 5.0, 64));
         let addr = ip("203.0.113.77");
-        let admitted = std::sync::atomic::AtomicUsize::new(0);
-        std::thread::scope(|scope| {
-            for _ in 0..8 {
-                scope.spawn(|| {
-                    for _ in 0..10 {
-                        if l.take(addr).is_ok() {
-                            admitted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                        }
-                    }
-                });
-            }
+        let guard = l.buckets.lock().unwrap();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let l2 = l.clone();
+        let worker = std::thread::spawn(move || {
+            ready_tx.send(()).unwrap();
+            l2.take(addr).unwrap();
         });
-        assert_eq!(admitted.into_inner(), 20);
-        assert!(l.take(addr).is_err());
+        ready_rx.recv().unwrap();
+        // give the worker time to reach the mutex; a pre-lock Instant::now() would be captured before this sleep ends
+        std::thread::sleep(Duration::from_millis(30));
+        let unlock_at = Instant::now();
+        drop(guard);
+        worker.join().unwrap();
+        let stored_at = l.buckets.lock().unwrap()[&addr].1;
+        assert!(stored_at >= unlock_at, "bucket timestamp predates lock acquisition");
     }
 }
