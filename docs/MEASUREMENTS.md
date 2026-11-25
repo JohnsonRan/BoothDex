@@ -19,8 +19,8 @@ Reference for the numbers the documentation quotes. Each row names the host and 
 | Quantity | Value | Notes |
 |---|---|---|
 | Steady resident memory | ~0.4–1 GB | The memory-mapped Tantivy index is counted in page cache, not here |
-| Peak while reloading a catalogue | ~1.8 GB | The old and the new catalogue are held at once; `mem_limit: 3g` |
-| Tag centroids (related searches) | 30 MB for the 7,396 tags of the development catalogue | Estimate: 50 MB for ~12,000 tags (production's tag count). One copy is shared across reloads |
+| Peak while reloading a catalogue | ~1.9 GB (`VmHWM`) | The old and the new catalogue are held at once; `mem_limit: 3g` |
+| Tag centroids (related searches) | 44.5 MB (`45,596 KB`) for 11,301 tags in production (2026-11-25, 224,965 items) | One copy is shared across reloads and rebuilt every 6 hours (30 MB for 7,396 tags on the development catalogue) |
 | Matches of the tags that translate queries | up to about 20 MB per catalogue | Cache weight limit |
 
 ### Production, by container
@@ -29,7 +29,7 @@ Measured on 2026-11-20: 222,883 items on 4 GB RAM with 2 GB swap (921 MB of swap
 
 | Container | Limit | Measured |
 |---|---|---|
-| `api` | `mem_limit: 3g` | 949 MB anonymous and 180 MB page cache; at most 2,542 MB of both together, reloads included. The memory-mapped Tantivy index lives in page cache |
+| `api` | `mem_limit: 3g` | 949 MB anonymous and 180 MB page cache; at most 2,542 MB of both together, reloads included (2026-11-20). Re-measured on 2026-11-25 with tag centroids enabled across 3 six-hour rebuilds (224,965 items): `VmRSS` 896 MB, `VmHWM` 1,899 MB, `memory.current` 1,911.2 MB, `memory.peak` 3,021.9 MB (page cache reclaimed cleanly; 0 MB swap) |
 | `postgres` | none | 1,192 MB, almost all page cache (6 MB anonymous) |
 | `imgproxy` | `mem_limit: 1g` | About 0.76 GB, almost all cold and swapped out (729 MB in swap, 31 MB resident) |
 | `web` | none | 149 MB resident (92 MB anonymous, 57 MB page cache) and 121 MB in swap |
@@ -43,7 +43,7 @@ Measured on 2026-11-20: 222,883 items on 4 GB RAM with 2 GB swap (921 MB of swap
 | First embedding of ~200k items | ~1 hour, a few dollars | `Qwen3-Embedding-4B` at $0.02/M tokens |
 | One provider call for an unseen query | median 0.7 s, p95 1.2 s | Development |
 | Disk added by vectors | ~0.5 GB in PostgreSQL plus ~0.5 GB for the HNSW index | |
-| Tag centroid build | 1.0 s for 33,739 vectors | Development host. Production holds about 212,000 vectors; not measured |
+| Tag centroid build | 3.8–3.9 s for 11,297–11,301 tags | Production (2026-11-25, 224,776–224,965 items); 1.0 s for 33,739 vectors on the development host |
 
 ## Start-up and crawling
 
