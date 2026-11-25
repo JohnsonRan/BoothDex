@@ -106,6 +106,11 @@ mod tests {
     async fn every_avatar_has_a_body_listing_and_names_of_its_own(pool: PgPool) {
         let incomplete: Vec<String> = sqlx::query_scalar("select slug from avatars where avatar_item_id is null or name_ko is null").fetch_all(&pool).await.unwrap();
         assert!(incomplete.is_empty(), "{incomplete:?}");
+        // every name_en must be Latin letters so localize and enrich never write kana or Han as English romaji
+        let romaji: Vec<(String, String)> = sqlx::query_as("select slug, name_en from avatars").fetch_all(&pool).await.unwrap();
+        for (slug, name_en) in romaji {
+            assert!(crate::ai::latin_letters(&name_en), "{slug}: non-Latin name_en {name_en:?}");
+        }
         // an alias the matcher skips (too short) would be stored and never matched
         let aliases: Vec<(String, String)> = sqlx::query_as("select slug, unnest(aliases) from avatars").fetch_all(&pool).await.unwrap();
         assert!(!aliases.is_empty());
@@ -161,5 +166,38 @@ mod tests {
         assert_eq!(after.1, (598, 39));
         sqlx::raw_sql(SQL).execute(&pool).await.unwrap();
         assert_eq!(state().await, after);
+    }
+
+    #[sqlx::test(migrations = "../core/migrations")]
+    #[ignore = "requires PostgreSQL with pgvector"]
+    async fn migration_0033_swaps_backwards_names_idempotently(pool: PgPool) {
+        const SQL: &str = include_str!("../../core/migrations/0033_swap_avatar_names.sql");
+        let rows = || async {
+            sqlx::query_as::<_, (String, String, Option<String>)>(
+                "select slug, name_en, name_ja from avatars where slug in ('pon-chune', 'ragussiel', 'tien') order by slug",
+            )
+            .fetch_all(&pool)
+            .await
+            .unwrap()
+        };
+        let expected = [
+            ("pon-chune".to_owned(), "Pon & Chune".to_owned(), Some("ぽんとちゅね".to_owned())),
+            ("ragussiel".to_owned(), "Ragussiel".to_owned(), Some("ラグシエル".to_owned())),
+            ("tien".to_owned(), "Tien".to_owned(), Some("ティエン".to_owned())),
+        ];
+        assert_eq!(rows().await, expected);
+        // simulate a localize row written before 0033 and a curated import row, then re-run 0033
+        sqlx::query(
+            "insert into booth_tag_translations (tag, en, ja, source) values
+               ('ぽんとちゅね', 'ぽんとちゅね', 'ぽんとちゅね', 'localize'),
+               ('ティエン', 'Tien', 'ティエン', 'import')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::raw_sql(SQL).execute(&pool).await.unwrap();
+        assert_eq!(rows().await, expected);
+        let tags: Vec<String> = sqlx::query_scalar("select tag from booth_tag_translations order by tag").fetch_all(&pool).await.unwrap();
+        assert_eq!(tags, ["ティエン"]);
     }
 }
