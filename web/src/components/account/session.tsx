@@ -36,34 +36,6 @@ const SignInDialog = lazySurface(() =>
 
 export const preloadSignIn = SignInDialog.preload;
 
-function restoreMobileNavFocus(): () => void {
-  const navId = document.querySelector(".astryx-mobile-nav")?.id;
-  if (!navId) return () => {};
-  const toggle = document.querySelector<HTMLElement>(
-    `.astryx-top-nav button[aria-controls="${navId}"]`,
-  );
-  if (!toggle) return () => {};
-  let frame = 0;
-  const deadline = performance.now() + 1000;
-  const step = () => {
-    const busy =
-      !!document.querySelector("dialog[open]") ||
-      !!document.activeElement?.closest(".astryx-dialog, .astryx-mobile-nav");
-    if (!busy) {
-      if (
-        (!document.activeElement || document.activeElement === document.body) &&
-        toggle.checkVisibility()
-      ) {
-        toggle.focus();
-      }
-      return;
-    }
-    if (performance.now() < deadline) frame = requestAnimationFrame(step);
-  };
-  frame = requestAnimationFrame(step);
-  return () => cancelAnimationFrame(frame);
-}
-
 export type Me = {
   id: number;
   username: string;
@@ -107,18 +79,10 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   const [viewed, setViewed] = useState<number[] | null>(null);
   const [signIn, setSignIn] = useState<boolean>();
   const afterSignIn = useRef<(() => void) | null>(null);
-  const restoreMenuFocus = useRef(false);
-  const stopFocusRestore = useRef<(() => void) | null>(null);
   const openSignIn = useCallback((after?: () => void) => {
-    stopFocusRestore.current?.();
-    stopFocusRestore.current = null;
-    restoreMenuFocus.current =
-      typeof document !== "undefined" &&
-      !!document.activeElement?.closest(".astryx-mobile-nav");
     afterSignIn.current = after ?? null;
     setSignIn(true);
   }, []);
-  useEffect(() => () => stopFocusRestore.current?.(), []);
   // info confirms or explains, error reports a failure; one toast per message: raising it again replaces it
   const notify = useCallback(
     (key: MessageKey, type?: "error") =>
@@ -302,25 +266,18 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx value={value}>
       {children}
-      {/* rendered outside AppShell's mobile drawer Activity so closing the drawer never drops the dialog */}
+      {/* one sign-in dialog shared across SiteNav, favourite buttons, SignInRequired and Account */}
       {signIn !== undefined && (
         <Lazy
           surface={SignInDialog}
           isOpen={signIn}
           onOpenChange={(open) => {
             setSignIn(open);
-            if (!open) {
-              afterSignIn.current = null;
-              if (restoreMenuFocus.current) {
-                restoreMenuFocus.current = false;
-                stopFocusRestore.current = restoreMobileNavFocus();
-              }
-            }
+            if (!open) afterSignIn.current = null;
           }}
           onSignedIn={() => {
             const after = afterSignIn.current;
             afterSignIn.current = null;
-            restoreMenuFocus.current = false;
             setSignIn(false);
             if (after) {
               load();
