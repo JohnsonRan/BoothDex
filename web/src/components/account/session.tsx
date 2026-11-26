@@ -18,6 +18,7 @@ import {
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { ApiError, api, fetchAccount } from "@/lib/api";
+import { Lazy, lazySurface } from "@/lib/lazy";
 import type { MessageKey } from "@/lib/messages";
 import { accountPatch, setPreferenceSync } from "@/lib/preferences";
 import { keepSessionHint, SIGNED_IN } from "@/lib/session-hint";
@@ -28,6 +29,40 @@ import {
   saveViewed,
   sendView,
 } from "@/lib/viewed";
+
+const SignInDialog = lazySurface(() =>
+  import("@/components/frame/sign-in").then((m) => m.SignInDialog),
+);
+
+export const preloadSignIn = SignInDialog.preload;
+
+function restoreMobileNavFocus(): () => void {
+  const navId = document.querySelector(".astryx-mobile-nav")?.id;
+  if (!navId) return () => {};
+  const toggle = document.querySelector<HTMLElement>(
+    `.astryx-top-nav button[aria-controls="${navId}"]`,
+  );
+  if (!toggle) return () => {};
+  let frame = 0;
+  const deadline = performance.now() + 1000;
+  const step = () => {
+    const busy =
+      !!document.querySelector("dialog[open]") ||
+      !!document.activeElement?.closest(".astryx-dialog, .astryx-mobile-nav");
+    if (!busy) {
+      if (
+        (!document.activeElement || document.activeElement === document.body) &&
+        toggle.checkVisibility()
+      ) {
+        toggle.focus();
+      }
+      return;
+    }
+    if (performance.now() < deadline) frame = requestAnimationFrame(step);
+  };
+  frame = requestAnimationFrame(step);
+  return () => cancelAnimationFrame(frame);
+}
 
 export type Me = {
   id: number;
@@ -47,6 +82,7 @@ type Session = {
   viewed: number[] | null;
   /** reads the session again (after signing in) */
   reload: () => void;
+  openSignIn: (after?: () => void) => void;
   signOut: () => Promise<void>;
   toggleFav: (id: number) => void;
   /** remembers an opened item: in the account when signed in, otherwise in this browser */
@@ -69,6 +105,20 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   // hearts pressed before the account's favourites were read, and the state each was left in
   const [early, setEarly] = useState<Map<number, boolean> | null>(null);
   const [viewed, setViewed] = useState<number[] | null>(null);
+  const [signIn, setSignIn] = useState<boolean>();
+  const afterSignIn = useRef<(() => void) | null>(null);
+  const restoreMenuFocus = useRef(false);
+  const stopFocusRestore = useRef<(() => void) | null>(null);
+  const openSignIn = useCallback((after?: () => void) => {
+    stopFocusRestore.current?.();
+    stopFocusRestore.current = null;
+    restoreMenuFocus.current =
+      typeof document !== "undefined" &&
+      !!document.activeElement?.closest(".astryx-mobile-nav");
+    afterSignIn.current = after ?? null;
+    setSignIn(true);
+  }, []);
+  useEffect(() => () => stopFocusRestore.current?.(), []);
   // info confirms or explains, error reports a failure; one toast per message: raising it again replaces it
   const notify = useCallback(
     (key: MessageKey, type?: "error") =>
@@ -148,15 +198,15 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         method: on ? "PUT" : "DELETE",
       }).catch((e) => {
         setFavs((s) => set(s, !on));
-        notify(
-          e instanceof ApiError && e.status === 401
-            ? "fav.needSignIn"
-            : "fav.failed",
-          "error",
-        );
+        if (e instanceof ApiError && e.status === 401) {
+          notify("fav.needSignIn", "error");
+          openSignIn();
+        } else {
+          notify("fav.failed", "error");
+        }
       });
     },
-    [notify],
+    [notify, openSignIn],
   );
 
   // once the session has answered, the hearts pressed while it loaded are saved where they differ from the account
@@ -164,11 +214,11 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     if (!early || me === undefined || (me && !favs)) return;
     setEarly(null);
     if (!me || !favs) {
-      notify("fav.needSignIn");
+      openSignIn();
       return;
     }
     for (const [id, on] of early) if (favs.has(id) !== on) saveFav(id, on);
-  }, [early, me, favs, notify, saveFav]);
+  }, [early, me, favs, openSignIn, saveFav]);
 
   // the hearts pressed meanwhile turn at once when this browser's last session was signed in; otherwise they wait
   // for the session's answer, which is most likely the sign-in notice
@@ -181,16 +231,19 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     [favs, early],
   );
 
+  const reload = useCallback(() => {
+    load();
+    router.refresh();
+  }, [load, router]);
+
   const value = useMemo<Session>(
     () => ({
       me,
       favs: shownFavs,
       viewed,
       notify,
-      reload: () => {
-        load();
-        router.refresh();
-      },
+      reload,
+      openSignIn,
       signOut: async () => {
         await api("/api/account/logout", { method: "POST" }).catch(() => {});
         await load();
@@ -201,9 +254,9 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
       },
       toggleFav: (id) => {
         if (favs) return saveFav(id, !favs.has(id));
-        if (me === null) return notify("fav.needSignIn");
+        if (me === null) return openSignIn();
         // the session or the favourites still loading: kept until they are read, then saved or answered with the
-        // sign-in notice
+        // sign-in dialog
         setEarly((m) => new Map(m).set(id, !(m?.get(id) ?? false)));
       },
       recordView: (id) => {
@@ -232,10 +285,54 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         }
       },
     }),
-    [me, favs, shownFavs, saveFav, viewed, notify, load, router],
+    [
+      me,
+      favs,
+      shownFavs,
+      saveFav,
+      viewed,
+      notify,
+      load,
+      reload,
+      openSignIn,
+      router,
+    ],
   );
 
-  return <Ctx value={value}>{children}</Ctx>;
+  return (
+    <Ctx value={value}>
+      {children}
+      {/* rendered outside AppShell's mobile drawer Activity so closing the drawer never drops the dialog */}
+      {signIn !== undefined && (
+        <Lazy
+          surface={SignInDialog}
+          isOpen={signIn}
+          onOpenChange={(open) => {
+            setSignIn(open);
+            if (!open) {
+              afterSignIn.current = null;
+              if (restoreMenuFocus.current) {
+                restoreMenuFocus.current = false;
+                stopFocusRestore.current = restoreMobileNavFocus();
+              }
+            }
+          }}
+          onSignedIn={() => {
+            const after = afterSignIn.current;
+            afterSignIn.current = null;
+            restoreMenuFocus.current = false;
+            setSignIn(false);
+            if (after) {
+              load();
+              after();
+            } else {
+              reload();
+            }
+          }}
+        />
+      )}
+    </Ctx>
+  );
 }
 
 export function useAccount(): Session {

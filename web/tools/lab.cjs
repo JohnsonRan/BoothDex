@@ -4,8 +4,6 @@
 // server's own reads). PLAYWRIGHT_CORE and CHROME point at a local Playwright and Chromium.
 const { readdirSync } = require("node:fs");
 
-const { chromium } = require(process.env.PLAYWRIGHT_CORE || "playwright-core");
-
 function chrome() {
   if (process.env.CHROME) return process.env.CHROME;
   const dir = `${process.env.HOME}/.cache/ms-playwright`;
@@ -41,6 +39,9 @@ process.on("exit", () =>
 );
 
 const launch = async () => {
+  const { chromium } = require(
+    process.env.PLAYWRIGHT_CORE || "playwright-core",
+  );
   const browser = await chromium.launch({
     executablePath: chrome(),
     args: ["--no-sandbox"],
@@ -106,6 +107,26 @@ const RECORDER = () => {
     });
     return animate.call(this, keyframes, options);
   };
+  // matches arrival.tsx: silhouettes count as seen only after two animation frames on screen
+  window.__paintedPlaceholder = false;
+  let armed = false;
+  const checkPlaceholder = () => {
+    if (armed || window.__paintedPlaceholder) return;
+    if (!document.querySelector("[data-placeholder]")) return;
+    armed = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        armed = false;
+        if (document.querySelector("[data-placeholder]"))
+          window.__paintedPlaceholder = true;
+      });
+    });
+  };
+  new MutationObserver(checkPlaceholder).observe(document, {
+    childList: true,
+    subtree: true,
+  });
+  addEventListener("DOMContentLoaded", checkPlaceholder, { once: true });
 };
 
 /**
@@ -122,6 +143,7 @@ const GEOMETRY = () => {
   const main = document.querySelector("main") ?? document.body;
   const h1 = main.querySelector("h1");
   const grid = main.querySelector(".astryx-grid");
+  const results = grid?.parentElement ?? null;
   const out = {
     // the top bar (logo and end actions), then the page header
     topBar: box(document.querySelector("nav")),
@@ -137,7 +159,7 @@ const GEOMETRY = () => {
   // starts after the tokens, and the slot sits in the band, outside <main>
   out.search = box(document.querySelector(".filter-search"));
   out.avatars = box(main.querySelector('[aria-roledescription="carousel"]'));
-  const top = grid ? grid.getBoundingClientRect().top : Infinity;
+  const top = results ? results.getBoundingClientRect().top : Infinity;
   // keyed by the button's name (digits folded, so "+2" and "+3" are one), not by its place in the row: the "+N" fold
   // trigger appears at hydration, which would renumber every control after it
   const seen = {};
@@ -155,6 +177,11 @@ const GEOMETRY = () => {
       seen[name] = (seen[name] ?? 0) + 1;
       out[`control ${name} ${seen[name]}`] = box(b);
     });
+  out.results = box(results);
+  out.notesOffset =
+    grid?.previousElementSibling && results
+      ? grid.getBoundingClientRect().top - results.getBoundingClientRect().top
+      : 0;
   out.grid = box(grid);
   const tiles = grid
     ? elements(grid).filter((t) => t.getBoundingClientRect().top < innerHeight)
@@ -181,6 +208,12 @@ const GEOMETRY = () => {
 function compare(a, b, tolerance = 2) {
   const bad = [];
   let worst = 0;
+  const loadingNotes = b.notesOffset ?? 0;
+  if (Math.abs(loadingNotes) > tolerance) {
+    worst = Math.max(worst, Math.abs(loadingNotes));
+    bad.push(`notesOffset (loading) ${loadingNotes.toFixed(1)}`);
+  }
+  const readyNotes = a.notesOffset ?? 0;
   for (const [k, va] of Object.entries(a)) {
     if (!va || typeof va !== "object") continue;
     const vb = b[k];
@@ -194,15 +227,22 @@ function compare(a, b, tolerance = 2) {
         bad.push(`${k}: missing`);
       continue;
     }
+    const offset = k === "grid" || k.startsWith("tile") ? readyNotes : 0;
     for (const axis of ["x", "y", "w", "h"]) {
-      // the count's width is its text's; the grid grows with the results below the first screen
-      if ((k === "count" && axis === "w") || (k === "grid" && axis === "h"))
+      // the count's width is its text's; the grid and results container grow with the results below the first screen
+      if (
+        (k === "count" && axis === "w") ||
+        ((k === "grid" || k === "results") && axis === "h")
+      )
         continue;
-      const d = Math.abs(va[axis] - vb[axis]);
+      const ay = va[axis] - (axis === "y" ? offset : 0);
+      const d = Math.abs(ay - vb[axis]);
       worst = Math.max(worst, d);
       if (d > tolerance)
         bad.push(
-          `${k}.${axis} ${va[axis].toFixed(1)} -> ${vb[axis].toFixed(1)}`,
+          axis === "y" && offset
+            ? `${k}.${axis} ${ay.toFixed(1)} (${va[axis].toFixed(1)} - notes ${offset.toFixed(1)}) -> ${vb[axis].toFixed(1)}`
+            : `${k}.${axis} ${va[axis].toFixed(1)} -> ${vb[axis].toFixed(1)}`,
         );
     }
   }
@@ -212,6 +252,16 @@ function compare(a, b, tolerance = 2) {
 
 /** Scrolls down by wheel, as a visitor would, until the address bar names results page `n` (result-pages.tsx). */
 async function scrollToPage(p, n) {
+  const spot = await p.evaluate(() => {
+    const r = document.querySelector(".astryx-grid")?.getBoundingClientRect();
+    const x = r ? r.x + r.width / 2 : innerWidth / 2;
+    const y = r ? Math.max(r.top + 40, innerHeight / 2) : innerHeight / 2;
+    return {
+      x: Math.min(Math.max(x, 1), innerWidth - 1),
+      y: Math.min(Math.max(y, 1), innerHeight - 1),
+    };
+  });
+  await p.mouse.move(spot.x, spot.y);
   const page = () => Number(new URL(p.url()).searchParams.get("page") ?? 1);
   for (let i = 0; i < 600 && page() < n; i++) {
     await p.mouse.wheel(0, 600);

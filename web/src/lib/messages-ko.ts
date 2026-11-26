@@ -16,6 +16,8 @@ export const ko: Dict = {
   "recent.clear": "기록 지우기",
   "recent.empty": "아직 본 상품이 없습니다",
   "recent.clearFailed": "기록을 지우지 못했습니다",
+  "recent.localSync":
+    "이 브라우저에만 저장됩니다. 로그인하면 다른 기기와 동기화할 수 있습니다.",
   "title.search": '"{q}" 검색',
   "title.author": "{name}의 상품",
   "title.avatar": "{name} 대응 상품",
@@ -141,6 +143,7 @@ export const ko: Dict = {
   "list.related": "관련 검색",
   "fav.add": "즐겨찾기",
   "fav.needSignIn": "즐겨찾기는 로그인 후 사용할 수 있습니다",
+  "fav.signInTitle": "로그인하여 즐겨찾기 보기",
   "fav.failed": "즐겨찾기를 변경하지 못했습니다",
   "price.free": "무료",
   "price.listed": "표시 가격 {price}",

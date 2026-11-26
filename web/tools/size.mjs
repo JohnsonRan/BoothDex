@@ -44,7 +44,12 @@ const page = new URL(process.argv[2] ?? "http://127.0.0.1:3100/");
 // 525,000 (owner, 2026-11-15: "放回首屏加载"). The Ko-fi support link at the end of the filter rail (and in
 // Settings > About) with its coffee glyph and dictionary entry: HTML 52,250 B over 3 reads against 51,890 B on HEAD
 // with the same dump (JS 523,856 against 523,529, CSS 51,258 unchanged): HTML to 52,500 (owner, 2026-11-25).
-const BUDGET = { html: 52_500, js: 525_000, css: 51_500 };
+// TopNav primary view links (TopNavItem, Badge counts, MobileNav drawer below lg), AppLink (prefetch={false}),
+// signed-out favourites sign-in dialog and local-only recent sync prompt: HTML 52,744 B (against 52,142 B on HEAD),
+// JS 528,810 B (against 524,343 B on HEAD) and CSS 51,481 B (against 51,463 B on HEAD) over 3 reads on local next
+// start with the API: JS to 530,000 and CSS to 52,000 (owner, 2026-11-26: "JS提到530000，CSS提到52000，HTML同意");
+// HTML to 53,500 (owner, 2026-11-26: "同意，没问题后提PR").
+const BUDGET = { html: 53_500, js: 530_000, css: 52_000 };
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const get = async (url) => {

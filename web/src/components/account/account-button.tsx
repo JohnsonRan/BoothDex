@@ -17,7 +17,7 @@ import { useUi } from "@/components/providers";
 import { lateMenuButton } from "@/lib/late-menu";
 import { Lazy, lazySurface, preloadOn, preloadWhenIdle } from "@/lib/lazy";
 import { SIGNED_IN } from "@/lib/session-hint";
-import { useAccount } from "./session";
+import { preloadSignIn, useAccount } from "./session";
 import { AccountTrigger } from "./trigger";
 
 const loadMenu = () => import("./menu");
@@ -26,9 +26,6 @@ const AccountMenu = dynamic(loadMenu, {
   // the same button until the menu's code is there, keeping a press for the menu (lib/late-menu.ts)
   loading: () => <AccountTrigger {...lateMenuButton("account")} />,
 });
-const SignInDialog = lazySurface(() =>
-  import("@/components/frame/sign-in").then((m) => m.SignInDialog),
-);
 const SettingsDialog = lazySurface(() =>
   import("@/components/settings/settings-dialog").then((m) => m.default),
 );
@@ -38,8 +35,7 @@ type Open = boolean | undefined;
 
 export function Account() {
   const { t } = useUi();
-  const { me, reload } = useAccount();
-  const [signIn, setSignIn] = useState<Open>();
+  const { me, openSignIn } = useAccount();
   const [settings, setSettings] = useState<Open>();
   const signedIn = !!me;
   useEffect(() => {
@@ -49,7 +45,7 @@ export function Account() {
     () =>
       preloadWhenIdle(
         SettingsDialog.preload,
-        ...(signedIn ? [] : [SignInDialog.preload]),
+        ...(signedIn ? [] : [preloadSignIn]),
       ),
     [signedIn],
   );
@@ -76,21 +72,10 @@ export function Account() {
         <Button
           label={t("nav.signIn")}
           variant="ghost"
-          onClick={() => setSignIn(true)}
-          {...preloadOn(SignInDialog.preload)}
+          onClick={() => openSignIn()}
+          {...preloadOn(preloadSignIn)}
         />
       </span>
-      {signIn !== undefined && (
-        <Lazy
-          surface={SignInDialog}
-          isOpen={signIn}
-          onOpenChange={setSignIn}
-          onSignedIn={() => {
-            setSignIn(false);
-            reload();
-          }}
-        />
-      )}
       {settings !== undefined && (
         <Lazy
           surface={SettingsDialog}

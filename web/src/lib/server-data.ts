@@ -54,16 +54,31 @@ export async function readSettings(): Promise<Settings> {
   return parseSettings(decoded, hdrs.get("accept-language"));
 }
 
+/** A phone by its client hint (Chromium) or its user agent (Safari sends no hints). */
+export function isPhoneHeaders(h: Headers): boolean {
+  return (
+    h.get("sec-ch-ua-mobile") === "?1" ||
+    /\b(iPhone|Mobile)\b/.test(h.get("user-agent") ?? "")
+  );
+}
+
+/** Whether the current request comes from a phone, so AppShell can pick its mobile chrome before first paint. */
+export async function isPhone(): Promise<boolean> {
+  return isPhoneHeaders(await headers());
+}
+
 /** The filter rail's width in rem, as the visitor last dragged it (lib/rail-width.ts). */
 export async function readRailWidth(): Promise<number> {
   return parseRailWidth((await cookies()).get(RAIL_COOKIE)?.value);
 }
 
-/** "starting": the API is still loading after a restart (503) or unreachable; "error": it is up but failed, or, with
- *  `limited`, refused the visitor by a rate limit; with `offer` too, the stricter one, which a passed check lifts. */
+/** "unauthorized": /api/search?v=favourites asked for a session (401); "starting": the API is still loading after a
+ *  restart (503) or unreachable; "error": it is up but failed, or, with `limited`, refused the visitor by a rate
+ *  limit; with `offer` too, the stricter one, which a passed check lifts. */
 export type SearchOutcome =
   /** `ms`: this server's request, the API's time included (the search trace's total) */
   | { state: "ok"; result: SearchResponse; ms: number }
+  | { state: "unauthorized" }
   | { state: "starting" | "error"; offer?: PassOffer; limited?: boolean };
 
 /** The check a refused read offers (crates/api/src/limit.rs, `RateLimited`): the server cannot show it, the page can. */
@@ -102,6 +117,20 @@ export function visitorHeaders(from: Headers): Record<string, string> {
   );
 }
 
+/** Maps an API error from /api/search into a SearchOutcome (`401` asks to sign in, `429` offers a pass). */
+export async function searchFailure(
+  e: unknown,
+  ready: () => Promise<boolean> = apiReady,
+): Promise<Exclude<SearchOutcome, { state: "ok" }>> {
+  const res = e instanceof Error ? e.cause : undefined;
+  if (res instanceof Response) {
+    if (res.status === 401) return { state: "unauthorized" };
+    if (res.status === 429)
+      return { state: "error", limited: true, offer: await passOffer(e) };
+  }
+  return { state: (await ready()) ? "error" : "starting" };
+}
+
 /**
  * One page of card-sized results. Sent with the visitor's headers: the favourites view belongs to the session.
  * `noSemantic` keeps later pages of a search that went without meaning-based matches on the same result set.
@@ -123,13 +152,7 @@ export async function searchItems(
     );
     return { state: "ok", result, ms: performance.now() - start };
   } catch (e) {
-    if (
-      e instanceof Error &&
-      e.cause instanceof Response &&
-      e.cause.status === 429
-    )
-      return { state: "error", limited: true, offer: await passOffer(e) };
-    return { state: (await apiReady()) ? "error" : "starting" };
+    return searchFailure(e);
   }
 }
 
@@ -225,7 +248,7 @@ export async function tagLabels(
 ): Promise<Record<string, string>> {
   if (names.length === 0) return {};
   const o = search && (await search);
-  const refused = !!o && o.state !== "ok" && !!o.limited;
+  const refused = !!o && o.state === "error" && !!o.limited;
   const found = refused
     ? []
     : await Promise.all(names.map((n) => lookup(n).catch(() => null)));

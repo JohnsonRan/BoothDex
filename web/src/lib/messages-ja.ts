@@ -16,6 +16,8 @@ export const ja: Dict = {
   "recent.clear": "履歴を消去",
   "recent.empty": "まだ閲覧した商品はありません",
   "recent.clearFailed": "履歴を消去できませんでした",
+  "recent.localSync":
+    "このブラウザーのみに保存されます。ログインすると他の端末と同期できます。",
   "title.search": "“{q}” の検索結果",
   "title.author": "{name} の商品",
   "title.avatar": "{name} 対応の商品",
@@ -141,6 +143,7 @@ export const ja: Dict = {
   "list.related": "関連する検索",
   "fav.add": "お気に入り",
   "fav.needSignIn": "お気に入りにはログインが必要です",
+  "fav.signInTitle": "ログインしてお気に入りを見る",
   "fav.failed": "お気に入りを更新できませんでした",
   "price.free": "無料",
   "price.listed": "表示価格 {price}",

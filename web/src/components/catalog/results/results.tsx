@@ -23,7 +23,12 @@ import { FIRST_TILES, tileOf } from "./item-tile";
 import { PageInView } from "./page-in-view";
 import { ExpansionNote, RelatedSearches, TypoNote } from "./result-notes";
 import { ResultPages } from "./result-pages";
-import { EmptyResults, PendingNote, SemanticNote } from "./result-states";
+import {
+  EmptyResults,
+  PendingNote,
+  SemanticNote,
+  SignInRequired,
+} from "./result-states";
 
 export { ExpansionNote, RelatedSearches, TypoNote };
 
@@ -38,6 +43,7 @@ export async function ResultCount({
   hasQuery: boolean;
 }) {
   const o = await outcome;
+  if (o.state === "unauthorized") return null;
   if (o.state !== "ok") return <ClearAll afterCount={false} />;
   const t = translator(settings.ui);
   const count = t("title.count", {
@@ -88,6 +94,7 @@ export async function Results({
   navigation: boolean;
 }) {
   const o = await outcome;
+  if (o.state === "unauthorized") return <SignInRequired />;
   if (o.state !== "ok")
     return <KeepResults failure={o.state} offer={o.offer} />;
   const { result } = o;

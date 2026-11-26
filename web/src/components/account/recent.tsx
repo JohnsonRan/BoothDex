@@ -4,8 +4,11 @@
 // else this browser's), so it is read here rather than on the server; the grid and its tiles are the home
 // page's (results-grid.tsx), without the viewed marks, and its silhouettes hold the places while it loads.
 
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Icon } from "@astryxdesign/core/Icon";
+import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { use, useEffect, useState } from "react";
 import {
@@ -17,9 +20,14 @@ import { ResultsGrid } from "@/components/catalog/results/results-grid";
 import { useUi } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { ItemResponse } from "@/lib/api-types";
-import { LOCALES, type Rates, type Settings } from "@/lib/settings-core";
-import { useAccount } from "./session";
-import "@/lib/icons-on-demand";
+import { preloadOn } from "@/lib/lazy";
+import {
+  LOCALES,
+  type Rates,
+  type Settings,
+  type Translate,
+} from "@/lib/settings-core";
+import { preloadSignIn, useAccount } from "./session";
 
 const PAGE = 100;
 
@@ -97,6 +105,73 @@ export function RecentCount() {
   );
 }
 
+/** Empty state or results grid for recently viewed items, adding a local-sync notice when signed out. */
+export function RecentContent({
+  items,
+  signedOut,
+  onSignIn,
+  settings,
+  rates,
+  t,
+}: {
+  items: ItemResponse[];
+  signedOut: boolean;
+  onSignIn: () => void;
+  settings: Settings;
+  rates: Rates;
+  t: Translate;
+}) {
+  if (!items.length)
+    return (
+      <EmptyState
+        icon={<Icon icon="site:recent" size="lg" />}
+        title={t("recent.empty")}
+        description={signedOut ? t("recent.localSync") : undefined}
+        actions={
+          signedOut ? (
+            <Button
+              label={t("nav.signIn")}
+              variant="secondary"
+              onClick={onSignIn}
+              {...preloadOn(preloadSignIn)}
+            />
+          ) : undefined
+        }
+      />
+    );
+  const grid = (
+    <ResultsGrid
+      items={items}
+      settings={settings}
+      rates={rates}
+      t={t}
+      markViewed={false}
+    />
+  );
+  if (signedOut)
+    return (
+      <VStack gap={6}>
+        <Banner
+          status="info"
+          title={t("recent.localSync")}
+          isDismissable
+          dismissLabel={t("common.close")}
+          endContent={
+            <Button
+              label={t("nav.signIn")}
+              variant="secondary"
+              size="sm"
+              onClick={onSignIn}
+              {...preloadOn(preloadSignIn)}
+            />
+          }
+        />
+        {grid}
+      </VStack>
+    );
+  return grid;
+}
+
 export function RecentResults({
   settings,
   rates,
@@ -105,25 +180,20 @@ export function RecentResults({
   rates: Promise<Rates>;
 }) {
   const { t } = useUi();
+  const { me, openSignIn } = useAccount();
   const items = useRecentItems();
   const resolved = use(rates);
   if (!items) return <ResultsSilhouette label={t("list.loading")} />;
   if (items === "failed")
     return <FailedResults starting={false} onRetry={retry} />;
-  if (!items.length)
-    return (
-      <EmptyState
-        icon={<Icon icon="site:recent" size="lg" />}
-        title={t("recent.empty")}
-      />
-    );
   return (
-    <ResultsGrid
+    <RecentContent
       items={items}
+      signedOut={me === null}
+      onSignIn={() => openSignIn()}
       settings={settings}
       rates={resolved}
       t={t}
-      markViewed={false}
     />
   );
 }

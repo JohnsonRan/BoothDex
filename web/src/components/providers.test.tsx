@@ -1,5 +1,9 @@
 import { afterEach, expect, mock, test } from "bun:test";
 import {
+  type LinkComponentType,
+  useLinkComponent,
+} from "@astryxdesign/core/Link";
+import {
   AppRouterContext,
   type AppRouterInstance,
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
@@ -13,7 +17,7 @@ mock.module("react", () => ({
   ...React,
   useTransition: () => [false, (run: () => void) => run()],
 }));
-const { Providers, useUi } = await import("./providers");
+const { AppLink, Providers, useUi } = await import("./providers");
 
 const realDocument = globalThis.document;
 afterEach(() => {
@@ -49,4 +53,26 @@ test("a second change made before the page renders again keeps the first", () =>
     ),
   );
   expect(saved).toEqual({ ...DEFAULT_SETTINGS, ui: "en", currency: "USD" });
+});
+
+let provided: LinkComponentType | null = null;
+function GrabLink() {
+  provided = useLinkComponent();
+  return null;
+}
+
+test("Providers supplies AppLink with prefetch disabled by default", () => {
+  provided = null;
+  renderToStaticMarkup(
+    <AppRouterContext value={{ refresh() {} } as AppRouterInstance}>
+      <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.zh}>
+        <GrabLink />
+      </Providers>
+    </AppRouterContext>,
+  );
+  expect((provided as { displayName?: string } | null)?.displayName).toBe(
+    "SafeLink(AppLink)",
+  );
+  expect(AppLink({ href: "/?v=favourites" }).props.prefetch).toBe(false);
+  expect(AppLink({ href: "/", prefetch: true }).props.prefetch).toBe(true);
 });

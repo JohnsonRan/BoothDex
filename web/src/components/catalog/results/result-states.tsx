@@ -12,7 +12,7 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { useAccount } from "@/components/account/session";
+import { preloadSignIn, useAccount } from "@/components/account/session";
 import {
   CLAUSE_CLEAR,
   type Wider,
@@ -30,7 +30,29 @@ import {
   patched,
 } from "@/lib/catalog";
 import { useApiRecovery } from "@/lib/client-data";
+import { preloadOn } from "@/lib/lazy";
 import { LOCALES } from "@/lib/settings-core";
+
+/** Favourites visited signed out prompts for sign-in, then refreshes the server results in place. */
+export function SignInRequired() {
+  const { t } = useUi();
+  const { openSignIn } = useAccount();
+  return (
+    <EmptyState
+      icon={<Icon icon="site:favourite" size="lg" />}
+      title={t("fav.signInTitle")}
+      description={t("account.desc")}
+      actions={
+        <Button
+          label={t("account.signIn")}
+          variant="primary"
+          onClick={() => openSignIn()}
+          {...preloadOn(preloadSignIn)}
+        />
+      }
+    />
+  );
+}
 
 /** No results: with filters set, offer to drop one clause (`wider`: the ones that find something, most first) or
  *  all of them (the search itself stays); `related`, the related searches' row, offers other words. */

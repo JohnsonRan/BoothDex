@@ -12,6 +12,7 @@ import {
 } from "@astryxdesign/core/DropdownMenu";
 import { Icon } from "@astryxdesign/core/Icon";
 import { useFilterUrl } from "@/components/catalog/filter/filter-url";
+import { FAVOURITES_PATCH, RECENT_PATCH } from "@/components/frame/site-nav";
 import { useUi } from "@/components/providers";
 import { type Me, useAccount } from "./session";
 import { AccountTrigger } from "./trigger";
@@ -38,22 +39,13 @@ export default function AccountMenu({
       label: t("account.myFavourites"),
       icon: icon("site:favourite"),
       // the account's whole list: the search, shop, avatar and categories are cleared, as on master
-      onClick: () =>
-        apply({
-          view: "favourites",
-          avatar: "",
-          q: "",
-          author: "",
-          sc: "",
-          features: [],
-        }),
+      onClick: () => apply(FAVOURITES_PATCH),
     },
     {
       label: t("account.recent"),
       icon: icon("site:recent"),
       // keeps the avatar, so going back to all shows it again
-      onClick: () =>
-        apply({ view: "recent", q: "", author: "", sc: "", features: [] }),
+      onClick: () => apply(RECENT_PATCH),
     },
   ];
   const items: DropdownMenuOption[] = [

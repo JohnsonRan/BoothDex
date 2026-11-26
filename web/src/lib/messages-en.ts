@@ -16,6 +16,8 @@ export const en: Dict = {
   "recent.clear": "Clear history",
   "recent.empty": "No viewed items yet",
   "recent.clearFailed": "Couldn't clear history",
+  "recent.localSync":
+    "Saved in this browser only. Sign in to sync across devices.",
   "title.search": "Search {q}",
   "title.author": "Items by {name}",
   "title.avatar": "Items for {name}",
@@ -141,6 +143,7 @@ export const en: Dict = {
   "list.related": "Related searches",
   "fav.add": "Favourite",
   "fav.needSignIn": "Sign in to save favourites",
+  "fav.signInTitle": "Sign in to view favourites",
   "fav.failed": "Couldn't update favourites",
   "price.free": "Free",
   "price.listed": "Listed at {price}",
