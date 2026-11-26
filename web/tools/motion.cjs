@@ -18,17 +18,21 @@ const ENTRANCE = ["page-enter", "row-enter"];
 // mounted and hidden); scroll-driven geometry/masks (globals.css `body-fade` on dialogs and the filter rail,
 // filter-row.css `rail-fade-top` and `rail-head` on the filter rail) follow scroll, nothing animates on its own
 const PASSIVE_SCROLL = new Set(["body-fade", "rail-fade-top", "rail-head"]);
-const RUNNING = () =>
-  document
-    .getAnimations()
-    .filter(
-      (a) =>
-        a.playState === "running" &&
-        !PASSIVE_SCROLL.has(a.animationName) &&
-        a.effect?.target?.checkVisibility({ visibilityProperty: true }) !==
-          false,
-    )
-    .map((a) => a.animationName ?? a.id);
+const runningAnimations = (p) =>
+  p.evaluate(
+    (passive) =>
+      document
+        .getAnimations()
+        .filter(
+          (a) =>
+            a.playState === "running" &&
+            !passive.includes(a.animationName) &&
+            a.effect?.target?.checkVisibility({ visibilityProperty: true }) !==
+              false,
+        )
+        .map((a) => a.animationName ?? a.id),
+    [...PASSIVE_SCROLL],
+  );
 // A filter change as a visitor makes it: the toolbar's sort menu, switched between its default (Trending, or
 // Relevance on a text search) and Newest. Opening the menu is separate from picking the item, so a timed refresh
 // starts at the pick.
@@ -58,7 +62,7 @@ const opening = async (p, click) => {
   await click();
   const seen = [];
   for (let i = 0; i < 3; i++) {
-    seen.push(...(await p.evaluate(RUNNING)));
+    seen.push(...(await runningAnimations(p)));
     await p.waitForTimeout(40);
   }
   const ids = await p.evaluate(() => window.__anims.map((a) => a.id));
@@ -172,10 +176,11 @@ const settings = (p) => () =>
     await lab(proxy, { delay: 0 });
     await p.goto(url, { waitUntil: "load" });
     await p.waitForTimeout(1500);
-    // a text search's results are a boundary React reveals at least 300 ms after the frame, so even a fast answer
-    // replaces silhouettes the visitor saw, and enters (arrival.tsx); any other page comes in its first paint
+    // a text search's results are a boundary React reveals at least 300 ms after the frame when the search runs long
+    // enough to paint silhouettes first (arrival.tsx); when the answer returns with the first HTML, no silhouette paints
     const fast = await entrances(p);
-    if (reduced || !streams(url))
+    const painted = await p.evaluate(() => !!window.__paintedPlaceholder);
+    if (reduced || !streams(url) || !painted)
       check(
         fast.length === 0,
         `${tag}: fast first load animates nothing (${fast.length} entrance animations)`,
@@ -201,7 +206,7 @@ const settings = (p) => () =>
     const first = await entrances(p);
     const rows = first.filter((a) => a.id === "row-enter").length;
     const sections = first.length - rows;
-    const anyRunning = await p.evaluate(RUNNING);
+    const anyRunning = await runningAnimations(p);
     if (reduced)
       check(
         first.length === 0 && anyRunning.length === 0,
@@ -315,7 +320,7 @@ const settings = (p) => () =>
     if (reduced) {
       const samples = [];
       for (let i = 0; i < 5; i++) {
-        samples.push(await p.evaluate(RUNNING));
+        samples.push(await runningAnimations(p));
         await p.waitForTimeout(200);
       }
       check(
@@ -333,7 +338,7 @@ const settings = (p) => () =>
         for (const el of document.querySelectorAll("[data-morph]"))
           el.removeAttribute("data-morph");
       });
-      const early = await p.evaluate(RUNNING);
+      const early = await runningAnimations(p);
       check(
         early.length === 0,
         `${tag}: the strip before the band's script runs nothing (${JSON.stringify(early)})`,

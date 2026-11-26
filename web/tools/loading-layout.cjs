@@ -78,7 +78,7 @@ const settle = (p) =>
     report(
       `${width}x${height} first load`,
       compare(ready, loading),
-      `; ${tiles} tiles, ${ready.perRow} per row (loading ${loading.perRow})`,
+      `; ${tiles} tiles, ${ready.perRow} per row (loading ${loading.perRow})${ready.notesOffset ? `, notes +${Math.round(ready.notesOffset)} px` : ""}`,
     );
 
     // the next page, read while the reader scrolls: silhouettes hold the rows it arrives in

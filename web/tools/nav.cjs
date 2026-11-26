@@ -117,6 +117,7 @@ async function stablePlace(p) {
 
 (async () => {
   const browser = await launch();
+  await lab(proxy, { delay: 0, fail: 0, cache: 0 });
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
   });
