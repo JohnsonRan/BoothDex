@@ -1,24 +1,14 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { Suspense } from "react";
 import { AdminConsole } from "@/components/admin/admin-console";
 import { Providers } from "@/components/providers";
 import { browserMessages } from "@/lib/dictionaries";
-import { componentCatalogue, readSettings } from "@/lib/server-data";
+import { componentCatalogue, isPhone, readSettings } from "@/lib/server-data";
 
 export const metadata: Metadata = {
   title: "Admin · BoothDex",
   robots: { index: false, follow: false },
 };
-
-/** A phone by its client hint (Chromium) or its user agent (Safari sends no hints). */
-async function isPhone() {
-  const h = await headers();
-  return (
-    h.get("sec-ch-ua-mobile") === "?1" ||
-    /\b(iPhone|Mobile)\b/.test(h.get("user-agent") ?? "")
-  );
-}
 
 async function AdminRoot({ children }: { children: React.ReactNode }) {
   const settings = await readSettings();

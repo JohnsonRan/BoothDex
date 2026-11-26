@@ -5,6 +5,7 @@ import {
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AccountProvider } from "@/components/account/session";
 import { FilterUrlProvider } from "@/components/catalog/filter/filter-url";
 import { KeepResults } from "@/components/catalog/refresh";
 import { Providers } from "@/components/providers";
@@ -16,15 +17,17 @@ import { DEFAULT_SETTINGS } from "@/lib/settings-core";
 import { FIRST_TILES } from "./item-tile";
 import { ExpansionNote, RelatedSearches, TypoNote } from "./result-notes";
 import { ResultPages } from "./result-pages";
-import { PendingNote, SemanticNote } from "./result-states";
-import { Results } from "./results";
+import { PendingNote, SemanticNote, SignInRequired } from "./result-states";
+import { ResultCount, Results } from "./results";
 import { item } from "./results-grid.test";
 
 const wrap = (filters: Filters, node: ReactNode) =>
   renderToStaticMarkup(
     <AppRouterContext value={{} as AppRouterInstance}>
       <Providers settings={DEFAULT_SETTINGS} messages={browserMessages("en")}>
-        <FilterUrlProvider filters={filters}>{node}</FilterUrlProvider>
+        <AccountProvider>
+          <FilterUrlProvider filters={filters}>{node}</FilterUrlProvider>
+        </AccountProvider>
       </Providers>
     </AppRouterContext>,
   );
@@ -270,4 +273,30 @@ test("pending and unavailable semantic notes render both with results and when e
     });
     expect(collect(await tree("used", count), SemanticNote)).toHaveLength(0);
   }
+});
+
+test("signed-out favourites render a sign-in prompt and omit the count", async () => {
+  const filters = { ...DEFAULT_FILTERS, view: "favourites" as const };
+  const body = (await Results({
+    related: Promise.resolve([]),
+    outcome: Promise.resolve({ state: "unauthorized" }),
+    rates: Promise.resolve({}),
+    settings: { ...DEFAULT_SETTINGS, ui: "en" },
+    filters,
+    names: { categories: [], avatars: [], tags: {} },
+    noSemantic: false,
+    navigation: false,
+  })) as { type: unknown };
+  expect(body.type).toBe(SignInRequired);
+  const html = wrap(filters, body as ReactNode);
+  expect(html).toContain(MESSAGES.en["fav.signInTitle"]);
+  expect(html).toContain(MESSAGES.en["account.signIn"]);
+
+  expect(
+    await ResultCount({
+      outcome: Promise.resolve({ state: "unauthorized" }),
+      settings: { ...DEFAULT_SETTINGS, ui: "en" },
+      hasQuery: false,
+    }),
+  ).toBeNull();
 });

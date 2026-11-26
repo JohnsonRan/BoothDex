@@ -60,7 +60,7 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 
 | Surface | Route / trigger | Astryx template | Status |
 |---|---|---|---|
-| Page frame | every route | page `shell-top-nav` (AppShell + TopNav, heading with master's logo; end actions: language menu, currency menu, colour mode, account) | checkpoint 1 |
+| Page frame | every route | page `shell-top-nav` (AppShell + TopNav, heading with master's logo, `startContent` primary links for All items, My favourites, Recently viewed with `Badge` counts, and MobileNav drawer below `lg`; end actions: guestbook, language menu, currency menu, colour mode, account) | checkpoint 1 |
 | Back to top | every route whose window scrolls, bottom end | block `ButtonFloating`: one `Button` with `isIconOnly`, `elevation="med"` and the `arrowUp` icon, fixed at the frame inset (`--spacing-4` plus the safe area); shown once the window has scrolled past one viewport (an `IntersectionObserver` on a viewport-tall marker, no scroll handler); scrolls to the top like the logo but leaves the URL and filters alone, and moves focus to the logo link; no entrance or exit motion | new |
 | Home grid | `/` | header: page `table-filter` (`LayoutHeader` > `Section` > title row, page.tsx:4335-4500); its toolbar row is the filter band, a sticky `Section` first in a `LayoutContent isScrollable={false}` (LayoutContent.d.ts:28-33, example :70-75; style object as page `product-detail` `stickyInfo` :26-30, opaque as page `dashboard-alert-rail` `stickyHeader` :895-900) carrying the header's divider and the indeterminate `ProgressBar` on it; body: page `library` (Card Grid) card grid, empty state | phase 1 |
 | Result tile | home grid | page `product-gallery`, `ProductCard` (square media; title, secondary line = shop icon and name, price `large` bold with a favourite `IconButton`); NEW and feature tags: `Badge` row under the price (block `BadgeCategoryTags`). The server renders the first 24 tiles; the rest of the page's 100 are drawn in the browser near the viewport, a tile silhouette holding their place. After a document load the browser reads the rest; after a search, filter or sort change the server sends it with the page | phase 1 |
@@ -72,12 +72,12 @@ Template names are the ids from `bunx astryx template --list` (page templates) o
 | Endless results | the grid, page by page | page `table-filter` `useInfiniteBatches` (:1160-1237) with `/api/search` pages for its timer, sentinel (:2356-2376, margin two screens), "All N loaded" line (:4517-4538); silhouette tiles while a page loads, inline retry Banner on failure (in a page's own place for a page above); a start past page 1 puts the pages before it above it as boxes of the estimated height (at most 40 at once, more as the reader nears their top), each read when in view; the URL names the page in view (`replaceState`), Back and reload return to the same tile; hidden prev/next links for crawlers (`components/catalog/results/result-pages.tsx`) | phase 1 |
 | Empty, filtered-empty, error, API starting | instead of the grid | block `EmptyStateActions` | phase 1 |
 | Loading, refresh | home, while the search answers | `Skeleton` silhouettes of the count and of 24 tiles (doona `apps/lite` loading rules); every image box holds a `Skeleton` under its image until the image paints; an image that fails, or an item with none, shows the no-image state instead (the muted surface with an image-off glyph, `app/catalog.css`); refresh: nothing for 150 ms, then the template's indeterminate `ProgressBar` (:4341-4347) as a 2 px square line on the filter band's bottom edge (doona `apps/lite` src/ui.tsx:131-137, at its header's edge; restyled by its theme hooks for this instance only) held at least 300 ms, the new count and results fading in (`lib/use-delayed.ts`); failed refresh: inline `Banner` with retry above the kept results | phase 1 |
-| Sign-in / register | TopNav end "Sign in" | page `login-card` in a `Dialog` (TabList for the two forms; sign-in only, without the tabs, while registration is closed); while an admin has sign-in and registration checked, the Turnstile widget between the fields and the button, or a `Banner` with Try again when its script does not load | checkpoint 1 |
+| Sign-in / register | TopNav end "Sign in", signed-out favourites (nav link or heart button), or signed-out recently-viewed prompt | page `login-card` in a `Dialog` (TabList for the two forms; sign-in only, without the tabs, while registration is closed); while an admin has sign-in and registration checked, the Turnstile widget between the fields and the button, or a `Banner` with Try again when its script does not load | checkpoint 1 |
 | Account menu | TopNav end, signed in | ghost `IconButton` with the user-circle glyph (template `shell-side-nav` account row, page.tsx:180), tooltip the display name; `DropdownMenu` with a header (display name, email) and two groups: favourites, recently viewed / settings, admin console (admins only), sign out | track D |
 | Language, currency, colour mode | TopNav end | doona lite `LanguageMenu` / `ColorModeToggle` pattern: ghost IconButton + tooltip, `DropdownMenu` radio group (interface language only); currency as a ghost DropdownMenu button of the same height | checkpoint 1 |
 | Guestbook | TopNav end, before the language menu | ghost `IconButton` with a tooltip, as its neighbours; block `DrawerForm` from the end edge (`DrawerHeader` with a subtitle, the body in `LayoutContent`, width 440): closed by a click outside as by Escape: the form (nickname `TextInput`, message `TextArea` with its count, the Turnstile widget as wide as the fields, or Cloudflare's compact widget while they are narrower than the wide one's 300 px (a phone), a primary Post), then the messages newest first as a comment thread shows one (nickname, relative `Timestamp`, the text as typed, and a `Token` on a message an admin closed: purple Completed or grey Not planned, as GitHub marks a closed issue), 50 at a time with a secondary Load more. Post opens block `DialogWithSubtitle` showing the message back; only its confirm sends. `EmptyState` while no message exists, while the guestbook is closed (either Turnstile key unset) and when the list fails; a `Banner` with Try again when the Turnstile script does not load. The drawer, its strings and the script load on the first open | guestbook |
 | Settings (appearance, language, currency, item text, devices) | TopNav end, account menu | page `settings-dialog` (appearance: colour mode cards, pure black and reduce motion `Switch`es); synced to the account when signed in; item text defaults to the interface language; signed in, an Account group with Devices: the account's sessions as the card's rows, a secondary Sign out on each but this device, which carries a `Token`; and Your data: the template's "Delete my account" row (page.tsx:1953-1958, destructive sm `Button`) opening block `DialogFormDialog` with the password field, Cancel and a destructive Delete account | track D |
-| Favourites, recently viewed | account menu | page `library` with the same frame (views of the home grid; recently viewed is read in the browser) | track D |
+| Favourites, recently viewed | TopNav link, mobile drawer, or account menu | page `library` with the same frame (views of the home grid; signed-out favourites clicks open the sign-in dialog and direct `/?v=favourites` visits render `SignInRequired` `EmptyState`; recently viewed is read in the browser and, while signed out, shows a browser-local sync notice as an `EmptyState` description or dismissible `Banner` with Sign in) | track D |
 | Privacy policy, terms of use | `/privacy`, `/terms`; Settings > About rows; the register form's consent line (page `login-card` terms line, page.tsx:196-209) | page `documentation-technical` in the site frame: a reading column (`contentWidth` 960, page inset 6), `Heading level={1}` with a supporting "Last updated" line, then per section a `Divider` and a level-2 `Heading` over body `Text` paragraphs and disc `List`s; the cookie list a compact `Table`. The template's outline panel, phone selector, assistant card and code blocks are not used. Texts are server-only (`lib/legal-<lang>.ts`), the operator and contact from `OPERATOR_NAME` / `CONTACT_EMAIL` at runtime; inline links are underlined (neutral's accent is the text colour). From Settings > About and the register form the same body opens in a dialog over them (block `DialogScrollingContent` without its footer, 960 px wide, settings' height cap; "Last updated" as the `DialogHeader` subtitle, block `DialogWithSubtitle`); the body is one client component (`legal-body.tsx`) for both, and the dialog gets its texts as plain data from a server action, never as elements (a route's client manifest need not list the components they name); the terms' privacy link switches the dialog, a modified click opens the page | track G |
 | Admin frame | `/admin/*` | page `shell-side-nav` (collapsible, resizable `SideNav`, two titled groups, footer: back to site, language, colour mode; phone drawer from `AppShell`) | track F |
 | Admin sign-in, not an admin, unreachable | `/admin/*` before the probe succeeds | `EmptyState` (or the checking `Spinner`) in place of the page's content, under the page's own title and tabs; sign-in opens the site's `login-card` dialog, sign-in only under the admin heading | track F |
@@ -110,8 +110,14 @@ The rest are prop values, not style overrides:
 
 - `AppShell height="auto"` and `Layout height="auto"`: the window scrolls instead of an inner region, so a
   phone's address bar collapses and the grid is one long page.
-- `AppShell mobileNav={false}`: the bar has no drawer content, and Astryx's phone bar (chosen by a media query
-  in the browser only) remounted the end actions after hydration, dropping the clicks made before it.
+- `AppShell mobileNav={{ breakpoint: "lg", defaultIsMobile: mobile, isOpen, onOpenChange }}`: `mobile` comes from the
+  request's client hint or User-Agent (`isPhone` / `isPhoneHeaders` in `lib/server-data.ts`) so phones render `TopNav`
+  in mobile-bar mode from the first paint without remounting the end actions; `breakpoint: "lg"` (1024 px, matching
+  FilterRail's collapse) prevents `en`, `ja` and `ko` links from wrapping at `768–899 px`, and `globals.css` hides
+  `.astryx-top-nav .astryx-top-nav-item` below 1024 px so narrowed desktop tabs do not wrap before hydration.
+- `TopNavItem` holds the label and, when non-zero in the browser, an Astryx `Badge` count (`marginInlineStart: "auto"`,
+  pushed to the trailing edge in the mobile drawer). When `isSelected` is true, both the nav item and neutral `Badge`
+  take `--color-neutral`, so the `Badge` sets `backgroundColor: "var(--color-background-surface)"` to keep contrast.
 - Grid column floor 160 px instead of the template's 320 px: product tiles need two columns on a phone.
 - Fold trigger place 3rem instead of the template's 44 px (slot floor and unfolded padding, `filter-bar.tsx`,
   `filter-row.css`): "+8" is 19.8 px wide on a phone, so 44 px clipped it to "+…".
@@ -160,12 +166,13 @@ structural or token-backed:
 
 Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@astryxdesign/cli 0.7.8); each adapted file names its template.
 
-- Frame: no centre navigation (BoothDex has no sections; the template's mega menus are dropped). `contentPadding`
+- Frame: no centre navigation or mega menus (`startContent` holds the three view `TopNavItem`s directly). `contentPadding`
   is not set and the template's 1100 px content cap is not used: the home page is the full-width library layout,
   whose own `Layout padding={6}` gives the inset (rule 5).
 - Logo: master's SVG mark at 1.75rem (28 px at a 16 px root) instead of the template's `NavIcon` (the mark is itself a filled shape). On
-  phones (< 640 px) the wordmark is visually hidden by a documented rule in `globals.css` (`.site-heading`), as on
-  master: TopNavHeading has no prop for it, and five end actions do not fit beside a truncated name at 390 px.
+  phones (< 640 px) the wordmark in the top bar (`.astryx-top-nav .site-heading`) is visually hidden by a documented
+  rule in `globals.css` while the `MobileNav` drawer keeps it: TopNavHeading has no prop for it, and the end actions
+  and drawer toggle do not fit beside a truncated name at 390 px.
 - End actions: no magnifier or palette; the site search is the home page's filter row (Filter area below).
 - Currency: a ghost `DropdownMenu` button showing only the code ("JPY", no chevron) instead of an icon (owner: the
   coin icon was not understood); its accessible name and tooltip give the localised name, the rows symbol, code
@@ -237,6 +244,8 @@ Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@ast
   so the clip reaches 1 px past the controls; flush with them, the sticky band's sub-pixel offset (the top bar is
   55.17 px tall) cut a control's top or bottom border.
 - Astryx class and DOM hooks outside the `.d.ts` files, to re-check on an Astryx update:
+  - `.astryx-top-nav` and `.astryx-top-nav-item` (`app/globals.css`): scope phone-only wordmark hiding to the top bar
+    so the mobile drawer keeps the wordmark, and hide the horizontal links below 1024 px before hydration.
   - `.astryx-app-shell` and `.astryx-app-shell-header` (`lib/deep-start.ts`): the deep start sets the shell's
     header height variable on the shell before it hydrates (above).
   - `.astryx-skeleton` (`silhouette.tsx` `silhouetteMask`, `app/catalog.css` image skeletons): the boxes' mask is
@@ -282,11 +291,12 @@ Templates are read from `node_modules/@astryxdesign/cli/assets/templates/` (@ast
 | Search field, suggestion "Search “q”" row | `search` (theme) | Search |
 | Filters | `funnel` (theme) | Filter |
 | Suggestions: recent search (remove: `close`) | `clock` (theme) | Clock |
-| Favourite (tiles, item dialog; saved: filled by CSS on `aria-pressed`) | `site:favourite` | Heart |
+| Favourite (TopNav link, menu, tiles, item dialog; saved: filled by CSS on `aria-pressed`) | `site:favourite` | Heart |
+| Recently viewed (TopNav link, menu, empty state) | `site:recent` | History |
 | Language menu | `site:language` | Languages |
 | Account menu (signed in) | `site:account` | CircleUser |
 | Colour mode | `site:dark` / `site:light` | Moon / Sun |
-| Avatar strip "All", avatar without image | `site:allAvatars` | LayoutGrid |
+| Avatar strip "All", TopNav "All items", avatar without image | `site:allAvatars` | LayoutGrid |
 | Suggestions: tag row, clear recent | `site:tag`, `site:clear` | Hash, Trash2 |
 | Save this search, saved views (pressed: filled by `fill`) | `site:save`, `site:saved` / `site:savedFilled` | BookmarkPlus, Bookmark |
 | Saved views: edit; saved-search form: feed | `site:edit`, `site:feed` (`lib/icons-on-demand.tsx`) | Pencil, Rss |

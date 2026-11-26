@@ -26,7 +26,7 @@ import {
   SOURCE_URL,
 } from "@/lib/legal";
 import { en } from "@/lib/messages-en";
-import { componentCatalogue, readSettings } from "@/lib/server-data";
+import { componentCatalogue, isPhone, readSettings } from "@/lib/server-data";
 import { LOCALES } from "@/lib/settings-core";
 import { LegalBody } from "./legal-body";
 
@@ -62,8 +62,11 @@ export async function legalDoc(kind: LegalKind): Promise<LegalView> {
 }
 
 export async function LegalScreen({ kind }: { kind: LegalKind }) {
-  const settings = await readSettings();
-  const doc = await legalDoc(kind);
+  const [settings, doc, mobile] = await Promise.all([
+    readSettings(),
+    legalDoc(kind),
+    isPhone(),
+  ]);
   return (
     <Providers
       settings={settings}
@@ -72,7 +75,7 @@ export async function LegalScreen({ kind }: { kind: LegalKind }) {
     >
       {/* the account menu's views (favourites, recently viewed) open on the home page from here */}
       <FilterUrlProvider filters={DEFAULT_FILTERS}>
-        <SiteFrame rates={Promise.resolve({})}>
+        <SiteFrame rates={Promise.resolve({})} mobile={mobile}>
           <Layout
             height="auto"
             contentWidth={960}

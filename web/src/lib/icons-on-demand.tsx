@@ -10,7 +10,6 @@ import {
   Eye,
   FileText,
   Hash,
-  History,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -32,7 +31,6 @@ import { glyph } from "./icons";
 
 registerIcons({
   "site:viewed": <Eye {...glyph} />,
-  "site:recent": <History {...glyph} />,
   "site:admin": <LayoutDashboard {...glyph} />,
   "site:signOut": <LogOut {...glyph} />,
   "site:appearance": <Palette {...glyph} />,

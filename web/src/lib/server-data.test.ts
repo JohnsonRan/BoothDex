@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_FILTERS } from "./catalog";
 import {
+  isPhoneHeaders,
   passOffer,
   relatedSearches,
   type SearchOutcome,
+  searchFailure,
   tagLabels,
   visitorHeaders,
 } from "./server-data";
@@ -51,6 +53,66 @@ test("a read refused by the stricter limit carries the check it offers; other fa
   ).toBeUndefined();
   expect(await passOffer(failed(500, offered))).toBeUndefined();
   expect(await passOffer(new TypeError("fetch failed"))).toBeUndefined();
+});
+
+test("isPhoneHeaders detects Chromium mobile hints and phone user agents", () => {
+  expect(isPhoneHeaders(new Headers({ "sec-ch-ua-mobile": "?1" }))).toBe(true);
+  expect(
+    isPhoneHeaders(
+      new Headers({
+        "user-agent":
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
+      }),
+    ),
+  ).toBe(true);
+  expect(
+    isPhoneHeaders(
+      new Headers({
+        "user-agent":
+          "Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Safari/537.36",
+      }),
+    ),
+  ).toBe(true);
+  expect(
+    isPhoneHeaders(
+      new Headers({
+        "sec-ch-ua-mobile": "?0",
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0",
+      }),
+    ),
+  ).toBe(false);
+  expect(isPhoneHeaders(new Headers())).toBe(false);
+});
+
+test("searchFailure maps 401 to unauthorized, 429 to limited error, and network failures to starting or error", async () => {
+  const err = (status: number, body: unknown = {}) =>
+    new Error(`/api/search: ${status}`, {
+      cause: Response.json(body, { status }),
+    });
+  expect(await searchFailure(err(401), async () => true)).toEqual({
+    state: "unauthorized",
+  });
+  expect(
+    await searchFailure(
+      err(429, {
+        ok: false,
+        code: "verification_offered",
+        site_key: "0x-site",
+      }),
+      async () => true,
+    ),
+  ).toEqual({
+    state: "error",
+    limited: true,
+    offer: { siteKey: "0x-site" },
+  });
+  expect(await searchFailure(err(500), async () => true)).toEqual({
+    state: "error",
+  });
+  expect(
+    await searchFailure(new TypeError("fetch failed"), async () => false),
+  ).toEqual({ state: "starting" });
 });
 
 test("a visitor whose search a rate limit refused gets the tags' names, and no lookup is made", async () => {

@@ -12,6 +12,7 @@ import {
   CircleUser,
   Coffee,
   Heart,
+  History,
   Languages,
   LayoutGrid,
   MessagesSquare,
@@ -26,6 +27,7 @@ export const glyph = { size: "1em", "aria-hidden": true } as const;
 
 const SITE_ICONS = {
   "site:favourite": <Heart {...glyph} />,
+  "site:recent": <History {...glyph} />,
   "site:settings": <Settings {...glyph} />,
   "site:account": <CircleUser {...glyph} />,
   "site:language": <Languages {...glyph} />,

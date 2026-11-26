@@ -77,16 +77,25 @@ html {
 }
 
 /* Documented deviation (docs/TEMPLATE-MAP.md): on phones the top bar shows only the logo, as on master, so the
-   five end actions fit at 390 px. TopNavHeading has no prop for it; the wordmark is hidden visually and stays
-   the link's accessible name. */
+   five end actions and the drawer toggle fit at 390 px, while the MobileNav drawer keeps the wordmark. TopNavHeading
+   has no prop for it; the wordmark is hidden visually in TopNav and stays the link's accessible name. */
 @media (width < 640px) {
-  .site-heading > :not(:first-child) {
+  .astryx-top-nav .site-heading > :not(:first-child) {
     position: absolute;
     width: 1px;
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+}
+
+/* Documented deviation (docs/TEMPLATE-MAP.md): a desktop user agent loaded or resized below lg (1024 px) renders
+   TopNav in desktop mode until hydration switches AppShell to its mobile bar, so hiding the top-bar nav items below
+   lg keeps TopNav from wrapping to a second row before hydration. */
+@media (width < 1024px) {
+  .astryx-top-nav .astryx-top-nav-item {
+    display: none;
   }
 }
 

@@ -9,6 +9,7 @@ import { Theme } from "@astryxdesign/core/theme";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  type ComponentProps,
   createContext,
   useContext,
   useEffect,
@@ -75,6 +76,16 @@ function showChrome() {
   const color = getComputedStyle(shell).backgroundColor;
   for (const meta of document.querySelectorAll('meta[name="theme-color"]'))
     meta.setAttribute("content", color);
+}
+
+/** Disables automatic prefetching on Next.js links: with cacheComponents enabled, concurrent prefetches of
+ *  `/`, `/?v=favourites` and `/?v=recent` overwrite the same `/` segment entry in the client router cache,
+ *  and prefetching `/?v=favourites` while signed out issues a 401 request before any click. */
+export function AppLink({
+  prefetch = false,
+  ...props
+}: ComponentProps<typeof Link>) {
+  return <Link prefetch={prefetch} {...props} />;
 }
 
 export function Providers({
@@ -190,7 +201,7 @@ export function Providers({
         locale={locale}
         messages={catalogue ? { [locale]: catalogue } : undefined}
       >
-        <LinkProvider component={Link}>
+        <LinkProvider component={AppLink}>
           {/* the static layout cannot know a language read from Accept-Language: set while the page is parsed,
               not by the effect after hydration, whose change restyles the whole document */}
           <script
