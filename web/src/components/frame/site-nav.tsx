@@ -1,6 +1,6 @@
 "use client";
-// Primary view links in the top bar (desktop) and mobile drawer (< lg): All items, My favourites and
-// Recently viewed, with live count badges once read in the browser so first paint matches server markup.
+// Primary view links in the desktop top bar (>= lg): All items, My favourites and Recently viewed, with live count
+// badges once read in the browser so first paint matches server markup (hidden below lg in app/globals.css).
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Icon } from "@astryxdesign/core/Icon";
@@ -64,7 +64,6 @@ function navBadge(count: string | null, selected: boolean) {
       <Badge
         label={count}
         style={{
-          marginInlineStart: "auto",
           fontVariantNumeric: "tabular-nums",
           ...(selected
             ? { backgroundColor: "var(--color-background-surface)" }
@@ -75,7 +74,7 @@ function navBadge(count: string | null, selected: boolean) {
   );
 }
 
-export function SiteNav({ onNavigate }: { onNavigate?: () => void } = {}) {
+export function SiteNav() {
   const { t, ui } = useUi();
   const pathname = usePathname();
   const { filters, apply } = useFilterUrl();
@@ -100,7 +99,6 @@ export function SiteNav({ onNavigate }: { onNavigate?: () => void } = {}) {
         onClick={(e) => {
           if (!plainClick(e)) return;
           e.preventDefault();
-          onNavigate?.();
           if (home && filters.view === "items") scrollTop();
           else apply({ view: "items" });
         }}
@@ -118,14 +116,12 @@ export function SiteNav({ onNavigate }: { onNavigate?: () => void } = {}) {
             (me === undefined &&
               document.documentElement.dataset.account !== SIGNED_IN)
           ) {
-            onNavigate?.();
             openSignIn(
               home && filters.view === "favourites"
                 ? undefined
                 : () => apply(FAVOURITES_PATCH),
             );
           } else {
-            onNavigate?.();
             if (home && filters.view === "favourites") scrollTop();
             else apply(FAVOURITES_PATCH);
           }
@@ -142,7 +138,6 @@ export function SiteNav({ onNavigate }: { onNavigate?: () => void } = {}) {
         onClick={(e) => {
           if (!plainClick(e)) return;
           e.preventDefault();
-          onNavigate?.();
           if (home && filters.view === "recent") scrollTop();
           else apply(RECENT_PATCH);
         }}

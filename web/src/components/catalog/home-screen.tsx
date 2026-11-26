@@ -46,7 +46,6 @@ import { browserMessages, translator } from "@/lib/dictionaries";
 import {
   componentCatalogue,
   exchangeRates,
-  isPhoneHeaders,
   itemHero,
   listAvatars,
   listCategories,
@@ -102,7 +101,7 @@ export async function HomeScreen({
         </Suspense>
       )}
       <FilterUrlProvider filters={filters}>
-        <SiteFrame rates={rates} mobile={isPhoneHeaders(request)}>
+        <SiteFrame rates={rates}>
           {/* no fallback: the frame waits only for the cached avatar and category lists */}
           <Arrival>
             <Catalog
