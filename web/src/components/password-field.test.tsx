@@ -28,6 +28,11 @@ test("PasswordField exposes password semantics, toggle state, and single error m
       </Providers>
     </AppRouterContext>,
   );
+  const labels = html
+    .match(/<input [^>]*aria-labelledby="([^"]*)"/)?.[1]
+    .split(" ")
+    .map((id) => html.match(new RegExp(`id="${id}"[^>]*>([^<]*)`))?.[1]);
+  expect(labels?.filter(Boolean)).toEqual(["Password"]);
   expect(html).toContain('type="password"');
   expect(html).toContain('name="password"');
   expect(html).toContain('autoComplete="current-password"');

@@ -49,7 +49,8 @@ export function PasswordField({
     >
       <TextInput
         ref={ref}
-        label={label}
+        // InputGroup contributes its visible label to the input's accessible name.
+        label=""
         isLabelHidden
         htmlName={htmlName}
         type={shown ? "text" : "password"}
