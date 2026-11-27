@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
-import { getSiteUrl, homeMetadata, SHARE_IMAGE } from "./seo";
+import { parseFilters } from "./catalog";
+import { translator } from "./dictionaries";
+import { catalogTitle, getSiteUrl, homeMetadata, SHARE_IMAGE } from "./seo";
 
 const originalSiteUrl = process.env.SITE_URL;
 afterEach(() => {
@@ -120,22 +122,15 @@ test("only the bare homepage is indexable; query views retain the root canonical
   );
 });
 
-test("view and query parameters give each view a distinct title while keeping canonical root", () => {
-  process.env.SITE_URL = "https://catalog.example";
-  expect(homeMetadata({}).title).toBe(homeMetadata(false).title);
-  expect(homeMetadata({ q: "kimono" }).title).toBe("Search: kimono — BoothDex");
-  expect(homeMetadata({ v: "favourites" }).title).toBe(
-    "My favourites — BoothDex",
+test("catalogue titles use the active filters and interface language", () => {
+  const title = (raw: string, ui: "en" | "zh" = "en") =>
+    homeMetadata(true, catalogTitle(translator(ui), parseFilters(raw))).title;
+  expect(title("?q=kimono", "zh")).toBe("搜索 kimono — BoothDex");
+  expect(title("?v=favourites")).toBe("My favourites — BoothDex");
+  expect(title("?v=recent&q=skirt", "zh")).toBe("最近已看 — BoothDex");
+  expect(title("?v=avatars")).toBe("Avatar bodies — BoothDex");
+  expect(title("?authors=Milk%2BShop&v=favourites")).toBe(
+    "Items by Milk+Shop — BoothDex",
   );
-  expect(homeMetadata({ v: "recent" }).title).toBe(
-    "Recently viewed — BoothDex",
-  );
-  expect(homeMetadata({ v: "avatars" }).title).toBe("Avatar bodies — BoothDex");
-  expect(homeMetadata({ author: "MilkShop" }).title).toBe(
-    "MilkShop — BoothDex",
-  );
-  expect(homeMetadata({ q: "kimono" }).robots).toEqual({
-    index: false,
-    follow: true,
-  });
+  expect(title("?author=MilkShop")).toBe(homeMetadata(false).title);
 });

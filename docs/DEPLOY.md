@@ -254,6 +254,7 @@ Set `BOOTHDEX_TAG=latest` again once a fixed version is published. Waiting for t
 - [ ] `ADMIN_USERNAMES` lists only your account
 - [ ] `https://<domain>/api/categories` returns JSON; `/img/v/<sha1>.webp` serves an archived image (if using a bundle)
 - [ ] `/robots.txt` points to `/sitemap.xml` on your public domain; the sitemap lists the homepage, `/privacy` and `/terms`. Submit it to your search engine's webmaster tools. Search/filter/item-modal URLs use `noindex`; `/admin` and `/api/` are excluded from crawling (not an access-control mechanism)
+- [ ] In a supported admin language, check that the browser tab titles on a search and an admin page match the chosen language
 - [ ] `/admin` shows `worker` online and a succeeded `incremental` job within an hour
 - [ ] Off-server daily `pg_dump` backup is scheduled
 - [ ] AI provider is configured (otherwise newly crawled items lack smart categories, avatar-fit links and translated titles)

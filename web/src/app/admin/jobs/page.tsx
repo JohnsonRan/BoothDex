@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { Tasks } from "@/components/admin/tasks";
+import { adminPageMetadata } from "../metadata";
 
-export const metadata: Metadata = { title: "Crawler" };
+export const generateMetadata = adminPageMetadata("nav.jobs");
 
 export default function AdminTasks() {
   return <Tasks />;

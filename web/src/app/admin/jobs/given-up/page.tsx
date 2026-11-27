@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { GivenUpPage } from "@/components/admin/given-up";
+import { adminPageMetadata } from "../../metadata";
 
-export const metadata: Metadata = { title: "AI gave up" };
+export const generateMetadata = adminPageMetadata("jobs.givenUp");
 
 export default function AdminGivenUp() {
   return <GivenUpPage />;

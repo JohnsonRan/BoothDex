@@ -34,6 +34,11 @@ Run exactly one `api` container. Each `api` process keeps its own key for signin
 - Every response also sends `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), geolocation=(), microphone=()`, and `Cross-Origin-Opener-Policy: same-origin-allow-popups`.
 - A policy your proxy adds does not replace this one: the browser enforces both.
 
+## Page titles
+
+Catalogue view titles use the same filters and language as the visible heading. The unfiltered catalogue keeps the
+site's default metadata title. Admin titles use the console's translations, with English as the fallback for Korean.
+
 ## Cloudflare Turnstile
 
 The keys are those of a Cloudflare Turnstile widget in managed mode. They come from `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` or from `/admin`; the environment values override and lock the `/admin` settings.

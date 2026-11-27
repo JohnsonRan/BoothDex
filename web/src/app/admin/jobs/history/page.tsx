@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { History } from "@/components/admin/history";
+import { adminPageMetadata } from "../../metadata";
 
-export const metadata: Metadata = { title: "Job history" };
+export const generateMetadata = adminPageMetadata("jobs.history");
 
 export default function AdminHistory() {
   return <History />;

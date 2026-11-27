@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { GuestbookPage } from "@/components/admin/guestbook";
+import { adminPageMetadata } from "../metadata";
 
-export const metadata: Metadata = { title: "Guestbook" };
+export const generateMetadata = adminPageMetadata("nav.guestbook");
 
 export default function AdminGuestbook() {
   return <GuestbookPage />;

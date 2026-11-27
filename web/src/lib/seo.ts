@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import type { Filters } from "./catalog";
+import type { Translate } from "./settings-core";
 
 /** The link preview picture, drawn by app/og.png/route.tsx; next.config.ts sets the hash. */
 export const SHARE_IMAGE = {
@@ -49,38 +51,24 @@ export function getSiteUrl(value = process.env.SITE_URL): URL | undefined {
   }
 }
 
-export type HomeParams = Record<string, string | string[] | undefined>;
-
-const DEFAULT_TITLE = "BoothDex — VRChat Assets, Avatars & Clothing on BOOTH";
-
-const paramText = (v: string | string[] | undefined) => {
-  const raw = Array.isArray(v) ? v[0] : v;
-  const trimmed = raw?.trim();
-  return trimmed ? trimmed.slice(0, 80) : undefined;
-};
-
-function homeTitle(params: HomeParams | undefined): string {
-  if (!params) return DEFAULT_TITLE;
-  const q = paramText(params.q);
-  if (q) return `Search: ${q} — BoothDex`;
-  const v = paramText(params.v);
-  if (v === "favourites") return "My favourites — BoothDex";
-  if (v === "recent") return "Recently viewed — BoothDex";
-  if (v === "avatars") return "Avatar bodies — BoothDex";
-  const author = paramText(params.author);
-  if (author) return `${author} — BoothDex`;
-  return DEFAULT_TITLE;
+export function catalogTitle(
+  t: Translate,
+  { view, q, author }: Pick<Filters, "view" | "q" | "author">,
+  avatar?: string,
+): string | undefined {
+  if (view === "recent") return t("title.recent");
+  if (q) return t("title.search", { q });
+  if (author) return t("title.author", { name: author });
+  if (avatar) return t("title.avatar", { name: avatar });
+  if (view === "avatars") return t("title.avatars");
+  if (view === "favourites") return t("title.favourites");
 }
 
-export function homeMetadata(queryOrParams: boolean | HomeParams): Metadata {
+export function homeMetadata(hasQuery: boolean, viewTitle?: string): Metadata {
   const url = getSiteUrl();
-  const hasQuery =
-    typeof queryOrParams === "boolean"
-      ? queryOrParams
-      : Object.keys(queryOrParams).length > 0;
-  const title = homeTitle(
-    typeof queryOrParams === "boolean" ? undefined : queryOrParams,
-  );
+  const title = viewTitle
+    ? `${Array.from(viewTitle).slice(0, 80).join("")} — BoothDex`
+    : "BoothDex — VRChat Assets, Avatars & Clothing on BOOTH";
   const description =
     "Discover VRChat avatars, clothing, accessories and tools on BOOTH. Search by avatar compatibility, category, price and features across multiple languages.";
   return {

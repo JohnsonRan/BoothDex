@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { UsersPage } from "@/components/admin/users";
+import { adminPageMetadata } from "../metadata";
 
-export const metadata: Metadata = { title: "Users" };
+export const generateMetadata = adminPageMetadata("nav.users");
 
 export default function AdminUsers() {
   return <UsersPage />;

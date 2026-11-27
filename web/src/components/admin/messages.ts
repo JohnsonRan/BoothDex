@@ -24,12 +24,14 @@ const ADMIN: Record<UiLang, AdminDict> = {
   ko: adminEn,
 };
 
+export function adminTranslator(ui: UiLang): AdminT {
+  const dict = ADMIN[ui];
+  return (key, vars) => format(dict[key], vars);
+}
+
 export function useAdminT(): AdminT {
   const { ui } = useUi();
-  return useMemo(() => {
-    const dict = ADMIN[ui];
-    return (key, vars) => format(dict[key], vars);
-  }, [ui]);
+  return useMemo(() => adminTranslator(ui), [ui]);
 }
 
 /** The API errors the console explains (lib/api.ts errorKey); any other failure says only that it failed. */

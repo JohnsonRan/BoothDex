@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { Overview } from "@/components/admin/overview";
+import { adminPageMetadata } from "./metadata";
 
-export const metadata: Metadata = { title: "Overview" };
+export const generateMetadata = adminPageMetadata("nav.overview");
 
 export default function AdminOverview() {
   return <Overview />;
