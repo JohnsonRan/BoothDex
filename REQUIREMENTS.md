@@ -185,6 +185,9 @@ after a release.
 | Add the original Masscat (ますきゃっと, 量産型のらきゃっと) as an avatar of its own; its listings are not linked to ますきゃっとぷらす | alias measurement for migration 0032, 2026-11-21 | It was not among the measured candidates |
 | Check the gender of the 42 added avatars without one and the Hepburn romaji of the 68 whose body listing shows no Latin name | avatar research, 2026-11-21 | It needs reading the listing images and the shops' pages |
 | Consolidate Saved searches' sign-in dialog in `web/src/components/catalog/toolbar.tsx` onto `AccountProvider.openSignIn` instead of its pre-existing local `dynamic` `SignInDialog` | fresh-context diff review, 2026-11-26 | Pre-existing modal outside TopNav navigation; can migrate if `check:size` stays within the 530,000 B JS budget |
+| Restore the previous weight of the Settings title at phone width | PR #104 review, `web/src/components/settings/settings-dialog.tsx` | The semantic heading is correct. The owner can judge the heavier weight in the preview. |
+| Make fields with the `next` keyboard hint advance without submitting their form | PR #104 review, sign-in, profile and guestbook forms | Enter runs client validation and marks untouched fields. Invalid submissions send no request. Changing Enter behavior needs a keyboard and IME check. |
+| Share the scroll-settling helper between the avatar strip and the results frame | PR #104 review, `web/src/components/catalog/band/avatar-strip.tsx` and `web/src/lib/result-frame.ts` | The strip listens on a nested scroller and the frame listens on the window. Changing the strip would need its own navigation and resize checks. |
 
 ## Open questions
 
@@ -193,3 +196,4 @@ to the file it decides.
 
 | Question | Source | Raised |
 | --- | --- | --- |
+| Accept PR #104's homepage first-load increases of 258 B HTML, 431 B JS and 225 B CSS, or require the changes to recover the baseline? All three remain within the current budgets. | PR #104, same-host size comparison | 2026-11-28 |
