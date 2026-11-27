@@ -49,9 +49,38 @@ export function getSiteUrl(value = process.env.SITE_URL): URL | undefined {
   }
 }
 
-export function homeMetadata(hasQuery: boolean): Metadata {
+export type HomeParams = Record<string, string | string[] | undefined>;
+
+const DEFAULT_TITLE = "BoothDex — VRChat Assets, Avatars & Clothing on BOOTH";
+
+const paramText = (v: string | string[] | undefined) => {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const trimmed = raw?.trim();
+  return trimmed ? trimmed.slice(0, 80) : undefined;
+};
+
+function homeTitle(params: HomeParams | undefined): string {
+  if (!params) return DEFAULT_TITLE;
+  const q = paramText(params.q);
+  if (q) return `Search: ${q} — BoothDex`;
+  const v = paramText(params.v);
+  if (v === "favourites") return "My favourites — BoothDex";
+  if (v === "recent") return "Recently viewed — BoothDex";
+  if (v === "avatars") return "Avatar bodies — BoothDex";
+  const author = paramText(params.author);
+  if (author) return `${author} — BoothDex`;
+  return DEFAULT_TITLE;
+}
+
+export function homeMetadata(queryOrParams: boolean | HomeParams): Metadata {
   const url = getSiteUrl();
-  const title = "BoothDex — VRChat Assets, Avatars & Clothing on BOOTH";
+  const hasQuery =
+    typeof queryOrParams === "boolean"
+      ? queryOrParams
+      : Object.keys(queryOrParams).length > 0;
+  const title = homeTitle(
+    typeof queryOrParams === "boolean" ? undefined : queryOrParams,
+  );
   const description =
     "Discover VRChat avatars, clothing, accessories and tools on BOOTH. Search by avatar compatibility, category, price and features across multiple languages.";
   return {

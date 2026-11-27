@@ -8,8 +8,9 @@
 
 import { Button } from "@astryxdesign/core/Button";
 import { TextInput } from "@astryxdesign/core/TextInput";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAccount } from "@/components/account/session";
+import { PasswordField } from "@/components/password-field";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
@@ -88,6 +89,7 @@ function NameDialog({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const { me, reload } = useAccount();
   const { busy, save } = useSave();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(me?.display_name ?? "");
   const [checked, setChecked] = useState(false);
   // the API's rule: 1 to 50 characters once trimmed
@@ -101,7 +103,10 @@ function NameDialog({ onClose }: { onClose: () => void }) {
 
   const submit = async () => {
     setChecked(true);
-    if (problem) return;
+    if (problem) {
+      inputRef.current?.focus();
+      return;
+    }
     if (
       !(await save("/api/account/profile", "PATCH", {
         display_name: name.trim(),
@@ -122,8 +127,12 @@ function NameDialog({ onClose }: { onClose: () => void }) {
       onSubmit={submit}
     >
       <TextInput
+        ref={inputRef}
         label={t("account.displayName")}
+        htmlName="display_name"
+        isRequired
         autoComplete="nickname"
+        enterKeyHint="done"
         value={name}
         onChange={setName}
         status={
@@ -136,26 +145,41 @@ function NameDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-type PasswordField = "current" | "next" | "again";
+type PasswordFieldName = "current" | "next" | "again";
 
 const PASSWORD_FIELDS: {
-  field: PasswordField;
+  field: PasswordFieldName;
+  htmlName: string;
   label: MessageKey;
-  autoComplete: string;
+  autoComplete: "current-password" | "new-password";
 }[] = [
   {
     field: "current",
+    htmlName: "current-password",
     label: "profile.current",
     autoComplete: "current-password",
   },
-  { field: "next", label: "profile.new", autoComplete: "new-password" },
-  { field: "again", label: "profile.again", autoComplete: "new-password" },
+  {
+    field: "next",
+    htmlName: "new-password",
+    label: "profile.new",
+    autoComplete: "new-password",
+  },
+  {
+    field: "again",
+    htmlName: "confirm-password",
+    label: "profile.again",
+    autoComplete: "new-password",
+  },
 ];
 
 function PasswordDialog({ onClose }: { onClose: () => void }) {
   const { t } = useUi();
   const toast = useToast();
-  const [values, setValues] = useState<Record<PasswordField, string>>({
+  const refs = useRef<
+    Partial<Record<PasswordFieldName, HTMLInputElement | null>>
+  >({});
+  const [values, setValues] = useState<Record<PasswordFieldName, string>>({
     current: "",
     next: "",
     again: "",
@@ -165,10 +189,11 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
   const { busy, save } = useSave((key) => {
     if (key !== "error.password") return false;
     setRefused(values.current);
+    refs.current.current?.focus();
     return true;
   });
   const [checked, setChecked] = useState(false);
-  const problem = (field: PasswordField): MessageKey | undefined => {
+  const problem = (field: PasswordFieldName): MessageKey | undefined => {
     const v = values[field];
     if (!v) return "account.required";
     if (field === "current" && v === refused) return "error.password";
@@ -179,7 +204,11 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
 
   const submit = async () => {
     setChecked(true);
-    if (PASSWORD_FIELDS.some(({ field }) => problem(field))) return;
+    const bad = PASSWORD_FIELDS.find(({ field }) => problem(field));
+    if (bad) {
+      refs.current[bad.field]?.focus();
+      return;
+    }
     const body = { current: values.current, new: values.next };
     if (!(await save("/api/account/password", "POST", body))) return;
     toast({ body: t("profile.passwordSaved"), uniqueID: "profile" });
@@ -195,14 +224,19 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       onSubmit={submit}
     >
-      {PASSWORD_FIELDS.map(({ field, label, autoComplete }) => {
+      {PASSWORD_FIELDS.map(({ field, htmlName, label, autoComplete }, i) => {
         const key = checked ? problem(field) : undefined;
         return (
-          <TextInput
+          <PasswordField
             key={field}
+            ref={(el) => {
+              refs.current[field] = el;
+            }}
             label={t(label)}
-            type="password"
+            htmlName={htmlName}
+            isRequired
             autoComplete={autoComplete}
+            enterKeyHint={i < PASSWORD_FIELDS.length - 1 ? "next" : "done"}
             value={values[field]}
             onChange={(v) => setValues((old) => ({ ...old, [field]: v }))}
             status={key ? { type: "error", message: t(key) } : undefined}

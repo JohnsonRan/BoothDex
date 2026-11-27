@@ -8,6 +8,7 @@ import {
   initialLang,
   itemHref,
   itemParam,
+  itemTextLang,
   langTabs,
   shopHost,
   variationName,
@@ -86,4 +87,31 @@ test("?item= is read as a positive id and written without touching other pairs",
     "https://b.example/?tags=a+b&q=%E5%A5%B3&item=9",
   );
   expect(itemHref("https://b.example/?item=7", 0)).toBe("https://b.example/");
+});
+
+test("itemTextLang returns the active translation locale or original_language when known", () => {
+  const sample = {
+    original_language: "ja",
+    translations: {
+      zh: { title: "标题", bio: "简介" },
+      ko: { title: "제목" },
+    } as Translations,
+  };
+  expect(itemTextLang(sample, "title", "zh")).toBe("zh-CN");
+  expect(itemTextLang(sample, "bio", "ko")).toBe("ja-JP");
+  expect(itemTextLang(sample, "title", "original")).toBe("ja-JP");
+  expect(
+    itemTextLang(
+      { original_language: null, translations: {} },
+      "title",
+      "original",
+    ),
+  ).toBeUndefined();
+  expect(
+    itemTextLang(
+      { original_language: "fr", translations: {} },
+      "title",
+      "original",
+    ),
+  ).toBeUndefined();
 });

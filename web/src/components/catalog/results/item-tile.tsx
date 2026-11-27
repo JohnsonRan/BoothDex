@@ -88,10 +88,10 @@ export const GRID = { gap: GAP, ...remColumns("10rem", "fill", GAP) } as const;
 // 2560 px) and the browser draws the rest. Measured 2026-11-13 with the filter rail at its default width.
 export const FIRST_TILES = 24;
 
-// The first screen: two rows at nine columns (1920 px) load at once, the first row at six columns (1280-1440 px)
-// with high priority, since one of them is the likely LCP image.
+// The first screen: two rows at nine columns (1920 px) load at once, with high priority on the first two covers
+// as the likely LCP candidates.
 const EAGER = 18;
-const HIGH = 6;
+const HIGH = 2;
 
 /** The shop's icon at Avatar's xsm size (20 px at a 16 px root): a round crop, a muted disc when the shop has none. */
 function ShopIcon({ src }: { src: string }) {
@@ -211,7 +211,7 @@ export function ItemTile({
             // answered, and marked pressed while saved, by account/favourites.tsx
             data-fav={String(tile.id)}
             aria-pressed={false}
-            label={favLabel}
+            label={`${favLabel}: ${tile.title}`}
             variant="ghost"
             size="sm"
             icon={<Icon icon="site:favourite" size="sm" />}

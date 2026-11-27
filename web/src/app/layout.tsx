@@ -42,7 +42,7 @@ export const viewport: Viewport = {
 // motion with data-motion (lib/motion.ts). SESSION_HINT_SCRIPT marks the last session's sign-in the same way.
 const preferences = `try{var m=document.cookie.match(/(?:^|; )settings=([^;]*)/);
 var s=JSON.parse(m?decodeURIComponent(m[1]):localStorage.getItem("settings")||"{}");var d=document.documentElement;
-if(s.theme==="light"||s.theme==="dark")d.setAttribute("data-theme",s.theme);
+if(s.theme==="light"||s.theme==="dark"){d.setAttribute("data-theme",s.theme);var c=document.querySelector('meta[name="color-scheme"]');if(c)c.content=s.theme}
 if(s.black==="on")d.setAttribute("data-black","");
 if(s.motion==="reduce")d.setAttribute("data-motion","reduce");
 var l={zh:"zh-CN",en:"en-US",ja:"ja-JP",ko:"ko-KR"}[s.ui];if(l)d.lang=l}catch(e){}`;
@@ -59,6 +59,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         {/* the site has its own dark mode (Astryx theme, color-scheme set): Dark Reader must not filter it again */}
         <meta name="darkreader-lock" />
+        <meta
+          name="color-scheme"
+          content="light dark"
+          suppressHydrationWarning
+        />
         <script
           // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input
           dangerouslySetInnerHTML={{

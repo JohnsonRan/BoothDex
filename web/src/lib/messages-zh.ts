@@ -200,6 +200,8 @@ export const zh = {
   "account.username": "用户名",
   "account.email": "邮箱",
   "account.newPassword": "密码（至少 10 位）",
+  "account.showPassword": "显示密码",
+  "account.hidePassword": "隐藏密码",
   "account.required": "请填写此项",
   "account.usernameRule": "用户名需为 3–24 位字母、数字或下划线",
   "account.emailInvalid": "邮箱格式不正确",

@@ -21,6 +21,14 @@ export const clearanceAbove = (
   gap = height - rect.bottom,
 ) => height - rect.top + gap;
 
+/** Whether `button` or one of its descendants currently holds focus. */
+export function holdsFocus(
+  active: Element | null,
+  button: HTMLElement | null,
+): boolean {
+  return !!button && !!active && (active === button || button.contains(active));
+}
+
 export function BackToTop() {
   const { t } = useUi();
   const marker = useRef<HTMLSpanElement>(null);
@@ -29,7 +37,15 @@ export function BackToTop() {
   useEffect(() => {
     const el = marker.current;
     if (!el) return;
-    const seen = new IntersectionObserver(([e]) => setAway(!e.isIntersecting));
+    const seen = new IntersectionObserver(([e]) => {
+      const nextAway = !e.isIntersecting;
+      if (!nextAway && holdsFocus(document.activeElement, button.current)) {
+        document
+          .querySelector<HTMLElement>("a.site-heading")
+          ?.focus({ preventScroll: true });
+      }
+      setAway(nextAway);
+    });
     seen.observe(el);
     return () => seen.disconnect();
   }, []);
@@ -76,7 +92,7 @@ export function BackToTop() {
           position: "absolute",
           insetBlockStart: 0,
           insetInlineStart: 0,
-          blockSize: "100vh",
+          blockSize: "100dvh",
           inlineSize: "1px",
           pointerEvents: "none",
         }}

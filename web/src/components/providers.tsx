@@ -51,6 +51,13 @@ type Look = Pick<Settings, "theme" | "black" | "motion">;
  *  every element inside it. On <body>, as the root Theme rewrites the one on <html> whenever it renders a mode. */
 const ASTRYX_REDUCED_MOTION = "data-astryx-reduced-motion";
 
+/** Keeps <meta name="color-scheme"> aligned with the active or system theme. */
+function showColorScheme(theme: Settings["theme"]) {
+  const meta = document.querySelector?.('meta[name="color-scheme"]');
+  if (meta)
+    meta.setAttribute("content", theme === "system" ? "light dark" : theme);
+}
+
 /** Puts a colour mode and reduced motion on <html> and the root Theme's element at once, ahead of the render that
  *  follows (globals.css lets these attributes alone set the colour scheme; the CSS and lib/motion.ts read
  *  data-motion). */
@@ -66,6 +73,7 @@ function showLook({ theme, black, motion }: Look) {
     if (theme === "system") el.removeAttribute("data-theme");
     else el.setAttribute("data-theme", theme);
   }
+  showColorScheme(theme);
   showChrome();
 }
 
@@ -117,8 +125,12 @@ export function Providers({
     const save = (patch: Partial<Settings>) => {
       const next = { ...written.current, ...patch };
       written.current = next;
+      const secure =
+        typeof location !== "undefined" && location.protocol === "https:"
+          ? "; secure"
+          : "";
       // biome-ignore lint/suspicious/noDocumentCookie: the server reads this cookie; Cookie Store is not in every browser
-      document.cookie = `${SETTINGS_COOKIE}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=31536000; samesite=lax`;
+      document.cookie = `${SETTINGS_COOKIE}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=31536000; samesite=lax${secure}`;
       // signed in, the account keeps them too (lib/preferences.ts)
       savePreferences(patch);
       if (patch.theme || patch.black || patch.motion) {
@@ -149,6 +161,7 @@ export function Providers({
   // whole page at once, which during hydration it would do again for the next frame
   const mode = look.theme;
   useEffect(() => {
+    showColorScheme(mode);
     const idle =
       "requestIdleCallback" in window
         ? requestIdleCallback(showChrome, { timeout: 2000 })

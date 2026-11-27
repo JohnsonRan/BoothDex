@@ -102,7 +102,12 @@ export function AiSettings() {
   const input = (field: Field, label: AdminKey, desc?: AdminKey) => (
     <TextInput
       label={t(label)}
+      htmlName={field}
+      type={field === "base_url" ? "url" : undefined}
       description={env[field] ? t("ai.env") : desc && t(desc)}
+      hasSpellCheck={false}
+      hasAutoCorrect={false}
+      autoCapitalize="none"
       isReadOnly={env[field]}
       {...locked(env[field])}
       value={form[field]}
@@ -115,67 +120,87 @@ export function AiSettings() {
 
   return (
     <VStack gap={4}>
-      {input("base_url", "ai.baseUrl", "ai.baseUrlDesc")}
-      {input("model", "ai.model")}
-      {picks.length > 0 && !env.model && (
-        <VStack gap={2}>
-          <Text type="supporting" color="secondary">
-            {t("ai.modelPick")}
-          </Text>
-          <HStack gap={1} wrap="wrap">
-            {picks.map((m) => (
-              <Token
-                key={m}
-                size="sm"
-                label={m}
-                onClick={() => setForm((f) => ({ ...f, model: m }))}
-              />
-            ))}
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (busy) return;
+          if (key.trim() && ai.api_key_set) setConfirmKey(true);
+          else save();
+        }}
+      >
+        <VStack gap={4}>
+          {input("base_url", "ai.baseUrl", "ai.baseUrlDesc")}
+          {input("model", "ai.model")}
+          {picks.length > 0 && !env.model && (
+            <VStack gap={2}>
+              <Text type="supporting" color="secondary">
+                {t("ai.modelPick")}
+              </Text>
+              <HStack gap={1} wrap="wrap">
+                {picks.map((m) => (
+                  <Token
+                    key={m}
+                    size="sm"
+                    label={m}
+                    onClick={() => setForm((f) => ({ ...f, model: m }))}
+                  />
+                ))}
+              </HStack>
+            </VStack>
+          )}
+          <Selector
+            label={t("ai.effort")}
+            description={
+              env.reasoning_effort ? t("ai.env") : t("ai.effortDesc")
+            }
+            isReadOnly={env.reasoning_effort}
+            {...locked(env.reasoning_effort)}
+            value={effort}
+            options={EFFORTS.map((e) => ({
+              value: e,
+              label: t(`effort.${e}`),
+            }))}
+            onChange={setEffort}
+          />
+          {input("embed_model", "ai.embed", "ai.embedDesc")}
+          <TextInput
+            label={t("ai.key")}
+            htmlName="api_key"
+            type="password"
+            autoComplete="off"
+            hasSpellCheck={false}
+            hasAutoCorrect={false}
+            autoCapitalize="none"
+            description={
+              env.api_key
+                ? t("ai.env")
+                : ai.api_key_set
+                  ? t("ai.keySaved", { hint: ai.api_key_hint ?? "" })
+                  : t("ai.keyNone")
+            }
+            isReadOnly={env.api_key}
+            {...locked(env.api_key)}
+            value={key}
+            onChange={setKey}
+          />
+          <HStack gap={2}>
+            <Button
+              type="submit"
+              label={t("ai.save")}
+              variant="primary"
+              isLoading={busy}
+            />
+            <Button
+              type="button"
+              label={t("ai.test")}
+              variant="secondary"
+              isDisabled={busy || !ai.api_key_set}
+              onClick={test}
+            />
           </HStack>
         </VStack>
-      )}
-      <Selector
-        label={t("ai.effort")}
-        description={env.reasoning_effort ? t("ai.env") : t("ai.effortDesc")}
-        isReadOnly={env.reasoning_effort}
-        {...locked(env.reasoning_effort)}
-        value={effort}
-        options={EFFORTS.map((e) => ({ value: e, label: t(`effort.${e}`) }))}
-        onChange={setEffort}
-      />
-      {input("embed_model", "ai.embed", "ai.embedDesc")}
-      <TextInput
-        label={t("ai.key")}
-        type="password"
-        autoComplete="off"
-        description={
-          env.api_key
-            ? t("ai.env")
-            : ai.api_key_set
-              ? t("ai.keySaved", { hint: ai.api_key_hint ?? "" })
-              : t("ai.keyNone")
-        }
-        isReadOnly={env.api_key}
-        {...locked(env.api_key)}
-        value={key}
-        onChange={setKey}
-      />
-      <HStack gap={2}>
-        <Button
-          label={t("ai.save")}
-          variant="primary"
-          isLoading={busy}
-          onClick={() =>
-            key.trim() && ai.api_key_set ? setConfirmKey(true) : save()
-          }
-        />
-        <Button
-          label={t("ai.test")}
-          variant="secondary"
-          isDisabled={busy || !ai.api_key_set}
-          onClick={test}
-        />
-      </HStack>
+      </form>
       {modelMissing && <Banner status="warning" title={t("ai.testNoModel")} />}
       {embedError && (
         <Banner

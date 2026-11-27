@@ -13,7 +13,12 @@ test("a missing or malformed rail width is the default", () => {
 });
 
 test("the cookie stores the width as parsed back", () => {
-  expect(railCookie(20.1)).toStartWith("rail=20; ");
+  expect(railCookie(20.1, false)).toBe(
+    "rail=20; path=/; max-age=31536000; samesite=lax",
+  );
+  expect(railCookie(20.1, true)).toBe(
+    "rail=20; path=/; max-age=31536000; samesite=lax; secure",
+  );
 });
 
 test("going back to the loaded width after a saved drag writes it again", () => {

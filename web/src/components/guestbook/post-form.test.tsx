@@ -23,6 +23,11 @@ test("the message's counter counts as the server does, not TextArea's characters
   expect(html).toContain("0 of 500 characters");
   // TextArea's own counter would show "0/500", counted by what a reader sees as one character
   expect(html).not.toContain("0/500");
+  expect(html).toContain("<form");
+  expect(html).toContain("noValidate");
+  expect(html).toContain('name="nickname"');
+  expect(html).toContain('name="body"');
+  expect(html).toContain('type="submit"');
 });
 
 test("a confirm sends the token held, or waits for the widget to replace an expired one", async () => {

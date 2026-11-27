@@ -92,3 +92,20 @@ test("my avatar goes to the account only while signed in", () => {
     ["/api/account/preferences", "PUT", '{"avatar":"manuka"}'],
   ]);
 });
+
+test("preference sync sends with low fetch priority", () => {
+  const priorities: (string | undefined)[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (_path: string, init: RequestInit) => {
+    priorities.push((init as { priority?: string }).priority);
+    return Response.json({});
+  }) as typeof fetch;
+  setPreferenceSync(true);
+  try {
+    savePreferences({ theme: "dark" });
+  } finally {
+    setPreferenceSync(false);
+    globalThis.fetch = realFetch;
+  }
+  expect(priorities).toEqual(["low"]);
+});

@@ -80,7 +80,7 @@ function SettingsSideNav({
       style={{ flexShrink: 0 }}
       header={
         <HStack gap={2} vAlign="center" paddingInline={2} minHeight={32}>
-          <Heading level={4} id={titleId}>
+          <Heading level={4} accessibilityLevel={1} id={titleId}>
             {t("settings.title")}
           </Heading>
         </HStack>
@@ -167,9 +167,9 @@ function SettingsNarrowShell({
     <VStack gap={0} height="100%">
       <HStack gap={2} vAlign="center" paddingInline={3} paddingBlock={3}>
         <StackItem size="fill">
-          <Text type="label" id={titleId}>
+          <Heading level={4} accessibilityLevel={1} id={titleId}>
             {t("settings.title")}
-          </Text>
+          </Heading>
         </StackItem>
         <CloseButton onClose={onClose} />
       </HStack>

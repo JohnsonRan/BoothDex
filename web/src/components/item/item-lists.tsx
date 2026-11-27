@@ -45,7 +45,12 @@ export function Variations({
     <VStack
       // a scrolling region is reachable by keyboard (master: the list is focusable)
       tabIndex={isCapped ? 0 : undefined}
-      aria-label={t("detail.variations", { n: item.variations.length })}
+      role={isCapped ? "region" : undefined}
+      aria-label={
+        isCapped
+          ? t("detail.variations", { n: item.variations.length })
+          : undefined
+      }
       style={
         isCapped
           ? {

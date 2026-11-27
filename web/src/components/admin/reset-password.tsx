@@ -9,13 +9,14 @@ import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
 import { HStack, VStack } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/toasts";
 import { api } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { errorText, useAdminT } from "./messages";
 
 type Result = { username: string; password: string; sessions_revoked: number };
+const COPY_RESET_MS = 2000;
 
 export function ResetPassword({
   username,
@@ -33,10 +34,15 @@ export function ResetPassword({
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result>();
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
 
   const reset = async () => {
     setBusy(true);
     try {
+      setCopied(false);
+      clearTimeout(timer.current);
       setResult(
         await api<Result>("/api/admin/users/reset-password", {
           method: "POST",
@@ -74,10 +80,20 @@ export function ResetPassword({
                   label={t("reset.copy")}
                   variant="secondary"
                   size="sm"
-                  icon={<Icon icon="admin:copy" size="sm" />}
+                  icon={
+                    <Icon icon={copied ? "check" : "admin:copy"} size="sm" />
+                  }
                   onClick={() =>
                     copyText(result.password).then(
-                      () => toast({ body: t("reset.copied") }),
+                      () => {
+                        setCopied(true);
+                        clearTimeout(timer.current);
+                        timer.current = setTimeout(
+                          () => setCopied(false),
+                          COPY_RESET_MS,
+                        );
+                        toast({ body: t("reset.copied") });
+                      },
                       () =>
                         toast({ type: "error", body: t("reset.copyFailed") }),
                     )
@@ -87,7 +103,10 @@ export function ResetPassword({
                   label={t("reset.hide")}
                   variant="ghost"
                   size="sm"
-                  onClick={() => setResult(undefined)}
+                  onClick={() => {
+                    setCopied(false);
+                    setResult(undefined);
+                  }}
                 />
               </HStack>
               <Text type="supporting" color="secondary">

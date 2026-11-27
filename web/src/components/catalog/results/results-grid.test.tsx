@@ -78,7 +78,7 @@ test("the server HTML carries the first screen's covers, the first ones loading 
   expect(html).toContain(
     'src="/img/b/300x300_a2_g5/u/i/1/cover.jpg?format=avif"',
   );
-  expect(html.match(/<img [^>]*fetchPriority="high"/gi)).toHaveLength(6);
+  expect(html.match(/<img [^>]*fetchPriority="high"/gi)).toHaveLength(2);
   expect(html.match(/loading="eager"/g)).toHaveLength(18);
 });
 
@@ -140,6 +140,7 @@ test("new items and feature tags are marked; plain items get no badges", () => {
 test("before the session is read, favourite buttons are unpressed and no cover is dimmed", () => {
   const html = render([item, { ...item, id: 2 }]);
   expect(html.match(/aria-pressed="false"/g)).toHaveLength(2);
+  expect(html).toContain('aria-label="收藏: Test item"');
   expect(html).toContain(`data-fav="2"`);
   expect(html).not.toContain("astryx-overlay");
 });

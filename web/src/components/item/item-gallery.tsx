@@ -153,7 +153,7 @@ export function ItemGallery({
                   src={imgUrl(item, i, "orig")}
                   alt={alt(i)}
                   loading={i < 2 ? "eager" : "lazy"}
-                  fetchPriority={i === 0 ? "high" : undefined}
+                  fetchPriority={i === 0 ? "high" : i === 1 ? "low" : undefined}
                   decoding="async"
                 />
               </ClickableCard>

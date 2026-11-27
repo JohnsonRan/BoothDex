@@ -54,7 +54,10 @@ export const passCheck = {
 /** A server read refused by the stricter limit (lib/server-data.ts): the page offers the check (catalog/refresh.tsx). */
 export type PassOffer = { siteKey: string };
 
-type Init = RequestInit & { json?: unknown };
+type Init = RequestInit & {
+  json?: unknown;
+  priority?: "high" | "low" | "auto";
+};
 
 export function api<T>(path: string, init?: Init): Promise<T> {
   return send<T>(path, init, true);

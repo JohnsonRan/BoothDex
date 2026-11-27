@@ -11,7 +11,7 @@ export async function generateMetadata({
   searchParams,
 }: PageProps<"/">): Promise<Metadata> {
   // Await request data before reading SITE_URL: one prebuilt image serves any domain.
-  return homeMetadata(Object.keys(await searchParams).length > 0);
+  return homeMetadata(await searchParams);
 }
 
 // Settings (cookie) and the search (URL) are per request, and the metadata already holds the <head> for them, so

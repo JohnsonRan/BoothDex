@@ -83,6 +83,8 @@ export function PostForm({
   const vt = useVerificationT();
   const toast = useToast();
   const verification = useTurnstile(siteKey, ACTION);
+  const nicknameRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [nickname, setNickname] = useState("");
   const [body, setBody] = useState("");
   const [checked, setChecked] = useState(false);
@@ -102,7 +104,14 @@ export function PostForm({
 
   const review = () => {
     setChecked(true);
-    if (!nicknameOk(nickname) || !bodyOk(body)) return;
+    if (!nicknameOk(nickname)) {
+      nicknameRef.current?.focus();
+      return;
+    }
+    if (!bodyOk(body)) {
+      bodyRef.current?.focus();
+      return;
+    }
     if (!verification.token) {
       toast({ type: "error", body: vt("required"), uniqueID: "guestbook" });
       return;
@@ -149,48 +158,68 @@ export function PostForm({
   };
 
   return (
-    <VStack gap={4}>
-      <TextInput
-        label={t("nickname")}
-        autoComplete="nickname"
-        status={
-          nicknameBad
-            ? {
-                type: "error",
-                message: t("nicknameRule", { max: NICKNAME_MAX }),
-              }
-            : undefined
-        }
-        value={nickname}
-        onChange={setNickname}
-      />
-      {/* the count in the description, not TextArea's maxLength counter: that one counts what a reader sees as one
-          character (an emoji sequence, a letter with its accent), the server counts Unicode scalar values */}
-      <TextArea
-        label={t("body")}
-        description={t("bodyCount", { n: length, max: BODY_MAX })}
-        autoComplete="off"
-        rows={5}
-        status={
-          bodyBad
-            ? {
-                type: "error",
-                message: t("bodyRule", { max: BODY_MAX, lines: BODY_LINES }),
-              }
-            : undefined
-        }
-        value={body}
-        onChange={setBody}
-      />
-      <VerificationField verification={verification} />
-      <HStack hAlign="end">
-        <Button
-          label={t("post")}
-          variant="primary"
-          isLoading={busy}
-          onClick={review}
-        />
-      </HStack>
+    <>
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          review();
+        }}
+      >
+        <VStack gap={4}>
+          <TextInput
+            ref={nicknameRef}
+            label={t("nickname")}
+            htmlName="nickname"
+            isRequired
+            autoComplete="nickname"
+            enterKeyHint="next"
+            status={
+              nicknameBad
+                ? {
+                    type: "error",
+                    message: t("nicknameRule", { max: NICKNAME_MAX }),
+                  }
+                : undefined
+            }
+            value={nickname}
+            onChange={setNickname}
+          />
+          {/* the count in the description, not TextArea's maxLength counter: that one counts what a reader sees as one
+              character (an emoji sequence, a letter with its accent), the server counts Unicode scalar values */}
+          <TextArea
+            ref={bodyRef}
+            label={t("body")}
+            htmlName="body"
+            isRequired
+            description={t("bodyCount", { n: length, max: BODY_MAX })}
+            autoComplete="off"
+            rows={5}
+            status={
+              bodyBad
+                ? {
+                    type: "error",
+                    message: t("bodyRule", {
+                      max: BODY_MAX,
+                      lines: BODY_LINES,
+                    }),
+                  }
+                : undefined
+            }
+            value={body}
+            onChange={setBody}
+          />
+          <VerificationField verification={verification} />
+          <HStack hAlign="end">
+            <Button
+              type="submit"
+              label={t("post")}
+              variant="primary"
+              isLoading={busy}
+            />
+          </HStack>
+        </VStack>
+      </form>
       <Dialog
         isOpen={confirming}
         onOpenChange={(open) => !busy && setConfirming(open)}
@@ -235,6 +264,6 @@ export function PostForm({
           }
         />
       </Dialog>
-    </VStack>
+    </>
   );
 }

@@ -2,6 +2,8 @@ import { afterEach, expect, jest, test } from "bun:test";
 import { LOAD_TIMEOUT_MS, loadTurnstile } from "./turnstile";
 
 type Script = {
+  async?: boolean;
+  referrerPolicy?: string;
   onload: (() => void) | null;
   onerror: (() => void) | null;
   remove: () => void;
@@ -48,6 +50,7 @@ test("a script that never answers fails after the timeout; Try again uses a late
     },
   );
   const stalled = head[0];
+  expect(stalled.referrerPolicy).toBe("strict-origin-when-cross-origin");
   jest.advanceTimersByTime(LOAD_TIMEOUT_MS);
   for (let i = 0; i < 5; i++) await null;
   expect(outcome).toBe("Turnstile timed out");

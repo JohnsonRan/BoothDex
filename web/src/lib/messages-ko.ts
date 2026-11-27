@@ -207,6 +207,8 @@ export const ko: Dict = {
   "account.username": "사용자 이름",
   "account.email": "이메일",
   "account.newPassword": "비밀번호(10자 이상)",
+  "account.showPassword": "비밀번호 표시",
+  "account.hidePassword": "비밀번호 숨기기",
   "account.required": "필수 항목입니다",
   "account.usernameRule": "영문, 숫자, 밑줄 3–24자",
   "account.emailInvalid": "올바른 이메일 주소를 입력하세요",

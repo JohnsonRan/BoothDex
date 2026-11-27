@@ -242,3 +242,22 @@ test("a 429 that offers the check opens it, and a passed check sends the request
     passCheck.open = originalOpen;
   }
 });
+
+test("fetch priority is forwarded when supplied", async () => {
+  const originalFetch = globalThis.fetch;
+  let seenPriority: string | undefined;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    seenPriority = (init as { priority?: string } | undefined)?.priority;
+    return Response.json({});
+  }) as unknown as typeof fetch;
+  try {
+    await api("/api/account/views", {
+      method: "POST",
+      json: { views: [] },
+      priority: "low",
+    });
+    expect(seenPriority).toBe("low");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

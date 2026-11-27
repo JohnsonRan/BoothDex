@@ -128,6 +128,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
       await api("/api/account/views", {
         method: "POST",
         json: { views: local.map(([id, at]) => ({ id, at })) },
+        priority: "low",
       })
         .then(() => saveViewed([]))
         .catch(() => {});
@@ -233,6 +234,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
             api("/api/account/views", {
               method: "POST",
               json: { views: [{ id }] },
+              priority: "low",
             }).catch(() => {
               lastSent.current = null;
             });

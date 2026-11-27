@@ -5,9 +5,9 @@
 // signed out, as after Sign out.
 
 import { Button } from "@astryxdesign/core/Button";
-import { TextInput } from "@astryxdesign/core/TextInput";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAccount } from "@/components/account/session";
+import { PasswordField } from "@/components/password-field";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import { api, errorKey } from "@/lib/api";
@@ -46,6 +46,7 @@ function DeleteDialog({ onClose }: { onClose: () => void }) {
   const { t } = useUi();
   const toast = useToast();
   const { signOut } = useAccount();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [password, setPassword] = useState("");
   // the password the API refused; its error shows on the field until the field changes, as in Profile
   const [refused, setRefused] = useState<string>();
@@ -59,14 +60,21 @@ function DeleteDialog({ onClose }: { onClose: () => void }) {
 
   const submit = async () => {
     setChecked(true);
-    if (problem) return;
+    if (problem) {
+      inputRef.current?.focus();
+      return;
+    }
     setBusy(true);
     try {
       await api("/api/account", { method: "DELETE", json: { password } });
     } catch (e) {
       setBusy(false);
       const key = errorKey(e, API_ERRORS, "error.failed");
-      if (key === "error.password") return setRefused(password);
+      if (key === "error.password") {
+        setRefused(password);
+        inputRef.current?.focus();
+        return;
+      }
       return toast({ type: "error", body: t(key), uniqueID: "delete" });
     }
     toast({ body: t("delete.done"), uniqueID: "delete" });
@@ -85,10 +93,13 @@ function DeleteDialog({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       onSubmit={submit}
     >
-      <TextInput
+      <PasswordField
+        ref={inputRef}
         label={t("account.password")}
-        type="password"
+        htmlName="password"
+        isRequired
         autoComplete="current-password"
+        enterKeyHint="done"
         value={password}
         onChange={setPassword}
         status={

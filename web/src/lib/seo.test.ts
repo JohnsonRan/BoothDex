@@ -119,3 +119,23 @@ test("only the bare homepage is indexable; query views retain the root canonical
     "https://catalog.example/",
   );
 });
+
+test("view and query parameters give each view a distinct title while keeping canonical root", () => {
+  process.env.SITE_URL = "https://catalog.example";
+  expect(homeMetadata({}).title).toBe(homeMetadata(false).title);
+  expect(homeMetadata({ q: "kimono" }).title).toBe("Search: kimono — BoothDex");
+  expect(homeMetadata({ v: "favourites" }).title).toBe(
+    "My favourites — BoothDex",
+  );
+  expect(homeMetadata({ v: "recent" }).title).toBe(
+    "Recently viewed — BoothDex",
+  );
+  expect(homeMetadata({ v: "avatars" }).title).toBe("Avatar bodies — BoothDex");
+  expect(homeMetadata({ author: "MilkShop" }).title).toBe(
+    "MilkShop — BoothDex",
+  );
+  expect(homeMetadata({ q: "kimono" }).robots).toEqual({
+    index: false,
+    follow: true,
+  });
+});

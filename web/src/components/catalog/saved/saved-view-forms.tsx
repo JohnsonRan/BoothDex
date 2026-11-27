@@ -12,7 +12,7 @@ import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Token } from "@astryxdesign/core/Token";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
 import { type Filters, parseFilters } from "@/lib/catalog";
 import "@/lib/icons-on-demand";
@@ -52,14 +52,27 @@ export function CreateSavedForm({
   store: Store;
 }) {
   const { t } = useUi();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
+  const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (isOpen) setName(defaultName.slice(0, NAME_MAX));
+    if (isOpen) {
+      setName(defaultName.slice(0, NAME_MAX));
+      setChecked(false);
+    }
   }, [isOpen, defaultName]);
+  const problem = checked && !name.trim() ? t("account.required") : undefined;
   const create = async () => {
+    if (busy) return;
+    setChecked(true);
+    const trimmed = name.trim();
+    if (!trimmed) {
+      inputRef.current?.focus();
+      return;
+    }
     setBusy(true);
-    if (await store.create(name.trim(), query)) onOpenChange(false);
+    if (await store.create(trimmed, query)) onOpenChange(false);
     setBusy(false);
   };
   return (
@@ -70,26 +83,39 @@ export function CreateSavedForm({
       subtitle={t("saved.desc")}
       isCompactSurface={isCompactSurface}
     >
-      <TextInput
-        label={t("saved.name")}
-        value={name}
-        onChange={(v) => setName(v.slice(0, NAME_MAX))}
-        onEnter={() => name.trim() && create()}
-        hasAutoFocus
-      />
-      <VStack gap={1}>
-        <Text type="label">{t("saved.saves")}</Text>
-        <SavedSummary filters={filters} names={names} />
-      </VStack>
-      <HStack hAlign="end">
-        <Button
-          label={t("saved.save")}
-          variant="primary"
-          isDisabled={name.trim() === ""}
-          isLoading={busy}
-          onClick={create}
-        />
-      </HStack>
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void create();
+        }}
+      >
+        <VStack gap={4}>
+          <TextInput
+            ref={inputRef}
+            label={t("saved.name")}
+            htmlName="saved_name"
+            isRequired
+            enterKeyHint="done"
+            value={name}
+            onChange={(v) => setName(v.slice(0, NAME_MAX))}
+            status={problem ? { type: "error", message: problem } : undefined}
+            hasAutoFocus
+          />
+          <VStack gap={1}>
+            <Text type="label">{t("saved.saves")}</Text>
+            <SavedSummary filters={filters} names={names} />
+          </VStack>
+          <HStack hAlign="end">
+            <Button
+              type="submit"
+              label={t("saved.save")}
+              variant="primary"
+              isLoading={busy}
+            />
+          </HStack>
+        </VStack>
+      </form>
     </AdaptiveSavedViewForm>
   );
 }
@@ -110,11 +136,32 @@ export function EditSavedForm({
   store: Store;
 }) {
   const { t } = useUi();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
+  const [checked, setChecked] = useState(false);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (saved) setName(saved.name);
+    if (saved) {
+      setName(saved.name);
+      setChecked(false);
+    }
   }, [saved]);
   const done = (ok: boolean) => ok && onClose();
+  const problem = checked && !name.trim() ? t("account.required") : undefined;
+  const save = async () => {
+    if (busy || !saved) return;
+    setChecked(true);
+    const trimmed = name.trim();
+    if (!trimmed) {
+      inputRef.current?.focus();
+      return;
+    }
+    if (trimmed === saved.name) return onClose();
+    setBusy(true);
+    const ok = await store.rename(saved, trimmed);
+    setBusy(false);
+    done(ok);
+  };
   return (
     <AdaptiveSavedViewForm
       isOpen={saved != null}
@@ -123,46 +170,57 @@ export function EditSavedForm({
       subtitle={t("saved.editDesc")}
       isCompactSurface={isCompactSurface}
     >
-      <TextInput
-        label={t("saved.name")}
-        value={name}
-        onChange={(v) => setName(v.slice(0, NAME_MAX))}
-      />
-      <VStack gap={1}>
-        <Text type="label">{t("saved.saves")}</Text>
-        {saved && (
-          <SavedSummary filters={parseFilters(saved.query)} names={names} />
-        )}
-      </VStack>
-      <HStack gap={2} vAlign="center">
-        <Button
-          label={t("common.delete")}
-          variant="destructive"
-          onClick={async () => saved && done(await store.remove(saved))}
-        />
-        <StackItem size="fill">
-          <HStack gap={2} hAlign="end">
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <VStack gap={4}>
+          <TextInput
+            ref={inputRef}
+            label={t("saved.name")}
+            htmlName="saved_name"
+            isRequired
+            enterKeyHint="done"
+            value={name}
+            onChange={(v) => setName(v.slice(0, NAME_MAX))}
+            status={problem ? { type: "error", message: problem } : undefined}
+          />
+          <VStack gap={1}>
+            <Text type="label">{t("saved.saves")}</Text>
+            {saved && (
+              <SavedSummary filters={parseFilters(saved.query)} names={names} />
+            )}
+          </VStack>
+          <HStack gap={2} vAlign="center">
             <Button
-              label={t("saved.copy")}
-              variant="secondary"
-              icon={<Icon icon="site:feed" size="sm" />}
-              onClick={() => saved && store.copyFeed(saved)}
+              type="button"
+              label={t("common.delete")}
+              variant="destructive"
+              onClick={async () => saved && done(await store.remove(saved))}
             />
-            <Button
-              label={t("saved.save")}
-              variant="primary"
-              isDisabled={name.trim() === ""}
-              onClick={async () =>
-                saved &&
-                done(
-                  name.trim() === saved.name ||
-                    (await store.rename(saved, name.trim())),
-                )
-              }
-            />
+            <StackItem size="fill">
+              <HStack gap={2} hAlign="end">
+                <Button
+                  type="button"
+                  label={t("saved.copy")}
+                  variant="secondary"
+                  icon={<Icon icon="site:feed" size="sm" />}
+                  onClick={() => saved && store.copyFeed(saved)}
+                />
+                <Button
+                  type="submit"
+                  label={t("saved.save")}
+                  variant="primary"
+                  isLoading={busy}
+                />
+              </HStack>
+            </StackItem>
           </HStack>
-        </StackItem>
-      </HStack>
+        </VStack>
+      </form>
     </AdaptiveSavedViewForm>
   );
 }

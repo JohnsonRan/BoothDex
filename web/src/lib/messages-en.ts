@@ -207,6 +207,8 @@ export const en: Dict = {
   "account.username": "Username",
   "account.email": "Email",
   "account.newPassword": "Password (at least 10 characters)",
+  "account.showPassword": "Show password",
+  "account.hidePassword": "Hide password",
   "account.required": "Required",
   "account.usernameRule": "3–24 letters, digits or underscores",
   "account.emailInvalid": "Enter a valid email address",

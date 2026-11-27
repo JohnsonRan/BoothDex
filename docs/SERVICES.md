@@ -26,11 +26,12 @@ Run exactly one `api` container. Each `api` process keeps its own key for signin
 
 ## Content Security Policy
 
-`web` sends `Content-Security-Policy: img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'` on every response.
+`web` sends `Content-Security-Policy: img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'` on every response.
 
 - The browser refuses an image from any other host, including one a proxy injects.
-- It loads no plugin content, accepts no `<base>` pointing at another origin, and shows no page of the site inside a frame on any site, this one included.
+- It loads no plugin content, accepts no `<base>` element, and shows no page of the site inside a frame on any site, this one included.
 - Scripts and styles are not restricted.
+- Every response also sends `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), geolocation=(), microphone=()`, and `Cross-Origin-Opener-Policy: same-origin-allow-popups`.
 - A policy your proxy adds does not replace this one: the browser enforces both.
 
 ## Cloudflare Turnstile

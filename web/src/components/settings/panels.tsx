@@ -289,42 +289,52 @@ function AboutPanel() {
           icon="info"
           description={t("settings.copyright")}
         />
-        {LEGAL.map((link) => (
-          <SettingsRow
-            key={link.kind}
-            title={t(`legal.${link.kind}`)}
-            icon={link.icon}
-            description={t(link.description)}
-            control={
-              <Button
-                label={t("settings.open")}
-                variant="secondary"
-                size="sm"
-                href={`/${link.kind}`}
-                onClick={legal.open(link.kind)}
-              />
-            }
-          />
-        ))}
-        {LINKS.map((link) => (
-          <SettingsRow
-            key={link.href}
-            title={t(link.title)}
-            icon={link.icon}
-            description={link.href.replace(/^https:\/\/|\/$/g, "")}
-            control={
-              <Button
-                label={t("settings.open")}
-                variant="secondary"
-                size="sm"
-                icon={<Icon icon="externalLink" size="sm" />}
-                href={link.href}
-                target="_blank"
-                rel="noopener noreferrer"
-              />
-            }
-          />
-        ))}
+        {LEGAL.map((link) => {
+          const title = t(`legal.${link.kind}`);
+          return (
+            <SettingsRow
+              key={link.kind}
+              title={title}
+              icon={link.icon}
+              description={t(link.description)}
+              control={
+                <Button
+                  label={`${t("settings.open")} ${title}`}
+                  variant="secondary"
+                  size="sm"
+                  href={`/${link.kind}`}
+                  onClick={legal.open(link.kind)}
+                >
+                  {t("settings.open")}
+                </Button>
+              }
+            />
+          );
+        })}
+        {LINKS.map((link) => {
+          const title = t(link.title);
+          return (
+            <SettingsRow
+              key={link.href}
+              title={title}
+              icon={link.icon}
+              description={link.href.replace(/^https:\/\/|\/$/g, "")}
+              control={
+                <Button
+                  label={`${t("settings.open")} ${title}`}
+                  variant="secondary"
+                  size="sm"
+                  icon={<Icon icon="externalLink" size="sm" />}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t("settings.open")}
+                </Button>
+              }
+            />
+          );
+        })}
       </SettingsCard>
       {legal.dialog}
     </>
@@ -381,38 +391,43 @@ function DevicesPanel() {
   if (!sessions) return <Spinner label={t("settings.devices")} />;
   return (
     <SettingsCard>
-      {sessions.map((s) => (
-        <SettingsRow
-          key={s.id}
-          title={deviceName(s.user_agent) ?? t("settings.unknownDevice")}
-          icon="site:devices"
-          description={
-            <>
-              {s.ip && `${s.ip} · `}
-              <Timestamp
-                value={s.created_at}
-                format="relative"
-                type="supporting"
-                color="secondary"
-              />
-            </>
-          }
-          control={
-            s.current ? (
-              <Token size="sm" label={t("settings.thisDevice")} />
-            ) : (
-              <Button
-                label={t("settings.signOutDevice")}
-                variant="secondary"
-                size="sm"
-                isLoading={busy === s.id}
-                isDisabled={busy !== undefined}
-                onClick={() => signOut(s.id)}
-              />
-            )
-          }
-        />
-      ))}
+      {sessions.map((s) => {
+        const name = deviceName(s.user_agent) ?? t("settings.unknownDevice");
+        return (
+          <SettingsRow
+            key={s.id}
+            title={name}
+            icon="site:devices"
+            description={
+              <>
+                {s.ip && `${s.ip} · `}
+                <Timestamp
+                  value={s.created_at}
+                  format="relative"
+                  type="supporting"
+                  color="secondary"
+                />
+              </>
+            }
+            control={
+              s.current ? (
+                <Token size="sm" label={t("settings.thisDevice")} />
+              ) : (
+                <Button
+                  label={`${t("settings.signOutDevice")} ${name}`}
+                  variant="secondary"
+                  size="sm"
+                  isLoading={busy === s.id}
+                  isDisabled={busy !== undefined}
+                  onClick={() => signOut(s.id)}
+                >
+                  {t("settings.signOutDevice")}
+                </Button>
+              )
+            }
+          />
+        );
+      })}
     </SettingsCard>
   );
 }

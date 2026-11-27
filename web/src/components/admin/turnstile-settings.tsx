@@ -139,45 +139,66 @@ export function TurnstileSettings() {
   const keysSet = keys.secret_set && !!keys.site_key;
   return (
     <VStack gap={4}>
-      <TextInput
-        label={t("turnstile.siteKey")}
-        description={env.site_key ? t("ai.env") : t("turnstile.siteKeyDesc")}
-        isReadOnly={env.site_key}
-        {...locked(env.site_key)}
-        autoComplete="off"
-        value={siteKey}
-        onChange={setSiteKey}
-      />
-      <TextInput
-        label={t("turnstile.secret")}
-        type="password"
-        autoComplete="off"
-        description={
-          env.secret
-            ? t("ai.env")
-            : keys.secret_set
-              ? t("ai.keySaved", { hint: keys.secret_hint ?? "" })
-              : t("ai.keyNone")
-        }
-        isReadOnly={env.secret}
-        {...locked(env.secret)}
-        value={secret}
-        onChange={setSecret}
-      />
-      <HStack gap={2}>
-        <Button
-          label={t("ai.save")}
-          variant="primary"
-          isLoading={busy}
-          onClick={save}
-        />
-        <Button
-          label={t("turnstile.test")}
-          variant="secondary"
-          isDisabled={busy || !keysSet}
-          onClick={test}
-        />
-      </HStack>
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!busy) save();
+        }}
+      >
+        <VStack gap={4}>
+          <TextInput
+            label={t("turnstile.siteKey")}
+            htmlName="site_key"
+            description={
+              env.site_key ? t("ai.env") : t("turnstile.siteKeyDesc")
+            }
+            isReadOnly={env.site_key}
+            {...locked(env.site_key)}
+            autoComplete="off"
+            hasSpellCheck={false}
+            hasAutoCorrect={false}
+            autoCapitalize="none"
+            value={siteKey}
+            onChange={setSiteKey}
+          />
+          <TextInput
+            label={t("turnstile.secret")}
+            htmlName="secret"
+            type="password"
+            autoComplete="off"
+            hasSpellCheck={false}
+            hasAutoCorrect={false}
+            autoCapitalize="none"
+            description={
+              env.secret
+                ? t("ai.env")
+                : keys.secret_set
+                  ? t("ai.keySaved", { hint: keys.secret_hint ?? "" })
+                  : t("ai.keyNone")
+            }
+            isReadOnly={env.secret}
+            {...locked(env.secret)}
+            value={secret}
+            onChange={setSecret}
+          />
+          <HStack gap={2}>
+            <Button
+              type="submit"
+              label={t("ai.save")}
+              variant="primary"
+              isLoading={busy}
+            />
+            <Button
+              type="button"
+              label={t("turnstile.test")}
+              variant="secondary"
+              isDisabled={busy || !keysSet}
+              onClick={test}
+            />
+          </HStack>
+        </VStack>
+      </form>
       {refused && (
         <Banner
           status="error"
