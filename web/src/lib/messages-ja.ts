@@ -209,6 +209,8 @@ export const ja: Dict = {
   "account.username": "ユーザー名",
   "account.email": "メールアドレス",
   "account.newPassword": "パスワード(10 文字以上)",
+  "account.showPassword": "パスワードを表示",
+  "account.hidePassword": "パスワードを隠す",
   "account.required": "入力してください",
   "account.usernameRule": "3〜24 文字の英数字またはアンダースコア",
   "account.emailInvalid": "メールアドレスの形式が正しくありません",

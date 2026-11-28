@@ -69,7 +69,8 @@ export function GuestbookRow({
             <DropdownMenu
               button={{
                 ref: statusRef,
-                label: t("guestbook.close"),
+                label: `${t("guestbook.close")} ${e.nickname}`,
+                children: t("guestbook.close"),
                 variant: "secondary",
                 size: "sm",
                 isLoading: busy === `${e.id}:status`,
@@ -92,29 +93,35 @@ export function GuestbookRow({
           ) : (
             <Button
               ref={statusRef}
-              label={t("guestbook.reopen")}
+              label={`${t("guestbook.reopen")} ${e.nickname}`}
               variant="secondary"
               size="sm"
               isLoading={busy === `${e.id}:status`}
               isDisabled={busy !== undefined && busy !== `${e.id}:status`}
               onClick={() => onChange(e, "status", { status: "open" })}
-            />
+            >
+              {t("guestbook.reopen")}
+            </Button>
           )}
           <Button
-            label={t(e.hidden_at ? "guestbook.show" : "guestbook.hide")}
+            label={`${t(e.hidden_at ? "guestbook.show" : "guestbook.hide")} ${e.nickname}`}
             variant="secondary"
             size="sm"
             isLoading={busy === `${e.id}:hidden`}
             isDisabled={busy !== undefined && busy !== `${e.id}:hidden`}
             onClick={() => onChange(e, "hidden", { hidden: !e.hidden_at })}
-          />
+          >
+            {t(e.hidden_at ? "guestbook.show" : "guestbook.hide")}
+          </Button>
           <Button
-            label={t("guestbook.delete")}
+            label={`${t("guestbook.delete")} ${e.nickname}`}
             variant="destructive"
             size="sm"
             isDisabled={busy !== undefined}
             onClick={() => onDelete(e)}
-          />
+          >
+            {t("guestbook.delete")}
+          </Button>
         </HStack>
       }
     />

@@ -163,7 +163,7 @@ export function FilterRail({
     <>
       <LayoutPanel
         ref={railRef}
-        role="region"
+        role="search"
         label={t("filter.rail")}
         width={`${rem}rem`}
         padding={0}
@@ -611,6 +611,7 @@ function PriceRange({ pmin, pmax }: { pmin: number; pmax: number }) {
       size="sm"
       placeholder={`¥ ${label}`}
       inputMode="numeric"
+      enterKeyHint="done"
       value={v ? String(v) : ""}
       onChange={(s) => set(digits(s))}
       onEnter={commit}

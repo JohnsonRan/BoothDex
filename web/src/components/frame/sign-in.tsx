@@ -32,6 +32,7 @@ import {
   useState,
 } from "react";
 import { useLegalDialog } from "@/components/legal/legal-dialog";
+import { PasswordField } from "@/components/password-field";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
 import {
@@ -124,6 +125,7 @@ export function SignInDialog({
   const [busy, setBusy] = useState(false);
   const [canRegister, setCanRegister] = useState(true);
   const [siteKey, setSiteKey] = useState<string | null>(null);
+  const refs = useRef<Partial<Record<Field, HTMLInputElement | null>>>({});
   const verification = useRef<VerificationHandle>(null);
   const value = (f: Field) => values[f] ?? "";
   // this open's registration answer, which a submit waits for; the opens so far; and the two-phase submit controller
@@ -170,7 +172,11 @@ export function SignInDialog({
   const submit = async () => {
     if (flight.current.busy()) return;
     setChecked(true);
-    if (FIELDS[mode].some((f) => problem(mode, f, value(f)))) return;
+    const bad = FIELDS[mode].find((f) => problem(mode, f, value(f)));
+    if (bad) {
+      refs.current[bad]?.focus();
+      return;
+    }
     const attempt = flight.current.begin();
     if (!attempt) return;
     setBusy(true);
@@ -268,22 +274,58 @@ export function SignInDialog({
                   }}
                 >
                   <VStack gap={4} hAlign="stretch">
-                    <VStack gap={2}>
-                      {FIELDS[mode].map((f) => {
+                    <VStack gap={3}>
+                      {FIELDS[mode].map((f, i) => {
                         const { label: name, type, auto } = INPUT[f];
                         const error = errorOf(f);
+                        const status = error
+                          ? { type: "error" as const, message: t(error) }
+                          : undefined;
+                        const enterKeyHint =
+                          i < FIELDS[mode].length - 1 ? "next" : "done";
+                        const setRef = (el: HTMLInputElement | null) => {
+                          refs.current[f] = el;
+                        };
+                        if (f === "password") {
+                          return (
+                            <PasswordField
+                              key={`${mode}-${f}`}
+                              ref={setRef}
+                              label={t(name)}
+                              htmlName={f}
+                              description={
+                                mode === "register"
+                                  ? t("account.passwordShort")
+                                  : undefined
+                              }
+                              autoComplete={
+                                mode === "login"
+                                  ? "current-password"
+                                  : "new-password"
+                              }
+                              enterKeyHint={enterKeyHint}
+                              isRequired
+                              isReadOnly={busy}
+                              size="lg"
+                              value={value(f)}
+                              onChange={(v: string) =>
+                                setValues((s) => ({ ...s, [f]: v }))
+                              }
+                              status={status}
+                            />
+                          );
+                        }
+                        const identifier =
+                          f === "login" || f === "username" || f === "email";
                         return (
                           <TextInput
                             key={`${mode}-${f}`}
+                            ref={setRef}
                             label={t(name)}
-                            isLabelHidden
+                            htmlName={f}
+                            isRequired
                             // a submit sends the values it started with, so they cannot change while it waits or sends
                             isReadOnly={busy}
-                            placeholder={
-                              f === "password" && mode === "register"
-                                ? t("account.newPassword")
-                                : t(name)
-                            }
                             // the rule stays readable while typing (template form-wizard, page.tsx:453)
                             description={
                               f === "username" && mode === "register"
@@ -291,23 +333,17 @@ export function SignInDialog({
                                 : undefined
                             }
                             type={type}
-                            autoComplete={
-                              f === "password"
-                                ? mode === "login"
-                                  ? "current-password"
-                                  : "new-password"
-                                : auto
-                            }
+                            autoComplete={auto}
+                            enterKeyHint={enterKeyHint}
+                            hasSpellCheck={identifier ? false : undefined}
+                            hasAutoCorrect={identifier ? false : undefined}
+                            autoCapitalize={identifier ? "none" : undefined}
                             value={value(f)}
                             onChange={(v: string) =>
                               setValues((s) => ({ ...s, [f]: v }))
                             }
                             size="lg"
-                            status={
-                              error
-                                ? { type: "error", message: t(error) }
-                                : undefined
-                            }
+                            status={status}
                           />
                         );
                       })}

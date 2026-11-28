@@ -383,6 +383,7 @@ export function FilterBand({
     <VStack gap={0}>
       <Section
         ref={onBand}
+        role={toolbar ? "search" : undefined}
         aria-label={label}
         variant="transparent"
         padding={0}

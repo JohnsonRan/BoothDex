@@ -109,3 +109,14 @@ img[data-failed] {
 .astryx-layout-content:has([data-band-content]):not(#\#):not(#\#) {
   overflow: visible;
 }
+
+@media (forced-colors: active) {
+  [data-skeleton]:has(> img[data-failed])::after {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+  .page-box {
+    forced-color-adjust: none;
+    background-color: GrayText;
+  }
+}

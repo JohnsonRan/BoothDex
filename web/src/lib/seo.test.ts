@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
-import { getSiteUrl, homeMetadata, SHARE_IMAGE } from "./seo";
+import { parseFilters } from "./catalog";
+import { translator } from "./dictionaries";
+import { catalogTitle, getSiteUrl, homeMetadata, SHARE_IMAGE } from "./seo";
 
 const originalSiteUrl = process.env.SITE_URL;
 afterEach(() => {
@@ -118,4 +120,17 @@ test("only the bare homepage is indexable; query views retain the root canonical
   expect(homeMetadata(true).alternates?.canonical).toBe(
     "https://catalog.example/",
   );
+});
+
+test("catalogue titles use the active filters and interface language", () => {
+  const title = (raw: string, ui: "en" | "zh" = "en") =>
+    homeMetadata(true, catalogTitle(translator(ui), parseFilters(raw))).title;
+  expect(title("?q=kimono", "zh")).toBe("搜索 kimono — BoothDex");
+  expect(title("?v=favourites")).toBe("My favourites — BoothDex");
+  expect(title("?v=recent&q=skirt", "zh")).toBe("最近已看 — BoothDex");
+  expect(title("?v=avatars")).toBe("Avatar bodies — BoothDex");
+  expect(title("?authors=Milk%2BShop&v=favourites")).toBe(
+    "Items by Milk+Shop — BoothDex",
+  );
+  expect(title("?author=MilkShop")).toBe(homeMetadata(false).title);
 });

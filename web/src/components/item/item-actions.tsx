@@ -9,7 +9,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { HStack, StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFilterUrl } from "@/components/catalog/filter/filter-url";
 import { useUi } from "@/components/providers";
 import { useToast } from "@/components/toasts";
@@ -73,19 +73,29 @@ export function AvatarFit({ item }: { item: ItemResponse }) {
   );
 }
 
+const COPY_RESET_MS = 2000;
+
 /** Copies the Booth link and says so in a toast (master's CopyButton). */
 export function CopyLink({ id }: { id: number }) {
   const { t } = useUi();
   const toast = useToast();
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
   return (
     <Button
       label={t("detail.copy")}
       size="lg"
       width="100%"
-      icon={<Icon icon="copy" />}
+      icon={<Icon icon={copied ? "check" : "copy"} />}
       onClick={() =>
         copyText(boothUrl(id)).then(
-          () => toast({ body: t("detail.copied"), uniqueID: "copied" }),
+          () => {
+            setCopied(true);
+            clearTimeout(timer.current);
+            timer.current = setTimeout(() => setCopied(false), COPY_RESET_MS);
+            toast({ body: t("detail.copied"), uniqueID: "copied" });
+          },
           () =>
             toast({
               type: "error",

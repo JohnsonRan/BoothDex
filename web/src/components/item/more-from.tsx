@@ -54,6 +54,7 @@ export function MoreFrom({
     let live = true;
     api<SearchResponse>(
       `/api/search?authors=${encodeURIComponent(author)}&adult=${filters.adult}&sort=likes&pageSize=${SHOWN + 1}&fields=card`,
+      { priority: "low" },
     )
       .then((r) => r.items.filter((x) => x.id !== item.id).slice(0, SHOWN))
       .catch(() => [])
@@ -71,7 +72,9 @@ export function MoreFrom({
     <VStack gap={3}>
       <HStack gap={2} vAlign="center">
         <StackItem size="fill">
-          <Heading level={3}>{t("detail.moreFrom", { name: author })}</Heading>
+          <Heading level={3} accessibilityLevel={2}>
+            {t("detail.moreFrom", { name: author })}
+          </Heading>
         </StackItem>
         {isWide &&
           !!items?.length &&

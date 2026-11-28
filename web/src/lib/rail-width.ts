@@ -16,8 +16,11 @@ export function parseRailWidth(raw: string | null | undefined): number {
 }
 
 /** The cookie that keeps a width for a year. */
-export const railCookie = (rem: number) =>
-  `${RAIL_COOKIE}=${parseRailWidth(String(rem))}; path=/; max-age=31536000; samesite=lax`;
+export const railCookie = (
+  rem: number,
+  secure = typeof location !== "undefined" && location.protocol === "https:",
+) =>
+  `${RAIL_COOKIE}=${parseRailWidth(String(rem))}; path=/; max-age=31536000; samesite=lax${secure ? "; secure" : ""}`;
 
 /** The width to write after a drag settles at `size` rem, or null when the cookie already holds it (`saved`, the
  *  value last written or read). Compared after parsing, so a width that only differs by rounding writes nothing. */

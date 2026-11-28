@@ -43,6 +43,7 @@ import {
 } from "@/lib/catalog";
 import { DEEP_START } from "@/lib/deep-start";
 import { browserMessages, translator } from "@/lib/dictionaries";
+import { catalogTitle } from "@/lib/seo";
 import {
   componentCatalogue,
   exchangeRates,
@@ -257,19 +258,9 @@ async function Catalog({
           }
         : { count: 0, smart: {}, features: {}, marks: [], query: "" },
   );
-  const title = recent
-    ? t("title.recent")
-    : filters.q
-      ? t("title.search", { q: filters.q })
-      : filters.author
-        ? t("title.author", { name: filters.author })
-        : avatar
-          ? t("title.avatar", { name: avatarName(avatar, settings.ui) })
-          : filters.view === "avatars"
-            ? t("title.avatars")
-            : filters.view === "favourites"
-              ? t("title.favourites")
-              : t("title.all");
+  const title =
+    catalogTitle(t, filters, avatar && avatarName(avatar, settings.ui)) ??
+    t("title.all");
 
   return (
     <Layout

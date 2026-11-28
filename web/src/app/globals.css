@@ -128,14 +128,36 @@ html {
   }
 }
 .astryx-dialog .astryx-layout-content {
-  mask-image: linear-gradient(
-    to bottom,
-    black calc(100% - var(--body-fade)),
-    transparent
-  );
-  animation: body-fade linear both;
-  animation-timeline: scroll(self);
-  animation-range: calc(100% - var(--spacing-8)) 100%;
+  scroll-padding-block-end: var(--spacing-8);
+}
+@supports (animation-timeline: scroll()) {
+  .astryx-dialog .astryx-layout-content {
+    mask-image: linear-gradient(
+      to bottom,
+      black calc(100% - var(--body-fade)),
+      transparent
+    );
+    animation: body-fade linear both;
+    animation-timeline: scroll(self);
+    animation-range: calc(100% - var(--spacing-8)) 100%;
+  }
+}
+@supports not (animation-timeline: scroll()) {
+  .astryx-dialog .astryx-layout-content {
+    background-image:
+      linear-gradient(to top, var(--color-background-surface) 30%, transparent),
+      linear-gradient(
+        to top,
+        color-mix(in srgb, var(--color-border) 50%, transparent),
+        transparent
+      );
+    background-position: bottom, bottom;
+    background-size:
+      100% var(--spacing-8),
+      100% var(--spacing-4);
+    background-repeat: no-repeat;
+    background-attachment: local, scroll;
+  }
 }
 /* The Turnstile widget's host (components/verification/verification-field.tsx) is a whole number of CSS px wide:
    Chrome lays out the widget's cross-origin frame at the frame's width rounded to the nearest CSS px, so a frame of
@@ -144,4 +166,8 @@ html {
    grid, not a size. A browser without round() keeps the full width. */
 .turnstile-host {
   width: round(down, 100%, 1px);
+}
+
+:where(h1, h2) {
+  text-wrap: balance;
 }

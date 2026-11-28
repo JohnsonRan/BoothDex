@@ -84,11 +84,19 @@ function UserList() {
 
   return (
     <>
-      <HStack gap={2} vAlign="center" wrap="wrap">
+      <HStack
+        as="search"
+        aria-label={t("users.search")}
+        gap={2}
+        vAlign="center"
+        wrap="wrap"
+      >
         <StackItem size="fill">
           <TextInput
             label={t("users.search")}
             isLabelHidden
+            type="search"
+            enterKeyHint="search"
             placeholder={t("users.searchHint")}
             size="sm"
             width="100%"

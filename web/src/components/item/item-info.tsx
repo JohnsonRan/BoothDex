@@ -33,6 +33,7 @@ import { AvatarFit, CopyLink } from "./item-actions";
 import {
   boothUrl,
   initialLang,
+  itemTextLang,
   LANG_LABELS,
   langTabs,
   STICKY,
@@ -64,6 +65,9 @@ export function ItemInfo({
   const money = (jpy: number | null) => formatPrice(jpy, settings, rates, t);
   const listed =
     item.smart_price != null && item.smart_price !== item.price_jpy;
+  const title = itemText(item, "title", lang);
+  const titleLang = itemTextLang(item, "title", lang);
+  const titleNode = titleLang ? <span lang={titleLang}>{title}</span> : title;
 
   return (
     <VStack gap={5} style={isWide ? STICKY : undefined}>
@@ -91,10 +95,10 @@ export function ItemInfo({
         {/* display-2 (page.tsx:167) is drawn for a 1200 px page; a phone's column takes the page title's type */}
         {isWide ? (
           <Text type="display-2" as="h1">
-            {itemText(item, "title", lang)}
+            {titleNode}
           </Text>
         ) : (
-          <Heading level={1}>{itemText(item, "title", lang)}</Heading>
+          <Heading level={1}>{titleNode}</Heading>
         )}
         {/* the template's rating row (StarRating, page.tsx:55-72) */}
         <HStack gap={1} vAlign="center">

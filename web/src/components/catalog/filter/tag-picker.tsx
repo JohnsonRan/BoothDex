@@ -74,6 +74,8 @@ export function TagPicker({
       <TextInput
         label={t("filter.tagSearch")}
         isLabelHidden
+        type="search"
+        enterKeyHint="search"
         placeholder={t("filter.tagSearch")}
         value={q}
         onChange={setQ}

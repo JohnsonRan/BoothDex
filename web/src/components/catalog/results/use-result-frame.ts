@@ -5,7 +5,11 @@
 import { type Dispatch, type SetStateAction, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { covered } from "@/components/catalog/band/band-edge";
-import { framePages, pageToRead } from "@/lib/result-frame";
+import {
+  createScrollSettler,
+  framePages,
+  pageToRead,
+} from "@/lib/result-frame";
 import {
   type Dir,
   pageAt,
@@ -112,7 +116,6 @@ export function useResultFrame(
   // biome-ignore lint/correctness/useExhaustiveDependencies: reads the latest state through `now`
   useEffect(() => {
     let frame = 0;
-    let settle = 0;
     let lastY = scrollY;
     let up = false;
     let shown = page;
@@ -219,19 +222,19 @@ export function useResultFrame(
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(run);
     };
+    const settler = createScrollSettler(() => {
+      r.scrolling.current = false;
+      saved = save();
+      for (const change of r.held.current.values()) change();
+      r.held.current.clear();
+      schedule();
+    }, SETTLE_MS);
     const onScroll = () => {
       up = scrollY < lastY;
       lastY = scrollY;
       r.scrolling.current = true;
       schedule();
-      clearTimeout(settle);
-      settle = window.setTimeout(() => {
-        r.scrolling.current = false;
-        saved = save();
-        for (const change of r.held.current.values()) change();
-        r.held.current.clear();
-        schedule();
-      }, SETTLE_MS);
+      settler.mark();
     };
     const onWheel = (e: WheelEvent) => {
       if (e.deltaY >= 0) return;
@@ -276,7 +279,7 @@ export function useResultFrame(
     return () => {
       cancelAnimationFrame(frame);
       cancelAnimationFrame(rewatch);
-      clearTimeout(settle);
+      settler.dispose();
       showInView(undefined);
       r.tick.current = () => {};
       removeEventListener("scroll", onScroll);

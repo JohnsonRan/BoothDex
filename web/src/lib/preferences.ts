@@ -26,7 +26,11 @@ export function setPreferenceSync(on: boolean) {
 /** Sends preferences to the account; a failure keeps them in this browser only, as on master. */
 function send(json: Record<string, string>) {
   if (!signedIn) return;
-  api("/api/account/preferences", { method: "PUT", json }).catch(() => {});
+  api("/api/account/preferences", {
+    method: "PUT",
+    json,
+    priority: "low",
+  }).catch(() => {});
 }
 
 /** Sends changed settings to the account; item text that follows the interface language is sent as "ui". */

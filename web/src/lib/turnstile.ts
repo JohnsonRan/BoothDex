@@ -69,6 +69,7 @@ export function loadTurnstile(): Promise<Turnstile> {
     );
     script.src = SCRIPT;
     script.async = true;
+    script.referrerPolicy = "strict-origin-when-cross-origin";
     script.onload = () => {
       clearTimeout(timer);
       if (window.turnstile) resolve(window.turnstile);

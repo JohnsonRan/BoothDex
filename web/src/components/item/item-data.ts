@@ -3,7 +3,7 @@
 
 import type { CSSProperties } from "react";
 import type { ItemResponse, Variation } from "@/lib/api-types";
-import type { ContentLang } from "@/lib/settings-core";
+import { type ContentLang, LOCALES } from "@/lib/settings-core";
 
 /** The tabs' own labels: each language names itself, as on master; "original" is translated (detail.original). */
 export const LANG_LABELS = {
@@ -124,3 +124,17 @@ export const HERO: CSSProperties = {
   objectFit: "contain",
   display: "block",
 };
+
+/** BCP 47 tag for an item's title or bio in `content`, or undefined when its original language is unknown. */
+export function itemTextLang(
+  it: Pick<ItemResponse, "translations" | "original_language">,
+  field: "title" | "bio",
+  content: ContentLang,
+): string | undefined {
+  if (content !== "original" && it.translations?.[content]?.[field])
+    return LOCALES[content];
+  const orig = it.original_language?.toLowerCase();
+  return orig && Object.hasOwn(LOCALES, orig)
+    ? LOCALES[orig as keyof typeof LOCALES]
+    : undefined;
+}

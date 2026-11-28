@@ -25,7 +25,7 @@ function Block({
 }) {
   if (typeof block === "string")
     return (
-      <Text as="p" type="body">
+      <Text as="p" type="body" textWrap="pretty">
         {rich(block, nodes)}
       </Text>
     );
@@ -81,7 +81,7 @@ export function LegalBody({ doc }: { doc: LegalView }) {
   };
   return (
     <VStack gap={8}>
-      <Text as="p" type="body">
+      <Text as="p" type="body" textWrap="pretty">
         {rich(doc.summary, nodes)}
       </Text>
       {doc.sections.map((section) => (

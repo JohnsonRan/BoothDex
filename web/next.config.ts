@@ -16,7 +16,7 @@ const IMG_ORIGIN = process.env.IMG_ORIGIN ?? "http://127.0.0.1:3001";
 const CONTENT_SECURITY_POLICY = [
   "img-src 'self' data:",
   "object-src 'none'",
-  "base-uri 'self'",
+  "base-uri 'none'",
   "frame-ancestors 'none'",
 ].join("; ");
 
@@ -71,6 +71,20 @@ const nextConfig: NextConfig = {
         source: "/(.*)",
         headers: [
           { key: "Content-Security-Policy", value: CONTENT_SECURITY_POLICY },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), geolocation=(), microphone=()",
+          },
+          { key: "X-Frame-Options", value: "DENY" },
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin-allow-popups",
+          },
         ],
       },
     ];

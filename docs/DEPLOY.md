@@ -203,7 +203,7 @@ boothdex.example.com {
 
 - **Server-sent events (`/api/admin/stream`)**: disable response buffering so `/admin` updates live (`flush_interval -1` in Caddy, `proxy_buffering off;` in nginx).
 - **Compression**: Next.js (`web`) enables gzip by default, and `api` compresses responses while excluding SSE. Front proxies can compress unencoded responses (`encode zstd gzip` in Caddy, `gzip on;` in nginx).
-- **Content Security Policy**: `web` sends one on every response; a policy your proxy adds does not replace it ([details](SERVICES.md#content-security-policy)).
+- **Content Security Policy**: `web` sends a CSP and companion security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`) on every response; a policy your proxy adds does not replace the CSP ([details](SERVICES.md#content-security-policy)).
 - **Host firewall & rate limiting**:
   - Keep the default `WEB_LISTEN=127.0.0.1:3100` whenever the proxy or tunnel runs on the same machine, so visitors cannot bypass the proxy. Docker bypasses `ufw` when publishing `0.0.0.0:3100`. With a bare port, allow only the proxy's address to reach it.
   - The front proxy must set or append `X-Forwarded-For` to the verified client IP, because the per-IP rate limits key on it. Caddy's `reverse_proxy` does this automatically; nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`.
@@ -254,6 +254,7 @@ Set `BOOTHDEX_TAG=latest` again once a fixed version is published. Waiting for t
 - [ ] `ADMIN_USERNAMES` lists only your account
 - [ ] `https://<domain>/api/categories` returns JSON; `/img/v/<sha1>.webp` serves an archived image (if using a bundle)
 - [ ] `/robots.txt` points to `/sitemap.xml` on your public domain; the sitemap lists the homepage, `/privacy` and `/terms`. Submit it to your search engine's webmaster tools. Search/filter/item-modal URLs use `noindex`; `/admin` and `/api/` are excluded from crawling (not an access-control mechanism)
+- [ ] In a supported admin language, check that the browser tab titles on a search and an admin page match the chosen language
 - [ ] `/admin` shows `worker` online and a succeeded `incremental` job within an hour
 - [ ] Off-server daily `pg_dump` backup is scheduled
 - [ ] AI provider is configured (otherwise newly crawled items lack smart categories, avatar-fit links and translated titles)

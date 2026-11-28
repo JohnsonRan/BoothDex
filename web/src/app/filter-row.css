@@ -243,20 +243,21 @@
 .filter-rail {
   scrollbar-width: none;
   overscroll-behavior: contain;
+  scroll-padding-block: var(--spacing-8);
   --rail-head: var(--rail-header);
-  mask-image: linear-gradient(
-    to bottom,
-    transparent,
-    black var(--rail-fade-top),
-    black calc(100% - var(--body-fade)),
-    transparent
-  );
 }
 /* Scroll-driven header offset and edge fades: keeps body-fade / rail-fade-top (scroll(self)) and rail-head
-   (scroll(root)) active together. Browsers without scroll timelines (Firefox) keep the base --rail-head on first
-   paint and update it from scroll events in filter-rail.tsx, with no edge fades. */
+   (scroll(root)) active together. Browsers without scroll timelines (Firefox) keep --rail-head updated in
+   filter-rail.tsx and draw edge scroll hints via background-attachment instead of mask-image. */
 @supports (animation-timeline: scroll()) {
   .filter-rail {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      black var(--rail-fade-top),
+      black calc(100% - var(--body-fade)),
+      transparent
+    );
     animation:
       body-fade linear both,
       rail-fade-top linear both,
@@ -271,6 +272,31 @@
     animation: rail-head linear both;
     animation-timeline: scroll(root);
     animation-range: 0px var(--rail-header);
+  }
+}
+@supports not (animation-timeline: scroll()) {
+  .filter-rail {
+    background-image:
+      linear-gradient(var(--color-background-surface) 30%, transparent),
+      linear-gradient(to top, var(--color-background-surface) 30%, transparent),
+      linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--color-border) 50%, transparent),
+        transparent
+      ),
+      linear-gradient(
+        to top,
+        color-mix(in srgb, var(--color-border) 50%, transparent),
+        transparent
+      );
+    background-position: top, bottom, top, bottom;
+    background-size:
+      100% var(--spacing-8),
+      100% var(--spacing-8),
+      100% var(--spacing-4),
+      100% var(--spacing-4);
+    background-repeat: no-repeat;
+    background-attachment: local, local, scroll, scroll;
   }
 }
 /* The rail's checkboxes start at its edge, as its radios do: a CheckboxList's items are List items, inset as a
@@ -334,10 +360,10 @@
    (within the viewport, the whole width on a phone) and up to 60% of the viewport tall. Not a token's tooltip,
    also a popover in the field, which keeps its own size. */
 .filter-search [popover]:not(.astryx-tooltip) {
-  width: min(36rem, calc(100vw - 2rem));
+  width: min(36rem, calc(100dvw - 2rem));
 }
 .filter-search .astryx-typeahead-dropdown {
-  max-height: 60vh;
+  max-height: 60dvh;
 }
 
 /* The refresh progress on the filter band's bottom edge (catalog/refresh.tsx), by its theme hooks and only here:

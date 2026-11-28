@@ -20,8 +20,12 @@ mock.module("react", () => ({
 const { AppLink, Providers, useUi } = await import("./providers");
 
 const realDocument = globalThis.document;
+const realLocation = globalThis.location;
 afterEach(() => {
   globalThis.document = realDocument;
+  if (realLocation === undefined)
+    delete (globalThis as Record<string, unknown>).location;
+  else globalThis.location = realLocation;
 });
 
 let update: ReturnType<typeof useUi>["update"] = () => {};
@@ -53,6 +57,67 @@ test("a second change made before the page renders again keeps the first", () =>
     ),
   );
   expect(saved).toEqual({ ...DEFAULT_SETTINGS, ui: "en", currency: "USD" });
+});
+
+test("theme updates keep meta[name='color-scheme'] synchronized", () => {
+  renderToStaticMarkup(
+    <AppRouterContext value={{ refresh() {} } as AppRouterInstance}>
+      <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.zh}>
+        <Grab />
+      </Providers>
+    </AppRouterContext>,
+  );
+  let colorScheme = "light dark";
+  const noop = () => {};
+  const meta = {
+    setAttribute: (name: string, val: string) => {
+      if (name === "content") colorScheme = val;
+    },
+  };
+  globalThis.document = {
+    documentElement: {
+      dataset: {},
+      toggleAttribute: noop,
+      setAttribute: noop,
+      removeAttribute: noop,
+      querySelector: () => null,
+    },
+    body: { toggleAttribute: noop },
+    querySelector: (selector: string) =>
+      selector === 'meta[name="color-scheme"]' ? meta : null,
+    set cookie(_: string) {},
+  } as unknown as Document;
+
+  update({ theme: "dark" });
+  expect(colorScheme).toBe("dark");
+  update({ theme: "light" });
+  expect(colorScheme).toBe("light");
+  update({ theme: "system" });
+  expect(colorScheme).toBe("light dark");
+});
+
+test("settings cookie includes Secure only on HTTPS", () => {
+  renderToStaticMarkup(
+    <AppRouterContext value={{ refresh() {} } as AppRouterInstance}>
+      <Providers settings={DEFAULT_SETTINGS} messages={MESSAGES.zh}>
+        <Grab />
+      </Providers>
+    </AppRouterContext>,
+  );
+  let cookie = "";
+  globalThis.document = {
+    documentElement: {},
+    set cookie(v: string) {
+      cookie = v;
+    },
+  } as Document;
+  const g = globalThis as Record<string, unknown>;
+  g.location = { protocol: "https:" };
+  update({ ui: "en" });
+  expect(cookie).toEndWith("; secure");
+  g.location = { protocol: "http:" };
+  update({ ui: "ja" });
+  expect(cookie).not.toContain("; secure");
 });
 
 let provided: LinkComponentType | null = null;

@@ -110,6 +110,7 @@ Intentional designs that look like defects:
 
 | What | Why | Owner ruling (date, quote) |
 | --- | --- | --- |
+| PR #104 increases the homepage first load by 258 B HTML, 431 B JS and 225 B CSS (gzip -9, three reads per revision on the same host) | All three remain within the existing budgets; the limits are unchanged | 2026-11-28: “接受首屏包体增量。” |
 | With the stricter limits on, a signed-in visitor without a pass gets today's numbers only while "Sign-in and registration need verification" is on too, and only if the sign-in or registration that made the session passed the Turnstile check (`sessions.turnstile_passed`); a session let through unchecked, made while that switch was off, or any session while it is off counts as no pass (the `Tier` extractor in `crates/api/src/pass.rs`, `Tiered::check` in `crates/api/src/limit.rs`) | Only a sign-in that passed the check cost a script more than a request. How the two buckets count a session's requests is in `Tiered` (`crates/api/src/limit.rs`) | 2026-11-17, choosing among "any signed-in visitor", "only while sign-in is checked" and "no change": "1. B" |
 | `favourite_toggle` in the database benchmark is slow | Every client clicks the same popular items, so the `count_favourite` trigger's updates of their `item_stats` rows wait for each other. Spread over many items, a favourite costs the same as without the trigger. | 2026-11-11, commit 2507250: "a worst case that was accepted on purpose" |
 | "Commands" has no Pre-commit and no Scheduled run on main tier | The merge gate covers this project; a hook or a scheduled run would be CI nobody needs. | 2026-11-12: "Drop both rows" |
@@ -185,11 +186,6 @@ after a release.
 | Add the original Masscat (ますきゃっと, 量産型のらきゃっと) as an avatar of its own; its listings are not linked to ますきゃっとぷらす | alias measurement for migration 0032, 2026-11-21 | It was not among the measured candidates |
 | Check the gender of the 42 added avatars without one and the Hepburn romaji of the 68 whose body listing shows no Latin name | avatar research, 2026-11-21 | It needs reading the listing images and the shops' pages |
 | Consolidate Saved searches' sign-in dialog in `web/src/components/catalog/toolbar.tsx` onto `AccountProvider.openSignIn` instead of its pre-existing local `dynamic` `SignInDialog` | fresh-context diff review, 2026-11-26 | Pre-existing modal outside TopNav navigation; can migrate if `check:size` stays within the 530,000 B JS budget |
-
-## Open questions
-
-Questions no rule settles, for the owner. They are asked together at a stopping point; a ruling moves the item
-to the file it decides.
-
-| Question | Source | Raised |
-| --- | --- | --- |
+| Restore the previous weight of the Settings title at phone width | PR #104 review, `web/src/components/settings/settings-dialog.tsx` | The semantic heading is correct. The owner saw the heavier weight in the preview and reported no issues. |
+| Make fields with the `next` keyboard hint advance without submitting their form | PR #104 review, sign-in, profile and guestbook forms | Enter runs client validation and marks untouched fields. Invalid submissions send no request. Changing Enter behavior needs a keyboard and IME check. |
+| Share the scroll-settling helper between the avatar strip and the results frame | PR #104 review, `web/src/components/catalog/band/avatar-strip.tsx` and `web/src/lib/result-frame.ts` | The strip listens on a nested scroller and the frame listens on the window. Changing the strip would need its own navigation and resize checks. |

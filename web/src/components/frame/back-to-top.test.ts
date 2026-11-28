@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { toastClearance } from "@/components/toasts";
-import { clearanceAbove } from "./back-to-top";
+import { clearanceAbove, holdsFocus } from "./back-to-top";
 
 test("toasts sit above the Back to top button, as far above it as it sits above the window's bottom edge", () => {
   // a 40 px button 16 px above the bottom of a 900 px window: toasts 72 px up, 16 px above the button's top
@@ -16,4 +16,17 @@ test("toasts sit above the Back to top button, as far above it as it sits above 
   toastClearance.set(30);
   expect(seen).toEqual([72, 0]);
   toastClearance.set(0);
+});
+
+test("holdsFocus detects focus on the button itself or a descendant", () => {
+  const child = {} as Element;
+  const other = {} as Element;
+  const button = {
+    contains: (el: Element | null) => el === child,
+  } as unknown as HTMLElement;
+  expect(holdsFocus(button, button)).toBe(true);
+  expect(holdsFocus(child, button)).toBe(true);
+  expect(holdsFocus(other, button)).toBe(false);
+  expect(holdsFocus(null, button)).toBe(false);
+  expect(holdsFocus(other, null)).toBe(false);
 });

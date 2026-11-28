@@ -6,7 +6,6 @@ import { browserMessages } from "@/lib/dictionaries";
 import { componentCatalogue, isPhone, readSettings } from "@/lib/server-data";
 
 export const metadata: Metadata = {
-  title: "Admin · BoothDex",
   robots: { index: false, follow: false },
 };
 

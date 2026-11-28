@@ -30,11 +30,35 @@ test("every path is sent one policy that allows images from this origin and data
     expect(["'self'", "data:"]).toContain(source);
 });
 
-test("the policy refuses plugin content, a <base> to another origin and framing by any page", async () => {
+test("the policy refuses plugin content, any <base> element and framing by any page", async () => {
   const csp = await policy();
   expect(csp.get("object-src")).toEqual(["'none'"]);
-  expect(csp.get("base-uri")).toEqual(["'self'"]);
+  expect(csp.get("base-uri")).toEqual(["'none'"]);
   expect(csp.get("frame-ancestors")).toEqual(["'none'"]);
+});
+
+test("every path sends the companion security and privacy headers", async () => {
+  const rules = (await nextConfig.headers?.()) ?? [];
+  const match = rules.find(
+    (r) =>
+      r.source === "/(.*)" &&
+      r.has === undefined &&
+      r.missing === undefined &&
+      r.headers.some((h) => h.key.toLowerCase() === "x-content-type-options"),
+  );
+  expect(match).toBeDefined();
+  const map = new Map(
+    (match?.headers ?? []).map((h) => [h.key.toLowerCase(), h.value]),
+  );
+  expect(map.get("x-content-type-options")).toBe("nosniff");
+  expect(map.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+  expect(map.get("permissions-policy")).toBe(
+    "camera=(), geolocation=(), microphone=()",
+  );
+  expect(map.get("x-frame-options")).toBe("DENY");
+  expect(map.get("cross-origin-opener-policy")).toBe(
+    "same-origin-allow-popups",
+  );
 });
 
 test("the share image hash changes with each font and renderer file that draws /og.png", () => {

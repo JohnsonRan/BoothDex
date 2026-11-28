@@ -11,7 +11,7 @@ import { IconButton } from "@astryxdesign/core/IconButton";
 import dynamic from "next/dynamic";
 import { useUi } from "@/components/providers";
 import { lateMenuButton } from "@/lib/late-menu";
-import { type Currency, LOCALES } from "@/lib/settings-core";
+import { type Currency, LOCALES, type Theme } from "@/lib/settings-core";
 
 // the sign each currency is known by locally (Intl's narrow symbols repeat "$" and "¥" across currencies)
 export const CURRENCY_SYMBOLS: Record<Currency, string> = {
@@ -99,6 +99,13 @@ export const CurrencyMenu = dynamic(
   { ssr: false, loading: () => <CurrencyButton /> },
 );
 
+/** Next theme mode when toggling: reverts to "system" once the target matches the OS preference. */
+export function toggledTheme(mode: Theme, prefersDark: boolean): Theme {
+  const next: Theme =
+    mode === "dark" || (mode === "system" && prefersDark) ? "light" : "dark";
+  return next === (prefersDark ? "dark" : "light") ? "system" : next;
+}
+
 /** Flips light and dark relative to what is shown; without a saved choice the page follows the system. */
 export function ColorModeToggle() {
   const { t, settings, update } = useUi();
@@ -112,7 +119,7 @@ export function ColorModeToggle() {
       tooltip={label}
       variant="ghost"
       icon={<Icon icon={isDark ? "site:light" : "site:dark"} size="sm" />}
-      onClick={() => update({ theme: isDark ? "light" : "dark" })}
+      onClick={() => update({ theme: toggledTheme(mode, prefersDark) })}
     />
   );
 }

@@ -58,6 +58,7 @@ Search ([details](docs/SEARCH.md)):
 - Filters by avatar fit, smart category, BOOTH category, tags (include and exclude), features (MA, lilToon, Poiyomi,
   VRCFury), price, release date, free items and content rating, over ~200k items in a few milliseconds.
 - A search field with suggestions for recent searches, avatars, items, shops and tags, and one removable token per word.
+- Browser tab titles name the active search or catalogue view in the interface language.
 - A BOOTH item link or an item number puts that item first.
 - Japanese and Chinese text search, matching across full-width and half-width forms and kana, and one typo allowed in a
   Latin word.

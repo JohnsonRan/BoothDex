@@ -4,6 +4,47 @@
 
 import { isFar, type Page } from "./result-pages";
 
+type ScrollTarget = Pick<Window, "addEventListener" | "removeEventListener"> & {
+  onscrollend?: unknown;
+};
+
+/**
+ * Calls `onSettle` once scrolling finishes: immediately on native `scrollend` where supported, otherwise
+ * after `fallbackMs` without a scroll event.
+ */
+export function createScrollSettler(
+  onSettle: () => void,
+  fallbackMs = 200,
+  target: ScrollTarget = window,
+) {
+  const native = "onscrollend" in target;
+  let active = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const finish = () => {
+    clearTimeout(timer);
+    timer = undefined;
+    if (!active) return;
+    active = false;
+    onSettle();
+  };
+  if (native) target.addEventListener("scrollend", finish, { passive: true });
+  return {
+    mark: () => {
+      active = true;
+      if (!native) {
+        clearTimeout(timer);
+        timer = setTimeout(finish, fallbackMs);
+      }
+    },
+    dispose: () => {
+      clearTimeout(timer);
+      timer = undefined;
+      active = false;
+      if (native) target.removeEventListener("scrollend", finish);
+    },
+  };
+}
+
 /**
  * The index of the first of the children `[from, to)` reaching below `edge`, given each one's bottom (they ascend
  * in grid order); the last of them when none does.

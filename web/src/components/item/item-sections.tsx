@@ -18,7 +18,7 @@ import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import { useUi } from "@/components/providers";
 import type { ItemResponse } from "@/lib/api-types";
 import { type ContentLang, itemText, LOCALES } from "@/lib/settings-core";
-import { commonPrice } from "./item-data";
+import { commonPrice, itemTextLang } from "./item-data";
 import { FitsAvatars, Tags, Variations } from "./item-lists";
 
 // the description's lines before "Show more" (master: 20rem at its 28 px leading)
@@ -45,7 +45,12 @@ export function ItemSections({
     {
       value: "bio",
       title: t("detail.bio"),
-      body: <Bio text={itemText(item, "bio", lang)} />,
+      body: (
+        <Bio
+          text={itemText(item, "bio", lang)}
+          lang={itemTextLang(item, "bio", lang)}
+        />
+      ),
     },
     item.variations.length > 0 && {
       value: "variations",
@@ -106,7 +111,11 @@ export function ItemSections({
         <Fragment key={s.value}>
           <Collapsible
             value={s.value}
-            trigger={<Heading level={3}>{s.title}</Heading>}
+            trigger={
+              <Heading level={3} accessibilityLevel={2}>
+                {s.title}
+              </Heading>
+            }
           >
             {s.body}
           </Collapsible>
@@ -118,7 +127,7 @@ export function ItemSections({
 }
 
 /** The description, clamped to BIO_LINES with Show more / Show less when it is longer (master's Bio). */
-function Bio({ text }: { text: string }) {
+function Bio({ text, lang }: { text: string; lang?: string }) {
   const { t } = useUi();
   const box = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -137,14 +146,16 @@ function Bio({ text }: { text: string }) {
           as="p"
           maxLines={open ? 0 : BIO_LINES}
           hasTruncateTooltip={false}
+          textWrap="pretty"
           style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
         >
-          {text}
+          {lang ? <span lang={lang}>{text}</span> : text}
         </Text>
       </VStack>
       {long && (
         <Button
           label={open ? t("detail.less") : t("detail.more")}
+          aria-expanded={open}
           variant="ghost"
           size="sm"
           onClick={() => setOpen((o) => !o)}

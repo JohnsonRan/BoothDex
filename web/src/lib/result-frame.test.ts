@@ -1,6 +1,7 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, jest, test } from "bun:test";
 import {
   anchorAt,
+  createScrollSettler,
   type Frame,
   firstBelow,
   framePages,
@@ -138,4 +139,60 @@ test("restoreStep ends at the place, reads on while short of it, and stops when 
   expect(restoreStep(40, { ...whole, n: 9 }, 9)).toBe("done");
   expect(restoreStep(undefined, whole, 9)).toBe("done");
   expect(restoreStep(undefined, { ...whole, partial: true }, 9)).toBe("read");
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+test("createScrollSettler waits for scrollend when supported and cleans up on dispose", () => {
+  const listeners = new Map<string, EventListener>();
+  let settled = 0;
+  const target = {
+    onscrollend: null,
+    addEventListener: (
+      type: string,
+      fn: EventListenerOrEventListenerObject,
+    ) => {
+      listeners.set(type, fn as EventListener);
+    },
+    removeEventListener: (type: string) => {
+      listeners.delete(type);
+    },
+  };
+  const settler = createScrollSettler(() => settled++, 200, target);
+  expect(listeners.has("scrollend")).toBe(true);
+
+  // stray scrollend before any scroll mark does nothing
+  listeners.get("scrollend")?.(new Event("scrollend"));
+  expect(settled).toBe(0);
+
+  settler.mark();
+  listeners.get("scrollend")?.(new Event("scrollend"));
+  expect(settled).toBe(1);
+
+  settler.dispose();
+  expect(listeners.has("scrollend")).toBe(false);
+});
+
+test("createScrollSettler debounces with fallback timer when scrollend is absent", () => {
+  jest.useFakeTimers();
+  let settled = 0;
+  const target = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  const settler = createScrollSettler(() => settled++, 200, target);
+  settler.mark();
+  jest.advanceTimersByTime(150);
+  settler.mark();
+  jest.advanceTimersByTime(150);
+  expect(settled).toBe(0);
+  jest.advanceTimersByTime(50);
+  expect(settled).toBe(1);
+
+  settler.mark();
+  settler.dispose();
+  jest.advanceTimersByTime(300);
+  expect(settled).toBe(1);
 });
